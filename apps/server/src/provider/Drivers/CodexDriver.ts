@@ -189,7 +189,15 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
                 cause,
               }),
           ),
-          Effect.timeout(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
+          Effect.timeoutOrElse({
+            duration: Duration.millis(AUTH_PROBE_TIMEOUT_MS),
+            orElse: () =>
+              new ProviderDriverError({
+                driver: DRIVER_KIND,
+                instanceId,
+                detail: `Timed out listing Codex skills after ${AUTH_PROBE_TIMEOUT_MS}ms`,
+              }),
+          }),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         );
       });
