@@ -32,6 +32,7 @@ import { vcsEnvironment } from "../state/vcs";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
+import { resolveProjectMainCheckout } from "./useHandleNewThread.logic";
 
 export function useNewThreadHandler() {
   const projects = useProjects();
@@ -267,27 +268,31 @@ export function useHandleNewThread() {
       );
       if (!project) return undefined;
 
-      if (
+      const isActiveProject =
         newThreadProjectRef !== null &&
         projectRef.environmentId === newThreadProjectRef.environmentId &&
-        projectRef.projectId === newThreadProjectRef.projectId
-      ) {
-        return activeProjectMainCheckout;
-      }
-
-      const result = await listRefs({
-        environmentId: projectRef.environmentId,
-        input: { cwd: project.workspaceRoot, limit: 100 },
+        projectRef.projectId === newThreadProjectRef.projectId;
+      return resolveProjectMainCheckout({
+        isActiveProject,
+        activeRefsLoaded: activeProjectBranches.data !== null,
+        activeProjectMainCheckout,
+        projectWorkspaceRoot: project.workspaceRoot,
+        loadRefs: async () => {
+          const result = await listRefs({
+            environmentId: projectRef.environmentId,
+            input: { cwd: project.workspaceRoot, limit: 100 },
+          });
+          return result._tag === "Failure" ? null : result.value;
+        },
       });
-      if (result._tag === "Failure") return activeProjectMainCheckout;
-
-      const workspaceOptions = deriveWorkspaceOptions(result.value.refs, project.workspaceRoot);
-      if (workspaceOptions.mainCheckout) return workspaceOptions.mainCheckout;
-
-      const defaultRef = result.value.refs.find((ref) => !ref.isRemote && ref.isDefault);
-      return defaultRef ? { branch: defaultRef.name, path: null } : undefined;
     },
-    [activeProjectMainCheckout, listRefs, newThreadProjectRef, projects],
+    [
+      activeProjectBranches.data,
+      activeProjectMainCheckout,
+      listRefs,
+      newThreadProjectRef,
+      projects,
+    ],
   );
   const defaultProjectSettings = useMemo(() => {
     if (newThreadProjectRef === null) {
