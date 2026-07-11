@@ -46,6 +46,8 @@ import {
   type SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
 import { Link, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
@@ -908,6 +910,7 @@ interface SidebarProjectThreadListProps {
   shouldShowThreadPanel: boolean;
   isThreadListExpanded: boolean;
   projectCwd: string;
+  projectMembers: readonly SidebarProjectGroupMember[];
   activeRouteThreadKey: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
@@ -960,6 +963,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     shouldShowThreadPanel,
     isThreadListExpanded,
     projectCwd,
+    projectMembers,
     activeRouteThreadKey,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
@@ -987,34 +991,61 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   } = props;
   const showMoreButtonRender = useMemo(() => <button type="button" />, []);
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
-  const workspaceEnvironmentId = renderedThreads[0]?.environmentId ?? null;
-  const workspaceProjectId = renderedThreads[0]?.projectId ?? null;
-  const workspaceRefs = useEnvironmentQuery(
-    workspaceEnvironmentId
-      ? vcsEnvironment.listRefs({
-          environmentId: workspaceEnvironmentId,
-          input: { cwd: projectCwd, limit: 100 },
-        })
-      : null,
+  const workspaceRefTargets = useMemo(
+    () =>
+      threadGroupingMode === "worktree"
+        ? projectMembers.map((member) => ({
+            member,
+            atom: vcsEnvironment.listRefs({
+              environmentId: member.environmentId,
+              input: { cwd: member.workspaceRoot, limit: 100 },
+            }),
+          }))
+        : [],
+    [projectMembers, threadGroupingMode],
   );
-  const workspaceIdentity = useMemo(() => {
-    if (!workspaceEnvironmentId || !workspaceProjectId || !workspaceRefs.data) return null;
-    const options = deriveWorkspaceOptions(workspaceRefs.data.refs, projectCwd);
-    const normalizedProjectCwd = projectCwd.replaceAll("\\", "/").replace(/\/+$/, "");
-    const projectCheckoutRef = workspaceRefs.data.refs.find(
-      (ref) => ref.worktreePath?.replaceAll("\\", "/").replace(/\/+$/, "") === normalizedProjectCwd,
-    );
-    return {
-      environmentId: workspaceEnvironmentId,
-      projectId: workspaceProjectId,
-      projectCheckoutPath: projectCwd,
-      projectCheckoutLabel: projectCheckoutRef?.name ?? null,
-      mainCheckoutPath: options.mainCheckout?.path ?? projectCwd,
-    };
-  }, [projectCwd, workspaceEnvironmentId, workspaceProjectId, workspaceRefs.data]);
+  const workspaceRefsAtom = useMemo(
+    () =>
+      Atom.make((get) =>
+        workspaceRefTargets.map((target) => ({
+          member: target.member,
+          result: get(target.atom),
+        })),
+      ).pipe(Atom.withLabel(`sidebar:workspace-refs:${projectKey}`)),
+    [projectKey, workspaceRefTargets],
+  );
+  const workspaceRefResults = useAtomValue(workspaceRefsAtom);
+  const workspaceIdentities = useMemo(
+    () =>
+      workspaceRefResults.flatMap(({ member, result }) => {
+        const data = Option.getOrNull(AsyncResult.value(result));
+        if (!data) return [];
+        const options = deriveWorkspaceOptions(
+          data.refs,
+          member.workspaceRoot,
+          data.mainCheckoutPath,
+        );
+        const normalizedProjectCwd = member.workspaceRoot.replaceAll("\\", "/").replace(/\/+$/, "");
+        const projectCheckoutRef = data?.refs.find(
+          (ref) =>
+            ref.worktreePath?.replaceAll("\\", "/").replace(/\/+$/, "") === normalizedProjectCwd,
+        );
+        return [
+          {
+            environmentId: member.environmentId,
+            projectId: member.id,
+            projectCheckoutPath: member.workspaceRoot,
+            projectCheckoutLabel: projectCheckoutRef?.name ?? null,
+            mainCheckoutPath:
+              data.mainCheckoutPath ?? options.mainCheckout?.path ?? member.workspaceRoot,
+          },
+        ];
+      }),
+    [workspaceRefResults],
+  );
   const renderedThreadGroups = useMemo(
-    () => groupSidebarThreadsByWorktree(renderedThreads, workspaceIdentity),
-    [renderedThreads, workspaceIdentity],
+    () => groupSidebarThreadsByWorktree(renderedThreads, workspaceIdentities),
+    [renderedThreads, workspaceIdentities],
   );
 
   const renderThread = (thread: SidebarThreadSummary) => {
@@ -2375,6 +2406,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         shouldShowThreadPanel={shouldShowThreadPanel}
         isThreadListExpanded={isThreadListExpanded}
         projectCwd={project.workspaceRoot}
+        projectMembers={project.memberProjects}
         activeRouteThreadKey={activeRouteThreadKey}
         threadJumpLabelByKey={threadJumpLabelByKey}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}

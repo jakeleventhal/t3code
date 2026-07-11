@@ -51,14 +51,16 @@ export function groupSidebarThreadsByWorktree<
   },
 >(
   threads: readonly TThread[],
-  workspaceIdentity?: SidebarWorkspaceIdentity | null,
+  workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
 ): SidebarWorktreeThreadGroup<TThread>[] {
   const groups = new Map<string, { label: string; threads: TThread[] }>();
 
   for (const thread of threads) {
-    const matchesWorkspaceIdentity =
-      workspaceIdentity?.environmentId === thread.environmentId &&
-      workspaceIdentity.projectId === thread.projectId;
+    const workspaceIdentity = workspaceIdentities.find(
+      (identity) =>
+        identity.environmentId === thread.environmentId && identity.projectId === thread.projectId,
+    );
+    const matchesWorkspaceIdentity = workspaceIdentity !== undefined;
     const worktreePath = thread.worktreePath?.trim() || null;
     const effectivePath =
       worktreePath ?? (matchesWorkspaceIdentity ? workspaceIdentity.projectCheckoutPath : null);
