@@ -42,4 +42,16 @@ describe("resolveProjectMainCheckout", () => {
     ).resolves.toEqual({ branch: "feature/current", path: null });
     expect(loadRefs).toHaveBeenCalledOnce();
   });
+
+  it("does not reuse another project's checkout when ref discovery fails", async () => {
+    await expect(
+      resolveProjectMainCheckout({
+        isActiveProject: false,
+        activeRefsLoaded: true,
+        activeProjectMainCheckout: { branch: "feature/active", path: "/active" },
+        projectWorkspaceRoot: "/target",
+        loadRefs: async () => null,
+      }),
+    ).resolves.toBeUndefined();
+  });
 });
