@@ -92,11 +92,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           (worktree) => `existing:${worktree.path}` === value,
         );
         if (existingWorktree) {
-          if (existingWorktree.isProjectCheckout) {
-            onEnvModeChange("local");
-          } else {
-            onExistingWorktreeChange(existingWorktree);
-          }
+          onExistingWorktreeChange(existingWorktree);
           return;
         }
         onEnvModeChange(value as EnvMode);
