@@ -282,9 +282,13 @@ export const BranchToolbar = memo(function BranchToolbar({
   const workspaceOptions = useMemo(
     () =>
       activeProject
-        ? deriveWorkspaceOptions(branchState.data?.refs ?? [], activeProject.workspaceRoot)
+        ? deriveWorkspaceOptions(
+            branchState.data?.refs ?? [],
+            activeProject.workspaceRoot,
+            branchState.data?.mainCheckoutPath,
+          )
         : { mainCheckout: null, existingWorktrees: [] },
-    [activeProject, branchState.data?.refs],
+    [activeProject, branchState.data],
   );
 
   const showEnvironmentPicker = Boolean(

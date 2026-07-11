@@ -75,7 +75,7 @@ describe("deriveWorkspaceOptions", () => {
       },
     ];
 
-    expect(deriveWorkspaceOptions(refs, "/repo/.t3/worktrees/current")).toEqual({
+    expect(deriveWorkspaceOptions(refs, "/repo/.t3/worktrees/current", "/repo")).toEqual({
       mainCheckout: {
         branch: "main",
         label: "main",
@@ -96,6 +96,31 @@ describe("deriveWorkspaceOptions", () => {
           isProjectCheckout: false,
         },
       ],
+    });
+  });
+
+  it("uses checkout metadata when the default branch is not checked out", () => {
+    const refs: VcsRef[] = [
+      {
+        name: "feature/current",
+        current: true,
+        isDefault: false,
+        worktreePath: "/repo/.t3/worktrees/current",
+      },
+      {
+        name: "feature/main-checkout",
+        current: false,
+        isDefault: false,
+        worktreePath: "/repo",
+      },
+      { name: "main", current: false, isDefault: true, worktreePath: null },
+    ];
+
+    expect(deriveWorkspaceOptions(refs, "/repo/.t3/worktrees/current", "/repo")).toMatchObject({
+      mainCheckout: {
+        branch: "feature/main-checkout",
+        path: "/repo",
+      },
     });
   });
 

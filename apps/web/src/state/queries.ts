@@ -138,6 +138,9 @@ export function usePaginatedBranches(target: VcsRefTarget) {
           refs: [...refs.values()],
           isRepo: first.isRepo,
           hasPrimaryRemote: first.hasPrimaryRemote,
+          ...(first.mainCheckoutPath !== undefined
+            ? { mainCheckoutPath: first.mainCheckoutPath }
+            : {}),
           nextCursor: last.nextCursor,
           totalCount: Math.max(...values.map((value) => value.totalCount)),
         };
