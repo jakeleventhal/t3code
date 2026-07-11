@@ -395,6 +395,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
+      ...(settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds
+        ? ["Completion sound"]
+        : []),
       ...(settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar
         ? ["Auto-open task panel"]
         : []),
@@ -432,6 +435,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
+      settings.enableCompletionSounds,
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
       settings.sidebarThreadPreviewCount,
@@ -456,6 +460,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
+      enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
@@ -611,6 +616,32 @@ export function GeneralSettingsPanel() {
               checked={settings.wordWrap}
               onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
               aria-label="Wrap code, tables, diffs, and file previews by default"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Completion sound"
+          description="Play a sound when a turn completes."
+          resetAction={
+            settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds ? (
+              <SettingResetButton
+                label="completion sound"
+                onClick={() =>
+                  updateSettings({
+                    enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.enableCompletionSounds}
+              onCheckedChange={(checked) =>
+                updateSettings({ enableCompletionSounds: Boolean(checked) })
+              }
+              aria-label="Play a sound when a turn completes"
             />
           }
         />
