@@ -43,6 +43,7 @@ import {
   ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  ServerProviderSkillsError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   OrchestrationReplayEventsError,
@@ -286,6 +287,7 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [ORCHESTRATION_WS_METHODS.subscribeThread, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetConfig, AuthOrchestrationReadScope],
   [WS_METHODS.serverRefreshProviders, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverListProviderSkills, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateProvider, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpsertKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
@@ -1250,6 +1252,32 @@ const makeWsRpcLayer = (
               : providerRegistry.refresh()
             ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverListProviderSkills]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProviderSkills,
+            Effect.gen(function* () {
+              const skills = yield* providerRegistry.listSkills(input);
+              if (!skills) {
+                return yield* new ServerProviderSkillsError({
+                  instanceId: input.instanceId,
+                  cwd: input.cwd,
+                  message: "This provider does not support project skill discovery.",
+                });
+              }
+              return { skills };
+            }).pipe(
+              Effect.mapError((cause) =>
+                cause._tag === "ServerProviderSkillsError"
+                  ? cause
+                  : new ServerProviderSkillsError({
+                      instanceId: input.instanceId,
+                      cwd: input.cwd,
+                      message: cause.message,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
           ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
