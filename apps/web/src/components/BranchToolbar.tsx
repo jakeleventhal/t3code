@@ -21,6 +21,7 @@ import {
   resolveEnvModeLabel,
   resolveEffectiveEnvMode,
   resolveWorkspaceSelection,
+  withActiveWorkspaceFallback,
 } from "./BranchToolbar.logic";
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
@@ -279,17 +280,23 @@ export const BranchToolbar = memo(function BranchToolbar({
     environmentId,
     cwd: activeProject?.workspaceRoot ?? null,
   });
-  const workspaceOptions = useMemo(
-    () =>
-      activeProject
-        ? deriveWorkspaceOptions(
-            branchState.data?.refs ?? [],
-            activeProject.workspaceRoot,
-            branchState.data?.mainCheckoutPath,
-          )
-        : { mainCheckout: null, existingWorktrees: [] },
-    [activeProject, branchState.data],
-  );
+  const activeBranch =
+    activeThreadBranchOverride ?? serverThread?.branch ?? draftThread?.branch ?? null;
+  const workspaceOptions = useMemo(() => {
+    if (!activeProject) return { mainCheckout: null, existingWorktrees: [] };
+    const options = deriveWorkspaceOptions(
+      branchState.data?.refs ?? [],
+      activeProject.workspaceRoot,
+      branchState.data?.mainCheckoutPath,
+    );
+    return branchState.data
+      ? options
+      : withActiveWorkspaceFallback(options, {
+          activeWorktreePath,
+          activeBranch,
+          projectWorkspaceRoot: activeProject.workspaceRoot,
+        });
+  }, [activeBranch, activeProject, activeWorktreePath, branchState.data]);
 
   const showEnvironmentPicker = Boolean(
     availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,

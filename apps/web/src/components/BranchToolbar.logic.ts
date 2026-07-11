@@ -130,6 +130,35 @@ export function deriveWorkspaceOptions(
   return { mainCheckout, existingWorktrees };
 }
 
+export function withActiveWorkspaceFallback(
+  options: WorkspaceOptions,
+  input: {
+    readonly activeWorktreePath: string | null;
+    readonly activeBranch: string | null;
+    readonly projectWorkspaceRoot: string;
+  },
+): WorkspaceOptions {
+  const activePath = input.activeWorktreePath?.trim();
+  if (
+    !activePath ||
+    (options.mainCheckout !== null && workspacePathsEqual(options.mainCheckout.path, activePath)) ||
+    options.existingWorktrees.some((worktree) => workspacePathsEqual(worktree.path, activePath))
+  ) {
+    return options;
+  }
+
+  const fallback: ExistingWorktreeOption = {
+    branch: input.activeBranch?.trim() || "Current worktree",
+    path: activePath,
+    label:
+      input.activeBranch?.trim() ||
+      normalizeWorkspacePath(activePath).split("/").at(-1) ||
+      "Current worktree",
+    isProjectCheckout: workspacePathsEqual(activePath, input.projectWorkspaceRoot),
+  };
+  return { ...options, existingWorktrees: [...options.existingWorktrees, fallback] };
+}
+
 const GENERIC_LOCAL_ENVIRONMENT_LABELS = new Set(["local", "local environment"]);
 
 function normalizeDisplayLabel(value: string | null | undefined): string | null {

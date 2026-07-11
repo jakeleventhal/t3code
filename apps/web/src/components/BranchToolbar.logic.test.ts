@@ -12,6 +12,7 @@ import {
   resolveWorkspaceSelection,
   resolveBranchToolbarValue,
   shouldIncludeBranchPickerItem,
+  withActiveWorkspaceFallback,
 } from "./BranchToolbar.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -202,6 +203,45 @@ describe("resolveWorkspaceSelection", () => {
       selectedExistingWorktree: projectCheckout,
       value: `existing:${projectCheckout.path}`,
       label: "t3code/current",
+    });
+  });
+
+  it("normalizes workspace paths when resolving the active selection", () => {
+    expect(
+      resolveWorkspaceSelection({
+        effectiveEnvMode: "local",
+        activeWorktreePath: "C:\\repo\\worktrees\\current\\",
+        mainCheckout,
+        existingWorktrees: [{ ...projectCheckout, path: "C:/repo/worktrees/current" }],
+      }),
+    ).toMatchObject({
+      label: "t3code/current",
+      value: "existing:C:/repo/worktrees/current",
+    });
+  });
+});
+
+describe("withActiveWorkspaceFallback", () => {
+  it("keeps an active worktree visible while refs are unavailable", () => {
+    expect(
+      withActiveWorkspaceFallback(
+        { mainCheckout: null, existingWorktrees: [] },
+        {
+          activeWorktreePath: "/repo/.t3/worktrees/current",
+          activeBranch: "feature/current",
+          projectWorkspaceRoot: "/repo/.t3/worktrees/current",
+        },
+      ),
+    ).toEqual({
+      mainCheckout: null,
+      existingWorktrees: [
+        {
+          branch: "feature/current",
+          label: "feature/current",
+          path: "/repo/.t3/worktrees/current",
+          isProjectCheckout: true,
+        },
+      ],
     });
   });
 });
