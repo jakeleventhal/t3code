@@ -10,7 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
-import { deriveWorkspaceOptions } from "../components/BranchToolbar.logic";
+import { resolveMainCheckoutTarget } from "../components/BranchToolbar.logic";
 import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import {
   type DraftThreadEnvMode,
@@ -249,15 +249,11 @@ export function useHandleNewThread() {
   });
   const activeProjectMainCheckout = useMemo(() => {
     if (!newThreadProject || !activeProjectBranches.data) return undefined;
-    const workspaceOptions = deriveWorkspaceOptions(
+    return resolveMainCheckoutTarget(
       activeProjectBranches.data.refs,
       newThreadProject.workspaceRoot,
+      activeProjectBranches.data.mainCheckoutPath,
     );
-    if (workspaceOptions.mainCheckout) return workspaceOptions.mainCheckout;
-    const defaultRef = activeProjectBranches.data.refs.find(
-      (ref) => !ref.isRemote && ref.isDefault,
-    );
-    return defaultRef ? { branch: defaultRef.name, path: null } : undefined;
   }, [activeProjectBranches.data, newThreadProject]);
   const resolveDefaultMainCheckout = useCallback(
     async (projectRef: ScopedProjectRef) => {

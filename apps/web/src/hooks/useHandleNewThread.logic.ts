@@ -1,6 +1,6 @@
 import type { VcsRef } from "@t3tools/contracts";
 
-import { deriveWorkspaceOptions } from "../components/BranchToolbar.logic";
+import { resolveMainCheckoutTarget } from "../components/BranchToolbar.logic";
 
 interface MainCheckoutTarget {
   readonly branch: string;
@@ -25,12 +25,11 @@ export async function resolveProjectMainCheckout(input: {
 
   const snapshot = await input.loadRefs();
   if (snapshot === null) return undefined;
-  const options = deriveWorkspaceOptions(
-    snapshot.refs,
-    input.projectWorkspaceRoot,
-    snapshot.mainCheckoutPath,
+  return (
+    resolveMainCheckoutTarget(
+      snapshot.refs,
+      input.projectWorkspaceRoot,
+      snapshot.mainCheckoutPath,
+    ) ?? undefined
   );
-  if (options.mainCheckout) return options.mainCheckout;
-  const defaultRef = snapshot.refs.find((ref) => !ref.isRemote && ref.isDefault);
-  return defaultRef ? { branch: defaultRef.name, path: null } : undefined;
 }

@@ -130,6 +130,28 @@ export function deriveWorkspaceOptions(
   return { mainCheckout, existingWorktrees };
 }
 
+export function resolveMainCheckoutTarget(
+  refs: readonly VcsRef[],
+  projectWorkspaceRoot: string,
+  mainCheckoutPath?: string | null,
+): { readonly branch: string; readonly path: string | null } | null {
+  const options = deriveWorkspaceOptions(refs, projectWorkspaceRoot, mainCheckoutPath);
+  if (options.mainCheckout) {
+    return { branch: options.mainCheckout.branch, path: options.mainCheckout.path };
+  }
+
+  const projectCheckoutRef = refs.find(
+    (ref) =>
+      !ref.isRemote &&
+      ref.worktreePath !== null &&
+      workspacePathsEqual(ref.worktreePath, projectWorkspaceRoot),
+  );
+  const currentRef = refs.find((ref) => !ref.isRemote && ref.current);
+  const defaultRef = refs.find((ref) => !ref.isRemote && ref.isDefault);
+  const branch = projectCheckoutRef?.name ?? currentRef?.name ?? defaultRef?.name;
+  return branch ? { branch, path: null } : null;
+}
+
 export function withActiveWorkspaceFallback(
   options: WorkspaceOptions,
   input: {

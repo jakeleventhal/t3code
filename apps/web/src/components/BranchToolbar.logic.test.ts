@@ -9,6 +9,7 @@ import {
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
   resolveEnvModeLabel,
+  resolveMainCheckoutTarget,
   resolveWorkspaceSelection,
   resolveBranchToolbarValue,
   shouldIncludeBranchPickerItem,
@@ -242,6 +243,47 @@ describe("withActiveWorkspaceFallback", () => {
           isProjectCheckout: true,
         },
       ],
+    });
+  });
+});
+
+describe("resolveMainCheckoutTarget", () => {
+  it("uses the branch currently checked out in the main project checkout", () => {
+    const refs: VcsRef[] = [
+      {
+        name: "feature/current",
+        current: true,
+        isDefault: false,
+        worktreePath: "/repo",
+      },
+      { name: "main", current: false, isDefault: true, worktreePath: null },
+    ];
+
+    expect(resolveMainCheckoutTarget(refs, "/repo", "/repo")).toEqual({
+      branch: "feature/current",
+      path: null,
+    });
+  });
+
+  it("returns the external main checkout for a registered linked worktree", () => {
+    const refs: VcsRef[] = [
+      {
+        name: "feature/linked",
+        current: true,
+        isDefault: false,
+        worktreePath: "/repo/worktrees/linked",
+      },
+      {
+        name: "feature/main-checkout",
+        current: false,
+        isDefault: false,
+        worktreePath: "/repo",
+      },
+    ];
+
+    expect(resolveMainCheckoutTarget(refs, "/repo/worktrees/linked", "/repo")).toEqual({
+      branch: "feature/main-checkout",
+      path: "/repo",
     });
   });
 });
