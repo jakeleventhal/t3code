@@ -14,17 +14,15 @@ interface DraftThreadContextLike extends ThreadContextLike {
   startFromOrigin: boolean;
 }
 
-interface NewThreadHandler {
-  (
-    projectRef: ScopedProjectRef,
-    options?: {
-      branch?: string | null;
-      worktreePath?: string | null;
-      envMode?: DraftThreadEnvMode;
-      startFromOrigin?: boolean;
-    },
-  ): Promise<void>;
-}
+type NewThreadHandler = (
+  projectRef: ScopedProjectRef,
+  options?: {
+    branch?: string | null;
+    worktreePath?: string | null;
+    envMode?: DraftThreadEnvMode;
+    startFromOrigin?: boolean;
+  },
+) => Promise<void>;
 
 type NewThreadOptions = NonNullable<Parameters<NewThreadHandler>[1]>;
 
@@ -33,6 +31,34 @@ export interface ChatThreadActionContext {
   readonly activeThread: ThreadContextLike | undefined;
   readonly defaultProjectRef: ScopedProjectRef | null;
   readonly handleNewThread: NewThreadHandler;
+  readonly defaultThreadEnvMode?: DraftThreadEnvMode;
+  readonly defaultNewWorktreesStartFromOrigin?: boolean;
+  readonly defaultMainCheckout?: {
+    readonly branch: string;
+    readonly path: string | null;
+  } | null;
+  readonly resolveDefaultMainCheckout?: (
+    projectRef: ScopedProjectRef,
+  ) => Promise<{ readonly branch: string; readonly path: string | null } | null | undefined>;
+}
+
+async function resolveMainCheckout(
+  context: ChatThreadActionContext,
+  projectRef: ScopedProjectRef,
+): Promise<{
+  readonly branch: string;
+  readonly path: string | null;
+} | null> {
+  if (!context.resolveDefaultMainCheckout) {
+    return context.defaultMainCheckout ?? null;
+  }
+  try {
+    return (
+      (await context.resolveDefaultMainCheckout(projectRef)) ?? context.defaultMainCheckout ?? null
+    );
+  } catch {
+    return context.defaultMainCheckout ?? null;
+  }
 }
 
 export function resolveNewDraftStartFromOrigin(input: {
@@ -75,7 +101,22 @@ export async function startNewThreadInProjectFromContext(
   context: ChatThreadActionContext,
   projectRef: ScopedProjectRef,
 ): Promise<void> {
-  await context.handleNewThread(projectRef, buildContextualThreadOptions(context));
+  if (context.defaultThreadEnvMode === undefined) {
+    await context.handleNewThread(projectRef);
+    return;
+  }
+
+  const threadEnvMode: DraftThreadEnvMode = context.defaultThreadEnvMode;
+  const mainCheckout = await resolveMainCheckout(context, projectRef);
+  await context.handleNewThread(projectRef, {
+    branch: mainCheckout?.branch ?? null,
+    worktreePath: threadEnvMode === "local" ? (mainCheckout?.path ?? null) : null,
+    envMode: threadEnvMode,
+    startFromOrigin: resolveNewDraftStartFromOrigin({
+      envMode: threadEnvMode,
+      newWorktreesStartFromOrigin: context.defaultNewWorktreesStartFromOrigin ?? false,
+    }),
+  });
 }
 
 export async function startNewThreadFromContext(
@@ -90,6 +131,18 @@ export async function startNewThreadFromContext(
   return true;
 }
 
+export async function startNewThreadInSameWorktreeFromContext(
+  context: ChatThreadActionContext,
+): Promise<boolean> {
+  const projectRef = resolveThreadActionProjectRef(context);
+  if (!projectRef) {
+    return false;
+  }
+
+  await context.handleNewThread(projectRef, buildContextualThreadOptions(context));
+  return true;
+}
+
 export async function startNewLocalThreadFromContext(
   context: ChatThreadActionContext,
 ): Promise<boolean> {
@@ -98,6 +151,13 @@ export async function startNewLocalThreadFromContext(
     return false;
   }
 
-  await context.handleNewThread(projectRef);
+  const mainCheckout = await resolveMainCheckout(context, projectRef);
+
+  await context.handleNewThread(projectRef, {
+    branch: mainCheckout?.branch ?? null,
+    worktreePath: mainCheckout?.path ?? null,
+    envMode: "local",
+    startFromOrigin: false,
+  });
   return true;
 }

@@ -211,7 +211,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
-import { resolveEffectiveEnvMode } from "./BranchToolbar.logic";
+import { resolveEffectiveEnvMode, type ExistingWorktreeOption } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
@@ -5025,7 +5025,11 @@ function ChatViewContent(props: ChatViewProps) {
             envMode: mode,
             newWorktreesStartFromOrigin: settings.newWorktreesStartFromOrigin,
           }),
-          ...(mode === "worktree" && draftThread?.worktreePath ? { worktreePath: null } : {}),
+          ...(draftThread?.worktreePath
+            ? mode === "local"
+              ? { branch: null, worktreePath: null }
+              : { worktreePath: null }
+            : {}),
         });
       }
       scheduleComposerFocus();
@@ -5039,6 +5043,43 @@ function ChatViewContent(props: ChatViewProps) {
       setPendingServerThreadEnvMode,
       scheduleComposerFocus,
       setDraftThreadContext,
+    ],
+  );
+
+  const onExistingWorktreeChange = useCallback(
+    (worktree: ExistingWorktreeOption) => {
+      if (canOverrideServerThreadEnvMode && activeThread) {
+        setPendingServerThreadEnvMode("worktree");
+        setPendingServerThreadBranch(worktree.branch);
+        void updateThreadMetadata({
+          environmentId: activeThread.environmentId,
+          input: {
+            threadId: activeThread.id,
+            branch: worktree.branch,
+            worktreePath: worktree.path,
+          },
+        });
+        scheduleComposerFocus();
+        return;
+      }
+      if (isLocalDraftThread) {
+        setDraftThreadContext(composerDraftTarget, {
+          branch: worktree.branch,
+          worktreePath: worktree.path,
+          envMode: "worktree",
+          startFromOrigin: false,
+        });
+      }
+      scheduleComposerFocus();
+    },
+    [
+      activeThread,
+      canOverrideServerThreadEnvMode,
+      composerDraftTarget,
+      isLocalDraftThread,
+      scheduleComposerFocus,
+      setDraftThreadContext,
+      updateThreadMetadata,
     ],
   );
 
@@ -5459,6 +5500,7 @@ function ChatViewContent(props: ChatViewProps) {
                               threadId={activeThread.id}
                               {...(routeKind === "draft" && draftId ? { draftId } : {})}
                               onEnvModeChange={onEnvModeChange}
+                              onExistingWorktreeChange={onExistingWorktreeChange}
                               startFromOrigin={startFromOrigin}
                               onStartFromOriginChange={onStartFromOriginChange}
                               {...(canOverrideServerThreadEnvMode

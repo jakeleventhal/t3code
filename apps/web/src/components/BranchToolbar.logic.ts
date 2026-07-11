@@ -15,6 +15,96 @@ export interface EnvironmentOption {
 export const EnvMode = Schema.Literals(["local", "worktree"]);
 export type EnvMode = typeof EnvMode.Type;
 
+export interface ExistingWorktreeOption {
+  readonly branch: string;
+  readonly path: string;
+  readonly label: string;
+  readonly isProjectCheckout: boolean;
+}
+
+export interface WorkspaceOptions {
+  readonly mainCheckout: ExistingWorktreeOption | null;
+  readonly existingWorktrees: readonly ExistingWorktreeOption[];
+}
+
+export function resolveWorkspaceSelection(input: {
+  readonly effectiveEnvMode: EnvMode;
+  readonly activeWorktreePath: string | null;
+  readonly mainCheckout: ExistingWorktreeOption | null;
+  readonly existingWorktrees: readonly ExistingWorktreeOption[];
+}): {
+  readonly isMainCheckout: boolean;
+  readonly selectedExistingWorktree: ExistingWorktreeOption | undefined;
+  readonly value: string;
+  readonly label: string;
+} {
+  const { effectiveEnvMode, activeWorktreePath, mainCheckout, existingWorktrees } = input;
+  const isMainCheckout = activeWorktreePath
+    ? mainCheckout?.path === activeWorktreePath
+    : effectiveEnvMode === "local" && mainCheckout === null;
+  const selectedExistingWorktree = activeWorktreePath
+    ? existingWorktrees.find((worktree) => worktree.path === activeWorktreePath)
+    : effectiveEnvMode === "local"
+      ? existingWorktrees.find((worktree) => worktree.isProjectCheckout)
+      : undefined;
+  const value = isMainCheckout
+    ? mainCheckout
+      ? `main:${mainCheckout.path}`
+      : "local"
+    : selectedExistingWorktree
+      ? `existing:${selectedExistingWorktree.path}`
+      : effectiveEnvMode;
+  const label = isMainCheckout
+    ? "Main checkout"
+    : selectedExistingWorktree
+      ? selectedExistingWorktree.label
+      : effectiveEnvMode === "worktree"
+        ? resolveEnvModeLabel("worktree")
+        : "Main checkout";
+
+  return { isMainCheckout, selectedExistingWorktree, value, label };
+}
+
+export function deriveWorkspaceOptions(
+  refs: readonly VcsRef[],
+  projectWorkspaceRoot: string,
+): WorkspaceOptions {
+  const normalizedProjectRoot = projectWorkspaceRoot.replaceAll("\\", "/").replace(/\/+$/, "");
+  const worktreeOptions = refs.flatMap((ref): ExistingWorktreeOption[] => {
+    const worktreePath = ref.worktreePath?.trim();
+    if (!worktreePath) return [];
+    const normalizedPath = worktreePath.replaceAll("\\", "/").replace(/\/+$/, "");
+    return [
+      {
+        branch: ref.name,
+        path: worktreePath,
+        label: ref.name,
+        isProjectCheckout: normalizedPath === normalizedProjectRoot,
+      },
+    ];
+  });
+  const externalDefaultRef = refs.find(
+    (ref) =>
+      ref.isDefault &&
+      ref.worktreePath !== null &&
+      ref.worktreePath.replaceAll("\\", "/").replace(/\/+$/, "") !== normalizedProjectRoot,
+  );
+  const mainCheckout = externalDefaultRef
+    ? (worktreeOptions.find((option) => option.path === externalDefaultRef.worktreePath) ?? null)
+    : null;
+  const seenPaths = new Set(
+    mainCheckout ? [mainCheckout.path.replaceAll("\\", "/").replace(/\/+$/, "")] : [],
+  );
+  const existingWorktrees = worktreeOptions.filter((option) => {
+    if (mainCheckout === null && option.isProjectCheckout) return false;
+    const normalizedPath = option.path.replaceAll("\\", "/").replace(/\/+$/, "");
+    if (seenPaths.has(normalizedPath)) return false;
+    seenPaths.add(normalizedPath);
+    return true;
+  });
+  return { mainCheckout, existingWorktrees };
+}
+
 const GENERIC_LOCAL_ENVIRONMENT_LABELS = new Set(["local", "local environment"]);
 
 function normalizeDisplayLabel(value: string | null | undefined): string | null {
@@ -43,15 +133,7 @@ export function resolveEnvironmentOptionLabel(input: {
 }
 
 export function resolveEnvModeLabel(mode: EnvMode): string {
-  return mode === "worktree" ? "New worktree" : "Current checkout";
-}
-
-export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Current worktree" : resolveEnvModeLabel("local");
-}
-
-export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Worktree" : "Local checkout";
+  return mode === "worktree" ? "New worktree" : "Main checkout";
 }
 
 export function resolveEffectiveEnvMode(input: {

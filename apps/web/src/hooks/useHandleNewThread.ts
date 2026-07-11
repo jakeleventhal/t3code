@@ -10,21 +10,25 @@ import {
 } from "@t3tools/contracts";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
+import { deriveWorkspaceOptions } from "../components/BranchToolbar.logic";
+import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import {
-  markPromotedDraftThreadByRef,
   type DraftThreadEnvMode,
   type DraftThreadState,
+  markPromotedDraftThreadByRef,
   useComposerDraftStore,
 } from "../composerDraftStore";
+import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { newDraftId, newThreadId } from "../lib/utils";
-import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import {
   deriveLogicalProjectKeyFromSettings,
   getProjectOrderKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { readThreadShell, useProjects, useServerConfigs, useThread } from "../state/entities";
-import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
+import { useBranches } from "../state/queries";
+import { useAtomQueryRunner } from "../state/use-atom-query-runner";
+import { vcsEnvironment } from "../state/vcs";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
@@ -207,6 +211,10 @@ export function useHandleNewThread() {
       : null,
   );
   const projects = useProjects();
+  const serverConfigs = useServerConfigs();
+  const listRefs = useAtomQueryRunner(vcsEnvironment.listRefs, {
+    reportFailure: false,
+  });
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
       items: projects,
@@ -219,14 +227,85 @@ export function useHandleNewThread() {
     });
   }, [projectOrder, projects]);
   const handleNewThread = useNewThreadHandler();
+  const defaultProjectRef = orderedProjects[0]
+    ? scopeProjectRef(orderedProjects[0].environmentId, orderedProjects[0].id)
+    : null;
+  const newThreadProjectRef = activeThread
+    ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
+    : activeDraftThread
+      ? scopeProjectRef(activeDraftThread.environmentId, activeDraftThread.projectId)
+      : defaultProjectRef;
+  const newThreadProject = newThreadProjectRef
+    ? projects.find(
+        (project) =>
+          project.environmentId === newThreadProjectRef.environmentId &&
+          project.id === newThreadProjectRef.projectId,
+      )
+    : undefined;
+  const activeProjectBranches = useBranches({
+    environmentId: newThreadProject?.environmentId ?? null,
+    cwd: newThreadProject?.workspaceRoot ?? null,
+  });
+  const activeProjectMainCheckout = useMemo(() => {
+    if (!newThreadProject || !activeProjectBranches.data) return undefined;
+    const workspaceOptions = deriveWorkspaceOptions(
+      activeProjectBranches.data.refs,
+      newThreadProject.workspaceRoot,
+    );
+    if (workspaceOptions.mainCheckout) return workspaceOptions.mainCheckout;
+    const defaultRef = activeProjectBranches.data.refs.find(
+      (ref) => !ref.isRemote && ref.isDefault,
+    );
+    return defaultRef ? { branch: defaultRef.name, path: null } : undefined;
+  }, [activeProjectBranches.data, newThreadProject]);
+  const resolveDefaultMainCheckout = useCallback(
+    async (projectRef: ScopedProjectRef) => {
+      const project = projects.find(
+        (candidate) =>
+          candidate.environmentId === projectRef.environmentId &&
+          candidate.id === projectRef.projectId,
+      );
+      if (!project) return undefined;
+
+      if (
+        newThreadProjectRef !== null &&
+        projectRef.environmentId === newThreadProjectRef.environmentId &&
+        projectRef.projectId === newThreadProjectRef.projectId
+      ) {
+        return activeProjectMainCheckout;
+      }
+
+      const result = await listRefs({
+        environmentId: projectRef.environmentId,
+        input: { cwd: project.workspaceRoot, limit: 100 },
+      });
+      if (result._tag === "Failure") return activeProjectMainCheckout;
+
+      const workspaceOptions = deriveWorkspaceOptions(result.value.refs, project.workspaceRoot);
+      if (workspaceOptions.mainCheckout) return workspaceOptions.mainCheckout;
+
+      const defaultRef = result.value.refs.find((ref) => !ref.isRemote && ref.isDefault);
+      return defaultRef ? { branch: defaultRef.name, path: null } : undefined;
+    },
+    [activeProjectMainCheckout, listRefs, newThreadProjectRef, projects],
+  );
+  const defaultProjectSettings = useMemo(() => {
+    if (newThreadProjectRef === null) {
+      return DEFAULT_SERVER_SETTINGS;
+    }
+    return (
+      serverConfigs.get(newThreadProjectRef.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS
+    );
+  }, [newThreadProjectRef, serverConfigs]);
 
   return {
     activeDraftThread,
     activeThread,
-    defaultProjectRef: orderedProjects[0]
-      ? scopeProjectRef(orderedProjects[0].environmentId, orderedProjects[0].id)
-      : null,
+    defaultProjectRef,
+    defaultThreadEnvMode: defaultProjectSettings.defaultThreadEnvMode,
+    defaultNewWorktreesStartFromOrigin: defaultProjectSettings.newWorktreesStartFromOrigin,
     handleNewThread,
+    resolveDefaultMainCheckout,
     routeThreadRef,
   };
 }
