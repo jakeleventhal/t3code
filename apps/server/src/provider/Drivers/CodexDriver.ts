@@ -44,7 +44,7 @@ import {
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import type { ProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
-import type { ServerProviderDraft } from "../providerSnapshot.ts";
+import { AUTH_PROBE_TIMEOUT_MS, type ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
@@ -189,6 +189,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
                 cause,
               }),
           ),
+          Effect.timeout(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         );
       });
