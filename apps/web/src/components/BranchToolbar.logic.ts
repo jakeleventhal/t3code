@@ -27,6 +27,14 @@ export interface WorkspaceOptions {
   readonly existingWorktrees: readonly ExistingWorktreeOption[];
 }
 
+export function normalizeWorkspacePath(path: string): string {
+  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+function workspacePathsEqual(left: string, right: string): boolean {
+  return normalizeWorkspacePath(left) === normalizeWorkspacePath(right);
+}
+
 export function resolveWorkspaceSelection(input: {
   readonly effectiveEnvMode: EnvMode;
   readonly activeWorktreePath: string | null;
@@ -40,10 +48,10 @@ export function resolveWorkspaceSelection(input: {
 } {
   const { effectiveEnvMode, activeWorktreePath, mainCheckout, existingWorktrees } = input;
   const isMainCheckout = activeWorktreePath
-    ? mainCheckout?.path === activeWorktreePath
+    ? mainCheckout !== null && workspacePathsEqual(mainCheckout.path, activeWorktreePath)
     : effectiveEnvMode === "local" && mainCheckout === null;
   const selectedExistingWorktree = activeWorktreePath
-    ? existingWorktrees.find((worktree) => worktree.path === activeWorktreePath)
+    ? existingWorktrees.find((worktree) => workspacePathsEqual(worktree.path, activeWorktreePath))
     : effectiveEnvMode === "local"
       ? existingWorktrees.find((worktree) => worktree.isProjectCheckout)
       : undefined;
@@ -68,12 +76,13 @@ export function resolveWorkspaceSelection(input: {
 export function deriveWorkspaceOptions(
   refs: readonly VcsRef[],
   projectWorkspaceRoot: string,
+  mainCheckoutPath?: string | null,
 ): WorkspaceOptions {
-  const normalizedProjectRoot = projectWorkspaceRoot.replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalizedProjectRoot = normalizeWorkspacePath(projectWorkspaceRoot);
   const worktreeOptions = refs.flatMap((ref): ExistingWorktreeOption[] => {
     const worktreePath = ref.worktreePath?.trim();
     if (!worktreePath) return [];
-    const normalizedPath = worktreePath.replaceAll("\\", "/").replace(/\/+$/, "");
+    const normalizedPath = normalizeWorkspacePath(worktreePath);
     return [
       {
         branch: ref.name,
@@ -83,21 +92,37 @@ export function deriveWorkspaceOptions(
       },
     ];
   });
-  const externalDefaultRef = refs.find(
-    (ref) =>
-      ref.isDefault &&
-      ref.worktreePath !== null &&
-      ref.worktreePath.replaceAll("\\", "/").replace(/\/+$/, "") !== normalizedProjectRoot,
-  );
-  const mainCheckout = externalDefaultRef
-    ? (worktreeOptions.find((option) => option.path === externalDefaultRef.worktreePath) ?? null)
-    : null;
-  const seenPaths = new Set(
-    mainCheckout ? [mainCheckout.path.replaceAll("\\", "/").replace(/\/+$/, "")] : [],
-  );
+  const explicitMainCheckoutPath = mainCheckoutPath?.trim() || null;
+  const mainCheckoutRef = explicitMainCheckoutPath
+    ? refs.find(
+        (ref) =>
+          ref.worktreePath !== null &&
+          workspacePathsEqual(ref.worktreePath, explicitMainCheckoutPath),
+      )
+    : refs.find(
+        (ref) =>
+          ref.isDefault &&
+          ref.worktreePath !== null &&
+          normalizeWorkspacePath(ref.worktreePath) !== normalizedProjectRoot,
+      );
+  const resolvedMainCheckoutPath =
+    explicitMainCheckoutPath ?? mainCheckoutRef?.worktreePath ?? null;
+  const mainCheckout =
+    resolvedMainCheckoutPath !== null &&
+    normalizeWorkspacePath(resolvedMainCheckoutPath) !== normalizedProjectRoot
+      ? (worktreeOptions.find((option) =>
+          workspacePathsEqual(option.path, resolvedMainCheckoutPath),
+        ) ?? {
+          branch: mainCheckoutRef?.name ?? "HEAD",
+          label: mainCheckoutRef?.name ?? "Main checkout",
+          path: resolvedMainCheckoutPath,
+          isProjectCheckout: false,
+        })
+      : null;
+  const seenPaths = new Set(mainCheckout ? [normalizeWorkspacePath(mainCheckout.path)] : []);
   const existingWorktrees = worktreeOptions.filter((option) => {
     if (mainCheckout === null && option.isProjectCheckout) return false;
-    const normalizedPath = option.path.replaceAll("\\", "/").replace(/\/+$/, "");
+    const normalizedPath = normalizeWorkspacePath(option.path);
     if (seenPaths.has(normalizedPath)) return false;
     seenPaths.add(normalizedPath);
     return true;
