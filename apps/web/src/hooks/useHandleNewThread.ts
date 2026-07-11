@@ -297,6 +297,17 @@ export function useHandleNewThread() {
       serverConfigs.get(newThreadProjectRef.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS
     );
   }, [newThreadProjectRef, serverConfigs]);
+  const resolveNewThreadDefaults = useCallback(
+    (projectRef: ScopedProjectRef) => {
+      const settings =
+        serverConfigs.get(projectRef.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS;
+      return {
+        envMode: settings.defaultThreadEnvMode,
+        newWorktreesStartFromOrigin: settings.newWorktreesStartFromOrigin,
+      };
+    },
+    [serverConfigs],
+  );
 
   return {
     activeDraftThread,
