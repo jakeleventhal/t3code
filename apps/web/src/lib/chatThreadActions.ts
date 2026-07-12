@@ -31,6 +31,8 @@ interface NewThreadDefaults {
   readonly newWorktreesStartFromOrigin: boolean;
 }
 
+const MAIN_CHECKOUT_RESOLUTION_TIMEOUT_MS = 500;
+
 export interface ChatThreadActionContext {
   readonly activeDraftThread: DraftThreadContextLike | null;
   readonly activeThread: ThreadContextLike | undefined;
@@ -78,12 +80,24 @@ async function resolveMainCheckout(
   if (!context.resolveDefaultMainCheckout) {
     return context.defaultMainCheckout ?? null;
   }
+  let timeout: number | undefined;
   try {
     return (
-      (await context.resolveDefaultMainCheckout(projectRef)) ?? context.defaultMainCheckout ?? null
+      (await Promise.race([
+        context.resolveDefaultMainCheckout(projectRef),
+        new Promise<undefined>((resolve) => {
+          timeout = setTimeout(resolve, MAIN_CHECKOUT_RESOLUTION_TIMEOUT_MS);
+        }),
+      ])) ??
+      context.defaultMainCheckout ??
+      null
     );
   } catch {
     return context.defaultMainCheckout ?? null;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
   }
 }
 

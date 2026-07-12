@@ -214,6 +214,34 @@ describe("chatThreadActions", () => {
     });
   });
 
+  it("still starts an ordinary new thread when main-checkout discovery never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
+      const didStart = startNewThreadFromContext(
+        createContext({
+          defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
+          defaultThreadEnvMode: "worktree",
+          defaultNewWorktreesStartFromOrigin: true,
+          resolveDefaultMainCheckout: () => new Promise(() => {}),
+          handleNewThread,
+        }),
+      );
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      await expect(didStart).resolves.toBe(true);
+      expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
+        branch: null,
+        worktreePath: null,
+        envMode: "worktree",
+        startFromOrigin: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not inherit an active worktree for ordinary new threads", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
