@@ -154,6 +154,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
             : "Failed to load refs.";
         })()
       : null;
+  const failedPage = pageAtoms[results.findIndex((result) => result._tag === "Failure")] ?? null;
   const refresh = useCallback(() => {
     const firstPage = pageAtoms[0];
     setPagination({ targetKey, cursors: INITIAL_BRANCH_CURSORS });
@@ -162,6 +163,10 @@ export function usePaginatedBranches(target: VcsRefTarget) {
     }
   }, [pageAtoms, targetKey]);
   const loadNext = useCallback(() => {
+    if (failedPage !== null) {
+      appAtomRegistry.refresh(failedPage);
+      return;
+    }
     if (targetKey === null || data?.nextCursor === null || data?.nextCursor === undefined) {
       return;
     }
@@ -172,7 +177,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
         ? { targetKey, cursors: currentCursors }
         : { targetKey, cursors: [...currentCursors, data.nextCursor!] };
     });
-  }, [data?.nextCursor, targetKey]);
+  }, [data?.nextCursor, failedPage, targetKey]);
 
   return {
     data,
@@ -189,10 +194,18 @@ export function useAllBranches(target: VcsRefTarget) {
   const nextCursor = state.data?.nextCursor;
 
   useEffect(() => {
-    if (!state.isPending && nextCursor !== null && nextCursor !== undefined) {
-      state.loadNext();
+    if (state.isPending || nextCursor === null || nextCursor === undefined) {
+      return;
     }
-  }, [nextCursor, state.isPending, state.loadNext]);
+    if (state.error === null) {
+      state.loadNext();
+      return;
+    }
+    const retry = window.setTimeout(state.loadNext, 1_000);
+    return () => {
+      window.clearTimeout(retry);
+    };
+  }, [nextCursor, state.error, state.isPending, state.loadNext]);
 
   return state;
 }
