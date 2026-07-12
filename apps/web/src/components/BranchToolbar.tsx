@@ -38,7 +38,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
-import { useBranches } from "../state/queries";
+import { useAllBranches } from "../state/queries";
 
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
@@ -276,7 +276,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       draftThreadEnvMode: draftThread?.envMode,
     });
   const envModeLocked = envLocked || (serverThread !== null && persistedWorktreePath !== null);
-  const branchState = useBranches({
+  const branchState = useAllBranches({
     environmentId,
     cwd: activeProject?.workspaceRoot ?? null,
   });

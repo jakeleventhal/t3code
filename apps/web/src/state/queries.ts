@@ -184,6 +184,19 @@ export function usePaginatedBranches(target: VcsRefTarget) {
   };
 }
 
+export function useAllBranches(target: VcsRefTarget) {
+  const state = usePaginatedBranches(target);
+  const nextCursor = state.data?.nextCursor;
+
+  useEffect(() => {
+    if (!state.isPending && nextCursor !== null && nextCursor !== undefined) {
+      state.loadNext();
+    }
+  }, [nextCursor, state.isPending, state.loadNext]);
+
+  return state;
+}
+
 export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   const normalizedTarget = useMemo(
     () => ({
