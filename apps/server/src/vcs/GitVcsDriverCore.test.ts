@@ -328,6 +328,26 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("includes staged index-only deletions in the working-tree diff", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, ".gitignore", "secret.env\n");
+        yield* writeTextFile(cwd, "secret.env", "SECRET=value\n");
+        yield* git(cwd, ["add", "-f", ".gitignore", "secret.env"]);
+        yield* git(cwd, ["commit", "-m", "add ignored tracked file"]);
+        yield* git(cwd, ["rm", "--cached", "secret.env"]);
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "diff --git a/secret.env b/secret.env");
+        assert.include(diff, "deleted file mode");
+        assert.include(diff, "-SECRET=value");
+      }),
+    );
+
     it.effect("detects a committed rename with edits in the branch diff", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
