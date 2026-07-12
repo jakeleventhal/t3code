@@ -2353,16 +2353,19 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         { allowNonZeroExit: true },
       );
       if (result.exitCode !== 0) {
+        if (result.exitCode === 1) {
+          return yield* new GitVcsDriver.RemoteTrackingRefNotFoundError({
+            cwd: input.cwd,
+            remoteRefName,
+          });
+        }
         return yield* new GitCommandError({
           ...gitCommandContext({
             operation: "GitVcsDriver.resolveRemoteTrackingCommit",
             cwd: input.cwd,
             args,
           }),
-          detail:
-            result.exitCode === 1
-              ? GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL
-              : "Git remote tracking ref lookup failed.",
+          detail: "Git remote tracking ref lookup failed.",
           ...(result.exitCode === null ? {} : { exitCode: result.exitCode }),
           stdoutLength: result.stdout.length,
           stderrLength: result.stderr.length,

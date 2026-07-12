@@ -1007,19 +1007,16 @@ const makeWsRpcLayer = (
                     fallbackRemoteName: "origin",
                   })
                   .pipe(
-                    Effect.matchEffect({
-                      onFailure: (error) =>
-                        GitVcsDriver.isRemoteTrackingRefNotFound(error)
-                          ? Effect.logWarning(
-                              "Remote tracking branch was unavailable; using the local worktree base",
-                              {
-                                cwd: prepareWorktree.projectCwd,
-                                baseBranch: prepareWorktree.baseBranch,
-                                detail: error.message,
-                              },
-                            ).pipe(Effect.as(null))
-                          : Effect.fail(error),
-                      onSuccess: (resolved) => Effect.succeed(resolved),
+                    Effect.catchTags({
+                      RemoteTrackingRefNotFoundError: (error) =>
+                        Effect.logWarning(
+                          "Remote tracking branch was unavailable; using the local worktree base",
+                          {
+                            cwd: prepareWorktree.projectCwd,
+                            baseBranch: prepareWorktree.baseBranch,
+                            detail: error.message,
+                          },
+                        ).pipe(Effect.as(null)),
                     }),
                   );
                 if (resolvedRemoteBase) {

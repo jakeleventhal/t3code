@@ -6927,12 +6927,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             },
           }),
       );
-      const missingRemoteBranch = new GitCommandError({
-        operation: "GitVcsDriver.resolveRemoteTrackingCommit",
-        command: "git show-ref --verify --quiet refs/remotes/origin/t3code/local-only",
+      const missingRemoteBranch = new GitVcsDriver.RemoteTrackingRefNotFoundError({
         cwd: "/tmp/project",
-        detail: GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL,
-        exitCode: 1,
+        remoteRefName: "origin/t3code/local-only",
       });
 
       yield* buildAppUnderTest({

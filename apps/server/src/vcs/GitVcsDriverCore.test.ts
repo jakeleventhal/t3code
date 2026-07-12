@@ -769,8 +769,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
             fallbackRemoteName: "origin",
           })
           .pipe(Effect.flip);
-        assert.equal(missingRemoteRef.detail, GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL);
-        assert.equal(missingRemoteRef.exitCode, 1);
+        assert.equal(GitVcsDriver.isRemoteTrackingRefNotFound(missingRemoteRef), true);
+        if (GitVcsDriver.isRemoteTrackingRefNotFound(missingRemoteRef)) {
+          assert.equal(missingRemoteRef.remoteRefName, "origin/missing-remote-ref");
+        }
 
         const pathService = yield* Path.Path;
         const worktreePath = pathService.join(
