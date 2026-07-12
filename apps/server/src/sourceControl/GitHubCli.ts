@@ -366,9 +366,9 @@ export const make = Effect.gen(function* () {
           "repo",
           "view",
           "--json",
-          "nameWithOwner,parent",
+          "nameWithOwner,parent,url",
           "--jq",
-          '[if .parent then "\\(.parent.owner.login)/\\(.parent.name)" else .nameWithOwner end, .nameWithOwner] | @tsv',
+          '. as $repo | (.url | capture("^https?://(?<host>[^/]+)").host) as $host | [if $repo.parent then "\\($host)/\\($repo.parent.owner.login)/\\($repo.parent.name)" else "\\($host)/\\($repo.nameWithOwner)" end, "\\($host)/\\($repo.nameWithOwner)"] | @tsv',
         ],
       }).pipe(
         Effect.flatMap((result) => {

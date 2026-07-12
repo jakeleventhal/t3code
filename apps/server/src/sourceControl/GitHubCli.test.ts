@@ -56,7 +56,9 @@ describe("GitHubCli.layer", () => {
   it.effect("parses pull request view output", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
-        Effect.succeed(processOutput("pingdotgg/codething-mvp\tpingdotgg/codething-mvp\n")),
+        Effect.succeed(
+          processOutput("github.com/pingdotgg/codething-mvp\tgithub.com/pingdotgg/codething-mvp\n"),
+        ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
@@ -107,7 +109,7 @@ describe("GitHubCli.layer", () => {
           "view",
           "#42",
           "--repo",
-          "pingdotgg/codething-mvp",
+          "github.com/pingdotgg/codething-mvp",
           "--json",
           "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -120,7 +122,9 @@ describe("GitHubCli.layer", () => {
   it.effect("trims pull request fields decoded from gh json", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
-        Effect.succeed(processOutput("pingdotgg/codething-mvp\tpingdotgg/codething-mvp\n")),
+        Effect.succeed(
+          processOutput("github.com/pingdotgg/codething-mvp\tgithub.com/pingdotgg/codething-mvp\n"),
+        ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
@@ -169,7 +173,9 @@ describe("GitHubCli.layer", () => {
   it.effect("skips invalid entries when parsing pr lists", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
-        Effect.succeed(processOutput("pingdotgg/codething-mvp\tpingdotgg/codething-mvp\n")),
+        Effect.succeed(
+          processOutput("github.com/pingdotgg/codething-mvp\tgithub.com/pingdotgg/codething-mvp\n"),
+        ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
@@ -232,7 +238,7 @@ describe("GitHubCli.layer", () => {
           "--limit",
           "1",
           "--repo",
-          "pingdotgg/codething-mvp",
+          "github.com/pingdotgg/codething-mvp",
           "--json",
           "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -245,7 +251,9 @@ describe("GitHubCli.layer", () => {
   it.effect("creates pull requests against a fork's parent repository", () =>
     Effect.gen(function* () {
       mockRun
-        .mockReturnValueOnce(Effect.succeed(processOutput("pingdotgg/t3code\toctocat/t3code\n")))
+        .mockReturnValueOnce(
+          Effect.succeed(processOutput("github.com/pingdotgg/t3code\tgithub.com/octocat/t3code\n")),
+        )
         .mockReturnValueOnce(
           Effect.succeed(processOutput("https://github.com/pingdotgg/t3code/pull/42\n")),
         );
@@ -266,9 +274,9 @@ describe("GitHubCli.layer", () => {
           "repo",
           "view",
           "--json",
-          "nameWithOwner,parent",
+          "nameWithOwner,parent,url",
           "--jq",
-          '[if .parent then "\\(.parent.owner.login)/\\(.parent.name)" else .nameWithOwner end, .nameWithOwner] | @tsv',
+          '. as $repo | (.url | capture("^https?://(?<host>[^/]+)").host) as $host | [if $repo.parent then "\\($host)/\\($repo.parent.owner.login)/\\($repo.parent.name)" else "\\($host)/\\($repo.nameWithOwner)" end, "\\($host)/\\($repo.nameWithOwner)"] | @tsv',
         ],
         cwd: "/repo",
         timeoutMs: 30_000,
@@ -288,9 +296,96 @@ describe("GitHubCli.layer", () => {
           "--body-file",
           "/tmp/pr-body.md",
           "--repo",
-          "pingdotgg/t3code",
+          "github.com/pingdotgg/t3code",
         ],
         cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("preserves GitHub Enterprise hosts across pull request operations", () =>
+    Effect.gen(function* () {
+      mockRun
+        .mockReturnValueOnce(
+          Effect.succeed(
+            processOutput(
+              "github.company.com/upstream/widgets\tgithub.company.com/octocat/widgets\n",
+            ),
+          ),
+        )
+        .mockReturnValueOnce(Effect.succeed(processOutput("[]\n")))
+        .mockReturnValueOnce(
+          Effect.succeed(
+            processOutput(
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify({
+                number: 42,
+                title: "Enterprise PR",
+                url: "https://github.company.com/upstream/widgets/pull/42",
+                baseRefName: "main",
+                headRefName: "feature/enterprise",
+                state: "OPEN",
+              }),
+            ),
+          ),
+        )
+        .mockReturnValueOnce(Effect.succeed(processOutput("")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.listPullRequests({
+        cwd: "/enterprise-repo",
+        headSelector: "octocat:feature/enterprise",
+        state: "all",
+      });
+      yield* gh.getPullRequest({ cwd: "/enterprise-repo", reference: "42" });
+      yield* gh.checkoutPullRequest({
+        cwd: "/enterprise-repo",
+        reference: "42",
+        force: true,
+      });
+
+      expect(mockRun).toHaveBeenCalledTimes(4);
+      expect(mockRun).toHaveBeenNthCalledWith(2, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "list",
+          "--head",
+          "octocat:feature/enterprise",
+          "--state",
+          "all",
+          "--limit",
+          "20",
+          "--repo",
+          "github.company.com/upstream/widgets",
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ],
+        cwd: "/enterprise-repo",
+        timeoutMs: 30_000,
+      });
+      expect(mockRun).toHaveBeenNthCalledWith(3, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "view",
+          "42",
+          "--repo",
+          "github.company.com/upstream/widgets",
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ],
+        cwd: "/enterprise-repo",
+        timeoutMs: 30_000,
+      });
+      expect(mockRun).toHaveBeenNthCalledWith(4, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: ["pr", "checkout", "42", "--force", "--repo", "github.company.com/upstream/widgets"],
+        cwd: "/enterprise-repo",
         timeoutMs: 30_000,
       });
     }).pipe(Effect.provide(layer)),
@@ -390,7 +485,11 @@ describe("GitHubCli.layer", () => {
       });
       mockRun
         .mockReturnValueOnce(
-          Effect.succeed(processOutput("pingdotgg/codething-mvp\tpingdotgg/codething-mvp\n")),
+          Effect.succeed(
+            processOutput(
+              "github.com/pingdotgg/codething-mvp\tgithub.com/pingdotgg/codething-mvp\n",
+            ),
+          ),
         )
         .mockReturnValueOnce(Effect.fail(cause));
 
