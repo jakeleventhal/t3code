@@ -2517,6 +2517,56 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("does not generate fork PR content from origin when upstream fetch fails", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const forkDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", forkDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* configureVisibleRemoteUrlWithLocalRewrite(
+        repoDir,
+        "origin",
+        "git@github.com:octocat/t3code.git",
+        forkDir,
+      );
+      yield* runGit(repoDir, ["config", "remote.origin.pushurl", forkDir]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/upstream-fetch-failure"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "feature.txt"), "feature\n");
+      yield* runGit(repoDir, ["add", "feature.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "Feature commit"]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/upstream-fetch-failure"]);
+
+      let generatedPrContent = false;
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          baseRepository: "pingdotgg/t3code",
+          repositoryCloneUrls: {
+            "pingdotgg/t3code": {
+              url: "/missing/upstream-repository",
+              sshUrl: "/missing/upstream-repository",
+            },
+          },
+          prListSequence: ["[]", "[]"],
+        },
+        textGeneration: {
+          generatePrContent: () => {
+            generatedPrContent = true;
+            return Effect.succeed({ title: "Feature PR", body: "Feature body" });
+          },
+        },
+      });
+
+      const error = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "create_pr",
+      }).pipe(Effect.flip);
+
+      expect(error._tag).toBe("GitCommandError");
+      expect(generatedPrContent).toBe(false);
+    }),
+  );
+
   it.effect(
     "creates a new PR instead of reusing an unrelated fork PR with the same head branch",
     () =>
