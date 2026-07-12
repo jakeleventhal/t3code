@@ -194,17 +194,18 @@ export function useAllBranches(target: VcsRefTarget) {
   const nextCursor = state.data?.nextCursor;
 
   useEffect(() => {
-    if (state.isPending || nextCursor === null || nextCursor === undefined) {
+    if (state.isPending) {
       return;
     }
-    if (state.error === null) {
+    if (state.error !== null) {
+      const retry = window.setTimeout(state.loadNext, 1_000);
+      return () => {
+        window.clearTimeout(retry);
+      };
+    }
+    if (nextCursor !== null && nextCursor !== undefined) {
       state.loadNext();
-      return;
     }
-    const retry = window.setTimeout(state.loadNext, 1_000);
-    return () => {
-      window.clearTimeout(retry);
-    };
   }, [nextCursor, state.error, state.isPending, state.loadNext]);
 
   return state;
