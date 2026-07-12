@@ -32,6 +32,21 @@ interface PullRequestRepositoryContext {
   readonly headRepository: string;
 }
 
+interface GitHubRepositoryCoordinate {
+  readonly host: string;
+  readonly owner: string;
+  readonly name: string;
+}
+
+function parseGitHubRepositoryCoordinate(
+  repository: string,
+): GitHubRepositoryCoordinate | undefined {
+  const parts = repository.split("/").filter((part) => part.length > 0);
+  if (parts.length !== 3) return undefined;
+  const [host, owner, name] = parts;
+  return host && owner && name ? { host, owner, name } : undefined;
+}
+
 function ownerLoginFromRepository(repository: string): string | undefined {
   const parts = repository.split("/").filter((part) => part.length > 0);
   if (parts.length >= 3) {
@@ -506,8 +521,43 @@ export const make = Effect.gen(function* () {
       ),
     createPullRequest: (input) =>
       resolvePullRequestRepositoryContext(input.cwd).pipe(
-        Effect.flatMap((context) =>
-          execute({
+        Effect.flatMap((context) => {
+          const base = parseGitHubRepositoryCoordinate(context.baseRepository);
+          const head = parseGitHubRepositoryCoordinate(context.headRepository);
+          if (
+            base &&
+            head &&
+            context.baseRepository.toLowerCase() !== context.headRepository.toLowerCase()
+          ) {
+            const qualifiedHead = qualifyPullRequestHead(context, input.headSelector);
+            const separatorIndex = qualifiedHead.indexOf(":");
+            const headBranch =
+              separatorIndex >= 0 ? qualifiedHead.slice(separatorIndex + 1) : qualifiedHead;
+            return execute({
+              cwd: input.cwd,
+              args: [
+                "api",
+                "--hostname",
+                base.host,
+                `repos/${base.owner}/${base.name}/pulls`,
+                "--method",
+                "POST",
+                "-f",
+                `title=${input.title}`,
+                "-f",
+                `head=${head.owner}:${headBranch}`,
+                "-f",
+                `head_repo=${head.name}`,
+                "-f",
+                `base=${input.baseBranch}`,
+                "-F",
+                `body=@${input.bodyFile}`,
+                "--silent",
+              ],
+            });
+          }
+
+          return execute({
             cwd: input.cwd,
             args: [
               "pr",
@@ -523,8 +573,8 @@ export const make = Effect.gen(function* () {
               "--repo",
               context.baseRepository,
             ],
-          }),
-        ),
+          });
+        }),
         Effect.asVoid,
       ),
     getDefaultBranch: (input) =>

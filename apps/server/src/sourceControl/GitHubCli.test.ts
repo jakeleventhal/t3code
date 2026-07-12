@@ -285,18 +285,23 @@ describe("GitHubCli.layer", () => {
         operation: "GitHubCli.execute",
         command: "gh",
         args: [
-          "pr",
-          "create",
-          "--base",
-          "main",
-          "--head",
-          "octocat:feature/fork-pr",
-          "--title",
-          "Target upstream",
-          "--body-file",
-          "/tmp/pr-body.md",
-          "--repo",
-          "github.com/pingdotgg/t3code",
+          "api",
+          "--hostname",
+          "github.com",
+          "repos/pingdotgg/t3code/pulls",
+          "--method",
+          "POST",
+          "-f",
+          "title=Target upstream",
+          "-f",
+          "head=octocat:feature/fork-pr",
+          "-f",
+          "head_repo=t3code",
+          "-f",
+          "base=main",
+          "-F",
+          "body=@/tmp/pr-body.md",
+          "--silent",
         ],
         cwd: "/repo",
         timeoutMs: 30_000,
@@ -304,11 +309,11 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("preserves slash-qualified remote head selectors when creating pull requests", () =>
+  it.effect("creates pull requests from organization-owned forks through the API", () =>
     Effect.gen(function* () {
       mockRun
         .mockReturnValueOnce(
-          Effect.succeed(processOutput("github.com/pingdotgg/t3code\tgithub.com/octocat/t3code\n")),
+          Effect.succeed(processOutput("github.com/pingdotgg/t3code\tgithub.com/acme/t3code\n")),
         )
         .mockReturnValueOnce(
           Effect.succeed(processOutput("https://github.com/pingdotgg/t3code/pull/42\n")),
@@ -317,7 +322,7 @@ describe("GitHubCli.layer", () => {
       const gh = yield* GitHubCli.GitHubCli;
       yield* gh.createPullRequest({
         cwd: "/repo",
-        headSelector: "my-org/upstream:feature/fork-pr",
+        headSelector: "acme:feature/fork-pr",
         baseBranch: "main",
         title: "Target upstream",
         bodyFile: "/tmp/pr-body.md",
@@ -326,7 +331,7 @@ describe("GitHubCli.layer", () => {
       expect(mockRun).toHaveBeenNthCalledWith(2, {
         operation: "GitHubCli.execute",
         command: "gh",
-        args: expect.arrayContaining(["--head", "my-org/upstream:feature/fork-pr"]),
+        args: expect.arrayContaining(["head=acme:feature/fork-pr", "head_repo=t3code"]),
         cwd: "/repo",
         timeoutMs: 30_000,
       });
