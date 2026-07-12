@@ -354,6 +354,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         {...(draftId ? { draftId } : {})}
         envLocked={envLocked}
         {...(effectiveEnvModeOverride ? { effectiveEnvModeOverride } : {})}
+        {...(activeWorktreePathOverride !== undefined ? { activeWorktreePathOverride } : {})}
         {...(activeThreadBranchOverride !== undefined ? { activeThreadBranchOverride } : {})}
         {...(onActiveThreadBranchOverrideChange ? { onActiveThreadBranchOverrideChange } : {})}
         startFromOrigin={startFromOrigin}
