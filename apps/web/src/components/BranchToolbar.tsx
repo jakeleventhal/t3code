@@ -47,6 +47,7 @@ interface BranchToolbarProps {
   onEnvModeChange: (mode: EnvMode) => void;
   onExistingWorktreeChange: (worktree: ExistingWorktreeOption) => void;
   effectiveEnvModeOverride?: EnvMode;
+  activeWorktreePathOverride?: string | null;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -238,6 +239,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   onEnvModeChange,
   onExistingWorktreeChange,
   effectiveEnvModeOverride,
+  activeWorktreePathOverride,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
   startFromOrigin,
@@ -263,7 +265,10 @@ export const BranchToolbar = memo(function BranchToolbar({
       : null;
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
-  const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
+  const activeWorktreePath =
+    activeWorktreePathOverride !== undefined
+      ? activeWorktreePathOverride
+      : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
   const effectiveEnvMode =
     effectiveEnvModeOverride ??
     resolveEffectiveEnvMode({

@@ -5517,10 +5517,9 @@ function ChatViewContent(props: ChatViewProps) {
                               startFromOrigin={startFromOrigin}
                               onStartFromOriginChange={onStartFromOriginChange}
                               {...(canOverrideServerThreadEnvMode
-                                ? { effectiveEnvModeOverride: envMode }
-                                : {})}
-                              {...(canOverrideServerThreadEnvMode
                                 ? {
+                                    effectiveEnvModeOverride: envMode,
+                                    activeWorktreePathOverride: activeWorktreePath,
                                     activeThreadBranchOverride: activeThreadBranch,
                                     onActiveThreadBranchOverrideChange:
                                       setPendingServerThreadBranch,
