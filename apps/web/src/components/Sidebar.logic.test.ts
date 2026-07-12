@@ -250,6 +250,40 @@ describe("groupSidebarThreadsByWorktree", () => {
       },
     ]);
   });
+
+  it("groups Windows workspace paths case-insensitively", () => {
+    const implicitThread = {
+      environmentId: "windows",
+      projectId: "project",
+      branch: "main",
+      worktreePath: null,
+    };
+    const explicitThread = {
+      ...implicitThread,
+      worktreePath: "c:\\repo\\worktree",
+    };
+
+    expect(
+      groupSidebarThreadsByWorktree(
+        [implicitThread, explicitThread],
+        [
+          {
+            environmentId: "windows",
+            projectId: "project",
+            projectCheckoutPath: "C:\\Repo\\Worktree",
+            projectCheckoutLabel: "main",
+            mainCheckoutPath: "C:\\REPO\\WORKTREE",
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        key: "windows:worktree:c:/repo/worktree",
+        label: "Main checkout",
+        threads: [implicitThread, explicitThread],
+      },
+    ]);
+  });
 });
 
 describe("orderSidebarThreadsByWorktree", () => {

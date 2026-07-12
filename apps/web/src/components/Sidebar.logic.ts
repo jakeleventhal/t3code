@@ -34,7 +34,10 @@ export interface SidebarWorkspaceIdentity {
 }
 
 function normalizeWorkspacePath(path: string): string {
-  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")
+    ? normalized.toLowerCase()
+    : normalized;
 }
 
 function worktreeDisplayName(path: string): string {
