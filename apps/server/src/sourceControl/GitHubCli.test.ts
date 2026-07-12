@@ -201,6 +201,7 @@ describe("GitHubCli.layer", () => {
       const result = yield* gh.listOpenPullRequests({
         cwd: "/repo",
         headSelector: "feature/pr-list",
+        repository: "T3Tools/t3code",
       });
 
       assert.deepStrictEqual(result, [
@@ -215,6 +216,26 @@ describe("GitHubCli.layer", () => {
           mergedAt: null,
         },
       ]);
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "list",
+          "--head",
+          "feature/pr-list",
+          "--state",
+          "open",
+          "--limit",
+          "1",
+          "--repo",
+          "T3Tools/t3code",
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
     }).pipe(Effect.provide(layer)),
   );
 
