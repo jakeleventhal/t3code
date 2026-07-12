@@ -344,6 +344,12 @@ class ComposerSkillNode extends DecoratorNode<React.ReactElement> {
       />
     );
   }
+
+  setSkillPresentation(skillLabel: string, skillDescription: string | null): void {
+    const writable = this.getWritable();
+    writable.__skillLabel = skillLabel;
+    writable.__skillDescription = skillDescription;
+  }
 }
 
 function $createComposerSkillNode(
@@ -352,6 +358,34 @@ function $createComposerSkillNode(
   skillDescription: string | null,
 ): ComposerSkillNode {
   return $applyNodeReplacement(new ComposerSkillNode(skillName, skillLabel, skillDescription));
+}
+
+function $updateComposerSkillMetadata(
+  skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
+): void {
+  const visit = (node: LexicalNode): void => {
+    if (node instanceof ComposerSkillNode) {
+      const metadata = skillMetadata.get(node.__skillName);
+      if (!metadata) {
+        return;
+      }
+      if (
+        node.__skillLabel === metadata.label &&
+        node.__skillDescription === metadata.description
+      ) {
+        return;
+      }
+      node.setSkillPresentation(metadata.label, metadata.description);
+      return;
+    }
+    if ($isElementNode(node)) {
+      for (const child of node.getChildren()) {
+        visit(child);
+      }
+    }
+  };
+
+  visit($getRoot());
 }
 
 function ComposerTerminalContextDecorator(props: { context: TerminalContextDraft }) {
@@ -1460,12 +1494,21 @@ function ComposerPromptEditorInner({
 
     isApplyingControlledUpdateRef.current = true;
     editor.update(() => {
-      const shouldRewriteEditorState =
-        previousSnapshot.value !== value || contextsChanged || skillsChanged;
+      const shouldRewriteEditorState = previousSnapshot.value !== value || contextsChanged;
       if (shouldRewriteEditorState) {
         $setComposerEditorPrompt(value, terminalContexts, skillMetadataRef.current);
+      } else if (skillsChanged) {
+        // Refresh chip presentation without clearing Lexical state so an
+        // in-flight `$` skill probe cannot reset the focused composer.
+        $updateComposerSkillMetadata(skillMetadataRef.current);
       }
-      if (shouldRewriteEditorState || isFocused) {
+      const shouldSyncSelection =
+        shouldRewriteEditorState ||
+        (isFocused &&
+          (previousSnapshot.value !== value ||
+            previousSnapshot.cursor !== normalizedCursor ||
+            contextsChanged));
+      if (shouldSyncSelection) {
         $setSelectionAtComposerOffset(normalizedCursor);
       }
     });
