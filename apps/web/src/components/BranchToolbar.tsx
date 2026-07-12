@@ -265,10 +265,9 @@ export const BranchToolbar = memo(function BranchToolbar({
       : null;
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
+  const persistedWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
   const activeWorktreePath =
-    activeWorktreePathOverride !== undefined
-      ? activeWorktreePathOverride
-      : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
+    activeWorktreePathOverride !== undefined ? activeWorktreePathOverride : persistedWorktreePath;
   const effectiveEnvMode =
     effectiveEnvModeOverride ??
     resolveEffectiveEnvMode({
@@ -276,7 +275,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       hasServerThread: serverThread !== null,
       draftThreadEnvMode: draftThread?.envMode,
     });
-  const envModeLocked = envLocked || (serverThread !== null && activeWorktreePath !== null);
+  const envModeLocked = envLocked || (serverThread !== null && persistedWorktreePath !== null);
   const branchState = useBranches({
     environmentId,
     cwd: activeProject?.workspaceRoot ?? null,
