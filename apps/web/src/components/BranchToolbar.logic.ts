@@ -31,8 +31,19 @@ export function normalizeWorkspacePath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
 }
 
-function workspacePathsEqual(left: string, right: string): boolean {
-  return normalizeWorkspacePath(left) === normalizeWorkspacePath(right);
+function looksLikeWindowsPath(path: string): boolean {
+  return /^[a-zA-Z]:\//.test(path);
+}
+
+function workspacePathKey(path: string): string {
+  const normalized = normalizeWorkspacePath(path);
+  // Paths may come from a remote Windows environment even when the UI runs on
+  // another OS, so detect Windows paths by shape rather than process.platform.
+  return looksLikeWindowsPath(normalized) ? normalized.toLowerCase() : normalized;
+}
+
+export function workspacePathsEqual(left: string, right: string): boolean {
+  return workspacePathKey(left) === workspacePathKey(right);
 }
 
 export function resolveWorkspaceSelection(input: {
@@ -78,17 +89,15 @@ export function deriveWorkspaceOptions(
   projectWorkspaceRoot: string,
   mainCheckoutPath?: string | null,
 ): WorkspaceOptions {
-  const normalizedProjectRoot = normalizeWorkspacePath(projectWorkspaceRoot);
   const worktreeOptions = refs.flatMap((ref): ExistingWorktreeOption[] => {
     const worktreePath = ref.worktreePath?.trim();
     if (!worktreePath) return [];
-    const normalizedPath = normalizeWorkspacePath(worktreePath);
     return [
       {
         branch: ref.name,
         path: worktreePath,
         label: ref.name,
-        isProjectCheckout: normalizedPath === normalizedProjectRoot,
+        isProjectCheckout: workspacePathsEqual(worktreePath, projectWorkspaceRoot),
       },
     ];
   });
@@ -103,13 +112,13 @@ export function deriveWorkspaceOptions(
         (ref) =>
           ref.isDefault &&
           ref.worktreePath !== null &&
-          normalizeWorkspacePath(ref.worktreePath) !== normalizedProjectRoot,
+          !workspacePathsEqual(ref.worktreePath, projectWorkspaceRoot),
       );
   const resolvedMainCheckoutPath =
     explicitMainCheckoutPath ?? mainCheckoutRef?.worktreePath ?? null;
   const mainCheckout =
     resolvedMainCheckoutPath !== null &&
-    normalizeWorkspacePath(resolvedMainCheckoutPath) !== normalizedProjectRoot
+    !workspacePathsEqual(resolvedMainCheckoutPath, projectWorkspaceRoot)
       ? (worktreeOptions.find((option) =>
           workspacePathsEqual(option.path, resolvedMainCheckoutPath),
         ) ?? {
@@ -119,12 +128,12 @@ export function deriveWorkspaceOptions(
           isProjectCheckout: false,
         })
       : null;
-  const seenPaths = new Set(mainCheckout ? [normalizeWorkspacePath(mainCheckout.path)] : []);
+  const seenPaths = new Set(mainCheckout ? [workspacePathKey(mainCheckout.path)] : []);
   const existingWorktrees = worktreeOptions.filter((option) => {
     if (mainCheckout === null && option.isProjectCheckout) return false;
-    const normalizedPath = normalizeWorkspacePath(option.path);
-    if (seenPaths.has(normalizedPath)) return false;
-    seenPaths.add(normalizedPath);
+    const pathKey = workspacePathKey(option.path);
+    if (seenPaths.has(pathKey)) return false;
+    seenPaths.add(pathKey);
     return true;
   });
   return { mainCheckout, existingWorktrees };

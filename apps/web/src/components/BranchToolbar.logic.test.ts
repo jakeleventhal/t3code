@@ -220,6 +220,20 @@ describe("resolveWorkspaceSelection", () => {
       value: "existing:C:/repo/worktrees/current",
     });
   });
+
+  it("treats Windows drive-letter paths as case-insensitive", () => {
+    expect(
+      resolveWorkspaceSelection({
+        effectiveEnvMode: "local",
+        activeWorktreePath: "C:/Repo/worktrees/current",
+        mainCheckout: { ...mainCheckout, path: "c:/repo" },
+        existingWorktrees: [{ ...projectCheckout, path: "c:/repo/worktrees/current" }],
+      }),
+    ).toMatchObject({
+      label: "t3code/current",
+      value: "existing:c:/repo/worktrees/current",
+    });
+  });
 });
 
 describe("withActiveWorkspaceFallback", () => {
