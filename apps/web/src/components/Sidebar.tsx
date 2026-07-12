@@ -1033,10 +1033,10 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
           projectId: member.id,
           projectCheckoutPath: member.workspaceRoot,
           projectCheckoutLabel: projectCheckoutRef?.name ?? null,
-          mainCheckoutPath:
-            data?.mainCheckoutPath ??
-            options?.mainCheckout?.path ??
-            (data ? member.workspaceRoot : null),
+          // Only use an explicit main checkout path. Falling back to the
+          // project workspace root mislabels linked-checkout projects as
+          // "Main checkout" when refs load without a separate main path.
+          mainCheckoutPath: data?.mainCheckoutPath ?? options?.mainCheckout?.path ?? null,
         };
       }),
     [workspaceRefResults],
