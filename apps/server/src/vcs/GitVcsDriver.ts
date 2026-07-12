@@ -177,6 +177,12 @@ export interface GitResolveRemoteTrackingCommitResult {
   remoteRefName: string;
 }
 
+export const REMOTE_TRACKING_REF_NOT_FOUND_DETAIL = "Remote tracking ref does not exist.";
+
+export function isRemoteTrackingRefNotFound(error: GitCommandError): boolean {
+  return error.detail === REMOTE_TRACKING_REF_NOT_FOUND_DETAIL;
+}
+
 export interface GitSetBranchUpstreamInput {
   cwd: string;
   branch: string;

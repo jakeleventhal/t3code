@@ -762,6 +762,16 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.deepEqual(explicitlyResolvedBase, resolvedBase);
         assert.equal(yield* git(cwd, ["rev-parse", initialBranch]), beforeFetch);
 
+        const missingRemoteRef = yield* driver
+          .resolveRemoteTrackingCommit({
+            cwd,
+            refName: "missing-remote-ref",
+            fallbackRemoteName: "origin",
+          })
+          .pipe(Effect.flip);
+        assert.equal(missingRemoteRef.detail, GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL);
+        assert.equal(missingRemoteRef.exitCode, 1);
+
         const pathService = yield* Path.Path;
         const worktreePath = pathService.join(
           yield* makeTmpDir("git-fetched-worktrees-"),

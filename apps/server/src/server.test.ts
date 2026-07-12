@@ -6929,9 +6929,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
       const missingRemoteBranch = new GitCommandError({
         operation: "GitVcsDriver.resolveRemoteTrackingCommit",
-        command: "git rev-parse --verify refs/remotes/origin/t3code/local-only",
+        command: "git show-ref --verify --quiet refs/remotes/origin/t3code/local-only",
         cwd: "/tmp/project",
-        detail: "remote branch does not exist",
+        detail: GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL,
+        exitCode: 1,
       });
 
       yield* buildAppUnderTest({
@@ -7018,6 +7019,79 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         dispatchedCommands.map((command) => command.type),
         ["thread.create", "thread.meta.update", "thread.turn.start"],
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("propagates unexpected remote base resolution failures", () =>
+    Effect.gen(function* () {
+      const createWorktree = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["createWorktree"]>[0]) =>
+          Effect.succeed({
+            worktree: {
+              refName: "t3code/bootstrap-unexpected-failure",
+              path: "/tmp/bootstrap-unexpected-failure",
+            },
+          }),
+      );
+      const unexpectedFailure = new GitCommandError({
+        operation: "GitVcsDriver.resolveRemoteTrackingCommit",
+        command: "git show-ref --verify --quiet refs/remotes/origin/main",
+        cwd: "/tmp/project",
+        detail: "Git remote tracking ref lookup failed.",
+        exitCode: 128,
+      });
+
+      yield* buildAppUnderTest({
+        layers: {
+          gitVcsDriver: {
+            fetchRemote: () => Effect.void,
+            resolveRemoteTrackingCommit: () => Effect.fail(unexpectedFailure),
+            createWorktree,
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const failed = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("cmd-bootstrap-unexpected-failure"),
+            threadId: ThreadId.make("thread-bootstrap-unexpected-failure"),
+            message: {
+              messageId: MessageId.make("msg-bootstrap-unexpected-failure"),
+              role: "user",
+              text: "hello",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            bootstrap: {
+              createThread: {
+                projectId: defaultProjectId,
+                title: "Bootstrap Unexpected Failure",
+                modelSelection: defaultModelSelection,
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: "main",
+                worktreePath: null,
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+              prepareWorktree: {
+                projectCwd: "/tmp/project",
+                baseBranch: "main",
+                branch: "t3code/bootstrap-unexpected-failure",
+                startFromOrigin: true,
+              },
+            },
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }),
+        ),
+      ).pipe(Effect.match({ onFailure: () => true, onSuccess: () => false }));
+
+      assertTrue(failed);
+      assert.equal(createWorktree.mock.calls.length, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

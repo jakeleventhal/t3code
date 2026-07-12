@@ -2344,10 +2344,35 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       const remoteRefName =
         parsedRemoteRef?.remoteRef ?? `${input.fallbackRemoteName}/${input.refName}`;
+      const remoteRef = `refs/remotes/${remoteRefName}`;
+      const args = ["show-ref", "--verify", "--quiet", remoteRef];
+      const result = yield* executeGit(
+        "GitVcsDriver.resolveRemoteTrackingCommit",
+        input.cwd,
+        args,
+        { allowNonZeroExit: true },
+      );
+      if (result.exitCode !== 0) {
+        return yield* new GitCommandError({
+          ...gitCommandContext({
+            operation: "GitVcsDriver.resolveRemoteTrackingCommit",
+            cwd: input.cwd,
+            args,
+          }),
+          detail:
+            result.exitCode === 1
+              ? GitVcsDriver.REMOTE_TRACKING_REF_NOT_FOUND_DETAIL
+              : "Git remote tracking ref lookup failed.",
+          ...(result.exitCode === null ? {} : { exitCode: result.exitCode }),
+          stdoutLength: result.stdout.length,
+          stderrLength: result.stderr.length,
+        });
+      }
       const commitSha = yield* runGitStdout("GitVcsDriver.resolveRemoteTrackingCommit", input.cwd, [
-        "rev-parse",
+        "show-ref",
         "--verify",
-        `refs/remotes/${remoteRefName}^{commit}`,
+        "--hash=40",
+        remoteRef,
       ]).pipe(Effect.map((stdout) => stdout.trim()));
 
       return { commitSha, remoteRefName };
