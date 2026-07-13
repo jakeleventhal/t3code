@@ -44,9 +44,10 @@ const PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES = 49_000;
 const RANGE_COMMIT_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES = 59_000;
-const REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES = 120_000;
-const REVIEW_UNTRACKED_DIFF_MAX_OUTPUT_BYTES = 80_000;
+const REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES = 120_000;
+const REVIEW_DIFF_EXPANDED_FILE_MAX_OUTPUT_BYTES = 10_000_000;
 const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 120_000;
+const EMPTY_REVIEW_DIFF = { diff: "", truncated: false, truncatedFilePaths: [] } as const;
 const STATUS_UPSTREAM_REFRESH_INTERVAL = Duration.seconds(15);
 const STATUS_UPSTREAM_REFRESH_TIMEOUT = Duration.seconds(5);
 
@@ -225,6 +226,42 @@ export function splitNullSeparatedGitStdoutPaths(
   result: Pick<GitVcsDriver.ExecuteGitResult, "stdout" | "stdoutTruncated">,
 ): string[] {
   return splitNullSeparatedPaths(result.stdout, result.stdoutTruncated);
+}
+
+function parseReviewDiffFiles(
+  result: Pick<GitVcsDriver.ExecuteGitResult, "stdout" | "stdoutTruncated">,
+): ReadonlyArray<{ readonly filePath: string; readonly pathspecs: ReadonlyArray<string> }> {
+  const fields = splitNullSeparatedPaths(result.stdout, result.stdoutTruncated);
+  const files: Array<{ filePath: string; pathspecs: string[] }> = [];
+  for (let index = 0; index < fields.length; ) {
+    const status = fields[index++];
+    const pathCount = status?.startsWith("R") || status?.startsWith("C") ? 2 : 1;
+    const pathspecs = fields.slice(index, index + pathCount);
+    const filePath = pathspecs.at(-1);
+    if (!status || !filePath || pathspecs.length < pathCount) break;
+    files.push({ filePath, pathspecs });
+    index += pathCount;
+  }
+  return files;
+}
+
+function combineReviewDiffs(
+  pathsResult: Pick<GitVcsDriver.ExecuteGitResult, "stdoutTruncated">,
+  diffs: ReadonlyArray<{
+    readonly filePath: string;
+    readonly result: GitVcsDriver.ExecuteGitResult;
+  }>,
+) {
+  return {
+    diff: diffs
+      .map(({ result }) => result.stdout.trim())
+      .filter((diff) => diff.length > 0)
+      .join("\n"),
+    truncated: pathsResult.stdoutTruncated || diffs.some(({ result }) => result.stdoutTruncated),
+    truncatedFilePaths: diffs
+      .filter(({ result }) => result.stdoutTruncated)
+      .map(({ filePath }) => filePath),
+  };
 }
 
 function sanitizeRemoteName(value: string): string {
@@ -1807,7 +1844,56 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
-  const readUntrackedReviewDiffs = Effect.fn("readUntrackedReviewDiffs")(function* (cwd: string) {
+  const readTrackedReviewDiffs = Effect.fn("readTrackedReviewDiffs")(function* (input: {
+    readonly cwd: string;
+    readonly range: string;
+    readonly ignoreWhitespace: boolean;
+    readonly operation: string;
+    readonly expandedFilePaths: ReadonlySet<string>;
+  }) {
+    const whitespaceArgs = input.ignoreWhitespace ? ["--ignore-all-space"] : [];
+    const changedFilesResult = yield* executeGit(
+      `${input.operation}.list`,
+      input.cwd,
+      ["diff", "--no-ext-diff", "--name-status", "-z", ...whitespaceArgs, input.range, "--"],
+      {
+        maxOutputBytes: WORKSPACE_FILES_MAX_OUTPUT_BYTES,
+        appendTruncationMarker: true,
+      },
+    );
+    const files = parseReviewDiffFiles(changedFilesResult);
+    const diffs = yield* Effect.forEach(
+      files,
+      ({ filePath, pathspecs }) =>
+        executeGit(
+          `${input.operation}.file`,
+          input.cwd,
+          [
+            "diff",
+            "--no-ext-diff",
+            "--patch",
+            "--minimal",
+            ...whitespaceArgs,
+            input.range,
+            "--",
+            ...pathspecs,
+          ],
+          {
+            maxOutputBytes: input.expandedFilePaths.has(filePath)
+              ? REVIEW_DIFF_EXPANDED_FILE_MAX_OUTPUT_BYTES
+              : REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES,
+            appendTruncationMarker: true,
+          },
+        ).pipe(Effect.map((result) => ({ filePath, result }))),
+      { concurrency: 4 },
+    );
+    return combineReviewDiffs(changedFilesResult, diffs);
+  });
+
+  const readUntrackedReviewDiffs = Effect.fn("readUntrackedReviewDiffs")(function* (
+    cwd: string,
+    expandedFilePaths: ReadonlySet<string>,
+  ) {
     const untrackedResult = yield* executeGit(
       "GitVcsDriver.readUntrackedReviewDiffs.list",
       cwd,
@@ -1818,10 +1904,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       },
     );
     const untrackedPaths = splitNullSeparatedGitStdoutPaths(untrackedResult);
-    if (untrackedPaths.length === 0) {
-      return { diff: "", truncated: untrackedResult.stdoutTruncated };
-    }
-
     const diffs = yield* Effect.forEach(
       untrackedPaths,
       (relativePath) =>
@@ -1831,19 +1913,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           ["diff", "--no-index", "--patch", "--minimal", "--", "/dev/null", relativePath],
           {
             allowNonZeroExit: true,
-            maxOutputBytes: REVIEW_UNTRACKED_DIFF_MAX_OUTPUT_BYTES,
+            maxOutputBytes: expandedFilePaths.has(relativePath)
+              ? REVIEW_DIFF_EXPANDED_FILE_MAX_OUTPUT_BYTES
+              : REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES,
             appendTruncationMarker: true,
           },
-        ),
+        ).pipe(Effect.map((result) => ({ filePath: relativePath, result }))),
       { concurrency: 4 },
     );
 
-    return {
-      diff: Arr.filterMap(diffs, (result) =>
-        result.stdout.trim().length > 0 ? Result.succeed(result.stdout) : Result.failVoid,
-      ).join("\n"),
-      truncated: untrackedResult.stdoutTruncated || diffs.some((result) => result.stdoutTruncated),
-    };
+    return combineReviewDiffs(untrackedResult, diffs);
   });
 
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
@@ -1859,6 +1938,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
 
     const branch = details.branch;
+    const expandedFilePaths = new Set(input.expandedFilePaths ?? []);
     const baseRef =
       input.baseRef ??
       (branch
@@ -1867,64 +1947,31 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           )
         : null);
 
-    const dirtyTrackedResult = yield* executeGit(
-      "GitVcsDriver.getReviewDiffPreview.dirtyTracked",
-      input.cwd,
-      [
-        "diff",
-        "--patch",
-        "--minimal",
-        ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-        "HEAD",
-        "--",
-      ],
-      {
-        maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-        appendTruncationMarker: true,
-      },
-    ).pipe(
-      Effect.orElseSucceed(() => ({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        stdoutTruncated: false,
-        stderrTruncated: false,
-      })),
+    const dirtyTracked = yield* readTrackedReviewDiffs({
+      cwd: input.cwd,
+      range: "HEAD",
+      ignoreWhitespace: input.ignoreWhitespace ?? false,
+      operation: "GitVcsDriver.getReviewDiffPreview.dirtyTracked",
+      expandedFilePaths,
+    }).pipe(Effect.orElseSucceed(() => EMPTY_REVIEW_DIFF));
+    const dirtyUntracked = yield* readUntrackedReviewDiffs(input.cwd, expandedFilePaths).pipe(
+      Effect.orElseSucceed(() => EMPTY_REVIEW_DIFF),
     );
-    const dirtyUntracked = yield* readUntrackedReviewDiffs(input.cwd).pipe(
-      Effect.orElseSucceed(() => ({ diff: "", truncated: false })),
-    );
-    const dirtyDiff = [dirtyTrackedResult.stdout.trimEnd(), dirtyUntracked.diff.trimEnd()]
+    const dirtyDiff = [dirtyTracked.diff.trimEnd(), dirtyUntracked.diff.trimEnd()]
       .filter((diff) => diff.length > 0)
       .join("\n");
 
     const baseResult =
       baseRef && branch
-        ? yield* executeGit(
-            "GitVcsDriver.getReviewDiffPreview.base",
-            input.cwd,
-            [
-              "diff",
-              "--patch",
-              "--minimal",
-              ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-              `${baseRef}...HEAD`,
-            ],
-            {
-              maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-              appendTruncationMarker: true,
-            },
-          ).pipe(
-            Effect.orElseSucceed(() => ({
-              exitCode: 0,
-              stdout: "",
-              stderr: "",
-              stdoutTruncated: false,
-              stderrTruncated: false,
-            })),
-          )
+        ? yield* readTrackedReviewDiffs({
+            cwd: input.cwd,
+            range: `${baseRef}...HEAD`,
+            ignoreWhitespace: input.ignoreWhitespace ?? false,
+            operation: "GitVcsDriver.getReviewDiffPreview.base",
+            expandedFilePaths,
+          }).pipe(Effect.orElseSucceed(() => EMPTY_REVIEW_DIFF))
         : null;
-    const baseDiff = baseResult?.stdout ?? "";
+    const baseDiff = baseResult?.diff ?? "";
     const hashDiff = (diff: string) =>
       crypto.digest("SHA-256", new TextEncoder().encode(diff)).pipe(
         Effect.map(Encoding.encodeHex),
@@ -1953,7 +2000,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         headRef: null,
         diff: dirtyDiff,
         diffHash: dirtyDiffHash,
-        truncated: dirtyTrackedResult.stdoutTruncated || dirtyUntracked.truncated,
+        truncated: dirtyTracked.truncated || dirtyUntracked.truncated,
+        truncatedFilePaths: [
+          ...dirtyTracked.truncatedFilePaths,
+          ...dirtyUntracked.truncatedFilePaths,
+        ],
       },
       {
         id: "branch-range",
@@ -1963,7 +2014,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         headRef: branch ?? "HEAD",
         diff: baseDiff,
         diffHash: baseDiffHash,
-        truncated: baseResult?.stdoutTruncated ?? false,
+        truncated: baseResult?.truncated ?? false,
+        truncatedFilePaths: baseResult?.truncatedFilePaths ?? [],
       },
     ];
 

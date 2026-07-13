@@ -243,6 +243,62 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         );
       }),
     );
+
+    it.effect("applies the preview limit per tracked file", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "bun.lock", "initial lockfile\n");
+        const smallFilePrefix = [1, 2, 3, 4]
+          .map((value) => `export const stable${value} = true;\n`)
+          .join("");
+        yield* writeTextFile(cwd, "z-before.ts", `${smallFilePrefix}export const before = true;\n`);
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "add preview fixtures"]);
+        const baseRef = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["checkout", "-b", "feature/large-diff"]);
+        yield* git(cwd, ["mv", "z-before.ts", "z-after.ts"]);
+
+        const oversizedLockfile = Array.from(
+          { length: 20_000 },
+          (_, index) => `package-${index} = "1.0.0"\n`,
+        ).join("");
+        yield* writeTextFile(cwd, "bun.lock", oversizedLockfile);
+        yield* writeTextFile(cwd, "z-after.ts", `${smallFilePrefix}export const after = true;\n`);
+
+        const workingTreePreview = yield* driver.getReviewDiffPreview({ cwd, baseRef });
+        const workingTreeSource = workingTreePreview.sources.find(
+          (source) => source.kind === "working-tree",
+        );
+        assert.isTrue(workingTreeSource?.truncated);
+        assert.deepStrictEqual(workingTreeSource?.truncatedFilePaths, ["bun.lock"]);
+        assert.include(workingTreeSource?.diff ?? "", "diff --git a/z-before.ts b/z-after.ts");
+        assert.include(workingTreeSource?.diff ?? "", "+export const after = true;");
+
+        const expandedWorkingTreePreview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef,
+          expandedFilePaths: ["bun.lock"],
+        });
+        const expandedWorkingTreeSource = expandedWorkingTreePreview.sources.find(
+          (source) => source.kind === "working-tree",
+        );
+        assert.isFalse(expandedWorkingTreeSource?.truncated);
+        assert.deepStrictEqual(expandedWorkingTreeSource?.truncatedFilePaths, []);
+        assert.include(expandedWorkingTreeSource?.diff ?? "", '+package-19999 = "1.0.0"');
+
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "change large and small files"]);
+
+        const branchPreview = yield* driver.getReviewDiffPreview({ cwd, baseRef });
+        const branchSource = branchPreview.sources.find((source) => source.kind === "branch-range");
+        assert.isTrue(branchSource?.truncated);
+        assert.deepStrictEqual(branchSource?.truncatedFilePaths, ["bun.lock"]);
+        assert.include(branchSource?.diff ?? "", "diff --git a/z-before.ts b/z-after.ts");
+        assert.include(branchSource?.diff ?? "", "+export const after = true;");
+      }),
+    );
   });
 
   describe("repository status", () => {

@@ -76,6 +76,7 @@ interface AnnotatableCodeViewProps {
     filePath: string;
     fileKey: string;
     collapsed: boolean;
+    truncated: boolean;
   }>;
   sectionId: string;
   sectionTitle: string;
@@ -88,6 +89,19 @@ interface AnnotatableCodeViewProps {
     fileKey: string,
     collapsed: boolean,
   ) => ReactNode;
+  renderTruncatedFile: (fileDiff: FileDiffMetadata, filePath: string) => ReactNode;
+}
+
+function buildTruncatedFileDiff(fileDiff: FileDiffMetadata): FileDiffMetadata {
+  return {
+    ...fileDiff,
+    additionLines: [],
+    deletionLines: [],
+    splitLineCount: 0,
+    unifiedLineCount: 0,
+    cacheKey: `${fileDiff.cacheKey ?? fileDiff.name}:truncated`,
+    hunks: [],
+  };
 }
 
 interface DiffSelectionContext {
@@ -103,6 +117,7 @@ export function AnnotatableCodeView({
   viewerRef,
   className,
   renderHeaderPrefix,
+  renderTruncatedFile,
 }: AnnotatableCodeViewProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
@@ -121,8 +136,8 @@ export function AnnotatableCodeView({
   const filesByKey = useMemo(() => new Map(files.map((file) => [file.fileKey, file])), [files]);
   const items = useMemo<CodeViewDiffItem<DiffCommentAnnotationGroup>[]>(
     () =>
-      files.map(({ fileDiff, filePath, fileKey, collapsed }) => {
-        const persisted = reviewComments
+      files.map(({ fileDiff, filePath, fileKey, collapsed, truncated }) => {
+        const persisted = (truncated ? [] : reviewComments)
           .filter(
             (comment) =>
               comment.sectionId === sectionId &&
@@ -141,15 +156,15 @@ export function AnnotatableCodeView({
             });
           }, []);
         const annotations =
-          draft?.fileKey === fileKey ? [...persisted, draft.annotation] : persisted;
+          !truncated && draft?.fileKey === fileKey ? [...persisted, draft.annotation] : persisted;
         return {
           id: fileKey,
           type: "diff",
-          fileDiff,
+          fileDiff: truncated ? buildTruncatedFileDiff(fileDiff) : fileDiff,
           annotations,
           collapsed,
           version: fnv1a32(
-            `${collapsed ? "1" : "0"}:${annotations
+            `${collapsed ? "1" : "0"}:${truncated ? "1" : "0"}:${annotations
               .flatMap((annotation) =>
                 annotation.metadata.entries.map(
                   (entry) => `${entry.id}:${entry.rangeLabel}:${entry.text}`,
@@ -248,6 +263,11 @@ export function AnnotatableCodeView({
           ? renderHeaderPrefix(item.fileDiff, item.id, item.collapsed === true)
           : null
       }
+      renderHeaderMetadata={(item) => {
+        if (item.type !== "diff") return null;
+        const file = filesByKey.get(item.id);
+        return file?.truncated ? renderTruncatedFile(item.fileDiff, file.filePath) : null;
+      }}
       renderAnnotation={(annotation) => (
         <div className="py-1">
           {annotation.metadata.entries.map((entry) => (

@@ -75,7 +75,13 @@ interface CollapsedDiffFilesState {
   readonly fileKeys: ReadonlySet<string>;
 }
 
+interface ExpandedDiffFilesState {
+  readonly scopeKey: string | null;
+  readonly filePaths: ReadonlyArray<string>;
+}
+
 const EMPTY_COLLAPSED_DIFF_FILE_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_EXPANDED_DIFF_FILE_PATHS: ReadonlyArray<string> = [];
 
 const DIFF_PANEL_UNSAFE_CSS = `
 [data-diffs-header],
@@ -193,6 +199,10 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     scopeKey: null,
     fileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
   }));
+  const [expandedDiffFiles, setExpandedDiffFiles] = useState<ExpandedDiffFilesState>(() => ({
+    scopeKey: null,
+    filePaths: EMPTY_EXPANDED_DIFF_FILE_PATHS,
+  }));
   const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
 
   const routeThreadRef = useParams({
@@ -286,6 +296,10 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     collapsedDiffFiles.scopeKey === collapseScopeKey
       ? collapsedDiffFiles.fileKeys
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
+  const expandedDiffFilePaths =
+    expandedDiffFiles.scopeKey === collapseScopeKey
+      ? expandedDiffFiles.filePaths
+      : EMPTY_EXPANDED_DIFF_FILE_PATHS;
   const reviewSectionTitle = selectedTurn
     ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
     : selectedGitScope === "unstaged"
@@ -320,6 +334,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
             cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
             ignoreWhitespace: diffIgnoreWhitespace,
+            ...(expandedDiffFilePaths.length > 0
+              ? { expandedFilePaths: [...expandedDiffFilePaths] }
+              : {}),
           },
         })
       : null,
@@ -337,6 +354,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
             cwd: serverConfig.cwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
             ignoreWhitespace: diffIgnoreWhitespace,
+            ...(expandedDiffFilePaths.length > 0
+              ? { expandedFilePaths: [...expandedDiffFilePaths] }
+              : {}),
           },
         })
       : null,
@@ -396,6 +416,8 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     ...matchingBaseRefChoices.map(valueForBaseRefChoice),
   ];
   const gitDiff = selectedGitSource?.diff;
+  const truncatedFilePaths = selectedGitSource?.truncatedFilePaths ?? [];
+  const truncatedFilePathSet = useMemo(() => new Set(truncatedFilePaths), [truncatedFilePaths]);
 
   const selectedPatch = selectedTurn ? activeCheckpointDiff.data?.diff : gitDiff;
   const isSelectedPatchTruncated = !selectedTurn && selectedGitSource?.truncated === true;
@@ -427,14 +449,16 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     () =>
       renderableFiles.map((fileDiff) => {
         const fileKey = buildFileDiffRenderKey(fileDiff);
+        const filePath = resolveFileDiffPath(fileDiff);
         return {
           fileDiff,
-          filePath: resolveFileDiffPath(fileDiff),
+          filePath,
           fileKey,
           collapsed: collapsedDiffFileKeys.has(fileKey),
+          truncated: truncatedFilePathSet.has(filePath),
         };
       }),
-    [collapsedDiffFileKeys, renderableFiles],
+    [collapsedDiffFileKeys, renderableFiles, truncatedFilePathSet],
   );
 
   useEffect(() => {
@@ -481,6 +505,17 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           next.add(fileKey);
         }
         return { scopeKey: collapseScopeKey, fileKeys: next };
+      });
+    },
+    [collapseScopeKey],
+  );
+  const loadDiffFile = useCallback(
+    (filePath: string) => {
+      setExpandedDiffFiles((current) => {
+        const filePaths = current.scopeKey === collapseScopeKey ? current.filePaths : [];
+        return filePaths.includes(filePath)
+          ? current
+          : { scopeKey: collapseScopeKey, filePaths: [...filePaths, filePath] };
       });
     },
     [collapseScopeKey],
@@ -755,7 +790,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       ) : (
         <>
           <div className="diff-panel-viewport flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {isSelectedPatchTruncated && (
+            {isSelectedPatchTruncated && truncatedFilePaths.length === 0 && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
                 This diff was truncated because it exceeded the preview limit. The changes shown are
                 incomplete.
@@ -807,6 +842,21 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                   sectionId={reviewSectionId}
                   sectionTitle={reviewSectionTitle}
                   composerDraftTarget={composerDraftTarget}
+                  renderTruncatedFile={(_fileDiff, filePath) => (
+                    <div className="flex items-center gap-2 font-sans text-xs">
+                      <span className="text-muted-foreground">Diff too large to show.</span>
+                      <button
+                        type="button"
+                        className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          loadDiffFile(filePath);
+                        }}
+                      >
+                        Load diff
+                      </button>
+                    </div>
+                  )}
                   renderHeaderPrefix={(fileDiff, fileKey, collapsed) => {
                     const filePath = resolveFileDiffPath(fileDiff);
                     return (
