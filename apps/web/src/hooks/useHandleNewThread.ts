@@ -28,6 +28,7 @@ import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
+import { excludeGeneralChatsProject } from "../generalChats";
 
 export function useNewThreadHandler() {
   const projects = useProjects();
@@ -206,7 +207,7 @@ export function useHandleNewThread() {
   const projects = useProjects();
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
-      items: projects,
+      items: excludeGeneralChatsProject(projects),
       preferredIds: projectOrder,
       getId: getProjectOrderKey,
       getPreferenceIds: (project) => [
