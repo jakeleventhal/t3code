@@ -26,6 +26,7 @@ import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
 import { useAtomCommand } from "../state/use-atom-command";
+import { getGeneralChatNewThreadOptions } from "../generalChats";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArchiveBlockedError>()(
   "ThreadArchiveBlockedError",
@@ -118,7 +119,10 @@ export function useThreadActions() {
 
       if (shouldNavigateToDraft) {
         const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
+          handleNewThreadRef.current(
+            scopeProjectRef(thread.environmentId, thread.projectId),
+            getGeneralChatNewThreadOptions(thread.projectId),
+          ),
         );
         if (navigationResult._tag === "Failure") {
           return navigationResult;

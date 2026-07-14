@@ -226,6 +226,7 @@ import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
 import {
   excludeGeneralChatsProject,
   findGeneralChatsProject,
+  GENERAL_CHAT_NEW_THREAD_OPTIONS,
   GENERAL_CHATS_PROJECT_ID,
   GENERAL_CHATS_PROJECT_TITLE,
   GENERAL_CHATS_WORKSPACE_ROOT,
@@ -3474,12 +3475,7 @@ export default function Sidebar() {
         }
 
         const navigationResult = await settlePromise(() =>
-          handleNewThread(projectRef, {
-            branch: null,
-            worktreePath: null,
-            envMode: "local",
-            startFromOrigin: false,
-          }),
+          handleNewThread(projectRef, GENERAL_CHAT_NEW_THREAD_OPTIONS),
         );
         if (navigationResult._tag === "Failure") {
           const error = squashAtomCommandFailure(navigationResult);
