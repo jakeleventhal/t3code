@@ -1023,6 +1023,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
           artifactTurnId={row.message.turnId ?? undefined}
+          artifactMessageId={row.message.id}
           onImageExpand={ctx.onImageExpand}
           isStreaming={Boolean(row.message.streaming)}
           skills={ctx.skills}
