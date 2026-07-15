@@ -26,4 +26,20 @@ describe("isComposerLexicalClipboardPayload", () => {
       isComposerLexicalClipboardPayload(JSON.stringify({ namespace: COMPOSER_EDITOR_NAMESPACE })),
     ).toBe(false);
   });
+
+  it("rejects payloads containing terminal-context nodes", () => {
+    expect(
+      isComposerLexicalClipboardPayload(
+        JSON.stringify({
+          namespace: COMPOSER_EDITOR_NAMESPACE,
+          nodes: [
+            {
+              type: "paragraph",
+              children: [{ type: "composer-terminal-context", context: { id: "terminal-1" } }],
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
 });
