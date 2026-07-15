@@ -218,6 +218,23 @@ function buildUserTimelineEntry(text: string) {
   };
 }
 
+function buildAssistantTimelineEntry(text: string) {
+  return {
+    id: "entry-assistant",
+    kind: "message" as const,
+    createdAt: MESSAGE_CREATED_AT,
+    message: {
+      id: MessageId.make("message-assistant"),
+      role: "assistant" as const,
+      text,
+      turnId: null,
+      createdAt: MESSAGE_CREATED_AT,
+      updatedAt: MESSAGE_CREATED_AT,
+      streaming: false,
+    },
+  };
+}
+
 describe("MessagesTimeline", () => {
   it("keeps assistant changed-files headers sticky below the thread header", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
@@ -269,6 +286,22 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Collapse all"');
     expect(markup).toContain('aria-label="View diff"');
     expect(markup).toContain("1 changed file");
+  });
+
+  it("preserves enhanced fenced code block rendering", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildAssistantTimelineEntry("```typescript\nconst answer: number = 42;\n```"),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('class="chat-markdown-codeblock leading-snug"');
+    expect(markup).toContain('data-language="typescript"');
+    expect(markup).toContain('aria-label="Copy code"');
   });
 
   it("uses LegendList isNearEnd when deciding whether the live edge is visible", async () => {
