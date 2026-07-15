@@ -9,18 +9,20 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
-import type {
-  EnvironmentId,
-  OrchestrationThread,
-  ProjectContentMatch,
-  ProjectEntryKind,
-  ProviderInstanceId,
-  ThreadId,
-  VcsListRefsResult,
-  VcsRef,
+import {
+  type EnvironmentId,
+  type OrchestrationThread,
+  type ProjectContentMatch,
+  type ProjectEntryKind,
+  type ProviderInstanceId,
+  ServerProviderSkillsUnsupportedError,
+  type ThreadId,
+  type VcsListRefsResult,
+  type VcsRef,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -55,6 +57,7 @@ const threadSearchResultsAtom = createThreadSearchResultsAtomFamily({
     }),
   labelPrefix: "web:thread-search",
 });
+const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -353,7 +356,7 @@ export function useProviderSkills(target: {
   readonly cwd: string | null;
   readonly enabled: boolean;
 }) {
-  return useEnvironmentQuery(
+  const result = useEnvironmentQuery(
     target.enabled &&
       target.environmentId !== null &&
       target.instanceId !== null &&
@@ -364,6 +367,10 @@ export function useProviderSkills(target: {
         })
       : null,
   );
+  return {
+    ...result,
+    isUnsupported: result.failure !== null && isProviderSkillsUnsupportedError(result.failure),
+  };
 }
 
 export function useCheckpointDiff(
