@@ -88,27 +88,7 @@ import {
   openUrlInPreview,
   BrowserPreviewUnavailableError,
 } from "../browser/openFileInPreview";
-
-class CodeHighlightErrorBoundary extends React.Component<
-  { fallback: ReactNode; children: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { fallback: ReactNode; children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
+import { RenderErrorBoundary } from "./RenderErrorBoundary";
 
 interface ChatMarkdownProps {
   text: string;
@@ -1489,7 +1469,7 @@ function ChatMarkdown({
             fenceTitle={fenceTitle}
             theme={resolvedTheme}
           >
-            <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
+            <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
               <Suspense fallback={<pre {...props}>{children}</pre>}>
                 <SuspenseShikiCodeBlock
                   className={codeBlock.className}
@@ -1498,7 +1478,7 @@ function ChatMarkdown({
                   isStreaming={isStreaming}
                 />
               </Suspense>
-            </CodeHighlightErrorBoundary>
+            </RenderErrorBoundary>
           </MarkdownCodeBlock>
         );
       },

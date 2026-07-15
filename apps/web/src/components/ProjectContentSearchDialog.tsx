@@ -1,32 +1,16 @@
 import type { EnvironmentId, ProjectContentMatch } from "@t3tools/contracts";
-import { getFiletypeFromFileName } from "@pierre/diffs";
 import { LoaderCircle, Search } from "lucide-react";
-import {
-  Suspense,
-  Component,
-  use,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import { resolveDiffThemeName } from "~/lib/diffRendering";
-import { getSyntaxHighlighterPromise } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
-import { projectEnvironment } from "~/state/projects";
-import { useEnvironmentQuery } from "~/state/query";
+import { useProjectContentSearch } from "~/state/queries";
 
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
+import { HighlightedSearchLine } from "./project-search/HighlightedSearchLine";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
-
-const SEARCH_RESULT_LIMIT = 500;
-const SEARCH_DEBOUNCE_MS = 120;
-const EMPTY_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 
 interface ProjectContentSearchDialogProps {
   readonly environmentId: EnvironmentId;
@@ -40,21 +24,6 @@ interface ProjectContentSearchDialogProps {
 interface MatchGroup {
   readonly path: string;
   readonly matches: ReadonlyArray<ProjectContentMatch & { readonly resultIndex: number }>;
-}
-
-class SearchSyntaxErrorBoundary extends Component<
-  { readonly children: ReactNode; readonly fallback: ReactNode },
-  { readonly failed: boolean }
-> {
-  override state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  override render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
 }
 
 function splitPath(path: string): { readonly name: string; readonly directory: string } {
@@ -76,116 +45,6 @@ function groupMatches(matches: ReadonlyArray<ProjectContentMatch>): MatchGroup[]
     }
   });
   return [...groups].map(([path, groupedMatches]) => ({ path, matches: groupedMatches }));
-}
-
-function normalizedMatchRanges(match: ProjectContentMatch) {
-  return match.matchRanges
-    .map((range) => ({
-      start: Math.max(0, Math.min(match.lineContent.length, range.start)),
-      end: Math.max(0, Math.min(match.lineContent.length, range.end)),
-    }))
-    .filter((range) => range.end > range.start)
-    .toSorted((left, right) => left.start - right.start);
-}
-
-function highlightedLine(match: ProjectContentMatch): ReactNode {
-  const ranges = normalizedMatchRanges(match);
-  if (ranges.length === 0) return match.lineContent;
-
-  const parts: ReactNode[] = [];
-  let cursor = 0;
-  ranges.forEach((range) => {
-    if (range.start > cursor) {
-      parts.push(match.lineContent.slice(cursor, range.start));
-    }
-    const start = Math.max(cursor, range.start);
-    if (range.end > start) {
-      parts.push(
-        <mark
-          className="rounded-[2px] bg-primary/22 text-inherit"
-          key={`match-${range.start}-${range.end}`}
-        >
-          {match.lineContent.slice(start, range.end)}
-        </mark>,
-      );
-    }
-    cursor = Math.max(cursor, range.end);
-  });
-  if (cursor < match.lineContent.length) {
-    parts.push(match.lineContent.slice(cursor));
-  }
-  return parts;
-}
-
-function tokenStyle(token: {
-  readonly color?: string;
-  readonly fontStyle?: number;
-}): CSSProperties {
-  const fontStyle = token.fontStyle ?? 0;
-  return {
-    ...(token.color ? { color: token.color } : {}),
-    ...(fontStyle & 1 ? { fontStyle: "italic" } : {}),
-    ...(fontStyle & 2 ? { fontWeight: 700 } : {}),
-    ...(fontStyle & 4 ? { textDecoration: "underline" } : {}),
-  };
-}
-
-function SyntaxHighlightedLine(props: {
-  readonly match: ProjectContentMatch;
-  readonly language: string;
-  readonly themeName: ReturnType<typeof resolveDiffThemeName>;
-}) {
-  const highlighter = use(getSyntaxHighlighterPromise(props.language));
-  const tokens = useMemo(() => {
-    try {
-      return highlighter.codeToTokens(props.match.lineContent, {
-        lang: props.language,
-        theme: props.themeName,
-      }).tokens[0];
-    } catch {
-      return undefined;
-    }
-  }, [highlighter, props.language, props.match.lineContent, props.themeName]);
-
-  if (!tokens || tokens.length === 0) return highlightedLine(props.match);
-
-  const ranges = normalizedMatchRanges(props.match);
-  return tokens.map((token, tokenIndex) => {
-    const tokenStart = token.offset;
-    const tokenEnd = tokenStart + token.content.length;
-    const boundaries = [
-      tokenStart,
-      tokenEnd,
-      ...ranges.flatMap((range) => [
-        Math.max(tokenStart, Math.min(tokenEnd, range.start)),
-        Math.max(tokenStart, Math.min(tokenEnd, range.end)),
-      ]),
-    ].toSorted((left, right) => left - right);
-    const uniqueBoundaries = boundaries.filter(
-      (boundary, index) => index === 0 || boundary !== boundaries[index - 1],
-    );
-
-    return uniqueBoundaries.slice(0, -1).map((start, segmentIndex) => {
-      const end = uniqueBoundaries[segmentIndex + 1] ?? start;
-      if (end <= start) return null;
-      const content = props.match.lineContent.slice(start, end);
-      const isMatch = ranges.some((range) => range.start < end && range.end > start);
-      const key = `${tokenIndex}:${start}:${end}`;
-      return isMatch ? (
-        <mark
-          className="rounded-[2px] bg-primary/25 text-inherit"
-          key={key}
-          style={tokenStyle(token)}
-        >
-          {content}
-        </mark>
-      ) : (
-        <span key={key} style={tokenStyle(token)}>
-          {content}
-        </span>
-      );
-    });
-  });
 }
 
 function SearchOptionButton(props: {
@@ -213,41 +72,26 @@ function SearchOptionButton(props: {
 
 export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProps) {
   const { resolvedTheme } = useTheme();
-  const themeName = resolveDiffThemeName(resolvedTheme);
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  useEffect(() => {
-    if (!props.open) {
-      setQuery("");
-      setDebouncedQuery("");
-      return;
-    }
-    const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timeout);
-  }, [props.open, query]);
-
-  const search = useEnvironmentQuery(
-    props.open && debouncedQuery.length > 0
-      ? projectEnvironment.searchContents({
-          environmentId: props.environmentId,
-          input: {
-            cwd: props.cwd,
-            query: debouncedQuery,
-            limit: SEARCH_RESULT_LIMIT,
-            caseSensitive,
-            wholeWord,
-            useRegex,
-          },
-        })
-      : null,
-  );
-  const matches = search.data?.matches ?? EMPTY_MATCHES;
+  const search = useProjectContentSearch({
+    environmentId: props.open ? props.environmentId : null,
+    cwd: props.open ? props.cwd : null,
+    query,
+    caseSensitive,
+    wholeWord,
+    useRegex,
+  });
+  const matches = search.matches;
   const groups = useMemo(() => groupMatches(matches), [matches]);
+
+  useEffect(() => {
+    if (!props.open) setQuery("");
+  }, [props.open]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -264,8 +108,6 @@ export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProp
     props.onOpenMatch(match.path, match.lineNumber);
   };
   const fileCount = groups.length;
-  const waitingForDebounce = query.trim().length > 0 && query.trim() !== debouncedQuery;
-  const isPending = waitingForDebounce || search.isPending;
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -330,24 +172,24 @@ export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProp
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
-            {isPending ? (
+            {search.isPending ? (
               <span className="flex items-center gap-2">
                 <LoaderCircle className="size-3.5 animate-spin" /> Searching…
               </span>
             ) : search.error ? (
               <span className="text-destructive">{search.error}</span>
-            ) : search.data?.regexFallbackError ? (
+            ) : search.invalidRegex ? (
               <span className="text-destructive">Invalid regular expression</span>
-            ) : debouncedQuery.length === 0 ? (
+            ) : !search.hasQuery ? (
               `Search every file in ${props.projectName}`
             ) : (
-              `${matches.length.toLocaleString()}${search.data?.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
+              `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
             )}
           </div>
 
           {matches.length === 0 ? (
             <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              {debouncedQuery.length > 0 && !isPending && !search.error
+              {search.hasQuery && !search.isPending && !search.error
                 ? "No results found."
                 : "Type to search across your project."}
             </div>
@@ -392,15 +234,11 @@ export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProp
                             {match.lineNumber}
                           </span>
                           <span className="min-w-0 flex-1 truncate whitespace-pre">
-                            <SearchSyntaxErrorBoundary fallback={highlightedLine(match)}>
-                              <Suspense fallback={highlightedLine(match)}>
-                                <SyntaxHighlightedLine
-                                  match={match}
-                                  language={getFiletypeFromFileName(group.path)}
-                                  themeName={themeName}
-                                />
-                              </Suspense>
-                            </SearchSyntaxErrorBoundary>
+                            <HighlightedSearchLine
+                              match={match}
+                              path={group.path}
+                              theme={resolvedTheme}
+                            />
                           </span>
                         </button>
                       ))}
