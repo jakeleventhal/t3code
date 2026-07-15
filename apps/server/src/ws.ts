@@ -40,6 +40,8 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  ServerProviderSkillsError,
+  ServerProviderSkillsUnsupportedError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   type ServerSelfUpdateError,
@@ -1446,6 +1448,31 @@ const makeWsRpcLayer = (
               : providerRegistry.refresh()
             ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverListProviderSkills]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProviderSkills,
+            Effect.gen(function* () {
+              const skills = yield* providerRegistry.listSkills(input);
+              if (!skills) {
+                return yield* new ServerProviderSkillsUnsupportedError({
+                  instanceId: input.instanceId,
+                  cwd: input.cwd,
+                });
+              }
+              return { skills };
+            }).pipe(
+              Effect.mapError((cause) =>
+                cause._tag === "ServerProviderSkillsUnsupportedError"
+                  ? cause
+                  : new ServerProviderSkillsError({
+                      instanceId: input.instanceId,
+                      cwd: input.cwd,
+                      cause,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
           ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(

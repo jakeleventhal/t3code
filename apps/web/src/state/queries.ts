@@ -14,6 +14,7 @@ import type {
   OrchestrationThread,
   ProjectContentMatch,
   ProjectEntryKind,
+  ProviderInstanceId,
   ThreadId,
   VcsListRefsResult,
   VcsRef,
@@ -344,6 +345,25 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
     truncated: result.data?.truncated ?? false,
     invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
   };
+}
+
+export function useProviderSkills(target: {
+  readonly environmentId: EnvironmentId | null;
+  readonly instanceId: ProviderInstanceId | null;
+  readonly cwd: string | null;
+  readonly enabled: boolean;
+}) {
+  return useEnvironmentQuery(
+    target.enabled &&
+      target.environmentId !== null &&
+      target.instanceId !== null &&
+      target.cwd !== null
+      ? projectEnvironment.listProviderSkills({
+          environmentId: target.environmentId,
+          input: { instanceId: target.instanceId, cwd: target.cwd },
+        })
+      : null,
+  );
 }
 
 export function useCheckpointDiff(
