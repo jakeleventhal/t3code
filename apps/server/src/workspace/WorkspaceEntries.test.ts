@@ -371,6 +371,31 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    it.effect("matches punctuation-ended regex queries as whole words", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-regex-punctuation-" });
+        yield* writeTextFile(cwd, "src/words.ts", "foo- foo-bar foo-\n");
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.searchContents({
+          cwd,
+          query: "foo-",
+          limit: 100,
+          caseSensitive: true,
+          wholeWord: true,
+          useRegex: true,
+        });
+
+        // wholeWord + useRegex must not silently drop non-word-edged patterns like "foo-"
+        expect(result.matches).toHaveLength(1);
+        expect(result.matches[0]).toMatchObject({
+          path: "src/words.ts",
+          lineNumber: 1,
+        });
+        expect(result.matches[0]?.matchRanges).toHaveLength(2);
+      }),
+    );
+
     it.effect("preserves regex escapes during case-insensitive searches", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-regex-" });

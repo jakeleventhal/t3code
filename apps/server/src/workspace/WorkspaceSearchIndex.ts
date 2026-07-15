@@ -319,11 +319,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
     const wordCharacter = /[\p{Letter}\p{Mark}\p{Number}_]/u;
     const firstCharacter = Array.from(input.query).at(0) ?? "";
     const lastCharacter = Array.from(input.query).at(-1) ?? "";
-    const literalWholeWordQuery = `${wordCharacter.test(firstCharacter) ? "\\b" : "(?:^|\\W)"}(?:${escapedQuery})${wordCharacter.test(lastCharacter) ? "\\b" : "(?:$|\\W)"}`;
+    // Use \b only when the pattern edge is a word character; otherwise \b cannot
+    // match (e.g. query "foo-" → \b(?:foo-)\b never matches "foo- "). Fall back to
+    // (?:^|\W)/(?:$|\W) for non-word edges, same as the literal whole-word path.
+    const wrapWholeWord = (pattern: string) =>
+      `${wordCharacter.test(firstCharacter) ? "\\b" : "(?:^|\\W)"}(?:${pattern})${wordCharacter.test(lastCharacter) ? "\\b" : "(?:$|\\W)"}`;
     const query = input.wholeWord
-      ? input.useRegex
-        ? `\\b(?:${input.query})\\b`
-        : literalWholeWordQuery
+      ? wrapWholeWord(input.useRegex ? input.query : escapedQuery)
       : input.query;
     const regexMode = input.useRegex || input.wholeWord;
     const searchQuery = input.caseSensitive
