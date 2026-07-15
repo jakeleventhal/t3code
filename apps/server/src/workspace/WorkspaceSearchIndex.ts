@@ -316,8 +316,14 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
     const escapedQuery = input.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const wordCharacter = /[\p{Letter}\p{Mark}\p{Number}_]/u;
+    const firstCharacter = Array.from(input.query).at(0) ?? "";
+    const lastCharacter = Array.from(input.query).at(-1) ?? "";
+    const literalWholeWordQuery = `${wordCharacter.test(firstCharacter) ? "\\b" : "(?:^|\\W)"}(?:${escapedQuery})${wordCharacter.test(lastCharacter) ? "\\b" : "(?:$|\\W)"}`;
     const query = input.wholeWord
-      ? `\\b(?:${input.useRegex ? input.query : escapedQuery})\\b`
+      ? input.useRegex
+        ? `\\b(?:${input.query})\\b`
+        : literalWholeWordQuery
       : input.query;
     const regexMode = input.useRegex || input.wholeWord;
     const searchQuery = input.caseSensitive
@@ -354,15 +360,27 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
 
     const byteOffsetToStringIndex = (line: string, byteOffset: number): number =>
       Buffer.from(line).subarray(0, byteOffset).toString().length;
+    const mapMatchRange = (line: string, startByte: number, endByte: number) => {
+      const start = byteOffsetToStringIndex(line, startByte);
+      const end = byteOffsetToStringIndex(line, endByte);
+      if (!input.wholeWord || input.useRegex) return { start, end };
+
+      const matchedText = line.slice(start, end);
+      const queryIndex = input.caseSensitive
+        ? matchedText.indexOf(input.query)
+        : matchedText.toLocaleLowerCase().indexOf(input.query.toLocaleLowerCase());
+      return queryIndex === -1
+        ? { start, end }
+        : { start: start + queryIndex, end: start + queryIndex + input.query.length };
+    };
     return {
       matches: result.value.items.map((match) => ({
         path: toPosixPath(match.relativePath),
         lineNumber: match.lineNumber,
         lineContent: match.lineContent,
-        matchRanges: match.matchRanges.map(([start, end]) => ({
-          start: byteOffsetToStringIndex(match.lineContent, start),
-          end: byteOffsetToStringIndex(match.lineContent, end),
-        })),
+        matchRanges: match.matchRanges.map(([start, end]) =>
+          mapMatchRange(match.lineContent, start, end),
+        ),
       })),
       truncated: result.value.nextCursor !== null,
       ...(result.value.regexFallbackError

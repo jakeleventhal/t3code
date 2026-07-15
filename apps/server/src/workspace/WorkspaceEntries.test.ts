@@ -344,6 +344,33 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    it.effect("matches punctuation-ended literal queries as whole words", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-punctuation-" });
+        yield* writeTextFile(cwd, "src/words.ts", "foo- foo-bar foo-\n");
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.searchContents({
+          cwd,
+          query: "foo-",
+          limit: 100,
+          caseSensitive: true,
+          wholeWord: true,
+          useRegex: false,
+        });
+
+        expect(result.matches).toHaveLength(1);
+        expect(result.matches[0]).toMatchObject({
+          path: "src/words.ts",
+          lineNumber: 1,
+          matchRanges: [
+            { start: 0, end: 4 },
+            { start: 13, end: 17 },
+          ],
+        });
+      }),
+    );
+
     it.effect("preserves regex escapes during case-insensitive searches", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-regex-" });
