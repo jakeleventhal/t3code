@@ -135,7 +135,6 @@ function normalizeThreadArtifactReference(value: string): string | null {
   const normalized = value.trim().replaceAll("\\", "/");
   const segments = normalized.split("/");
   if (
-    segments.length < 2 ||
     normalized.startsWith("/") ||
     WINDOWS_ABSOLUTE_PATH.test(normalized) ||
     normalized.includes(":") ||
@@ -160,9 +159,11 @@ function findThreadArtifactPath(
     const data = asUnknownRecord(payload?.data);
     const rawOutput = asUnknownRecord(data?.rawOutput);
     const artifactPath = rawOutput?.path;
+    const normalizedArtifactPath =
+      typeof artifactPath === "string" ? artifactPath.replaceAll("\\", "/") : null;
     if (
-      typeof artifactPath === "string" &&
-      artifactPath.replaceAll("\\", "/").endsWith(`/${normalizedReference}`)
+      normalizedArtifactPath === normalizedReference ||
+      normalizedArtifactPath?.endsWith(`/${normalizedReference}`)
     ) {
       return artifactPath;
     }
