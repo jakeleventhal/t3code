@@ -218,6 +218,7 @@ import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import { ProjectContentSearchDialog } from "./ProjectContentSearchDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
@@ -1252,6 +1253,7 @@ function ChatViewContent(props: ChatViewProps) {
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [maximizedRightPanelThreadKey, setMaximizedRightPanelThreadKey] = useState<string | null>(
     null,
   );
@@ -3008,9 +3010,9 @@ function ChatViewContent(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
   const openFileSurface = useCallback(
-    (relativePath: string) => {
+    (relativePath: string, line?: number) => {
       if (!activeThreadRef || !activeProject) return;
-      useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
+      useRightPanelStore.getState().openFile(activeThreadRef, relativePath, line);
     },
     [activeProject, activeThreadRef],
   );
@@ -4262,6 +4264,14 @@ function ChatViewContent(props: ChatViewProps) {
       });
       if (!command) return;
 
+      if (command === "project.searchContents") {
+        if (!activeProject || !activeWorkspaceRoot) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setProjectSearchOpen(true);
+        return;
+      }
+
       if (command === "terminal.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -4373,6 +4383,7 @@ function ChatViewContent(props: ChatViewProps) {
     toggleRightPanel,
     toggleTerminalVisibility,
     composerRef,
+    activeWorkspaceRoot,
   ]);
 
   const onRevertToTurnCount = useCallback(
@@ -5607,6 +5618,16 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+      {activeProject && activeWorkspaceRoot ? (
+        <ProjectContentSearchDialog
+          environmentId={activeProject.environmentId}
+          cwd={activeWorkspaceRoot}
+          projectName={activeProject.title}
+          open={projectSearchOpen}
+          onOpenChange={setProjectSearchOpen}
+          onOpenMatch={openFileSurface}
+        />
+      ) : null}
       {rightPanelOpen && !shouldUsePlanSidebarSheet ? panelLayoutControls : null}
       <div
         className={cn(
