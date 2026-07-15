@@ -24,11 +24,13 @@ describe("getProjectFilePickerMatches", () => {
     ]);
   });
 
-  it("matches against both file names and paths", () => {
-    assert.deepEqual(pathsForQuery(entries, "shared"), [
+  it("preserves the server result order", () => {
+    assert.deepEqual(pathsForQuery(entries, "index"), [
+      { name: "index.ts", path: "apps/web/src/index.ts" },
       { name: "index.ts", path: "packages/shared/src/index.ts" },
+      { name: "README.md", path: "README.md" },
+      { name: ".gitignore", path: ".gitignore" },
     ]);
-    assert.deepEqual(pathsForQuery(entries, "read"), [{ name: "README.md", path: "README.md" }]);
   });
 
   it("supports space-separated path tokens and a result limit", () => {
@@ -50,7 +52,6 @@ describe("getProjectFilePickerMatches", () => {
         kind: "file",
         path: "src/useSubtestFlags/useTabActivity.ts",
       },
-      { kind: "file", path: "src/TestResults.tsx" },
     ] as const;
 
     assert.deepEqual(
@@ -69,6 +70,14 @@ describe("getProjectFilePickerMatches", () => {
     assert.deepEqual(
       getProjectFilePickerMatches([{ kind: "file", path: "aabba" }], "aba")[0]?.nameMatchIndices,
       [0, 2, 4],
+    );
+  });
+
+  it("normalizes path prefixes consistently with server search", () => {
+    assert.deepEqual(
+      getProjectFilePickerMatches([{ kind: "file", path: "src/index.ts" }], "@/src")[0]
+        ?.pathMatchIndices,
+      [0, 1, 2],
     );
   });
 });
