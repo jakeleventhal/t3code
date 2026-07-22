@@ -25,7 +25,14 @@ import {
   getProjectOrderKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
-import { readThreadShell, useProjects, useServerConfigs, useThread } from "../state/entities";
+import { excludeGeneralChatsProject, resolveGeneralChatNewThreadOptions } from "../generalChats";
+import {
+  readProject,
+  readThreadShell,
+  useProjects,
+  useServerConfigs,
+  useThread,
+} from "../state/entities";
 import { useBranches } from "../state/queries";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { vcsEnvironment } from "../state/vcs";
@@ -35,7 +42,6 @@ import { useClientSettings } from "./useSettings";
 import { resolveProjectMainCheckout } from "./useHandleNewThread.logic";
 
 export function useNewThreadHandler() {
-  const projects = useProjects();
   const serverConfigs = useServerConfigs();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const router = useRouter();
@@ -55,6 +61,7 @@ export function useNewThreadHandler() {
         replace?: boolean;
       },
     ): Promise<void> => {
+      const resolvedOptions = resolveGeneralChatNewThreadOptions(projectRef.projectId, options);
       const {
         getDraftSessionByLogicalProjectKey,
         getDraftSession,
@@ -64,20 +71,16 @@ export function useNewThreadHandler() {
         setLogicalProjectDraftThreadId,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
-      const project = projects.find(
-        (candidate) =>
-          candidate.id === projectRef.projectId &&
-          candidate.environmentId === projectRef.environmentId,
-      );
+      const project = readProject(projectRef);
       const environmentSettings =
         serverConfigs.get(projectRef.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS;
       const logicalProjectKey = project
         ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
         : scopedProjectKey(projectRef);
-      const hasBranchOption = options?.branch !== undefined;
-      const hasWorktreePathOption = options?.worktreePath !== undefined;
-      const hasEnvModeOption = options?.envMode !== undefined;
-      const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
+      const hasBranchOption = resolvedOptions?.branch !== undefined;
+      const hasWorktreePathOption = resolvedOptions?.worktreePath !== undefined;
+      const hasEnvModeOption = resolvedOptions?.envMode !== undefined;
+      const hasStartFromOriginOption = resolvedOptions?.startFromOrigin !== undefined;
       const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       const storedDraftThreadRef = storedDraftThread
         ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
@@ -103,10 +106,14 @@ export function useNewThreadHandler() {
             hasStartFromOriginOption
           ) {
             setDraftThreadContext(reusableStoredDraftThread.draftId, {
-              ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-              ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-              ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-              ...(hasStartFromOriginOption ? { startFromOrigin: options?.startFromOrigin } : {}),
+              ...(hasBranchOption ? { branch: resolvedOptions?.branch ?? null } : {}),
+              ...(hasWorktreePathOption
+                ? { worktreePath: resolvedOptions?.worktreePath ?? null }
+                : {}),
+              ...(hasEnvModeOption ? { envMode: resolvedOptions?.envMode } : {}),
+              ...(hasStartFromOriginOption
+                ? { startFromOrigin: resolvedOptions?.startFromOrigin }
+                : {}),
             });
           }
           setLogicalProjectDraftThreadId(
@@ -144,10 +151,14 @@ export function useNewThreadHandler() {
           hasStartFromOriginOption
         ) {
           setDraftThreadContext(currentRouteTarget.draftId, {
-            ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-            ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-            ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-            ...(hasStartFromOriginOption ? { startFromOrigin: options?.startFromOrigin } : {}),
+            ...(hasBranchOption ? { branch: resolvedOptions?.branch ?? null } : {}),
+            ...(hasWorktreePathOption
+              ? { worktreePath: resolvedOptions?.worktreePath ?? null }
+              : {}),
+            ...(hasEnvModeOption ? { envMode: resolvedOptions?.envMode } : {}),
+            ...(hasStartFromOriginOption
+              ? { startFromOrigin: resolvedOptions?.startFromOrigin }
+              : {}),
           });
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -155,10 +166,12 @@ export function useNewThreadHandler() {
           createdAt: latestActiveDraftThread.createdAt,
           runtimeMode: latestActiveDraftThread.runtimeMode,
           interactionMode: latestActiveDraftThread.interactionMode,
-          ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-          ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-          ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-          ...(hasStartFromOriginOption ? { startFromOrigin: options?.startFromOrigin } : {}),
+          ...(hasBranchOption ? { branch: resolvedOptions?.branch ?? null } : {}),
+          ...(hasWorktreePathOption ? { worktreePath: resolvedOptions?.worktreePath ?? null } : {}),
+          ...(hasEnvModeOption ? { envMode: resolvedOptions?.envMode } : {}),
+          ...(hasStartFromOriginOption
+            ? { startFromOrigin: resolvedOptions?.startFromOrigin }
+            : {}),
         });
         return Promise.resolve();
       }
@@ -166,16 +179,16 @@ export function useNewThreadHandler() {
       const draftId = newDraftId();
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
-      const initialEnvMode = options?.envMode ?? environmentSettings.defaultThreadEnvMode;
+      const initialEnvMode = resolvedOptions?.envMode ?? environmentSettings.defaultThreadEnvMode;
       return (async () => {
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
           threadId,
           createdAt,
-          branch: options?.branch ?? null,
-          worktreePath: options?.worktreePath ?? null,
+          branch: resolvedOptions?.branch ?? null,
+          worktreePath: resolvedOptions?.worktreePath ?? null,
           envMode: initialEnvMode,
           startFromOrigin:
-            options?.startFromOrigin ??
+            resolvedOptions?.startFromOrigin ??
             resolveNewDraftStartFromOrigin({
               envMode: initialEnvMode,
               newWorktreesStartFromOrigin: environmentSettings.newWorktreesStartFromOrigin,
@@ -191,7 +204,7 @@ export function useNewThreadHandler() {
         });
       })();
     },
-    [getCurrentRouteTarget, projectGroupingSettings, projects, router, serverConfigs],
+    [getCurrentRouteTarget, projectGroupingSettings, router, serverConfigs],
   );
 }
 
@@ -218,7 +231,7 @@ export function useHandleNewThread() {
   });
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
-      items: projects,
+      items: excludeGeneralChatsProject(projects),
       preferredIds: projectOrder,
       getId: getProjectOrderKey,
       getPreferenceIds: (project) => [

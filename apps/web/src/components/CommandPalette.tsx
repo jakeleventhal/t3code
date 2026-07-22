@@ -115,6 +115,7 @@ import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "./Icons"
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { Button } from "./ui/button";
+import { excludeGeneralChatsProject } from "../generalChats";
 import {
   Command,
   CommandDialog,
@@ -481,6 +482,7 @@ function OpenCommandPaletteDialog(props: {
     resolveNewThreadDefaults,
   } = useHandleNewThread();
   const projects = useProjects();
+  const regularProjects = useMemo(() => excludeGeneralChatsProject(projects), [projects]);
   const threads = useThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
@@ -665,7 +667,7 @@ function OpenCommandPaletteDialog(props: {
   const projectSearchItems = useMemo(
     () =>
       buildProjectActionItems({
-        projects,
+        projects: regularProjects,
         valuePrefix: "project",
         icon: (project) => (
           <ProjectFavicon
@@ -676,13 +678,13 @@ function OpenCommandPaletteDialog(props: {
         ),
         runProject: openProjectFromSearch,
       }),
-    [openProjectFromSearch, projects],
+    [openProjectFromSearch, regularProjects],
   );
 
   const projectThreadItems = useMemo(
     () =>
       buildProjectActionItems({
-        projects,
+        projects: regularProjects,
         valuePrefix: "new-thread-in",
         shortcutCommand: "chat.new",
         icon: (project) => (
@@ -715,7 +717,7 @@ function OpenCommandPaletteDialog(props: {
       defaultProjectRef,
       defaultThreadEnvMode,
       handleNewThread,
-      projects,
+      regularProjects,
       resolveDefaultMainCheckout,
       resolveNewThreadDefaults,
     ],
@@ -994,38 +996,38 @@ function OpenCommandPaletteDialog(props: {
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
-  if (projects.length > 0) {
-    const activeProjectTitle = currentProjectId
-      ? (projectTitleById.get(currentProjectId) ?? null)
-      : null;
+  const activeProjectTitle = currentProjectId
+    ? (projectTitleById.get(currentProjectId) ?? null)
+    : null;
 
-    if (activeProjectTitle) {
-      actionItems.push({
-        kind: "action",
-        value: "action:new-thread",
-        searchTerms: ["new thread", "chat", "create", "draft"],
-        title: (
-          <>
-            New thread in <span className="font-semibold">{activeProjectTitle}</span>
-          </>
-        ),
-        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "chat.new",
-        run: async () => {
-          await startNewThreadFromContext({
-            activeDraftThread,
-            activeThread: activeThread ?? undefined,
-            defaultProjectRef,
-            defaultThreadEnvMode,
-            defaultNewWorktreesStartFromOrigin,
-            handleNewThread,
-            resolveDefaultMainCheckout,
-            resolveNewThreadDefaults,
-          });
-        },
-      });
-    }
+  if (activeProjectTitle) {
+    actionItems.push({
+      kind: "action",
+      value: "action:new-thread",
+      searchTerms: ["new thread", "chat", "create", "draft"],
+      title: (
+        <>
+          New thread in <span className="font-semibold">{activeProjectTitle}</span>
+        </>
+      ),
+      icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.new",
+      run: async () => {
+        await startNewThreadFromContext({
+          activeDraftThread,
+          activeThread: activeThread ?? undefined,
+          defaultProjectRef,
+          defaultThreadEnvMode,
+          defaultNewWorktreesStartFromOrigin,
+          handleNewThread,
+          resolveDefaultMainCheckout,
+          resolveNewThreadDefaults,
+        });
+      },
+    });
+  }
 
+  if (regularProjects.length > 0) {
     actionItems.push({
       kind: "submenu",
       value: "action:new-thread-in",
