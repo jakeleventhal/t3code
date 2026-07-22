@@ -1137,7 +1137,18 @@ export const make = Effect.gen(function* () {
             fallbackRemoteName: remoteName,
           })
           .pipe(Effect.map((resolved) => resolved.commitSha));
-      });
+      }).pipe(
+        Effect.catchTag(
+          "RemoteTrackingRefNotFoundError",
+          (cause) =>
+            new GitManagerError({
+              operation: "resolveBaseRangeRef",
+              cwd,
+              detail: cause.message,
+              cause,
+            }),
+        ),
+      );
       const targetBaseRangeRef = targetMatchesOrigin
         ? yield* resolveTargetBaseRangeRef.pipe(Effect.orElseSucceed(() => null))
         : yield* resolveTargetBaseRangeRef;

@@ -31,6 +31,7 @@ See the full schema for more details: [`packages/contracts/src/keybindings.ts`](
   { "key": "mod+0", "command": "preview.resetZoom", "when": "previewFocus" },
   { "key": "mod+k", "command": "commandPalette.toggle", "when": "!terminalFocus" },
   { "key": "mod+p", "command": "filePicker.toggle", "when": "!terminalFocus" },
+  { "key": "mod+shift+f", "command": "project.searchContents", "when": "!terminalFocus" },
   { "key": "mod+n", "command": "chat.new", "when": "!terminalFocus" },
   { "key": "mod+t", "command": "chat.newSameWorktree", "when": "!terminalFocus" },
   { "key": "mod+shift+o", "command": "chat.new", "when": "!terminalFocus" },
@@ -67,6 +68,7 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 - `preview.resetZoom`: reset the preview zoom to 100% (in focused preview context by default)
 - `commandPalette.toggle`: open or close the global command palette
 - `filePicker.toggle`: open or close the active project's file picker
+- `project.searchContents`: search file contents across the active project
 - `chat.new`: create a new chat thread using the configured default workspace mode
 - `chat.newSameWorktree`: create a new chat thread in the active thread's checkout/worktree
 - `chat.newLocal`: create a new chat thread in the active project's main checkout
