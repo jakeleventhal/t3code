@@ -19,6 +19,11 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { MENU_ACTION_CHANNEL, WINDOW_FULLSCREEN_STATE_CHANNEL } from "../ipc/channels.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import {
+  type NativeKeybindingCaptureInput,
+  nativeKeybindingCaptureInput,
+  NATIVE_KEYBINDING_CAPTURE_CHANNEL,
+} from "../keybindings/NativeKeybindingCapture.ts";
 
 const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
@@ -32,6 +37,14 @@ const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
+const MACOS_MOD_ESCAPE_ACCELERATOR = "Command+Escape";
+const MACOS_MOD_ESCAPE_INPUT: NativeKeybindingCaptureInput = {
+  key: "Escape",
+  metaKey: true,
+  ctrlKey: false,
+  altKey: false,
+  shiftKey: false,
+};
 const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([
   -2, // ERR_FAILED
   -7, // ERR_TIMED_OUT
@@ -356,6 +369,36 @@ export const make = Effect.gen(function* () {
 
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
+    }
+    let unregisterNativeModEscape = () => {};
+    if (environment.platform === "darwin") {
+      const registerNativeModEscape = () => {
+        if (Electron.globalShortcut.isRegistered(MACOS_MOD_ESCAPE_ACCELERATOR)) {
+          return;
+        }
+        const registered = Electron.globalShortcut.register(MACOS_MOD_ESCAPE_ACCELERATOR, () => {
+          const focusedWebContents = Electron.webContents.getFocusedWebContents();
+          if (focusedWebContents && !focusedWebContents.isDestroyed()) {
+            focusedWebContents.send(NATIVE_KEYBINDING_CAPTURE_CHANNEL, MACOS_MOD_ESCAPE_INPUT);
+          }
+        });
+        if (!registered) {
+          void runPromise(logWindowWarning("failed to register Command-Escape shortcut"));
+        }
+      };
+      unregisterNativeModEscape = () => {
+        Electron.globalShortcut.unregister(MACOS_MOD_ESCAPE_ACCELERATOR);
+      };
+      window.on("focus", registerNativeModEscape);
+      window.on("blur", unregisterNativeModEscape);
+    } else {
+      window.webContents.on("before-input-event", (event, input) => {
+        const captureInput = nativeKeybindingCaptureInput(input);
+        if (captureInput) {
+          event.preventDefault();
+          window.webContents.send(NATIVE_KEYBINDING_CAPTURE_CHANNEL, captureInput);
+        }
+      });
     }
     let boundsPersistFiber: Fiber.Fiber<void, never> | undefined;
     let pendingBoundsPersistFiber: Fiber.Fiber<void, never> | undefined;
@@ -702,6 +745,7 @@ export const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
+      unregisterNativeModEscape();
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
       void runPromise(electronWindow.clearMain(Option.some(window)));
