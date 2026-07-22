@@ -7,6 +7,7 @@ import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import {
   type EnvironmentId,
   type OrchestrationThread,
+  type ProjectEntryKind,
   type ProviderInstanceId,
   ServerProviderSkillsUnsupportedError,
   type ThreadId,
@@ -26,7 +27,7 @@ import { useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
 
-const COMPOSER_PATH_SEARCH_DEBOUNCE_MS = 120;
+const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 120;
 const COMPOSER_PATH_SEARCH_LIMIT = 80;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
@@ -53,6 +54,22 @@ function useDebouncedValue<A>(value: A, delayMs: number): A {
   }, [delayMs, value]);
 
   return debounced;
+}
+
+type ProjectPathSearchTarget = ComposerPathSearchTarget & {
+  readonly kind?: ProjectEntryKind | undefined;
+};
+
+export function areProjectPathSearchTargetsEqual(
+  left: ProjectPathSearchTarget,
+  right: ProjectPathSearchTarget,
+): boolean {
+  return (
+    left.environmentId === right.environmentId &&
+    left.cwd === right.cwd &&
+    left.query === right.query &&
+    left.kind === right.kind
+  );
 }
 
 export function useThreadDetail(
@@ -215,16 +232,17 @@ export function useAllBranches(target: VcsRefTarget) {
   return state;
 }
 
-export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: number) {
   const normalizedTarget = useMemo(
     () => ({
       environmentId: target.environmentId,
       cwd: target.cwd,
       query: target.query?.trim() ?? "",
+      kind: target.kind,
     }),
-    [target.cwd, target.environmentId, target.query],
+    [target.cwd, target.environmentId, target.kind, target.query],
   );
-  const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
+  const debouncedTarget = useDebouncedValue(normalizedTarget, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
   const result = useEnvironmentQuery(
     debouncedTarget.environmentId !== null &&
       debouncedTarget.cwd !== null &&
@@ -234,7 +252,8 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
           input: {
             cwd: debouncedTarget.cwd,
             query: debouncedTarget.query,
-            limit: COMPOSER_PATH_SEARCH_LIMIT,
+            limit,
+            ...(debouncedTarget.kind ? { kind: debouncedTarget.kind } : {}),
           },
         })
       : null,
@@ -243,9 +262,15 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return {
     entries: result.data?.entries ?? [],
     error: result.error,
-    isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
+    isPending:
+      !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
+    searchedQuery: debouncedTarget.query,
     refresh: result.refresh,
   };
+}
+
+export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+  return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
 }
 
 export function useProviderSkills(target: {
