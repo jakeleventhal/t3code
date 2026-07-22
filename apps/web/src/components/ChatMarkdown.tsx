@@ -9,7 +9,7 @@ import {
   Minimize2Icon,
   WrapTextIcon,
 } from "lucide-react";
-import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import type { MessageId, ScopedThreadRef, ServerProviderSkill, TurnId } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -40,6 +40,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
+import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { hasSpecificPierreIconForFileName, syntheticFileNameForLanguageId } from "../pierre-icons";
@@ -83,6 +84,8 @@ import {
   openUrlInPreview,
   BrowserPreviewUnavailableError,
 } from "../browser/openFileInPreview";
+import { useAssetUrl } from "../assets/assetUrls";
+import { normalizeGeneratedImageReference } from "./ChatMarkdown.logic";
 
 class CodeHighlightErrorBoundary extends React.Component<
   { fallback: ReactNode; children: ReactNode },
@@ -109,6 +112,9 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
+  artifactTurnId?: TurnId | undefined;
+  artifactMessageId?: MessageId | undefined;
+  onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
@@ -271,8 +277,12 @@ function extractCodeBlock(
 
   const onlyChild = childNodes[0];
   if (
-    !isValidElement<{ className?: string; children?: ReactNode }>(onlyChild) ||
-    onlyChild.type !== "code"
+    !isValidElement<{
+      className?: string;
+      children?: ReactNode;
+      node?: { tagName?: unknown };
+    }>(onlyChild) ||
+    (onlyChild.type !== "code" && onlyChild.props.node?.tagName !== "code")
   ) {
     return null;
   }
@@ -745,6 +755,14 @@ interface MarkdownFileLinkProps {
   onOpen: (targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>;
   onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   className?: string | undefined;
+}
+
+interface MarkdownThreadArtifactImageProps extends React.ComponentProps<"code"> {
+  threadRef: ScopedThreadRef;
+  turnId: TurnId;
+  messageId: MessageId;
+  reference: string;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
@@ -1226,6 +1244,54 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   );
 }, areMarkdownFileLinkPropsEqual);
 
+const MarkdownThreadArtifactImage = memo(function MarkdownThreadArtifactImage({
+  threadRef,
+  turnId,
+  messageId,
+  reference,
+  onImageExpand,
+  children,
+  ...codeProps
+}: MarkdownThreadArtifactImageProps) {
+  const imageUrl = useAssetUrl(threadRef.environmentId, {
+    _tag: "thread-artifact",
+    threadId: threadRef.threadId,
+    turnId,
+    messageId,
+    path: reference,
+  });
+
+  if (!imageUrl) {
+    return <code {...codeProps}>{children}</code>;
+  }
+
+  return (
+    <span
+      className="my-2.5 flex w-1/4 max-w-full flex-col items-start gap-1.5"
+      data-markdown-copy={`\`${reference}\``}
+    >
+      <button
+        type="button"
+        className="block w-full max-w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Preview ${reference}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onImageExpand({ images: [{ src: imageUrl, name: reference }], index: 0 });
+        }}
+      >
+        <img
+          src={imageUrl}
+          alt={reference}
+          loading="lazy"
+          className="block max-h-[32rem] w-full max-w-full object-contain"
+        />
+      </button>
+      <code {...codeProps}>{children}</code>
+    </span>
+  );
+});
+
 function areMarkdownFileLinkPropsEqual(
   previous: Readonly<MarkdownFileLinkProps>,
   next: Readonly<MarkdownFileLinkProps>,
@@ -1251,6 +1317,9 @@ function ChatMarkdown({
   text,
   cwd,
   threadRef,
+  artifactTurnId,
+  artifactMessageId,
+  onImageExpand,
   onTaskListChange,
   isStreaming = false,
   skills = EMPTY_MARKDOWN_SKILLS,
@@ -1503,6 +1572,37 @@ function ChatMarkdown({
           />
         );
       },
+      code({ node, className: codeClassName, children, ...props }) {
+        const artifactReference = codeClassName
+          ? null
+          : normalizeGeneratedImageReference(plainHastText(node) ?? "");
+        if (
+          !artifactReference ||
+          !threadRef ||
+          !artifactTurnId ||
+          !artifactMessageId ||
+          !onImageExpand
+        ) {
+          return (
+            <code {...props} className={codeClassName}>
+              {children}
+            </code>
+          );
+        }
+        return (
+          <MarkdownThreadArtifactImage
+            {...props}
+            className={codeClassName}
+            threadRef={threadRef}
+            turnId={artifactTurnId}
+            messageId={artifactMessageId}
+            reference={artifactReference}
+            onImageExpand={onImageExpand}
+          >
+            {children}
+          </MarkdownThreadArtifactImage>
+        );
+      },
       table({ node: _node, ...props }) {
         return <MarkdownTable {...props} />;
       },
@@ -1540,10 +1640,13 @@ function ChatMarkdown({
     }),
     [
       diffThemeName,
+      artifactTurnId,
+      artifactMessageId,
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
       onTaskListChange,
+      onImageExpand,
       openInPreferredEditor,
       openExternalLinkInPreview,
       openMarkdownFileInPreview,
