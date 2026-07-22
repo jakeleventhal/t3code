@@ -30,6 +30,7 @@ import {
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
+  resolveSidebarNewThreadSeedContext,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveSidebarV2Status,
@@ -528,6 +529,115 @@ describe("resolveSidebarNewThreadEnvMode", () => {
         defaultEnvMode: "worktree",
       }),
     ).toBe("local");
+  });
+});
+
+describe("resolveSidebarNewThreadSeedContext", () => {
+  it("preserves active draft context over the default worktree mode", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "feature/existing",
+          worktreePath: "/repo/.t3/worktrees/existing",
+        },
+        activeDraftThread: {
+          projectId: "project-1",
+          branch: "feature/draft",
+          worktreePath: "/repo/.t3/worktrees/draft",
+          envMode: "worktree",
+          startFromOrigin: true,
+        },
+      }),
+    ).toEqual({
+      branch: "feature/draft",
+      worktreePath: "/repo/.t3/worktrees/draft",
+      envMode: "worktree",
+      startFromOrigin: true,
+    });
+  });
+
+  it("preserves the active branch over the default worktree mode", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      branch: "effect-atom",
+      worktreePath: null,
+      envMode: "local",
+    });
+  });
+
+  it("preserves the active worktree over the default worktree mode", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "feature/existing",
+          worktreePath: "/repo/.t3/worktrees/existing",
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      branch: "feature/existing",
+      worktreePath: "/repo/.t3/worktrees/existing",
+      envMode: "worktree",
+    });
+  });
+
+  it("prefers the active draft thread context when it matches the target project", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "local",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: {
+          projectId: "project-1",
+          branch: "feature/new-draft",
+          worktreePath: "/repo/worktree",
+          envMode: "worktree",
+          startFromOrigin: true,
+        },
+      }),
+    ).toEqual({
+      branch: "feature/new-draft",
+      worktreePath: "/repo/worktree",
+      envMode: "worktree",
+      startFromOrigin: true,
+    });
+  });
+
+  it("falls back to the default env mode when there is no matching active thread context", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-2",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      envMode: "worktree",
+    });
   });
 });
 

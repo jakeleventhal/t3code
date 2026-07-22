@@ -338,6 +338,49 @@ export function resolveSidebarNewThreadEnvMode(input: {
   return input.requestedEnvMode ?? input.defaultEnvMode;
 }
 
+export function resolveSidebarNewThreadSeedContext(input: {
+  projectId: string;
+  defaultEnvMode: SidebarNewThreadEnvMode;
+  activeThread?: {
+    projectId: string;
+    branch: string | null;
+    worktreePath: string | null;
+  } | null;
+  activeDraftThread?: {
+    projectId: string;
+    branch: string | null;
+    worktreePath: string | null;
+    envMode: SidebarNewThreadEnvMode;
+    startFromOrigin: boolean;
+  } | null;
+}): {
+  branch?: string | null;
+  worktreePath?: string | null;
+  envMode: SidebarNewThreadEnvMode;
+  startFromOrigin?: boolean;
+} {
+  if (input.activeDraftThread?.projectId === input.projectId) {
+    return {
+      branch: input.activeDraftThread.branch,
+      worktreePath: input.activeDraftThread.worktreePath,
+      envMode: input.activeDraftThread.envMode,
+      startFromOrigin: input.activeDraftThread.startFromOrigin,
+    };
+  }
+
+  if (input.activeThread?.projectId === input.projectId) {
+    return {
+      branch: input.activeThread.branch,
+      worktreePath: input.activeThread.worktreePath,
+      envMode: input.activeThread.worktreePath ? "worktree" : "local",
+    };
+  }
+
+  return {
+    envMode: input.defaultEnvMode,
+  };
+}
+
 export function orderItemsByPreferredIds<TItem, TId>(input: {
   items: readonly TItem[];
   preferredIds: readonly TId[];
