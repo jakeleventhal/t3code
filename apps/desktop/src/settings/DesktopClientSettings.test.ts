@@ -18,6 +18,7 @@ const clientSettings: ClientSettings = {
   confirmThreadDelete: false,
   dismissedProviderUpdateNotificationKeys: [],
   diffIgnoreWhitespace: true,
+  enableCompletionSounds: false,
   favorites: [],
   providerModelPreferences: {},
   sidebarAutoSettleAfterDays: 3,
