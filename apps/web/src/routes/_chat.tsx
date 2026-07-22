@@ -1,32 +1,41 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
-
+import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { primaryServerKeybindingsAtom } from "~/state/server";
 import { isCommandPaletteOpen } from "../commandPaletteContext";
 import { useClientSettings } from "../hooks/useSettings";
 import { openNewThreadPicker } from "../newThreadPickerBus";
 import { useProjects } from "../state/entities";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { resolveShortcutCommand } from "../keybindings";
 import {
   startNewLocalThreadFromContext,
   startNewThreadFromContext,
+  startNewThreadInSameWorktreeFromContext,
 } from "../lib/chatThreadActions";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { resolveShortcutCommand } from "../keybindings";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { isPreviewSupportedInRuntime } from "../previewStateStore";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
-import { stackedThreadToast, toastManager } from "~/components/ui/toast";
-import { primaryServerKeybindingsAtom } from "~/state/server";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const selectedThreadKeysSize = useThreadSelectionStore((state) => state.selectedThreadKeys.size);
-  const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread, routeThreadRef } =
-    useHandleNewThread();
+  const {
+    activeDraftThread,
+    activeThread,
+    defaultProjectRef,
+    defaultNewWorktreesStartFromOrigin,
+    defaultThreadEnvMode,
+    handleNewThread,
+    resolveDefaultMainCheckout,
+    resolveNewThreadDefaults,
+    routeThreadRef,
+  } = useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
   const projectCount = useProjects().length;
@@ -72,7 +81,11 @@ function ChatRouteGlobalShortcuts() {
           activeDraftThread,
           activeThread: activeThread ?? undefined,
           defaultProjectRef,
+          defaultThreadEnvMode,
+          defaultNewWorktreesStartFromOrigin,
           handleNewThread,
+          resolveDefaultMainCheckout,
+          resolveNewThreadDefaults,
         });
         return;
       }
@@ -91,7 +104,27 @@ function ChatRouteGlobalShortcuts() {
           activeDraftThread,
           activeThread: activeThread ?? undefined,
           defaultProjectRef,
+          defaultThreadEnvMode,
+          defaultNewWorktreesStartFromOrigin,
           handleNewThread,
+          resolveDefaultMainCheckout,
+          resolveNewThreadDefaults,
+        });
+        return;
+      }
+
+      if (command === "chat.newSameWorktree") {
+        event.preventDefault();
+        event.stopPropagation();
+        void startNewThreadInSameWorktreeFromContext({
+          activeDraftThread,
+          activeThread: activeThread ?? undefined,
+          defaultProjectRef,
+          defaultThreadEnvMode,
+          defaultNewWorktreesStartFromOrigin,
+          handleNewThread,
+          resolveDefaultMainCheckout,
+          resolveNewThreadDefaults,
         });
         return;
       }
@@ -147,8 +180,12 @@ function ChatRouteGlobalShortcuts() {
   }, [
     activeDraftThread,
     activeThread,
+    defaultNewWorktreesStartFromOrigin,
+    defaultThreadEnvMode,
     clearSelection,
     handleNewThread,
+    resolveDefaultMainCheckout,
+    resolveNewThreadDefaults,
     keybindings,
     defaultProjectRef,
     previewOpen,
