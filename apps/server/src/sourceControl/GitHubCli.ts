@@ -282,11 +282,13 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly state: ChangeRequestState | "all";
       readonly limit?: number;
+      readonly repository?: string;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
+      readonly repository?: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
@@ -310,16 +312,19 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly title: string;
       readonly bodyFile: string;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
+      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly force?: boolean;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
   }
 >()("t3/sourceControl/GitHubCli") {}
@@ -467,7 +472,7 @@ export const make = Effect.gen(function* () {
               "--limit",
               String(input.limit ?? (input.state === "open" ? 1 : 20)),
               "--repo",
-              context.baseRepository,
+              input.repository ?? context.baseRepository,
               "--json",
               "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
             ],
@@ -504,7 +509,7 @@ export const make = Effect.gen(function* () {
               "view",
               input.reference,
               "--repo",
-              context.baseRepository,
+              input.repository ?? context.baseRepository,
               "--json",
               "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
             ],
@@ -550,14 +555,19 @@ export const make = Effect.gen(function* () {
     createPullRequest: (input) =>
       resolvePullRequestRepositoryContext(input.cwd).pipe(
         Effect.flatMap((context) => {
-          const base = parseGitHubRepositoryCoordinate(context.baseRepository);
+          const repository = input.repository ?? context.baseRepository;
+          const contextHost = context.baseRepository.split("/")[0];
+          const qualifiedRepository =
+            repository.split("/").length === 2 ? `${contextHost}/${repository}` : repository;
+          const requestContext = { ...context, baseRepository: qualifiedRepository };
+          const base = parseGitHubRepositoryCoordinate(qualifiedRepository);
           const head = parseGitHubRepositoryCoordinate(context.headRepository);
           if (
             base &&
             head &&
-            context.baseRepository.toLowerCase() !== context.headRepository.toLowerCase()
+            qualifiedRepository.toLowerCase() !== context.headRepository.toLowerCase()
           ) {
-            const qualifiedHead = qualifyPullRequestHead(context, input.headSelector);
+            const qualifiedHead = qualifyPullRequestHead(requestContext, input.headSelector);
             const separatorIndex = qualifiedHead.indexOf(":");
             const headBranch =
               separatorIndex >= 0 ? qualifiedHead.slice(separatorIndex + 1) : qualifiedHead;
@@ -593,13 +603,13 @@ export const make = Effect.gen(function* () {
               "--base",
               input.baseBranch,
               "--head",
-              qualifyPullRequestHead(context, input.headSelector),
+              qualifyPullRequestHead(requestContext, input.headSelector),
               "--title",
               input.title,
               "--body-file",
               input.bodyFile,
               "--repo",
-              context.baseRepository,
+              repository,
             ],
           });
         }),
@@ -613,7 +623,7 @@ export const make = Effect.gen(function* () {
             args: [
               "repo",
               "view",
-              context.baseRepository,
+              input.repository ?? context.baseRepository,
               "--json",
               "defaultBranchRef",
               "--jq",
@@ -637,7 +647,7 @@ export const make = Effect.gen(function* () {
               input.reference,
               ...(input.force ? ["--force"] : []),
               "--repo",
-              context.baseRepository,
+              input.repository ?? context.baseRepository,
             ],
           }),
         ),

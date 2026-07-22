@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { SourceControlProviderError, type ChangeRequest } from "@t3tools/contracts";
+import { parseGitHubRepositoryNameWithOwnerFromRemoteUrl } from "@t3tools/shared/git";
 
 import * as GitHubCli from "./GitHubCli.ts";
 import { findAuthenticatedGitHubAccount, parseGitHubAuthStatus } from "./gitHubAuthStatus.ts";
@@ -90,16 +91,31 @@ export const discovery = {
 
 export const make = Effect.gen(function* () {
   const github = yield* GitHubCli.GitHubCli;
+  const withRepositoryFromContext = <Input extends object>(
+    input: Input,
+    context: SourceControlProvider.SourceControlProviderContext | undefined,
+  ): Input | (Input & { readonly repository: string }) => {
+    const repository =
+      context?.remoteName === "upstream"
+        ? parseGitHubRepositoryNameWithOwnerFromRemoteUrl(context.remoteUrl)
+        : null;
+    return repository ? { ...input, repository } : input;
+  };
 
   const listChangeRequests: SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"] =
     (input) =>
       github
-        .listPullRequests({
-          cwd: input.cwd,
-          headSelector: input.headSelector,
-          state: input.state,
-          ...(input.limit !== undefined ? { limit: input.limit } : {}),
-        })
+        .listPullRequests(
+          withRepositoryFromContext(
+            {
+              cwd: input.cwd,
+              headSelector: input.headSelector,
+              state: input.state,
+              ...(input.limit !== undefined ? { limit: input.limit } : {}),
+            },
+            input.context,
+          ),
+        )
         .pipe(
           Effect.map((items) => items.map(toChangeRequest)),
           Effect.mapError(
@@ -122,7 +138,7 @@ export const make = Effect.gen(function* () {
     kind: "github",
     listChangeRequests,
     getChangeRequest: (input) =>
-      github.getPullRequest(input).pipe(
+      github.getPullRequest(withRepositoryFromContext(input, input.context)).pipe(
         Effect.map(toChangeRequest),
         Effect.mapError(
           (error) =>
@@ -141,13 +157,18 @@ export const make = Effect.gen(function* () {
       ),
     createChangeRequest: (input) =>
       github
-        .createPullRequest({
-          cwd: input.cwd,
-          baseBranch: input.baseRefName,
-          headSelector: input.headSelector,
-          title: input.title,
-          bodyFile: input.bodyFile,
-        })
+        .createPullRequest(
+          withRepositoryFromContext(
+            {
+              cwd: input.cwd,
+              baseBranch: input.baseRefName,
+              headSelector: input.headSelector,
+              title: input.title,
+              bodyFile: input.bodyFile,
+            },
+            input.context,
+          ),
+        )
         .pipe(
           Effect.mapError(
             (error) =>
@@ -213,7 +234,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     getDefaultBranch: (input) =>
-      github.getDefaultBranch(input).pipe(
+      github.getDefaultBranch(withRepositoryFromContext(input, input.context)).pipe(
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({
@@ -227,7 +248,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     checkoutChangeRequest: (input) =>
-      github.checkoutPullRequest(input).pipe(
+      github.checkoutPullRequest(withRepositoryFromContext(input, input.context)).pipe(
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({

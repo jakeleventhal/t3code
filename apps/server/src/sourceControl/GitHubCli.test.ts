@@ -231,6 +231,7 @@ describe("GitHubCli.layer", () => {
         cwd: "/repo",
         headSelector: "feature/pr-list",
         state: "open",
+        repository: "T3Tools/t3code",
       });
 
       assert.deepStrictEqual(result, [
@@ -257,7 +258,7 @@ describe("GitHubCli.layer", () => {
           "--limit",
           "1",
           "--repo",
-          "github.com/pingdotgg/codething-mvp",
+          "T3Tools/t3code",
           "--json",
           "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
