@@ -244,6 +244,9 @@ function ThreadRouteContent(
   useEffect(() => {
     if (
       fileInspector.supported &&
+      // Chat threads suppress the files/git inspectors while keeping a real
+      // workspace root, so the pane has to close on the kind too — otherwise
+      // switching into one leaves an empty trailing column.
       (selectedThreadCwd === null || selectedProjectIsChats) &&
       inspectorMode === null &&
       panes.auxiliaryPaneVisible
@@ -705,6 +708,9 @@ function ThreadRouteContent(
         onPress: props.onReturnToThread,
       });
     }
+    // The Chat pseudo-project has no codebase behind it, so the Android
+    // header keeps only the navigation action above. Its workspace root is a
+    // real directory, so the cwd/workspaceRoot guards below never catch it.
     if (selectedProjectIsChats) return actions;
     if (selectedThreadCwd !== null) {
       actions.push({
@@ -740,6 +746,7 @@ function ThreadRouteContent(
     handleOpenGitInspector,
     handleToggleInspector,
     props.onReturnToThread,
+    selectedProjectIsChats,
     selectedThreadCwd,
     selectedProjectIsChats,
     selectedThreadProject?.workspaceRoot,
