@@ -22,7 +22,10 @@ import {
   effectiveSnoozed,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import {
+  isChatsProject,
+  type EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/models";
 import {
   scopeProjectRef,
   scopeThreadRef,
@@ -3268,6 +3271,7 @@ export default function Sidebar() {
                         environmentId={scopedProjectGroup.environmentId}
                         cwd={scopedProjectGroup.workspaceRoot}
                         faviconPath={scopedProjectGroup.faviconPath}
+                        kind={scopedProjectGroup.kind}
                         className="size-4 shrink-0"
                       />
                     ) : (
@@ -3306,10 +3310,11 @@ export default function Sidebar() {
                               environmentId={project.environmentId}
                               cwd={project.workspaceRoot}
                               faviconPath={project.faviconPath}
+                              kind={project.kind}
                               className="size-4 shrink-0"
                             />
                             <span className="min-w-0 truncate text-sm">{project.displayName}</span>
-                            <button
+                            {!isChatsProject(project) ? <button
                               type="button"
                               aria-label={`Project settings for ${project.displayName}`}
                               title={`Project settings for ${project.displayName}`}
@@ -3320,7 +3325,7 @@ export default function Sidebar() {
                               }}
                             >
                               <SettingsIcon className="size-3.5" />
-                            </button>
+                            </button> : null}
                           </MenuRadioItem>
                         );
                       })}

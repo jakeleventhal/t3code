@@ -141,6 +141,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -2280,9 +2281,10 @@ export function ArchivedThreadsPanel() {
               {
                 id: project.id,
                 environmentId,
-                name: project.title,
+                name: projectDisplayTitle(project),
                 cwd: project.workspaceRoot,
                 faviconPath: project.faviconPath,
+                kind: project.kind,
               },
             ] as const,
         ),
@@ -2409,6 +2411,7 @@ export function ArchivedThreadsPanel() {
                 environmentId={project.environmentId}
                 cwd={project.cwd}
                 faviconPath={project.faviconPath}
+                kind={project.kind}
               />
             }
           >

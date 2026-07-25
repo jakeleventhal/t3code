@@ -1,9 +1,9 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectKind } from "@t3tools/contracts";
 import {
   getProjectFaviconCacheKey,
   isProjectFaviconFallbackUrl,
 } from "@t3tools/shared/projectFavicon";
-import { FolderIcon } from "lucide-react";
+import { FolderIcon, MessageCircleIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import { useState } from "react";
 import { useAssetUrlState } from "../assets/assetUrls";
@@ -17,12 +17,14 @@ export function ProjectFavicon(input: {
   faviconPath?: string | null | undefined;
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
+  kind?: ProjectKind | undefined;
 }) {
   const state = useProjectFaviconAsset(input);
   const src = state._tag === "Success" ? state.url : null;
-  const FallbackIcon = input.fallbackIcon ?? FolderIcon;
+  const FallbackIcon =
+    input.kind === "chats" ? MessageCircleIcon : (input.fallbackIcon ?? FolderIcon);
 
-  if (!src || isProjectFaviconFallbackUrl(src)) {
+  if (input.kind === "chats" || !src || isProjectFaviconFallbackUrl(src)) {
     return <ProjectFaviconFallback className={input.className} icon={FallbackIcon} />;
   }
 

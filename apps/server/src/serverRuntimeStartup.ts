@@ -168,6 +168,31 @@ export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
   model: DEFAULT_MODEL,
 });
 
+export const CHATS_PROJECT_TITLE = "Chat";
+
+/** Ensure the reserved codebase-free Chat project exists. */
+export const ensureChatsProject = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
+  const serverConfig = yield* ServerConfig.ServerConfig;
+  const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+
+  const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
+    serverConfig.chatsDir,
+  );
+  if (Option.isSome(existingProject)) return;
+
+  yield* orchestrationEngine.dispatch({
+    type: "project.create",
+    commandId: CommandId.make(yield* crypto.randomUUIDv4),
+    projectId: ProjectId.make(yield* crypto.randomUUIDv4),
+    title: CHATS_PROJECT_TITLE,
+    workspaceRoot: serverConfig.chatsDir,
+    createWorkspaceRootIfMissing: true,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
 export const resolveWelcomeBase = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const segments = serverConfig.cwd.split(/[/\\]/).filter(Boolean);
@@ -352,6 +377,18 @@ export const make = (options?: StartupOptions) =>
           yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
           yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
         }),
+      );
+
+      yield* forkParked(
+        runStartupPhase(
+          "chats.ensure",
+          ensureChatsProject.pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.catch((cause) =>
+              Effect.logWarning("startup chats project ensure failed", { cause }),
+            ),
+          ),
+        ),
       );
 
       const welcomeBase = yield* resolveWelcomeBase;

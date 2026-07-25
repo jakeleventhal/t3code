@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  type KeybindingCommand,
   isProviderDriverKind,
   ProjectId,
   type ModelSelection,
@@ -26,6 +27,20 @@ export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
+
+export function isWorkspaceShortcutBlockedForChats(
+  command: KeybindingCommand,
+  activeProjectIsChats: boolean,
+): boolean {
+  return (
+    activeProjectIsChats &&
+    (command === "terminal.toggle" ||
+      command === "terminal.split" ||
+      command === "terminal.splitVertical" ||
+      command === "terminal.new" ||
+      command === "diff.toggle")
+  );
+}
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 

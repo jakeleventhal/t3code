@@ -1,3 +1,4 @@
+import { isChatsProject, projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ScopedProjectRef } from "@t3tools/contracts";
 import { buildProjectGroups, type ProjectGroupingSettings } from "./logicalProject";
 import type { Project } from "./types";
@@ -29,6 +30,12 @@ export interface SidebarProjectPickerEntry {
   group: SidebarProjectSnapshot;
   targetProject: SidebarProjectGroupMember;
   isPreferred: boolean;
+}
+
+export function filterManageableSidebarProjectSnapshots(
+  groups: ReadonlyArray<SidebarProjectSnapshot>,
+): SidebarProjectSnapshot[] {
+  return groups.filter((group) => !group.memberProjects.some(isChatsProject));
 }
 
 export function buildPhysicalToLogicalProjectKeyMap(input: {
@@ -102,7 +109,9 @@ export function buildSidebarProjectSnapshots(input: {
     return {
       ...representative,
       projectKey: group.key,
-      displayName: group.label,
+      displayName: isChatsProject(representative)
+        ? projectDisplayTitle(representative)
+        : group.label,
       groupedProjectCount: members.length,
       environmentPresence:
         hasLocal && hasRemote ? "mixed" : hasRemote ? "remote-only" : "local-only",
