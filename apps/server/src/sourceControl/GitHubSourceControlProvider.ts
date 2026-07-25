@@ -267,6 +267,7 @@ export const make = Effect.gen(function* () {
               headSelector: input.headSelector,
               title: input.title,
               bodyFile: input.bodyFile,
+              ...(input.source?.repository ? { headRepository: input.source.repository } : {}),
             },
             input.context,
           ),
