@@ -66,6 +66,8 @@ export function buildHomeProjectScopes(input: {
   }).map((group) => {
     return {
       key: group.key,
+      // Only Chat overrides the grouping label; codebase groups keep the
+      // repository-aware label computed by buildProjectGroups.
       title: isChatsProject(group.representative)
         ? projectDisplayTitle(group.representative)
         : group.label,
