@@ -17,6 +17,7 @@ import {
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  canSettle,
   canSnooze,
   effectiveSettled,
   effectiveSnoozed,
@@ -42,6 +43,8 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  Globe2Icon,
+  EllipsisIcon,
   MessageSquareIcon,
   PinIcon,
   PlusIcon,
@@ -50,6 +53,7 @@ import {
   SettingsIcon,
   SquarePenIcon,
   TerminalIcon,
+  Trash2Icon,
   Undo2Icon,
   XIcon,
 } from "lucide-react";
@@ -103,6 +107,9 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
+import { useRunningTerminalsForThreads } from "../state/terminalSessions";
+import { useDiscoveredPortsForThreads } from "../portDiscoveryState";
+import { previewEnvironment } from "../state/preview";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
@@ -136,6 +143,16 @@ import {
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
+import { openDiscoveredPort } from "./preview/openDiscoveredPort";
+import {
+  buildSidebarWorktreeGroups,
+  pickWorktreeGroupRepresentative,
+  pickWorktreeGroupTimeLabelThread,
+  resolveWorktreeGroupLiveStatus,
+  sidebarThreadKey,
+  type SidebarThreadClassification,
+  type SidebarWorktreeGroup,
+} from "./SidebarV2.logic";
 import {
   ThreadWorktreeIndicator,
   prStatusIndicator,
@@ -394,259 +411,12 @@ function SnoozePopoverButton(props: {
   );
 }
 
-// Subset of useSortable applied to a pinned card's root <li>. Listeners go
-// on the whole card (no dedicated handle): the pointer sensor's distance
-// constraint keeps plain clicks working, and we skip dnd-kit's aria
-// attributes since there is no keyboard sensor and the card body already
-// carries its own button semantics.
-type SortablePinnedRowBag = Pick<
-  ReturnType<typeof useSortable>,
-  "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
->;
-
-function SortablePinnedThreadRow(props: {
-  id: string;
-  children: (bag: SortablePinnedRowBag) => ReactNode;
-}) {
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.id,
-  });
-  return props.children({ listeners, setNodeRef, transform, transition, isDragging });
-}
-
-// One unsent draft session the user has invested content in. Two lines,
-// nothing else: project name, then the typed prompt. All the draft's
-// settings (model, env mode, branch, worktree) still travel with it —
-// clicking is a plain navigation to /draft/$draftId, which touches nothing.
-// While the draft is open the row renders a frozen snapshot (see
-// SidebarDraftBlock); memoized so per-keystroke block re-renders skip it
-// entirely.
-const SidebarDraftRow = memo(function SidebarDraftRow(props: {
-  draftId: DraftId;
-  session: DraftSessionState;
-  composer: ComposerThreadDraftState;
-  projectTitle: string | null;
-  projectCwd: string | null;
-  projectFaviconPath: string | null;
-  isActive: boolean;
-  onNavigate: (draftId: DraftId) => void;
-  onDiscard: (draftId: DraftId) => void;
-}) {
-  const { composer, draftId, onDiscard, onNavigate, session } = props;
-  const promptPreview = composer.prompt.trim().split("\n", 1)[0] ?? "";
-  // images mirrors persistedAttachments once rehydration finishes; before
-  // that only the persisted list is populated, hence max not sum.
-  const attachmentCount =
-    Math.max(composer.images.length, composer.persistedAttachments.length) +
-    composer.terminalContexts.length +
-    composer.elementContexts.length +
-    composer.previewAnnotations.length +
-    composer.reviewComments.length;
-  const preview =
-    promptPreview.length > 0
-      ? promptPreview
-      : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
-  const handleActivate = useCallback(() => onNavigate(draftId), [draftId, onNavigate]);
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent) => {
-      // Keys targeting the nested discard button belong to the button:
-      // preventDefault here would swallow Space's synthesized click and
-      // navigate instead of discarding.
-      if ((event.target as HTMLElement).closest("button")) return;
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        onNavigate(draftId);
-      }
-    },
-    [draftId, onNavigate],
-  );
-  const handleDiscard = useCallback(
-    (event: ReactMouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onDiscard(draftId);
-    },
-    [draftId, onDiscard],
-  );
-  return (
-    <li className="list-none py-0.5">
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid="sidebar-draft-row"
-        className={cn(
-          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none",
-          props.isActive
-            ? "bg-sidebar-row-active"
-            : "bg-amber-400/[0.04] hover:bg-amber-400/[0.08]",
-        )}
-        onClick={handleActivate}
-        onKeyDown={handleKeyDown}
-      >
-        <div className="relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
-          <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <SquarePenIcon
-              aria-hidden
-              className="size-3 shrink-0 text-amber-600 dark:text-amber-300/80"
-            />
-            <ProjectFavicon
-              environmentId={session.environmentId}
-              cwd={props.projectCwd ?? ""}
-              faviconPath={props.projectFaviconPath}
-              className="size-4 shrink-0"
-            />
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectTitle}
-            </span>
-            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
-              <button
-                type="button"
-                aria-label="Discard draft"
-                title="Discard draft"
-                onClick={handleDiscard}
-                className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
-              >
-                <XIcon className="size-3" />
-              </button>
-            </span>
-          </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
-        </div>
-      </div>
-    </li>
-  );
-});
-
-interface SidebarDraftRowData {
-  draftId: DraftId;
-  session: DraftSessionState;
-  composer: ComposerThreadDraftState;
-}
-
-// Draft sessions with user content, surfaced above the pinned block so an
-// interrupted "new thread" stays one click away. Self-contained (own store
-// subscription + closing divider) so per-keystroke composer updates
-// re-render only this block, never the whole sidebar. Vanishes at count 0.
-const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
-  projectDisplayNameByKey: ReadonlyMap<string, string>;
-  projectCwdByKey: ReadonlyMap<string, string>;
-  projectFaviconPathByKey: ReadonlyMap<string, string | null | undefined>;
-  scopedProjectKeys: ReadonlySet<string> | null;
-  routeDraftId: string | null;
-  onNavigateToDraft: (draftId: DraftId) => void;
-}) {
-  const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
-  const draftsByThreadKey = useComposerDraftStore((store) => store.draftsByThreadKey);
-  const clearDraftThread = useComposerDraftStore((store) => store.clearDraftThread);
-  // The open draft's row is FROZEN at the moment the draft became the route:
-  // it stays visible (like a thread row) but never repaints while the user
-  // types. A draft that was never navigated away from has no snapshot to
-  // freeze, so a fresh typing session shows no row at all. Captured
-  // synchronously on route change (setState-during-render derived state) so
-  // the row never flickers out for a frame between route change and capture.
-  const [frozenActive, setFrozenActive] = useState<{
-    routeDraftId: string | null;
-    row: SidebarDraftRowData | null;
-  }>({ routeDraftId: null, row: null });
-  if (frozenActive.routeDraftId !== props.routeDraftId) {
-    let row: SidebarDraftRowData | null = null;
-    if (props.routeDraftId !== null) {
-      const draftId = DraftId.make(props.routeDraftId);
-      const store = useComposerDraftStore.getState();
-      const session = store.getDraftSession(draftId);
-      const composer = store.getComposerDraft(draftId);
-      row =
-        session && session.promotedTo == null && composer && composerDraftHasUserContent(composer)
-          ? { draftId, session, composer }
-          : null;
-    }
-    setFrozenActive({ routeDraftId: props.routeDraftId, row });
-  }
-  const drafts = useMemo(() => {
-    const rows: SidebarDraftRowData[] = [];
-    // Every non-promoted session with content gets a row, mapped or not:
-    // new-thread surfaces mint fresh drafts and leave invested ones behind
-    // unmapped, so the mapping only knows about the latest per project.
-    for (const [draftKey, session] of Object.entries(draftThreadsByThreadKey)) {
-      if (session.promotedTo != null) {
-        continue;
-      }
-      if (
-        props.scopedProjectKeys !== null &&
-        !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
-      ) {
-        continue;
-      }
-      if (draftKey === props.routeDraftId) {
-        // Open draft: render the frozen entry snapshot, or nothing for a
-        // draft that has never been left. Gated on the LIVE session above so
-        // send/discard still removes the row immediately.
-        if (frozenActive.routeDraftId === draftKey && frozenActive.row !== null) {
-          rows.push(frozenActive.row);
-        }
-        continue;
-      }
-      const composer = draftsByThreadKey[draftKey];
-      if (!composer || !composerDraftHasUserContent(composer)) {
-        continue;
-      }
-      rows.push({ draftId: DraftId.make(draftKey), session, composer });
-    }
-    rows.sort((left, right) => right.session.createdAt.localeCompare(left.session.createdAt));
-    return rows;
-  }, [
-    draftThreadsByThreadKey,
-    draftsByThreadKey,
-    frozenActive,
-    props.routeDraftId,
-    props.scopedProjectKeys,
-  ]);
-  const handleDiscard = useCallback(
-    (draftId: DraftId) => {
-      // The /draft/$draftId route redirects home on its own when the draft
-      // it renders disappears, so discarding the open draft needs no
-      // special-casing here.
-      clearDraftThread(draftId);
-    },
-    [clearDraftThread],
-  );
-  if (drafts.length === 0) {
-    return null;
-  }
-  return (
-    <>
-      {drafts.map(({ composer, draftId, session }) => {
-        const projectKey = `${session.environmentId}:${session.projectId}`;
-        return (
-          <SidebarDraftRow
-            key={draftId}
-            draftId={draftId}
-            session={session}
-            composer={composer}
-            projectTitle={props.projectDisplayNameByKey.get(projectKey) ?? null}
-            projectCwd={props.projectCwdByKey.get(projectKey) ?? null}
-            projectFaviconPath={props.projectFaviconPathByKey.get(projectKey) ?? null}
-            isActive={draftId === props.routeDraftId}
-            onNavigate={props.onNavigateToDraft}
-            onDiscard={handleDiscard}
-          />
-        );
-      })}
-      <li
-        aria-hidden
-        data-testid="sidebar-draft-divider"
-        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-      />
-    </>
-  );
-});
-
-const SidebarThreadRow = memo(function SidebarThreadRow(props: {
+// Slim shelf row: one row per parked WORKTREE (snoozed or settled group).
+// `thread` is the group's representative member (route thread when it's a
+// member); lifecycle actions act on the whole group via the parent.
+const SidebarV2Row = memo(function SidebarV2Row(props: {
   thread: SidebarThreadSummary;
-  variant: "card" | "slim";
-  // Slim rows are either settled (action: un-settle) or merely quiet
-  // (seen Ready threads — action: settle).
-  variantAction: "settle" | "unsettle" | "unsnooze";
+  variantAction: "unsettle" | "unsnooze";
   // False on environments whose server predates thread.settle/unsettle:
   // the lifecycle affordances hide entirely rather than fail on click.
   settlementSupported: boolean;
@@ -680,6 +450,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   projectTitle: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
+  // Every member thread key in the row's worktree group: the row owns the
+  // group's single VCS subscription, and the partition needs the PR state
+  // under each member's key for effectiveSettled.
+  changeRequestThreadKeys: ReadonlyArray<string>;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
   onThreadActivate: (threadRef: ScopedThreadRef) => void;
   onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
@@ -689,9 +463,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   isRenaming: boolean;
   renamingTitle: string;
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
-  onSettle: (threadRef: ScopedThreadRef) => void;
   onUnsettle: (threadRef: ScopedThreadRef) => void;
-  onSnooze: (threadRef: ScopedThreadRef, preset: SnoozePreset) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -705,8 +477,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     onContextMenu,
     onAcknowledgeWoke,
     onRenameTitleChange,
-    onSettle,
-    onSnooze,
     onStartRename,
     onThreadActivate,
     onThreadClick,
@@ -716,7 +486,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     openPullRequestsInRightPanel,
     renamingTitle,
     thread,
-    variant,
     variantAction,
   } = props;
   const threadRef = useMemo(
@@ -780,61 +549,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     status === "working" || status === "monitoring" || status === "approval" || status === "input";
   const shouldRecede =
     (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
-  // Status hues follow the system-wide convention set by sidebar v1 and the
-  // mobile Live Activity/widgets (amber approval, indigo input, sky working)
-  // so a thread reads the same color everywhere it surfaces.
-  const topStatus =
-    status === "working"
-      ? {
-          label: "Working",
-          icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Working is a background state, so it rests at the dim end of what
-          // the old pulse cycled through; only the thread you have open gets
-          // the label at full strength.
-          className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
-        }
-      : status === "monitoring"
-        ? {
-            // Monitoring is calm background presence, not active progress
-            // (monitoring-pill D6), so it keeps the label at full strength.
-            label: "Monitoring",
-            icon: null,
-            className: "text-sky-600 dark:text-sky-400",
-          }
-        : status === "approval"
-          ? {
-              label: "Approval",
-              icon: null,
-              className: "text-amber-700 dark:text-amber-300",
-            }
-          : status === "input"
-            ? {
-                label: "Input",
-                icon: null,
-                className: "text-indigo-600 dark:text-indigo-300",
-              }
-            : status === "failed"
-              ? {
-                  label: "Failed",
-                  icon: null,
-                  className: "text-red-700 dark:text-red-300",
-                }
-              : isWoke
-                ? {
-                    label: "Woke",
-                    icon: "woke" as const,
-                    className: "text-amber-700 dark:text-amber-300",
-                  }
-                : isUnread
-                  ? {
-                      label: "Done",
-                      icon: "done" as const,
-                      className: "text-emerald-700 dark:text-emerald-300",
-                    }
-                  : null;
-  const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -845,10 +559,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state) : undefined;
   // Report the PR state up: the parent partitions rows with effectiveSettled,
-  // and a merged/closed PR auto-settles a thread — data only rows have.
+  // and a merged/closed PR auto-settles a thread — data only rows have. The
+  // worktree's PR state applies to every member thread of the group.
+  const prState = pr?.state ?? null;
+  const { changeRequestThreadKeys } = props;
   useEffect(() => {
-    onChangeRequestState(threadKey, prState);
-  }, [onChangeRequestState, prState, threadKey]);
+    for (const memberKey of changeRequestThreadKeys) {
+      onChangeRequestState(memberKey, prState);
+    }
+  }, [changeRequestThreadKeys, onChangeRequestState, prState]);
 
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
@@ -859,9 +578,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const modelLabel = selectedModel
     ? getTriggerDisplayModelLabel(selectedModel)
     : thread.modelSelection.model;
-
-  const isRemote =
-    props.currentEnvironmentId !== null && thread.environmentId !== props.currentEnvironmentId;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -945,14 +661,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onCommitRename(threadRef, renamingTitle, thread.title);
     }
   }, [onCommitRename, renamingTitle, thread.title, threadRef]);
-  const handleSettleClick = useCallback(
-    (event: ReactMouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onSettle(threadRef);
-    },
-    [onSettle, threadRef],
-  );
   const handleUnsettleClick = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
@@ -969,36 +677,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     },
     [onUnsnooze, threadRef],
   );
-  const handleUnpinClick = useCallback(
-    (event: ReactMouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onUnpin(threadRef);
-    },
-    [onUnpin, threadRef],
-  );
-  const handleSnoozePreset = useCallback(
-    (preset: SnoozePreset) => {
-      onSnooze(threadRef, preset);
-    },
-    [onSnooze, threadRef],
-  );
-  // While the snooze popover is open the pointer leaves the row, which
-  // would fade the hover actions out from under the open menu; pin them.
-  const [snoozeMenuOpenRaw, setSnoozeMenuOpen] = useState(false);
-  // Snooze is offered only where it can succeed: capability-gated and never
-  // on blocked-on-you work or queued turns (the server rejects both).
-  const showSnoozeButton =
-    props.snoozeSupported && canSnooze(thread, { now: new Date().toISOString() });
-  // If the thread becomes blocked while the popover is open, the button
-  // unmounts without firing onOpenChange(false). Deriving the flag keeps a
-  // stale true from permanently hiding the status label / pinning the
-  // hover actions, and the effect clears the raw state so the popover
-  // doesn't resurrect if the button later remounts.
-  const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-  useEffect(() => {
-    if (!showSnoozeButton) setSnoozeMenuOpen(false);
-  }, [showSnoozeButton]);
   const handlePrClick = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
       if (!pr?.url) return;
@@ -1051,26 +729,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
-        variant === "card"
-          ? cn(
-              "truncate",
-              isUnread || isWoke
-                ? "text-foreground"
-                : shouldRecede
-                  ? "text-secondary-label"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
-          : cn(
-              "truncate group-hover/sidebar-row:text-foreground",
-              props.isActive || isWoke
-                ? "text-foreground"
-                : isUnread
-                  ? "text-muted-foreground"
-                  : "text-secondary-label/70",
-            ),
-        isRegeneratingTitle && "opacity-[0.55]",
+        "truncate group-hover/v2-row:text-foreground",
+        props.isActive || isWoke
+          ? "text-foreground"
+          : isUnread
+            ? "text-muted-foreground"
+            : "text-muted-foreground/70",
       )}
     >
       {thread.title}
@@ -1083,10 +747,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         type="button"
         onClick={handlePrClick}
         className={cn(
-          // Sidebar chrome follows the interface font; tabular digits keep the
-          // number from reflowing as PR states stream in.
-          "shrink-0 text-xs tabular-nums hover:underline",
-          variant === "slim" && variantAction === "unsettle"
+          "shrink-0 font-mono text-xs hover:underline",
+          variantAction === "unsettle"
             ? props.isActive
               ? "text-secondary-label"
               : cn("text-secondary-label transition-colors", settledPrHoverClass)
@@ -1108,9 +770,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     </span>
   ) : null;
 
-  if (variant === "slim") {
-    return (
-      <li
+  return (
+    <li
         data-thread-item
         className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_34px]"
       >
@@ -1206,7 +867,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     <AlarmClockOffIcon className="size-3" />
                   </button>
                 )
-              ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
+              ) : !props.settlementSupported ? null : (
                 <button
                   type="button"
                   aria-label="Un-settle thread"
@@ -1218,18 +879,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 >
                   <Undo2Icon className="mb-px size-3.5" />
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  aria-label="Settle thread"
-                  onClick={handleSettleClick}
-                  className={cn(
-                    "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
-                    isWoke && "group-hover/sidebar-row:static",
-                  )}
-                >
-                  <CheckIcon className="size-3" />
-                </button>
               )}
             </span>
             {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
@@ -1237,235 +886,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           {detailsTooltip}
         </Tooltip>
       </li>
-    );
-  }
-
-  const diff = latestTurnDiff(thread);
-
-  const sortable = props.sortable;
-  return (
-    <li
-      data-thread-item
-      ref={sortable?.setNodeRef}
-      style={
-        sortable
-          ? {
-              transform: CSS.Translate.toString(sortable.transform),
-              transition: sortable.transition,
-            }
-          : undefined
-      }
-      {...(sortable?.listeners ?? {})}
-      className={cn(
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_96px]",
-        sortable?.isDragging && "z-20 opacity-80",
-      )}
-    >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <div
-              role="button"
-              tabIndex={0}
-              data-testid="sidebar-row-card"
-              aria-busy={isRegeneratingTitle || undefined}
-              className={rowSurfaceClassName}
-              onClick={handleClick}
-              onDoubleClick={handleDoubleClick}
-              onKeyDown={handleKeyDown}
-              onContextMenu={handleContextMenu}
-            />
-          }
-        >
-          <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
-            <div className="flex h-5 min-w-0 items-center gap-1.5">
-              <ProjectFavicon
-                environmentId={thread.environmentId}
-                cwd={props.projectCwd ?? ""}
-                faviconPath={props.projectFaviconPath}
-                className="size-4 shrink-0"
-              />
-              {props.projectTitle ? (
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
-                  )}
-                >
-                  {props.projectTitle}
-                </span>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {props.isPinned ? (
-                props.pinningSupported ? (
-                  <button
-                    type="button"
-                    aria-label="Unpin thread"
-                    title="Unpin thread"
-                    onClick={handleUnpinClick}
-                    className="inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <PinIcon aria-hidden className="size-3 shrink-0" />
-                  </button>
-                ) : (
-                  <PinIcon
-                    aria-label="Pinned"
-                    role="img"
-                    className="size-3 shrink-0 text-muted-foreground/65"
-                  />
-                )
-              ) : null}
-              {/* The visible state owns this slot's width: status at rest,
-                  actions on hover/keyboard focus or while the popover is open. Keeping
-                  the hidden state out of flow lets the project label reclaim
-                  space without either state overlapping it. */}
-              <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
-                {/* Read-only status labels yield to the hover actions. Woke is
-                    itself an action, so it stays pointer-enabled and visible
-                    while the other controls appear beside it. */}
-                <span
-                  className={cn(
-                    isWokeStatus
-                      ? "pointer-events-auto"
-                      : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0",
-                    "self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
-                    snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
-                  )}
-                >
-                  {topStatus ? (
-                    isWokeStatus ? (
-                      <button
-                        type="button"
-                        aria-label="Dismiss Woke notification"
-                        title="Dismiss Woke notification"
-                        onClick={handleAcknowledgeWokeClick}
-                        className={cn(
-                          "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
-                          topStatus.className,
-                        )}
-                      >
-                        <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                        <span role="status">{topStatus.label}</span>
-                      </button>
-                    ) : (
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 font-medium",
-                          topStatus.className,
-                        )}
-                      >
-                        {topStatus.icon === "working" ? (
-                          <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
-                        ) : topStatus.icon === "done" ? (
-                          <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
-                        ) : null}
-                        {/* The label alone is the live region: a role="status"
-                            wrapper around the ticking duration would make
-                            screen readers announce every second. */}
-                        <span role="status">{topStatus.label}</span>
-                        {status === "working" ? (
-                          <span aria-hidden>
-                            <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
-                          </span>
-                        ) : null}
-                      </span>
-                    )
-                  ) : (
-                    threadTimeLabel(thread)
-                  )}
-                </span>
-                {props.settlementSupported || showSnoozeButton ? (
-                  <span
-                    className={cn(
-                      // focus-visible, not focus-within: a mouse click leaves
-                      // the Settle button focused, and a plain focus-within
-                      // would keep the controls pinned over the status label
-                      // once the pointer moves away (e.g. after a failed
-                      // settle) instead of cross-fading back.
-                      "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:static group-hover/sidebar-row:opacity-100",
-                      snoozeMenuOpen && "pointer-events-auto static opacity-100",
-                    )}
-                  >
-                    {showSnoozeButton ? (
-                      <SnoozePopoverButton
-                        open={snoozeMenuOpen}
-                        onOpenChange={setSnoozeMenuOpen}
-                        onSnooze={handleSnoozePreset}
-                        timestampFormat={props.timestampFormat}
-                      />
-                    ) : null}
-                    {props.settlementSupported ? (
-                      <button
-                        type="button"
-                        aria-label="Settle thread"
-                        onClick={handleSettleClick}
-                        className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        <CheckIcon className="size-3.5" />
-                        Settle
-                      </button>
-                    ) : null}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-            <div className="mt-1 flex min-w-0">
-              {title}
-              {isRegeneratingTitle ? (
-                <span role="status" className="sr-only">
-                  Regenerating title
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-              {/* Always the branch. The plan step used to take this slot while
-                  working, but it truncated to a half-sentence and dropped the
-                  branch, so the row lost its most stable identifier. */}
-              {thread.branch ? (
-                <>
-                  <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
-                </>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {terminalStatusIcon}
-              {prBadge}
-              {diff ? (
-                <span className="shrink-0 font-mono">
-                  <span className="text-emerald-600 dark:text-emerald-400">+{diff.insertions}</span>{" "}
-                  <span className="text-red-600 dark:text-red-400">−{diff.deletions}</span>
-                </span>
-              ) : null}
-              <span
-                aria-hidden
-                className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-              >
-                {isRemote ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                    <ServerIcon aria-hidden className="size-3.5" />
-                  </span>
-                ) : null}
-                {driverKind ? (
-                  <span className="inline-flex shrink-0 items-center opacity-60">
-                    <ProviderInstanceIcon
-                      driverKind={driverKind}
-                      displayName={thread.session?.providerName ?? modelInstanceId}
-                      iconClassName="size-3.5"
-                    />
-                  </span>
-                ) : null}
-              </span>
-            </div>
-          </div>
-          {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-        </TooltipTrigger>
-        {detailsTooltip}
-      </Tooltip>
-    </li>
   );
 });
+
 
 function latestTurnDiff(
   thread: SidebarThreadSummary,
@@ -1476,37 +899,61 @@ function latestTurnDiff(
   return null;
 }
 
-const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
+// One clickable line inside a worktree card: the thread's summary text is
+// the navigation target, with the thread's own status signal and provider
+// logo trailing it (threads in one worktree can run different providers).
+const SidebarV2CardThreadRow = memo(function SidebarV2CardThreadRow(props: {
   thread: SidebarThreadSummary;
-  projectCwd: string | null;
-  projectFaviconPath: string | null;
+  isActive: boolean;
+  wokeAt: string | null;
+  jumpLabel: string | null;
   projectTitle: string | null;
+  projectCwd: string | null;
   environmentLabel: string | null;
+  branchMismatch: { threadBranch: string; currentBranch: string } | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
-  isHighlighted: boolean;
-  isRouteActive: boolean;
-  resultId: string;
-  onHighlight: () => void;
-  onSelect: () => void;
+  isRenaming: boolean;
+  renamingTitle: string;
+  onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
+  onThreadActivate: (threadRef: ScopedThreadRef) => void;
+  onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
+  onRenameTitleChange: (title: string) => void;
+  onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
+  onCancelRename: () => void;
+  onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
 }) {
-  const { thread } = props;
-  // Same details tooltip as the regular rows: a search hit is still a thread,
-  // and the hover card is how you disambiguate identically-titled results.
-  const gitCwd = thread.worktreePath ?? props.projectCwd;
-  const gitStatus = useEnvironmentQuery(
-    (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
-      ? vcsEnvironment.status({
-          environmentId: thread.environmentId,
-          input: { cwd: gitCwd },
-        })
-      : null,
+  const {
+    isRenaming,
+    onCancelRename,
+    onCommitRename,
+    onContextMenu,
+    onRenameTitleChange,
+    onStartRename,
+    onThreadActivate,
+    onThreadClick,
+    renamingTitle,
+    thread,
+  } = props;
+  const threadRef = useMemo(
+    () => scopeThreadRef(thread.environmentId, thread.id),
+    [thread.environmentId, thread.id],
   );
-  const branchMismatch = resolveLocalCheckoutBranchMismatch({
-    effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-    activeWorktreePath: thread.worktreePath,
-    activeThreadBranch: thread.branch,
-    currentGitBranch: gitStatus.data?.refName ?? null,
-  });
+  const threadKey = scopedThreadKey(threadRef);
+  const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
+
+  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const status = resolveSidebarThreadStatus(thread);
+  const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
+  const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
+  const isWoke = wokeAtDate !== null && (lastVisitedDate === null || lastVisitedDate < wokeAtDate);
+  const rowRecedes =
+    (status === "ready" || status === "working" || status === "approval" || status === "input") &&
+    !isUnread &&
+    !isWoke &&
+    !props.isActive &&
+    !isSelected;
+
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const driverKind = providerEntry?.driverKind ?? null;
@@ -1516,70 +963,654 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   const modelLabel = selectedModel
     ? getTriggerDisplayModelLabel(selectedModel)
     : thread.modelSelection.model;
-  const runningTerminalIds = useThreadRunningTerminalIds({
-    environmentId: thread.environmentId,
-    threadId: thread.id,
-  });
-  const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
+
+  const handleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.stopPropagation();
+      onThreadClick(event, threadRef);
+    },
+    [onThreadClick, threadRef],
+  );
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onContextMenu(threadRef, { x: event.clientX, y: event.clientY });
+    },
+    [onContextMenu, threadRef],
+  );
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onThreadActivate(threadRef);
+    },
+    [onThreadActivate, threadRef],
+  );
+  const handleDoubleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.stopPropagation();
+      if (isRenaming || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if ((event.target as HTMLElement).closest("button, a, input")) return;
+      event.preventDefault();
+      onStartRename(threadRef, thread.title);
+    },
+    [isRenaming, onStartRename, thread.title, threadRef],
+  );
+  const renameCommittedRef = useRef(false);
+  useEffect(() => {
+    if (isRenaming) renameCommittedRef.current = false;
+  }, [isRenaming]);
+  const handleRenameKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        renameCommittedRef.current = true;
+        onCommitRename(threadRef, renamingTitle, thread.title);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        renameCommittedRef.current = true;
+        onCancelRename();
+      }
+    },
+    [onCancelRename, onCommitRename, renamingTitle, thread.title, threadRef],
+  );
+  const handleRenameBlur = useCallback(() => {
+    if (!renameCommittedRef.current) {
+      onCommitRename(threadRef, renamingTitle, thread.title);
+    }
+  }, [onCommitRename, renamingTitle, thread.title, threadRef]);
+
+  // Per-thread signal, most-urgent first — the card's top row carries the
+  // aggregate, this glyph says which member it's about.
+  const statusGlyph =
+    status === "approval" ? (
+      <span
+        role="status"
+        aria-label="Pending approval"
+        className="size-1.5 shrink-0 rounded-full bg-amber-500"
+      />
+    ) : status === "input" ? (
+      <span
+        role="status"
+        aria-label="Awaiting input"
+        className="size-1.5 shrink-0 rounded-full bg-indigo-500"
+      />
+    ) : status === "working" ? (
+      <CircleDashedIcon
+        role="status"
+        aria-label="Working"
+        className="size-3 shrink-0 animate-status-pulse text-sky-600 motion-reduce:animate-none dark:text-sky-400"
+      />
+    ) : status === "failed" ? (
+      <CircleAlertIcon
+        role="status"
+        aria-label="Failed"
+        className="size-3 shrink-0 text-red-600 dark:text-red-400"
+      />
+    ) : isWoke ? (
+      <AlarmClockIcon
+        role="status"
+        aria-label="Woke from snooze"
+        className="size-3 shrink-0 text-amber-700 dark:text-amber-300"
+      />
+    ) : isUnread ? (
+      <span
+        role="status"
+        aria-label="Done, unread"
+        className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+      />
+    ) : null;
+
+  const title = isRenaming ? (
+    <input
+      autoFocus
+      value={renamingTitle}
+      aria-label="Thread title"
+      onChange={(event) => onRenameTitleChange(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={handleRenameKeyDown}
+      onBlur={handleRenameBlur}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
+    />
+  ) : (
+    <span
+      className={cn(
+        "min-w-0 flex-1 truncate text-sm",
+        isUnread || isWoke || props.isActive
+          ? "font-medium text-foreground"
+          : status === "failed"
+            ? "font-medium text-foreground/95"
+            : rowRecedes
+              ? "font-normal text-muted-foreground/80 group-hover/v2-thread:text-foreground"
+              : "font-medium text-foreground/90",
+      )}
+    >
+      {thread.title}
+    </span>
+  );
+
   return (
-    <li role="presentation" className="list-none">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              id={props.resultId}
-              type="button"
-              role="option"
-              // aria-activedescendant options: focus stays on the search input,
-              // which owns all keyboard interaction for the listbox.
-              tabIndex={-1}
-              aria-selected={props.isHighlighted}
-              aria-current={props.isRouteActive ? "page" : undefined}
-              aria-label={
-                props.projectTitle ? `${thread.title}, ${props.projectTitle}` : thread.title
-              }
-              onMouseMove={props.onHighlight}
-              onClick={props.onSelect}
-              className={cn(
-                "flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm outline-none",
-                props.isHighlighted || props.isRouteActive
-                  ? "bg-sidebar-row-active text-sidebar-foreground"
-                  : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-              )}
-            />
-          }
-        >
-          <ProjectFavicon
-            environmentId={thread.environmentId}
-            cwd={props.projectCwd ?? ""}
-            faviconPath={props.projectFaviconPath}
-            className="size-4 shrink-0"
-            fallbackIcon={MessageSquareIcon}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid="sidebar-v2-card-thread"
+            className={cn(
+              "group/v2-thread relative -mx-1 flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1 text-left outline-none select-none",
+              isSelected
+                ? "bg-sidebar-row-selected"
+                : props.isActive
+                  ? "bg-sidebar-row-hover"
+                  : "hover:bg-sidebar-row-hover",
+            )}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={handleKeyDown}
+            onContextMenu={handleContextMenu}
           />
-          <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-          <span className="shrink-0 text-xs text-muted-foreground/55 tabular-nums">
-            {threadTimeLabel(thread)}
+        }
+      >
+        {title}
+        {statusGlyph}
+        {driverKind ? (
+          <span className="inline-flex shrink-0 items-center opacity-60">
+            <ProviderInstanceIcon
+              driverKind={driverKind}
+              displayName={thread.session?.providerName ?? modelInstanceId}
+              iconClassName="size-3.5"
+            />
           </span>
-        </TooltipTrigger>
-        <SidebarThreadTooltip
-          thread={thread}
-          projectTitle={props.projectTitle}
-          projectCwd={props.projectCwd}
-          projectFaviconPath={props.projectFaviconPath}
-          environmentLabel={props.environmentLabel}
-          driverKind={driverKind}
-          modelInstanceId={modelInstanceId}
-          modelLabel={modelLabel}
-          branchMismatch={branchMismatch}
-          terminalStatus={terminalStatus}
-          terminalProcessCount={runningTerminalIds.length}
-        />
-      </Tooltip>
+        ) : null}
+        {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+      </TooltipTrigger>
+      <SidebarV2ThreadTooltip
+        thread={thread}
+        projectTitle={props.projectTitle}
+        projectCwd={props.projectCwd}
+        environmentLabel={props.environmentLabel}
+        driverKind={driverKind}
+        modelInstanceId={modelInstanceId}
+        modelLabel={modelLabel}
+        branchMismatch={props.branchMismatch}
+      />
+    </Tooltip>
+  );
+});
+
+// A worktree's card: repository identity, activity indicators and lifecycle
+// actions live at the card (worktree) level; each member thread renders as
+// its own clickable row inside.
+const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
+  groupKey: string;
+  threads: ReadonlyArray<SidebarThreadSummary>;
+  memberKeys: ReadonlyArray<string>;
+  // Route thread key when it belongs to this worktree, else null.
+  activeThreadKey: string | null;
+  settlementSupported: boolean;
+  snoozeSupported: boolean;
+  snoozeNow: string;
+  currentEnvironmentId: string | null;
+  environmentLabel: string | null;
+  projectCwd: string | null;
+  projectTitle: string | null;
+  providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
+  // Null while jump hints are hidden so the common case keeps memo identity.
+  jumpLabelByKey: ReadonlyMap<string, string> | null;
+  renamingThreadKey: string | null;
+  renamingTitle: string;
+  onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
+  onThreadActivate: (threadRef: ScopedThreadRef) => void;
+  onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
+  onRenameTitleChange: (title: string) => void;
+  onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
+  onCancelRename: () => void;
+  onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
+  onSettle: (threadRef: ScopedThreadRef) => void;
+  onSnooze: (threadRef: ScopedThreadRef, preset: SnoozePreset) => void;
+  onChangeRequestState: (threadKey: string, state: "open" | "closed" | "merged" | null) => void;
+}) {
+  const {
+    memberKeys,
+    onChangeRequestState,
+    onContextMenu,
+    onSettle,
+    onSnooze,
+    onThreadActivate,
+    onThreadClick,
+    threads,
+  } = props;
+  const newest = threads[threads.length - 1]!;
+  const newestRef = useMemo(
+    () => scopeThreadRef(newest.environmentId, newest.id),
+    [newest.environmentId, newest.id],
+  );
+  const activeMember =
+    props.activeThreadKey === null
+      ? null
+      : (threads.find(
+          (thread) =>
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
+            props.activeThreadKey,
+        ) ?? null);
+  const isActiveCard = activeMember !== null;
+  const environmentId = newest.environmentId;
+  const threadIds = useMemo(() => threads.map((thread) => thread.id), [threads]);
+
+  // Worktree-level activity: any member thread's terminal with a running
+  // subprocess, and any dev server discovered on a member's terminal. These
+  // sit inline with the repository row because terminals and dev servers
+  // belong to the checkout, not to an individual thread.
+  const runningTerminals = useRunningTerminalsForThreads({ environmentId, threadIds });
+  const discoveredPorts = useDiscoveredPortsForThreads({ environmentId, threadIds });
+  const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
+  const handleOpenDiscoveredPort = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const port = discoveredPorts[0];
+      if (!port) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const targetRef =
+        activeMember === null
+          ? newestRef
+          : scopeThreadRef(activeMember.environmentId, activeMember.id);
+      onThreadActivate(targetRef);
+      void (async () => {
+        const result = await openDiscoveredPort({ threadRef: targetRef, port, openPreview });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
+          return;
+        }
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open preview",
+            description:
+              error instanceof Error ? error.message : "The preview could not be opened.",
+          }),
+        );
+      })();
+    },
+    [activeMember, discoveredPorts, newestRef, onThreadActivate, openPreview],
+  );
+
+  const anySelected = useThreadSelectionStore((state) =>
+    memberKeys.some((key) => state.selectedThreadKeys.has(key)),
+  );
+  // One subscription for all members' visited stamps: a joined signature
+  // keeps the selector referentially stable while letting the card derive
+  // per-member unread/woke without a hook per member.
+  const visitedSignature = useUiStateStore((state) =>
+    memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join(" "),
+  );
+  const { anyUnread, anyWoke, wokeAtByKey } = useMemo(() => {
+    const visited = visitedSignature.split(" ");
+    let anyUnread = false;
+    let anyWoke = false;
+    const wokeAtByKey = new Map<string, string | null>();
+    threads.forEach((thread, index) => {
+      const lastVisitedAt = visited[index] === "" ? undefined : visited[index];
+      if (hasUnseenCompletion({ ...thread, lastVisitedAt })) anyUnread = true;
+      const wokeAt = threadWokeAt(thread, { now: props.snoozeNow });
+      wokeAtByKey.set(memberKeys[index]!, wokeAt);
+      if (wokeAt !== null) {
+        const lastVisitedDate = lastVisitedAt == null ? null : parseTimestampDate(lastVisitedAt);
+        const wokeDate = parseTimestampDate(wokeAt);
+        if (wokeDate !== null && (lastVisitedDate === null || lastVisitedDate < wokeDate)) {
+          anyWoke = true;
+        }
+      }
+    });
+    return { anyUnread, anyWoke, wokeAtByKey };
+  }, [memberKeys, props.snoozeNow, threads, visitedSignature]);
+
+  const liveStatus = resolveWorktreeGroupLiveStatus(threads);
+  const isInFlight = liveStatus !== null && liveStatus.kind !== "failed";
+  const shouldRecede =
+    (liveStatus === null || isInFlight) && !anyUnread && !anyWoke && !isActiveCard && !anySelected;
+  const topStatus =
+    liveStatus?.kind === "working"
+      ? {
+          label: "Working",
+          icon: "working" as const,
+          className:
+            "animate-sidebar-working-text text-sky-600 motion-reduce:animate-none dark:text-sky-400",
+        }
+      : liveStatus?.kind === "approval"
+        ? { label: "Approval", icon: null, className: "text-amber-700 dark:text-amber-300" }
+        : liveStatus?.kind === "input"
+          ? { label: "Input", icon: null, className: "text-indigo-600 dark:text-indigo-300" }
+          : liveStatus?.kind === "failed"
+            ? { label: "Failed", icon: null, className: "text-red-700 dark:text-red-300" }
+            : anyWoke
+              ? {
+                  label: "Woke",
+                  icon: "woke" as const,
+                  className: "text-amber-700 dark:text-amber-300",
+                }
+              : anyUnread
+                ? {
+                    label: "Done",
+                    icon: "done" as const,
+                    className: "text-emerald-700 dark:text-emerald-300",
+                  }
+                : null;
+
+  // The worktree's VCS state is card-level: one status subscription per
+  // checkout, PR state fanned out to every member key for the partition.
+  const worktreePath = threads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
+  const gitCwd = worktreePath ?? props.projectCwd;
+  const gitStatus = useEnvironmentQuery(
+    (newest.branch != null || worktreePath !== null) && gitCwd !== null
+      ? vcsEnvironment.status({
+          environmentId,
+          input: { cwd: gitCwd },
+        })
+      : null,
+  );
+  const branchMismatch = resolveLocalCheckoutBranchMismatch({
+    effectiveEnvMode: worktreePath === null ? "local" : "worktree",
+    activeWorktreePath: worktreePath,
+    activeThreadBranch: newest.branch,
+    currentGitBranch: gitStatus.data?.refName ?? null,
+  });
+  const pr = resolveThreadPr({
+    threadBranch: newest.branch,
+    gitStatus: gitStatus.data,
+    hasDedicatedWorktree: worktreePath !== null,
+  });
+  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const prState = pr?.state ?? null;
+  useEffect(() => {
+    for (const memberKey of memberKeys) {
+      onChangeRequestState(memberKey, prState);
+    }
+  }, [memberKeys, onChangeRequestState, prState]);
+  const openPrLink = useOpenPrLink();
+  const handlePrClick = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      event.stopPropagation();
+      if (pr?.url) openPrLink(event, pr.url);
+    },
+    [openPrLink, pr],
+  );
+
+  const handleCardClick = useCallback(
+    (event: ReactMouseEvent) => {
+      if (isTrailingDoubleClick(event.detail)) return;
+      onThreadClick(event, newestRef);
+    },
+    [newestRef, onThreadClick],
+  );
+  const handleCardContextMenu = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      onContextMenu(newestRef, { x: event.clientX, y: event.clientY });
+    },
+    [newestRef, onContextMenu],
+  );
+  const handleCardKeyDown = useCallback(
+    (event: ReactKeyboardEvent) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      onThreadActivate(newestRef);
+    },
+    [newestRef, onThreadActivate],
+  );
+  const handleSettleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onSettle(newestRef);
+    },
+    [newestRef, onSettle],
+  );
+  const handleSnoozePreset = useCallback(
+    (preset: SnoozePreset) => {
+      onSnooze(newestRef, preset);
+    },
+    [newestRef, onSnooze],
+  );
+  // While the snooze popover is open the pointer leaves the card, which
+  // would fade the hover actions out from under the open menu; pin them.
+  const [snoozeMenuOpenRaw, setSnoozeMenuOpen] = useState(false);
+  // Snooze acts on the whole worktree, so it's offered only when every
+  // member can take it — a half-applied snooze would leave the card in
+  // place and read as a failed click.
+  const snoozeNowIso = new Date().toISOString();
+  const showSnoozeButton =
+    props.snoozeSupported && threads.every((thread) => canSnooze(thread, { now: snoozeNowIso }));
+  const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
+  useEffect(() => {
+    if (!showSnoozeButton) setSnoozeMenuOpen(false);
+  }, [showSnoozeButton]);
+
+  const isRemote =
+    props.currentEnvironmentId !== null && environmentId !== props.currentEnvironmentId;
+  const diff = latestTurnDiff(newest);
+  const timeLabelThread = pickWorktreeGroupTimeLabelThread(threads);
+
+  const cardSurfaceClassName = cn(
+    "group/v2-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
+    isActiveCard
+      ? "bg-sidebar-row-active text-sidebar-foreground"
+      : anySelected
+        ? "bg-sidebar-row-selected text-sidebar-foreground"
+        : shouldRecede
+          ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+    isInFlight && !isActiveCard && !anySelected && "opacity-70 transition-opacity hover:opacity-100",
+  );
+
+  const sortable = props.sortable;
+  return (
+    <li
+      data-thread-item
+      className="list-none py-0.5 [content-visibility:auto]"
+      style={{ containIntrinsicSize: `auto ${96 + (threads.length - 1) * 24}px` }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        data-testid="sidebar-v2-row-card"
+        data-worktree-key={props.groupKey}
+        className={cardSurfaceClassName}
+        onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
+        onContextMenu={handleCardContextMenu}
+      >
+        <div className="relative z-10 px-2.5 py-2">
+          <div className="flex h-5 min-w-0 items-center gap-1.5">
+            <ProjectFavicon
+              environmentId={environmentId}
+              cwd={props.projectCwd ?? ""}
+              className="size-4 shrink-0"
+            />
+            {props.projectTitle ? (
+              <span
+                className={cn(
+                  "min-w-0 truncate text-xs text-muted-foreground/85",
+                  shouldRecede ? "font-normal" : "font-medium",
+                )}
+              >
+                {props.projectTitle}
+              </span>
+            ) : null}
+            {runningTerminals.length > 0 ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      role="img"
+                      aria-label="Terminal process running"
+                      data-testid="sidebar-v2-worktree-terminal-indicator"
+                      className="inline-flex shrink-0 items-center justify-center text-teal-600 dark:text-teal-300/90"
+                    />
+                  }
+                >
+                  <TerminalIcon className="size-3 animate-status-pulse" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">Terminal process running</TooltipPopup>
+              </Tooltip>
+            ) : null}
+            {discoveredPorts.length > 0 ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
+                      data-testid="sidebar-v2-worktree-devserver-indicator"
+                      className="inline-flex shrink-0 cursor-pointer items-center justify-center text-emerald-600 outline-hidden focus-visible:ring-1 focus-visible:ring-ring dark:text-emerald-400"
+                      onClick={handleOpenDiscoveredPort}
+                    />
+                  }
+                >
+                  <Globe2Icon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  Open localhost:{discoveredPorts[0]?.port}
+                  {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
+            <span className="relative ml-auto flex h-5 min-w-8 shrink-0 items-center justify-end pl-1 text-xs">
+              <span
+                className={cn(
+                  "tabular-nums text-muted-foreground/65 transition-opacity group-hover/v2-row:opacity-0",
+                  snoozeMenuOpen && "opacity-0",
+                )}
+              >
+                {topStatus ? (
+                  <span
+                    className={cn("inline-flex items-center gap-1 font-medium", topStatus.className)}
+                  >
+                    {topStatus.icon === "working" ? (
+                      <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
+                    ) : topStatus.icon === "done" ? (
+                      <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
+                    ) : topStatus.icon === "woke" ? (
+                      <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+                    ) : null}
+                    {/* The label alone is the live region: a role="status"
+                        wrapper around the ticking duration would make
+                        screen readers announce every second. */}
+                    <span role="status">{topStatus.label}</span>
+                    {liveStatus?.kind === "working" ? (
+                      <span aria-hidden>
+                        <WorkingDuration startedAt={liveStatus.workingStartedAt} />
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  threadTimeLabel(timeLabelThread)
+                )}
+              </span>
+              {props.settlementSupported || showSnoozeButton ? (
+                <span
+                  className={cn(
+                    "absolute inset-y-0 right-0 flex items-stretch gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/v2-row:opacity-100",
+                    snoozeMenuOpen && "opacity-100",
+                  )}
+                >
+                  {showSnoozeButton ? (
+                    <SnoozePopoverButton
+                      open={snoozeMenuOpen}
+                      onOpenChange={setSnoozeMenuOpen}
+                      onSnooze={handleSnoozePreset}
+                    />
+                  ) : null}
+                  {props.settlementSupported ? (
+                    <button
+                      type="button"
+                      aria-label="Settle worktree"
+                      onClick={handleSettleClick}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <CheckIcon className="size-3" />
+                      Settle
+                    </button>
+                  ) : null}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-col gap-px">
+            {threads.map((thread, index) => {
+              const memberKey = memberKeys[index]!;
+              return (
+                <SidebarV2CardThreadRow
+                  key={memberKey}
+                  thread={thread}
+                  isActive={props.activeThreadKey === memberKey}
+                  wokeAt={wokeAtByKey.get(memberKey) ?? null}
+                  jumpLabel={props.jumpLabelByKey?.get(memberKey) ?? null}
+                  projectTitle={props.projectTitle}
+                  projectCwd={props.projectCwd}
+                  environmentLabel={props.environmentLabel}
+                  branchMismatch={branchMismatch}
+                  providerEntryByInstanceId={props.providerEntryByInstanceId}
+                  isRenaming={props.renamingThreadKey === memberKey}
+                  renamingTitle={props.renamingThreadKey === memberKey ? props.renamingTitle : ""}
+                  onThreadClick={onThreadClick}
+                  onThreadActivate={onThreadActivate}
+                  onStartRename={props.onStartRename}
+                  onRenameTitleChange={props.onRenameTitleChange}
+                  onCommitRename={props.onCommitRename}
+                  onCancelRename={props.onCancelRename}
+                  onContextMenu={onContextMenu}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/75">
+            {newest.branch ? (
+              <span className="min-w-0 flex-1 truncate whitespace-nowrap">{newest.branch}</span>
+            ) : (
+              <span className="flex-1" />
+            )}
+            {prStatus && pr ? (
+              <button
+                type="button"
+                onClick={handlePrClick}
+                className={cn("shrink-0 font-mono text-xs hover:underline", prStatus.colorClass)}
+                aria-label={prStatus.tooltip}
+              >
+                #{pr.number}
+              </button>
+            ) : null}
+            {diff ? (
+              <span className="shrink-0 font-mono">
+                <span className="text-emerald-600 dark:text-emerald-400">+{diff.insertions}</span>{" "}
+                <span className="text-red-600 dark:text-red-400">−{diff.deletions}</span>
+              </span>
+            ) : null}
+            {isRemote ? (
+              <span
+                aria-hidden
+                className="pointer-events-none ml-auto inline-flex shrink-0 items-center text-sidebar-muted-foreground/70"
+              >
+                <ServerIcon aria-hidden className="size-3.5" />
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </li>
   );
 });
 
-export default function Sidebar() {
+export default function SidebarV2() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
@@ -1871,100 +1902,79 @@ export default function Sidebar() {
   // merging, no optimistic holds. Archived threads remain hidden here —
   // archive keeps its original "remove from sidebar" meaning.
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
-  const {
-    pinnedThreads,
-    reorderablePinnedKeys,
-    activeThreads,
-    snoozedThreads,
-    settledThreads,
-    snoozeNow,
-  } = useMemo(() => {
-    const now = `${nowMinute}:00.000Z`;
-    // Snooze classification uses a REAL clock, not the quantized minute:
-    // wake times are second-precise and a woken thread must not linger on
-    // the shelf for the rest of the minute. snoozeWakeTick re-runs this
-    // memo exactly at the next wake boundary.
-    void snoozeWakeTick;
-    const preciseNow = new Date().toISOString();
-    const visible = threads.filter(
-      (thread) =>
-        thread.archivedAt === null &&
-        (scopedProjectKeys === null ||
-          scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
-    );
-    const pinned: EnvironmentThreadShell[] = [];
-    const active: EnvironmentThreadShell[] = [];
-    const snoozed: EnvironmentThreadShell[] = [];
-    const settled: EnvironmentThreadShell[] = [];
-    for (const thread of visible) {
-      // Threads on servers without the settlement capability (old server,
-      // or descriptor not loaded yet) never classify as settled: the user
-      // could neither un-settle nor pin them, so auto-settling them would
-      // strand rows in a tail with no working affordances.
-      const supportsSettlement =
-        serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSettlement === true;
-      const supportsSnooze =
-        serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSnooze === true;
-      const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-      const changeRequestState = changeRequestStateByKey.get(threadKey) ?? null;
-      // Snooze outranks everything, including a pin: "hide until Tuesday"
-      // temporarily suspends "keep on top". The pin survives underneath —
-      // and so does its pinOrderKey, so on wake the thread reappears at
-      // its exact slot in the pinned block. (For unpinned threads
-      // this is also the snooze-beats-auto-settle rule: the wake time is a
-      // stronger statement about when the thread matters again.)
-      if (supportsSnooze && effectiveSnoozed(thread, { now: preciseNow })) {
-        snoozed.push(thread);
-        // A pin otherwise overrides the lifecycle: pinned threads never
-        // auto-settle out of sight. (The decider clears settled state on
-        // pin and the pin on settle, so pin-vs-settled conflicts only
-        // arise from stale or raced writes.)
-      } else if (thread.pinnedAt != null) {
-        pinned.push(thread);
-      } else if (
-        supportsSettlement &&
-        effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })
-      ) {
-        settled.push(thread);
-      } else {
-        active.push(thread);
+  const { activeGroups, snoozedGroups, settledGroups, snoozedThreads, settledThreads, snoozeNow } =
+    useMemo(() => {
+      const now = `${nowMinute}:00.000Z`;
+      // Snooze classification uses a REAL clock, not the quantized minute:
+      // wake times are second-precise and a woken thread must not linger on
+      // the shelf for the rest of the minute. snoozeWakeTick re-runs this
+      // memo exactly at the next wake boundary.
+      void snoozeWakeTick;
+      const preciseNow = new Date().toISOString();
+      const visible = threads.filter(
+        (thread) =>
+          thread.archivedAt === null &&
+          (scopedProjectKeys === null ||
+            scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
+      );
+      const classified: Array<{
+        thread: EnvironmentThreadShell;
+        classification: SidebarThreadClassification;
+      }> = [];
+      const snoozed: EnvironmentThreadShell[] = [];
+      const settled: EnvironmentThreadShell[] = [];
+      for (const thread of visible) {
+        // Threads on servers without the settlement capability (old server,
+        // or descriptor not loaded yet) never classify as settled: the user
+        // could neither un-settle nor pin them, so auto-settling them would
+        // strand rows in a tail with no working affordances.
+        const supportsSettlement =
+          serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSettlement ===
+          true;
+        const supportsSnooze =
+          serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSnooze === true;
+        const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+        const changeRequestState = changeRequestStateByKey.get(threadKey) ?? null;
+        // Snooze outranks settled classification: an explicitly snoozed thread
+        // belongs to the shelf even if it would also auto-settle (the shelf's
+        // wake time is a stronger statement about when it matters again).
+        if (supportsSnooze && effectiveSnoozed(thread, { now: preciseNow })) {
+          snoozed.push(thread);
+          classified.push({ thread, classification: "snoozed" });
+        } else if (
+          supportsSettlement &&
+          effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })
+        ) {
+          settled.push(thread);
+          classified.push({ thread, classification: "settled" });
+        } else {
+          classified.push({ thread, classification: "active" });
+        }
       }
-    }
-    // One shared rule on every platform (see sortPinnedThreadsByOrderKey):
-    // user-arranged keys first, keyless threads in creation order below.
-    // Server capability only gates DRAGGING — it must not influence the
-    // sort, or mixed-version fleets would render different pinned orders on
-    // web and mobile from the same data.
-    return {
-      pinnedThreads: sortPinnedThreadsForSidebar(pinned),
-      reorderablePinnedKeys: new Set(
-        pinned
-          .filter(
-            (thread) =>
-              serverConfigs.get(thread.environmentId)?.environment.capabilities.threadPinReorder ===
-              true,
-          )
-          .map((thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
-      ),
-      activeThreads: sortThreadsForSidebar(active),
-      // Soonest wake first: "what comes back next" is the shelf's question.
-      snoozedThreads: snoozed.toSorted(
-        (left, right) =>
-          firstValidTimestampMs(left.snoozedUntil ?? null) -
-          firstValidTimestampMs(right.snoozedUntil ?? null),
-      ),
-      settledThreads: sortSettledThreadsForSidebar(settled),
-      snoozeNow: preciseNow,
-    };
-  }, [
-    autoSettleAfterDays,
-    changeRequestStateByKey,
-    nowMinute,
-    scopedProjectKeys,
-    serverConfigs,
-    snoozeWakeTick,
-    threads,
-  ]);
+      // Rows are WORKTREES: threads sharing a checkout collapse into one
+      // card (any active member) or one shelf row (all parked).
+      const groups = buildSidebarWorktreeGroups(classified);
+      return {
+        ...groups,
+        // Soonest wake first: "what comes back next" is the shelf's question
+        // (and entry 0 is the wake-timer boundary below).
+        snoozedThreads: snoozed.toSorted(
+          (left, right) =>
+            firstValidTimestampMs(left.snoozedUntil ?? null) -
+            firstValidTimestampMs(right.snoozedUntil ?? null),
+        ),
+        settledThreads: settled,
+        snoozeNow: preciseNow,
+      };
+    }, [
+      autoSettleAfterDays,
+      changeRequestStateByKey,
+      nowMinute,
+      scopedProjectKeys,
+      serverConfigs,
+      snoozeWakeTick,
+      threads,
+    ]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -2022,62 +2032,69 @@ export default function Sidebar() {
     lastSettledResetKeyRef.current = settledResetKey;
     setSettledVisibleCount(SETTLED_TAIL_INITIAL_COUNT);
   }
-  const visibleSettledThreads = useMemo(() => {
-    if (settledThreads.length <= settledVisibleCount) return settledThreads;
-    const visible = settledThreads.slice(0, settledVisibleCount);
+  const groupContainsRouteThread = useCallback(
+    (group: SidebarWorktreeGroup) =>
+      routeThreadKey !== null && group.memberKeys.includes(routeThreadKey),
+    [routeThreadKey],
+  );
+  const visibleSettledGroups = useMemo(() => {
+    if (settledGroups.length <= settledVisibleCount) return settledGroups;
+    const visible = settledGroups.slice(0, settledVisibleCount);
     // The open thread must never hide under "Show more": navigating into a
-    // deep settled thread (search, deep link) pulls its row into the visible
-    // tail so the highlight and the un-settle affordance stay reachable.
-    if (routeThreadKey !== null) {
-      const routeThread = settledThreads
-        .slice(settledVisibleCount)
-        .find(
-          (thread) =>
-            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-        );
-      if (routeThread !== undefined) visible.push(routeThread);
-    }
+    // deep settled thread (search, deep link) pulls its worktree's row into
+    // the visible tail so the highlight and the un-settle affordance stay
+    // reachable.
+    const routeGroup = settledGroups.slice(settledVisibleCount).find(groupContainsRouteThread);
+    if (routeGroup !== undefined) visible.push(routeGroup);
     return visible;
-  }, [routeThreadKey, settledThreads, settledVisibleCount]);
-  const hiddenSettledCount = settledThreads.length - visibleSettledThreads.length;
+  }, [groupContainsRouteThread, settledGroups, settledVisibleCount]);
+  const hiddenSettledCount = settledGroups.length - visibleSettledGroups.length;
   const showMoreSettled = useCallback(
     () => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT),
     [],
   );
   const [settledShelfExpanded, setSettledShelfExpanded] = useState(true);
   const toggleSettledShelf = useCallback(() => setSettledShelfExpanded((value) => !value), []);
-  const renderedSettledThreads = useMemo(() => {
-    if (settledShelfExpanded) return visibleSettledThreads;
-    if (routeThreadKey === null) return [];
-    const routeThread = visibleSettledThreads.find(
-      (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-    );
-    return routeThread === undefined ? [] : [routeThread];
-  }, [routeThreadKey, settledShelfExpanded, visibleSettledThreads]);
+  const renderedSettledGroups = useMemo(() => {
+    if (settledShelfExpanded) return visibleSettledGroups;
+    const routeGroup = visibleSettledGroups.find(groupContainsRouteThread);
+    return routeGroup === undefined ? [] : [routeGroup];
+  }, [groupContainsRouteThread, settledShelfExpanded, visibleSettledGroups]);
 
   // The snoozed shelf is collapsed by default: out of the way, never gone.
-  // Collapsed threads don't render (and so don't participate in jump
+  // Collapsed rows don't render (and so don't participate in jump
   // shortcuts or multi-select), matching the settled tail's paging model.
   const [snoozedShelfExpanded, setSnoozedShelfExpanded] = useState(false);
   const toggleSnoozedShelf = useCallback(() => setSnoozedShelfExpanded((value) => !value), []);
-  const visibleSnoozedThreads = useMemo(() => {
-    if (snoozedShelfExpanded) return snoozedThreads;
+  const visibleSnoozedGroups = useMemo(() => {
+    if (snoozedShelfExpanded) return snoozedGroups;
     // The open thread must never vanish behind the collapsed shelf: a
     // snoozed thread reached by route (deep link, open before snoozing
-    // elsewhere) keeps its row — with highlight and wake affordance — same
-    // exception the settled tail's "Show more" makes.
-    if (routeThreadKey === null) return [];
-    const routeThread = snoozedThreads.find(
-      (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-    );
-    return routeThread === undefined ? [] : [routeThread];
-  }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
+    // elsewhere) keeps its worktree's row — with highlight and wake
+    // affordance — same exception the settled tail's "Show more" makes.
+    const routeGroup = snoozedGroups.find(groupContainsRouteThread);
+    return routeGroup === undefined ? [] : [routeGroup];
+  }, [groupContainsRouteThread, snoozedShelfExpanded, snoozedGroups]);
 
+  // Shelf rows stand in for their whole group; the representative prefers
+  // the route thread so highlight and navigation stay honest.
+  const snoozedRepThreads = useMemo(
+    () => visibleSnoozedGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
+    [routeThreadKey, visibleSnoozedGroups],
+  );
+  const settledRepThreads = useMemo(
+    () => renderedSettledGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
+    [renderedSettledGroups, routeThreadKey],
+  );
+  // The flat jump/selection spine: card members in visual order, then the
+  // shelf representatives. Hidden group members are not navigable rows.
   const orderedThreads = useMemo(
-    () => [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
-    [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads],
+    () => [
+      ...activeGroups.flatMap((group) => group.threads),
+      ...snoozedRepThreads,
+      ...settledRepThreads,
+    ],
+    [activeGroups, snoozedRepThreads, settledRepThreads],
   );
   const orderedThreadKeys = useMemo(
     () =>
@@ -2107,6 +2124,20 @@ export default function Sidebar() {
   // event and defeat row memoization during streaming.
   const threadByKeyRef = useRef(threadByKey);
   threadByKeyRef.current = threadByKey;
+  // Every member key of every group (including members hidden behind a
+  // collapsed shelf): lifecycle actions expand a clicked thread to its
+  // whole worktree through this map.
+  const groupByThreadKey = useMemo(() => {
+    const map = new Map<string, SidebarWorktreeGroup>();
+    for (const group of [...activeGroups, ...snoozedGroups, ...settledGroups]) {
+      for (const memberKey of group.memberKeys) {
+        map.set(memberKey, group);
+      }
+    }
+    return map;
+  }, [activeGroups, snoozedGroups, settledGroups]);
+  const groupByThreadKeyRef = useRef(groupByThreadKey);
+  groupByThreadKeyRef.current = groupByThreadKey;
   // handleNewThread is inherently unstable (depends on the projects list);
   // a ref keeps it out of attemptSettle's dependency array.
   const handleNewThreadRef = useRef(newThreadContext.handleNewThread);
@@ -2323,309 +2354,229 @@ export default function Sidebar() {
     [navigateToThread, router],
   );
 
-  const attemptSettle = useCallback(
-    (threadRef: ScopedThreadRef, opts: { coSettlingKeys?: ReadonlySet<string> } = {}) => {
+  // Lifecycle actions act on the WORKTREE: a clicked thread expands to its
+  // whole group (falling back to just itself when it isn't in any group,
+  // e.g. a row that vanished mid-flight).
+  const resolveWorktreeThreads = useCallback(
+    (threadRef: ScopedThreadRef): ReadonlyArray<SidebarThreadSummary> => {
+      const threadKey = scopedThreadKey(threadRef);
+      const group = groupByThreadKeyRef.current.get(threadKey);
+      if (group) return group.threads;
+      const shell = threadByKeyRef.current.get(threadKey);
+      return shell ? [shell] : [];
+    },
+    [],
+  );
+  const attemptSettleThreads = useCallback(
+    (
+      groupThreads: ReadonlyArray<SidebarThreadSummary>,
+      opts: { coParkingKeys?: ReadonlySet<string> } = {},
+    ) => {
       void (async () => {
-        const threadKey = scopedThreadKey(threadRef);
-        if (settlingThreadKeysRef.current.has(threadKey)) return;
-        settlingThreadKeysRef.current.add(threadKey);
+        const now = new Date().toISOString();
+        const pending = groupThreads.filter((thread) => {
+          const threadKey = sidebarThreadKey(thread);
+          return (
+            !settlingThreadKeysRef.current.has(threadKey) &&
+            !settledThreadKeysRef.current.has(threadKey) &&
+            thread.settledOverride !== "settled"
+          );
+        });
+        if (pending.length === 0) return;
+        // Prefer members the server will accept; when none qualify, send
+        // the first anyway so the user sees the server's reason.
+        const settleable = pending.filter((thread) => canSettle(thread, { now }));
+        const targets = settleable.length > 0 ? settleable : [pending[0]!];
+        const targetKeys = targets.map(sidebarThreadKey);
+        for (const key of targetKeys) settlingThreadKeysRef.current.add(key);
         try {
-          const navigateAfterSettle = planForwardNavigation(threadKey, opts.coSettlingKeys);
-          const result = await settleThread(threadRef);
-          if (result._tag === "Failure") {
-            // Never navigate away from a thread that did not settle.
-            if (!isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: "Failed to settle thread",
-                  description: error instanceof Error ? error.message : "An error occurred.",
-                }),
-              );
+          // Forward navigation must skip everything leaving in this batch —
+          // the whole worktree plus any co-parking selection.
+          const allParkingKeys = new Set([
+            ...(opts.coParkingKeys ?? []),
+            ...groupThreads.map(sidebarThreadKey),
+          ]);
+          const routeKey = targetKeys.find((key) => key === routeThreadKeyRef.current) ?? null;
+          const navigateAfterSettle =
+            routeKey === null ? null : planForwardNavigation(routeKey, allParkingKeys);
+          let routeSettled = false;
+          for (const target of targets) {
+            const result = await settleThread(scopeThreadRef(target.environmentId, target.id));
+            if (result._tag === "Failure") {
+              // Never navigate away from a thread that did not settle.
+              if (!isAtomCommandInterrupted(result)) {
+                const error = squashAtomCommandFailure(result);
+                toastManager.add(
+                  stackedThreadToast({
+                    type: "error",
+                    title: "Failed to settle thread",
+                    description: error instanceof Error ? error.message : "An error occurred.",
+                  }),
+                );
+              }
+            } else if (sidebarThreadKey(target) === routeKey) {
+              routeSettled = true;
             }
-            return;
           }
           // Only move forward if the user is still on the settled thread —
           // a navigation made during the await wins over ours.
-          if (routeThreadKeyRef.current === threadKey) {
+          if (routeSettled && routeThreadKeyRef.current === routeKey) {
             navigateAfterSettle?.();
           }
         } finally {
-          settlingThreadKeysRef.current.delete(threadKey);
+          for (const key of targetKeys) settlingThreadKeysRef.current.delete(key);
         }
       })();
     },
     [planForwardNavigation, settleThread],
   );
-  const attemptUnsettle = useCallback(
+  const attemptSettle = useCallback(
     (threadRef: ScopedThreadRef) => {
+      attemptSettleThreads(resolveWorktreeThreads(threadRef));
+    },
+    [attemptSettleThreads, resolveWorktreeThreads],
+  );
+  const attemptUnsettleThreads = useCallback(
+    (groupThreads: ReadonlyArray<SidebarThreadSummary>) => {
       void (async () => {
-        const result = await unsettleThread(threadRef);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to un-settle thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
+        // Un-settle every parked member; already-active members are no-ops
+        // skipped client-side.
+        const settledMembers = groupThreads.filter((thread) =>
+          settledThreadKeysRef.current.has(sidebarThreadKey(thread)),
+        );
+        const targets = settledMembers.length > 0 ? settledMembers : groupThreads.slice(0, 1);
+        for (const target of targets) {
+          const result = await unsettleThread(scopeThreadRef(target.environmentId, target.id));
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Failed to un-settle thread",
+                description: error instanceof Error ? error.message : "An error occurred.",
+              }),
+            );
+          }
         }
       })();
     },
     [unsettleThread],
   );
-  const attemptUnsnooze = useCallback(
+  const attemptUnsettle = useCallback(
     (threadRef: ScopedThreadRef) => {
+      attemptUnsettleThreads(resolveWorktreeThreads(threadRef));
+    },
+    [attemptUnsettleThreads, resolveWorktreeThreads],
+  );
+  const attemptUnsnoozeRefs = useCallback(
+    (threadRefs: ReadonlyArray<ScopedThreadRef>) => {
       void (async () => {
-        const result = await unsnoozeThread(threadRef);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to wake thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
+        for (const threadRef of threadRefs) {
+          const result = await unsnoozeThread(threadRef);
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Failed to wake thread",
+                description: error instanceof Error ? error.message : "An error occurred.",
+              }),
+            );
+          }
         }
       })();
     },
     [unsnoozeThread],
   );
-  // Drag-to-reorder for the pinned block. A drop computes ONE fractional key
-  // for the moved thread and sends it to that thread's own server (see
-  // planPinnedReorder for the keyless-neighbor materialization case, which
-  // instead rewrites every key in the section). The optimistic order keeps
-  // the card where it was dropped until EVERY key the drop wrote is
-  // reflected in canonical state — a section rewrite is several sequential
-  // writes, and releasing on the first landed key would expose the
-  // half-written canonical order, reshuffling the block once per write.
-  // A failed write clears the override (the card snaps back) with a toast.
-  // A key we did NOT write landing (a concurrent client's reorder that must
-  // win) and ANY membership change (new pin, unpin, snooze/wake) also
-  // release it: the override can't say where members it never saw belong,
-  // and holding it would launder a stale order into later drags.
-  const pinnedDndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
-  const [optimisticPinnedOrder, setOptimisticPinnedOrder] = useState<{
-    readonly order: readonly string[];
-    /** pinOrderKey per thread as of the drop — the baseline that tells a
-        concurrent client's write apart from one of our own landing. */
-    readonly keysAtDrop: ReadonlyMap<string, string | null>;
-    /** The keys this drop writes (one per planned assignment). The
-        override holds until all of them appear in canonical state. */
-    readonly assignedKeys: ReadonlyMap<string, string>;
-  } | null>(null);
-  const orderedPinnedThreads = useMemo(() => {
-    if (optimisticPinnedOrder === null) return pinnedThreads;
-    return orderItemsByPreferredIds({
-      items: pinnedThreads,
-      preferredIds: optimisticPinnedOrder.order,
-      getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-    });
-  }, [optimisticPinnedOrder, pinnedThreads]);
-  useEffect(() => {
-    if (optimisticPinnedOrder === null) return;
-    const canonical = pinnedThreads.filter((thread) =>
-      reorderablePinnedKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
-    );
-    const canonicalKeys = canonical.map((thread) =>
-      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-    );
-    // The override represents one drop against one snapshot of the world.
-    // Release it when the world moves on: membership changed (pin/unpin/
-    // snooze/wake — the override can't say where members it never saw
-    // belong), a key changed to something we did NOT write (a concurrent
-    // client's reorder that must win), every key we wrote has landed, or
-    // canonical already matches. Releasing on the FIRST landed key instead
-    // of the last exposes the half-written order mid-materialization and
-    // the block visibly reshuffles once per write.
-    const membershipChanged =
-      canonicalKeys.length !== optimisticPinnedOrder.order.length ||
-      canonicalKeys.some((key) => !optimisticPinnedOrder.order.includes(key));
-    const foreignKeyLanded = canonical.some((thread, index) => {
-      const threadKey = canonicalKeys[index]!;
-      const currentKey = thread.pinOrderKey ?? null;
-      if (currentKey === optimisticPinnedOrder.keysAtDrop.get(threadKey)) return false;
-      return currentKey !== optimisticPinnedOrder.assignedKeys.get(threadKey);
-    });
-    const currentKeyByThreadKey = new Map(
-      canonical.map((thread, index) => [canonicalKeys[index]!, thread.pinOrderKey ?? null]),
-    );
-    const allAssignmentsLanded = [...optimisticPinnedOrder.assignedKeys].every(
-      ([threadKey, orderKey]) => currentKeyByThreadKey.get(threadKey) === orderKey,
-    );
-    const orderConfirmed =
-      !membershipChanged &&
-      canonicalKeys.every((key, index) => key === optimisticPinnedOrder.order[index]);
-    if (membershipChanged || foreignKeyLanded || allAssignmentsLanded || orderConfirmed) {
-      setOptimisticPinnedOrder(null);
-    }
-  }, [optimisticPinnedOrder, pinnedThreads, reorderablePinnedKeys]);
-  const attemptPin = useCallback(
+  const attemptUnsnooze = useCallback(
     (threadRef: ScopedThreadRef) => {
-      void (async () => {
-        // Fresh pins take the top of the arranged run: pinThread computes a
-        // key before the smallest key across ALL pinned shells — including
-        // snoozed pins hidden from this list, whose keys are still part of
-        // the run — so the new pin can't land beneath a hidden head.
-        const result = await pinThread(threadRef);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to pin thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
-      })();
-    },
-    [pinThread],
-  );
-  const attemptUnpin = useCallback(
-    (threadRef: ScopedThreadRef) => {
-      void (async () => {
-        const result = await unpinThread(threadRef);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to unpin thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
-      })();
-    },
-    [unpinThread],
-  );
-
-  const handlePinnedDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const activeKey = String(event.active.id);
-      const overKey = event.over === null ? null : String(event.over.id);
-      if (overKey === null || activeKey === overKey) return;
-      const reorderable = orderedPinnedThreads.filter((thread) =>
-        reorderablePinnedKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+      const groupThreads = resolveWorktreeThreads(threadRef);
+      const snoozedMembers = groupThreads.filter((thread) =>
+        snoozedThreadKeysRef.current.has(sidebarThreadKey(thread)),
       );
-      const keys = reorderable.map((thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      const targets = (snoozedMembers.length > 0 ? snoozedMembers : groupThreads).map((thread) =>
+        scopeThreadRef(thread.environmentId, thread.id),
       );
-      const fromIndex = keys.indexOf(activeKey);
-      const toIndex = keys.indexOf(overKey);
-      if (fromIndex === -1 || toIndex === -1) return;
-      const newOrder = arrayMove([...keys], fromIndex, toIndex);
-      const threadByKey = new Map(reorderable.map((thread, index) => [keys[index]!, thread]));
-      const keysAtDrop = new Map(
-        reorderable.map((thread, index) => [keys[index]!, thread.pinOrderKey ?? null]),
-      );
-      const assignments = planPinnedReorder({
-        orderedIds: newOrder,
-        keysById: keysAtDrop,
-        movedId: activeKey,
-      });
-      if (assignments.length === 0) return;
-      setOptimisticPinnedOrder({
-        order: newOrder,
-        keysAtDrop,
-        assignedKeys: new Map(
-          assignments.map((assignment) => [assignment.id, assignment.orderKey]),
-        ),
-      });
-      void (async () => {
-        // Sequential, stop on first failure. There is deliberately no
-        // rollback: every key write is a complete, valid placement on its
-        // own, so a partial materialization leaves a sensible order (and
-        // the next drag repairs the rest) — unwinding writes across
-        // servers would trade that for real inconsistency windows.
-        for (const assignment of assignments) {
-          const thread = threadByKey.get(assignment.id);
-          if (thread === undefined) continue;
-          const result = await reorderPinnedThread(
-            scopeThreadRef(thread.environmentId, thread.id),
-            assignment.orderKey,
-          );
-          if (result._tag === "Failure") {
-            // Any failure — interrupted included — releases the override:
-            // a key that never lands would otherwise hold it until some
-            // unrelated world change came along.
-            setOptimisticPinnedOrder(null);
-            if (isAtomCommandInterrupted(result)) return;
-            const error = squashAtomCommandFailure(result);
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Failed to reorder pinned threads",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-            return;
-          }
-        }
-      })();
+      attemptUnsnoozeRefs(targets.length > 0 ? targets : [threadRef]);
     },
-    [orderedPinnedThreads, reorderPinnedThread, reorderablePinnedKeys],
+    [attemptUnsnoozeRefs, resolveWorktreeThreads],
   );
   // One snooze per thread at a time — same double-dispatch guard as settle.
   const snoozingThreadKeysRef = useRef(new Set<string>());
-  const performSnooze = useCallback(
-    async (
-      threadRef: ScopedThreadRef,
-      preset: SnoozePreset,
-      opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
-    ) => {
-      const threadKey = scopedThreadKey(threadRef);
-      if (snoozingThreadKeysRef.current.has(threadKey)) {
-        return { status: "skipped" } as const;
-      }
-      snoozingThreadKeysRef.current.add(threadKey);
-      try {
-        // Snoozing the open thread moves you forward, same as settle —
-        // both park the thread you're done with for now.
-        const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
-        const result = await snoozeThread(threadRef, preset.snoozedUntil);
-        if (result._tag === "Failure") {
-          // Never navigate away from a thread that did not snooze.
-          return isAtomCommandInterrupted(result)
-            ? ({ status: "interrupted" } as const)
-            : ({ status: "failure", error: squashAtomCommandFailure(result) } as const);
-        }
-        // Only move forward if the user is still on the snoozed thread —
-        // a navigation made during the await wins over ours.
-        if (routeThreadKeyRef.current === threadKey) {
-          navigateAfterSnooze?.();
-        }
-        return { status: "success" } as const;
-      } finally {
-        snoozingThreadKeysRef.current.delete(threadKey);
-      }
-    },
-    [planForwardNavigation, snoozeThread],
-  );
-  const attemptSnooze = useCallback(
+  const attemptSnoozeThreads = useCallback(
     (
-      threadRef: ScopedThreadRef,
+      groupThreads: ReadonlyArray<SidebarThreadSummary>,
       preset: SnoozePreset,
-      opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
+      opts: { coParkingKeys?: ReadonlySet<string> } = {},
     ) => {
       void (async () => {
-        const outcome = await performSnooze(threadRef, preset, opts);
-        if (outcome.status === "failure") {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to snooze thread",
-              description:
-                outcome.error instanceof Error ? outcome.error.message : "An error occurred.",
-            }),
+        const now = new Date().toISOString();
+        const targets = groupThreads.filter((thread) => {
+          const threadKey = sidebarThreadKey(thread);
+          return (
+            !snoozingThreadKeysRef.current.has(threadKey) &&
+            !snoozedThreadKeysRef.current.has(threadKey) &&
+            canSnooze(thread, { now })
           );
-          return;
+        });
+        if (targets.length === 0) return;
+        const targetKeys = targets.map(sidebarThreadKey);
+        for (const key of targetKeys) snoozingThreadKeysRef.current.add(key);
+        try {
+          // Snoozing the open thread moves you forward, same as settle —
+          // both park the worktree you're done with for now.
+          const allParkingKeys = new Set([
+            ...(opts.coParkingKeys ?? []),
+            ...groupThreads.map(sidebarThreadKey),
+          ]);
+          const routeKey = targetKeys.find((key) => key === routeThreadKeyRef.current) ?? null;
+          const navigateAfterSnooze =
+            routeKey === null ? null : planForwardNavigation(routeKey, allParkingKeys);
+          const snoozedRefs: ScopedThreadRef[] = [];
+          let routeSnoozed = false;
+          for (const target of targets) {
+            const targetRef = scopeThreadRef(target.environmentId, target.id);
+            const result = await snoozeThread(targetRef, preset.snoozedUntil);
+            if (result._tag === "Failure") {
+              // Never navigate away from a thread that did not snooze.
+              if (!isAtomCommandInterrupted(result)) {
+                const error = squashAtomCommandFailure(result);
+                toastManager.add(
+                  stackedThreadToast({
+                    type: "error",
+                    title: "Failed to snooze thread",
+                    description: error instanceof Error ? error.message : "An error occurred.",
+                  }),
+                );
+              }
+            } else {
+              snoozedRefs.push(targetRef);
+              if (sidebarThreadKey(target) === routeKey) routeSnoozed = true;
+            }
+          }
+          if (snoozedRefs.length > 0) {
+            // Snooze hides the worktree's card, so the toast is the only
+            // confirmation — one per worktree, not per member — and the
+            // Undo is the escape hatch for a mis-click.
+            toastManager.add(
+              stackedThreadToast({
+                type: "success",
+                title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date())}`,
+                timeout: 5_000,
+                actionProps: {
+                  children: "Undo",
+                  onClick: () => attemptUnsnoozeRefs(snoozedRefs),
+                },
+              }),
+            );
+          }
+          // Only move forward if the user is still on the snoozed thread —
+          // a navigation made during the await wins over ours.
+          if (routeSnoozed && routeThreadKeyRef.current === routeKey) {
+            navigateAfterSnooze?.();
+          }
+        } finally {
+          for (const key of targetKeys) snoozingThreadKeysRef.current.delete(key);
         }
         if (outcome.status !== "success") return;
         // Snooze hides the row, so the toast is the only confirmation —
@@ -2643,7 +2594,13 @@ export default function Sidebar() {
         );
       })();
     },
-    [attemptUnsnooze, performSnooze, timestampFormat],
+    [attemptUnsnoozeRefs, planForwardNavigation, snoozeThread],
+  );
+  const attemptSnooze = useCallback(
+    (threadRef: ScopedThreadRef, preset: SnoozePreset) => {
+      attemptSnoozeThreads(resolveWorktreeThreads(threadRef), preset);
+    },
+    [attemptSnoozeThreads, resolveWorktreeThreads],
   );
 
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
@@ -2660,14 +2617,22 @@ export default function Sidebar() {
       );
       if (threadKeys.length === 0) return;
       const count = threadKeys.length;
-      // Snooze (N) is offered when every selected thread can actually take
-      // it — a mixed selection with blocked-on-you work would half-apply.
-      const selectionNow = new Date();
-      const selectedThreads = threadKeys.flatMap((threadKey) => {
+      // Lifecycle actions park WORKTREES: the selection expands to every
+      // member of every selected thread's group before settling/snoozing.
+      const expandedByKey = new Map<string, SidebarThreadSummary>();
+      for (const threadKey of threadKeys) {
         const thread = threadByKeyRef.current.get(threadKey);
-        return thread ? [thread] : [];
-      });
-      const canSnoozeSelection = selectedThreads.every(
+        if (!thread) continue;
+        const groupThreads = groupByThreadKeyRef.current.get(threadKey)?.threads ?? [thread];
+        for (const member of groupThreads) {
+          expandedByKey.set(sidebarThreadKey(member), member);
+        }
+      }
+      const expandedThreads = [...expandedByKey.values()];
+      // Snooze (N) is offered when every affected thread can actually take
+      // it — a mixed batch with blocked-on-you work would half-apply.
+      const selectionNow = new Date().toISOString();
+      const canSnoozeSelection = expandedThreads.every(
         (thread) =>
           serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSnooze === true &&
           canSnooze(thread, { now: selectionNow.toISOString() }),
@@ -2714,9 +2679,9 @@ export default function Sidebar() {
           (candidate) => `snooze:${candidate.id}` === clicked.value,
         );
         if (preset) {
-          // Post-snooze navigation must skip threads snoozing in this same
-          // batch — they are all leaving the card block together.
-          const coSnoozingKeys = new Set(threadKeys);
+          // One batch: post-snooze navigation skips everything leaving
+          // together, and the whole batch gets a single Undo toast.
+          attemptSnoozeThreads(expandedThreads, preset);
           clearSelection();
           const outcomes = await Promise.all(
             selectedThreads.map(async (thread) => {
@@ -2792,17 +2757,10 @@ export default function Sidebar() {
         return;
       }
       if (clicked.value === "settle") {
-        // Post-settle navigation must skip threads settling in this same
-        // batch — they are all leaving the card block together. Rows that
-        // are already explicitly settled are skipped: nothing to do on a
-        // valid mixed selection. Pinned rows ARE included: the decider
-        // clears the pin as part of settling, so they park like the rest.
-        const coSettlingKeys = new Set(threadKeys);
-        for (const threadKey of threadKeys) {
-          const thread = threadByKeyRef.current.get(threadKey);
-          if (!thread || thread.settledOverride === "settled") continue;
-          attemptSettle(scopeThreadRef(thread.environmentId, thread.id), { coSettlingKeys });
-        }
+        // One batch: post-settle navigation must skip threads settling in
+        // this same batch — they are all leaving the card block together.
+        // Already-settled members are skipped inside the handler.
+        attemptSettleThreads(expandedThreads);
         clearSelection();
         return;
       }
@@ -2856,8 +2814,8 @@ export default function Sidebar() {
       removeFromSelection(threadKeys);
     },
     [
-      attemptSettle,
-      attemptSnooze,
+      attemptSettleThreads,
+      attemptSnoozeThreads,
       clearSelection,
       confirmThreadDelete,
       deleteThread,
@@ -2905,26 +2863,59 @@ export default function Sidebar() {
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
-        const isPinned = thread.pinnedAt != null;
+        // Lifecycle items act on the thread's whole worktree; the labels
+        // say so as soon as more than one thread shares it.
+        const groupThreads = groupByThreadKeyRef.current.get(threadKey)?.threads ?? [thread];
+        const isMultiThreadWorktree = groupThreads.length > 1;
+        const settleLabel = isMultiThreadWorktree
+          ? `Settle worktree (${groupThreads.length} threads)`
+          : "Settle thread";
+        const unsettleLabel = isMultiThreadWorktree ? "Un-settle worktree" : "Un-settle thread";
+        const wakeLabel = isMultiThreadWorktree ? "Wake worktree" : "Wake thread";
+        const menuNow = new Date().toISOString();
         // Presets resolve at menu-open time (same as the popover).
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildThreadActionMenuItems({
-              branch: thread.branch ?? null,
-              isPinned,
-              isSettled,
-              isSnoozed,
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              isRegeneratingTitle,
-              supports: {
-                settlement: supportsSettlement,
-                snooze: supportsSnooze,
-                pinning: supportsPinning,
-                titleRegeneration: supportsTitleRegeneration,
-              },
-              snoozePresets,
-            }),
+            [
+              ...(thread.branch
+                ? [
+                    {
+                      id: "new-thread-on-branch",
+                      label: `New thread on ${thread.branch}`,
+                    },
+                  ]
+                : []),
+              ...(supportsSettlement
+                ? [
+                    isSettled
+                      ? { id: "unsettle", label: unsettleLabel }
+                      : { id: "settle", label: settleLabel },
+                  ]
+                : []),
+              ...(supportsSnooze
+                ? [
+                    isSnoozed
+                      ? { id: "unsnooze", label: wakeLabel }
+                      : {
+                          id: "snooze",
+                          label: isMultiThreadWorktree
+                            ? `Snooze worktree (${groupThreads.length} threads)`
+                            : "Snooze",
+                          disabled: !groupThreads.every((member) =>
+                            canSnooze(member, { now: menuNow }),
+                          ),
+                          children: snoozePresets.map((preset) => ({
+                            id: `snooze:${preset.id}`,
+                            label: `${preset.label} (${preset.whenLabel})`,
+                          })),
+                        },
+                  ]
+                : []),
+              { id: "rename", label: "Rename thread" },
+              { id: "mark-unread", label: "Mark unread" },
+              { id: "delete", label: "Delete", destructive: true, icon: "trash" },
+            ],
             position,
           ),
         );
@@ -3352,330 +3343,215 @@ export default function Sidebar() {
           </SidebarGroup>
         }
       >
-        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
-          {isSearchingThreads ? (
-            threadSearchResults.length > 0 ? (
-              <TooltipProvider
-                key="sidebar-thread-search-tooltips-150"
-                delay={150}
-                closeDelay={0}
-                timeout={400}
-              >
-                <ul
-                  id="sidebar-thread-search-results"
-                  role="listbox"
-                  aria-label="Thread search results"
-                  className="flex flex-col gap-px"
-                >
-                  {threadSearchResults.map((thread, index) => {
-                    const threadKey = scopedThreadKey(
-                      scopeThreadRef(thread.environmentId, thread.id),
-                    );
-                    return (
-                      <SidebarSearchResultRow
-                        key={threadKey}
-                        thread={thread}
-                        projectCwd={
-                          projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
-                        }
-                        projectFaviconPath={
-                          projectFaviconPathByKey.get(
-                            `${thread.environmentId}:${thread.projectId}`,
-                          ) ?? null
-                        }
-                        projectTitle={
-                          projectDisplayNameByKey.get(
-                            `${thread.environmentId}:${thread.projectId}`,
-                          ) ?? null
-                        }
-                        environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
-                        providerEntryByInstanceId={providerEntryByInstanceId}
-                        isHighlighted={activeSearchResultIndex === index}
-                        isRouteActive={routeThreadKey === threadKey}
-                        resultId={`sidebar-thread-search-result-${index}`}
-                        onHighlight={() => setActiveSearchResultIndex(index)}
-                        onSelect={() => selectThreadSearchResult(thread)}
-                      />
-                    );
-                  })}
-                </ul>
-              </TooltipProvider>
-            ) : (
-              <p
-                role="status"
-                className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
-              >
-                No threads found
-              </p>
-            )
-          ) : null}
-          {!isSearchingThreads ? (
-            <TooltipProvider
-              key="sidebar-thread-tooltips-150"
-              delay={150}
-              closeDelay={0}
-              timeout={400}
-            >
-              <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
-                {(() => {
-                  const renderThreadRow = (
-                    thread: EnvironmentThreadShell,
-                    section: "pinned" | "active" | "snoozed" | "settled",
-                    sortable?: SortablePinnedRowBag,
-                  ) => {
-                    const threadKey = scopedThreadKey(
-                      scopeThreadRef(thread.environmentId, thread.id),
-                    );
-                    // Settled and snoozed are the ONLY things that collapse a
-                    // row: every other thread is a full card. Density comes
-                    // from users (or the auto rules) actually parking work,
-                    // not from the sidebar second-guessing what still matters.
-                    const isCard = section === "active" || section === "pinned";
-                    const rowVariant = isCard ? "card" : "slim";
-                    return (
-                      <SidebarThreadRow
-                        // Keyed per variant on purpose: when a thread settles,
-                        // the card fades out in place and the slim row fades
-                        // in at its settled position instead of one element
-                        // FLIP-sliding through every row in between (rows here
-                        // are translucent, so a crossing row reads as text
-                        // painted over text).
-                        key={`${threadKey}:${rowVariant}`}
-                        thread={thread}
-                        variant={rowVariant}
-                        // Snoozed rows wake; settled rows un-settle (explicit
-                        // settles clear the override, auto-settled rows get
-                        // pinned active); cards settle.
-                        variantAction={
-                          section === "snoozed"
-                            ? "unsnooze"
-                            : section === "settled"
-                              ? "unsettle"
-                              : "settle"
-                        }
-                        settlementSupported={
-                          serverConfigs.get(thread.environmentId)?.environment.capabilities
-                            .threadSettlement === true
-                        }
-                        snoozeSupported={
-                          serverConfigs.get(thread.environmentId)?.environment.capabilities
-                            .threadSnooze === true
-                        }
-                        pinningSupported={
-                          serverConfigs.get(thread.environmentId)?.environment.capabilities
-                            .threadPinning === true
-                        }
-                        isPinned={section === "pinned"}
-                        sortable={sortable}
-                        snoozeWakeLabelText={
-                          section === "snoozed" && thread.snoozedUntil != null
-                            ? snoozeWakeLabel(thread.snoozedUntil, {
-                                now: new Date().toISOString(),
-                              })
-                            : null
-                        }
-                        // All sections: a woken thread can classify straight
-                        // into the settled tail (PR merged while snoozed), and
-                        // the wake signal must survive the trip. Still-snoozed
-                        // rows resolve to null on their own.
-                        wokeAt={threadWokeAt(thread, { now: snoozeNow })}
-                        isActive={routeThreadKey === threadKey}
-                        openPullRequestsInRightPanel={routeThreadRef !== null}
-                        jumpLabel={showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
-                        currentEnvironmentId={primaryEnvironmentId}
-                        environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
-                        projectCwd={
-                          projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
-                        }
-                        projectFaviconPath={
-                          projectFaviconPathByKey.get(
-                            `${thread.environmentId}:${thread.projectId}`,
-                          ) ?? null
-                        }
-                        projectTitle={
-                          projectDisplayNameByKey.get(
-                            `${thread.environmentId}:${thread.projectId}`,
-                          ) ?? null
-                        }
-                        providerEntryByInstanceId={providerEntryByInstanceId}
-                        timestampFormat={timestampFormat}
-                        onThreadClick={handleThreadClick}
-                        onThreadActivate={navigateToThread}
-                        onStartRename={startThreadRename}
-                        onRenameTitleChange={setRenamingTitle}
-                        onCommitRename={commitThreadRename}
-                        onCancelRename={cancelThreadRename}
-                        isRenaming={renamingThreadKey === threadKey}
-                        renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
-                        onContextMenu={handleThreadContextMenu}
-                        onSettle={attemptSettle}
-                        onUnsettle={attemptUnsettle}
-                        onSnooze={attemptSnooze}
-                        onUnsnooze={attemptUnsnooze}
-                        onUnpin={attemptUnpin}
-                        onAcknowledgeWoke={acknowledgeWoke}
-                        onChangeRequestState={handleChangeRequestState}
-                      />
-                    );
-                  };
-                  // Draft block above everything, then the pinned block:
-                  // full cards above the inbox, closed by a thin divider (the
-                  // pin glyphs carry the meaning, so no header text). Both
-                  // vanish entirely at count 0.
-                  // Pinned rows render in the one shared pinned order; only
-                  // reorder-capable rows register as sortable (legacy-server
-                  // pins render in place as plain rows).
-                  const items: ReactNode[] = [
-                    <SidebarDraftBlock
-                      key="draft-sessions"
-                      projectDisplayNameByKey={projectDisplayNameByKey}
-                      projectCwdByKey={projectCwdByKey}
-                      projectFaviconPathByKey={projectFaviconPathByKey}
-                      scopedProjectKeys={scopedProjectKeys}
-                      routeDraftId={routeDraftIdForRows}
-                      onNavigateToDraft={navigateToDraft}
-                    />,
-                    <DndContext
-                      key="pinned-dnd"
-                      sensors={pinnedDndSensors}
-                      collisionDetection={closestCenter}
-                      modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-                      onDragEnd={handlePinnedDragEnd}
-                    >
-                      <SortableContext
-                        items={orderedPinnedThreads
-                          .map((thread) =>
-                            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-                          )
-                          .filter((threadKey) => reorderablePinnedKeys.has(threadKey))}
-                        strategy={verticalListSortingStrategy}
+        <SidebarGroup className="px-2 pb-1 pt-0">
+          <TooltipProvider
+            key="sidebar-thread-tooltips-150"
+            delay={150}
+            closeDelay={0}
+            timeout={400}
+          >
+            <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
+              {(() => {
+                // Shelf rows collapse a whole WORKTREE to one slim line; the
+                // representative thread carries title/branch/tooltip and the
+                // lifecycle actions expand back to the group.
+                const renderShelfRow = (
+                  group: SidebarWorktreeGroup,
+                  section: "snoozed" | "settled",
+                  representative: EnvironmentThreadShell,
+                ) => {
+                  const threadKey = sidebarThreadKey(representative);
+                  return (
+                    <SidebarV2Row
+                      // Keyed per form on purpose: when a worktree settles,
+                      // the card fades out in place and the slim row fades
+                      // in at its settled position instead of one element
+                      // FLIP-sliding through every row in between (rows here
+                      // are translucent, so a crossing row reads as text
+                      // painted over text).
+                      key={`${group.key}:slim`}
+                      thread={representative}
+                      // Snoozed rows wake; settled rows un-settle (explicit
+                      // settles clear the override, auto-settled rows get
+                      // pinned active) — both act on the whole worktree.
+                      variantAction={section === "snoozed" ? "unsnooze" : "unsettle"}
+                      settlementSupported={
+                        serverConfigs.get(representative.environmentId)?.environment.capabilities
+                          .threadSettlement === true
+                      }
+                      snoozeSupported={
+                        serverConfigs.get(representative.environmentId)?.environment.capabilities
+                          .threadSnooze === true
+                      }
+                      snoozeWakeLabelText={
+                        section === "snoozed" && representative.snoozedUntil != null
+                          ? snoozeWakeLabel(representative.snoozedUntil, new Date())
+                          : null
+                      }
+                      // All sections: a woken thread can classify straight
+                      // into the settled tail (PR merged while snoozed), and
+                      // the wake signal must survive the trip. Still-snoozed
+                      // rows resolve to null on their own.
+                      wokeAt={threadWokeAt(representative, { now: snoozeNow })}
+                      isActive={routeThreadKey === threadKey}
+                      jumpLabel={showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
+                      currentEnvironmentId={primaryEnvironmentId}
+                      environmentLabel={
+                        environmentLabelById.get(representative.environmentId) ?? null
+                      }
+                      projectCwd={
+                        projectCwdByKey.get(
+                          `${representative.environmentId}:${representative.projectId}`,
+                        ) ?? null
+                      }
+                      projectTitle={
+                        projectDisplayNameByKey.get(
+                          `${representative.environmentId}:${representative.projectId}`,
+                        ) ?? null
+                      }
+                      providerEntryByInstanceId={providerEntryByInstanceId}
+                      changeRequestThreadKeys={group.memberKeys}
+                      onThreadClick={handleThreadClick}
+                      onThreadActivate={navigateToThread}
+                      onStartRename={startThreadRename}
+                      onRenameTitleChange={setRenamingTitle}
+                      onCommitRename={commitThreadRename}
+                      onCancelRename={cancelThreadRename}
+                      isRenaming={renamingThreadKey === threadKey}
+                      renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
+                      onContextMenu={handleThreadContextMenu}
+                      onUnsettle={attemptUnsettle}
+                      onUnsnooze={attemptUnsnooze}
+                      onChangeRequestState={handleChangeRequestState}
+                    />
+                  );
+                };
+                const items: ReactNode[] = activeGroups.map((group) => {
+                  const newest = group.threads[group.threads.length - 1]!;
+                  const projectLookupKey = `${newest.environmentId}:${newest.projectId}` as const;
+                  const activeThreadKey =
+                    routeThreadKey !== null && group.memberKeys.includes(routeThreadKey)
+                      ? routeThreadKey
+                      : null;
+                  const renamingInGroup =
+                    renamingThreadKey !== null && group.memberKeys.includes(renamingThreadKey)
+                      ? renamingThreadKey
+                      : null;
+                  return (
+                    <SidebarV2WorktreeCard
+                      key={`${group.key}:card`}
+                      groupKey={group.key}
+                      threads={group.threads}
+                      memberKeys={group.memberKeys}
+                      activeThreadKey={activeThreadKey}
+                      settlementSupported={
+                        serverConfigs.get(newest.environmentId)?.environment.capabilities
+                          .threadSettlement === true
+                      }
+                      snoozeSupported={
+                        serverConfigs.get(newest.environmentId)?.environment.capabilities
+                          .threadSnooze === true
+                      }
+                      snoozeNow={snoozeNow}
+                      currentEnvironmentId={primaryEnvironmentId}
+                      environmentLabel={environmentLabelById.get(newest.environmentId) ?? null}
+                      projectCwd={projectCwdByKey.get(projectLookupKey) ?? null}
+                      projectTitle={projectDisplayNameByKey.get(projectLookupKey) ?? null}
+                      providerEntryByInstanceId={providerEntryByInstanceId}
+                      jumpLabelByKey={showJumpHints ? jumpLabelByKey : null}
+                      renamingThreadKey={renamingInGroup}
+                      renamingTitle={renamingInGroup !== null ? renamingTitle : ""}
+                      onThreadClick={handleThreadClick}
+                      onThreadActivate={navigateToThread}
+                      onStartRename={startThreadRename}
+                      onRenameTitleChange={setRenamingTitle}
+                      onCommitRename={commitThreadRename}
+                      onCancelRename={cancelThreadRename}
+                      onContextMenu={handleThreadContextMenu}
+                      onSettle={attemptSettle}
+                      onSnooze={attemptSnooze}
+                      onChangeRequestState={handleChangeRequestState}
+                    />
+                  );
+                });
+                // Snoozed shelf: between the inbox and Settled — out of the
+                // way, never gone. The header always renders while anything
+                // is snoozed (the count is the whole footprint when
+                // collapsed); rows only when expanded. Vanishes entirely at
+                // count 0.
+                if (snoozedGroups.length > 0) {
+                  items.push(
+                    <li key="snoozed-shelf-header" data-thread-selection-safe className="list-none">
+                      <button
+                        type="button"
+                        onClick={toggleSnoozedShelf}
+                        aria-expanded={snoozedShelfExpanded}
+                        data-testid="sidebar-v2-snoozed-shelf-toggle"
+                        className="mb-1 mt-3 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
                       >
-                        {orderedPinnedThreads.map((thread) => {
-                          const threadKey = scopedThreadKey(
-                            scopeThreadRef(thread.environmentId, thread.id),
-                          );
-                          if (!reorderablePinnedKeys.has(threadKey)) {
-                            return renderThreadRow(thread, "pinned");
-                          }
-                          return (
-                            <SortablePinnedThreadRow key={threadKey} id={threadKey}>
-                              {(bag) => renderThreadRow(thread, "pinned", bag)}
-                            </SortablePinnedThreadRow>
-                          );
-                        })}
-                      </SortableContext>
-                    </DndContext>,
-                  ];
-                  if (pinnedThreads.length > 0) {
-                    items.push(
-                      <li
-                        key="pinned-divider"
-                        aria-hidden
-                        data-testid="sidebar-pinned-divider"
-                        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-                      />,
-                    );
-                  }
-                  for (const thread of activeThreads) {
-                    items.push(renderThreadRow(thread, "active"));
-                  }
-                  // Snoozed shelf: between the inbox and Settled — out of the
-                  // way, never gone. The header always renders while anything
-                  // is snoozed (the count is the whole footprint when
-                  // collapsed); rows only when expanded. Vanishes entirely at
-                  // count 0.
-                  if (snoozedThreads.length > 0) {
-                    items.push(
-                      <li
-                        key="snoozed-shelf-header"
-                        data-thread-selection-safe
-                        className="list-none"
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                          {snoozedShelfExpanded ? "Snoozed" : `Snoozed (${snoozedGroups.length})`}
+                        </span>
+                        <span className="h-px flex-1 bg-blue-500/20 dark:bg-blue-400/15" />
+                        <ChevronDownIcon
+                          aria-hidden
+                          className={cn(
+                            "size-3 text-blue-600 transition-transform dark:text-blue-400",
+                            snoozedShelfExpanded && "rotate-180",
+                          )}
+                        />
+                      </button>
+                    </li>,
+                  );
+                  visibleSnoozedGroups.forEach((group, index) => {
+                    items.push(renderShelfRow(group, "snoozed", snoozedRepThreads[index]!));
+                  });
+                }
+                if (settledGroups.length > 0) {
+                  items.push(
+                    <li key="settled-shelf-header" data-thread-selection-safe className="list-none">
+                      <button
+                        type="button"
+                        onClick={toggleSettledShelf}
+                        aria-expanded={settledShelfExpanded}
+                        data-testid="sidebar-v2-settled-shelf-toggle"
+                        className="mb-1 mt-3 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
                       >
-                        <button
-                          type="button"
-                          onClick={toggleSnoozedShelf}
-                          aria-expanded={snoozedShelfExpanded}
-                          data-testid="sidebar-snoozed-shelf-toggle"
-                          className="mb-1 mt-3 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
-                        >
-                          <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                            {snoozedShelfExpanded
-                              ? "Snoozed"
-                              : `Snoozed (${snoozedThreads.length})`}
-                          </span>
-                          <span className="h-px flex-1 bg-blue-500/20 dark:bg-blue-400/15" />
-                          <ChevronDownIcon
-                            aria-hidden
-                            className={cn(
-                              "size-3 text-blue-600 transition-transform dark:text-blue-400",
-                              snoozedShelfExpanded && "rotate-180",
-                            )}
-                          />
-                        </button>
-                      </li>,
-                    );
-                    for (const thread of visibleSnoozedThreads) {
-                      items.push(renderThreadRow(thread, "snoozed"));
-                    }
-                  }
-                  if (settledThreads.length > 0) {
-                    items.push(
-                      <li
-                        key="settled-shelf-header"
-                        data-thread-selection-safe
-                        className="list-none"
-                      >
-                        <button
-                          type="button"
-                          onClick={toggleSettledShelf}
-                          aria-expanded={settledShelfExpanded}
-                          data-testid="sidebar-settled-shelf-toggle"
-                          className="mb-1 mt-3 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
-                        >
-                          <span className="text-xs font-medium text-muted-foreground/50">
-                            {settledShelfExpanded
-                              ? "Settled"
-                              : `Settled (${settledThreads.length})`}
-                          </span>
-                          <span className="h-px flex-1 bg-sidebar-border/60" />
-                          <ChevronDownIcon
-                            aria-hidden
-                            className={cn(
-                              "size-3 text-muted-foreground/50 transition-transform",
-                              settledShelfExpanded && "rotate-180",
-                            )}
-                          />
-                        </button>
-                      </li>,
-                    );
-                  }
-                  for (const thread of renderedSettledThreads) {
-                    items.push(renderThreadRow(thread, "settled"));
-                  }
-                  return items;
-                })()}
-                {settledShelfExpanded && hiddenSettledCount > 0 ? (
-                  <li className="list-none">
-                    <button
-                      type="button"
-                      onClick={showMoreSettled}
-                      className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                    >
-                      <PlusIcon aria-hidden className="size-4 shrink-0" />
-                      Show {Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
-                    </button>
-                  </li>
-                ) : null}
-              </ul>
-            </TooltipProvider>
-          ) : null}
-          {!isSearchingThreads &&
-          visibleDraftSessionCount === 0 &&
-          pinnedThreads.length +
-            activeThreads.length +
-            snoozedThreads.length +
-            settledThreads.length ===
-            0 ? (
+                        <span className="text-xs font-medium text-muted-foreground/50">
+                          {settledShelfExpanded ? "Settled" : `Settled (${settledGroups.length})`}
+                        </span>
+                        <span className="h-px flex-1 bg-sidebar-border/60" />
+                        <ChevronDownIcon
+                          aria-hidden
+                          className={cn(
+                            "size-3 text-muted-foreground/50 transition-transform",
+                            settledShelfExpanded && "rotate-180",
+                          )}
+                        />
+                      </button>
+                    </li>,
+                  );
+                }
+                renderedSettledGroups.forEach((group, index) => {
+                  items.push(renderShelfRow(group, "settled", settledRepThreads[index]!));
+                });
+                return items;
+              })()}
+              {settledShelfExpanded && hiddenSettledCount > 0 ? (
+                <li className="list-none">
+                  <button
+                    type="button"
+                    onClick={showMoreSettled}
+                    className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                  >
+                    <PlusIcon aria-hidden className="size-4 shrink-0" />
+                    Show {Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
+                  </button>
+                </li>
+              ) : null}
+            </ul>
+          </TooltipProvider>
+          {activeGroups.length + snoozedGroups.length + settledGroups.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
               {projects.length === 0 ? (
                 <>
