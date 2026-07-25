@@ -1,4 +1,10 @@
-import type { EnvironmentId, OrchestrationThread, ThreadId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type OrchestrationThread,
+  type ProviderInstanceId,
+  ServerProviderSkillsUnsupportedError,
+  type ThreadId,
+} from "@t3tools/contracts";
 import {
   createThreadSearchResultsAtomFamily,
   makeThreadSearchKey,
@@ -7,6 +13,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
+import * as Schema from "effect/Schema";
 import { useEffect, useMemo, useState } from "react";
 
 import { orchestrationEnvironment } from "./orchestration";
@@ -38,6 +45,7 @@ const threadSearchResultsAtom = createThreadSearchResultsAtomFamily({
     }),
   labelPrefix: "mobile:thread-search",
 });
+const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -155,6 +163,29 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
     error: result.error,
     isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
     refresh: result.refresh,
+  };
+}
+
+export function useProviderSkills(target: {
+  readonly environmentId: EnvironmentId | null;
+  readonly instanceId: ProviderInstanceId | null;
+  readonly cwd: string | null;
+  readonly enabled: boolean;
+}) {
+  const result = useEnvironmentQuery(
+    target.enabled &&
+      target.environmentId !== null &&
+      target.instanceId !== null &&
+      target.cwd !== null
+      ? projectEnvironment.listProviderSkills({
+          environmentId: target.environmentId,
+          input: { instanceId: target.instanceId, cwd: target.cwd },
+        })
+      : null,
+  );
+  return {
+    ...result,
+    isUnsupported: result.failure !== null && isProviderSkillsUnsupportedError(result.failure),
   };
 }
 
