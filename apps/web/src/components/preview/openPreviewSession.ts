@@ -13,6 +13,7 @@ import {
   resolveBrowserDefaults,
 } from "~/browser/browserDefaults";
 import { applyPreviewServerSnapshot, rememberPreviewUrl } from "~/previewStateStore";
+import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 interface OpenPreviewSessionInput<E> {
   openPreview: (input: {
@@ -33,10 +34,13 @@ export async function openPreviewSession<E>(
   // Resolved once: a tab opened before client settings hydrate would otherwise
   // be born at the schema defaults and never corrected.
   const defaults = await resolveBrowserDefaults();
+  // Preview sessions are worktree-scoped: the wire call uses the worktree's
+  // canonical thread id so sibling threads share one set of tabs.
+  const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
   const result = await input.openPreview({
-    environmentId: input.threadRef.environmentId,
+    environmentId: canonicalRef.environmentId,
     input: {
-      threadId: input.threadRef.threadId,
+      threadId: canonicalRef.threadId,
       ...(input.url === undefined ? {} : { url: input.url }),
       viewport: input.viewport ?? browserDefaultOpenViewport(defaults),
       profileId: input.profileId ?? browserDefaultOpenProfileId(defaults),

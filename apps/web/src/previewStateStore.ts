@@ -1,12 +1,12 @@
 /**
- * Per-thread preview UI state.
+ * Per-worktree preview UI state.
  *
- * Each thread owns an independent atom. Most consumers read exactly one
- * thread; the desktop browser host uses the aggregate session atom because it
- * is the one place that must enumerate every live preview tab.
+ * Each worktree (checkout) owns an independent atom; callers pass a thread
+ * ref that resolves to its worktree scope key. Most consumers read exactly
+ * one worktree; the desktop browser host uses the aggregate session atom
+ * because it is the one place that must enumerate every live preview tab.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type DesktopPreviewColorScheme,
   type DesktopPreviewFavicon,
@@ -19,6 +19,11 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { PREVIEW_RECENT_URL_LIMIT } from "./components/preview/previewConstants";
 import { appAtomRegistry } from "./rpc/atomRegistry";
+import { resolveWorktreeScopeKeyForThreadRef } from "./worktreeScope";
+
+// Preview tabs belong to the CHECKOUT, not the thread: every thread sharing
+// a worktree sees the same browser tabs, active tab, and recent URLs.
+const previewScopeKey = resolveWorktreeScopeKeyForThreadRef;
 
 export interface DesktopPreviewOverlay {
   hasWebContents: boolean;
@@ -110,7 +115,7 @@ function updateThreadPreviewState(
   ref: ScopedThreadRef,
   update: (current: ThreadPreviewState) => ThreadPreviewState,
 ): void {
-  const threadKey = scopedThreadKey(ref);
+  const threadKey = previewScopeKey(ref);
   const atom = previewStateAtom(threadKey);
   let nextState = appAtomRegistry.get(atom);
   const changed = appAtomRegistry.modify(atom, (current) => {
@@ -161,7 +166,7 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
 };
 
 export function useThreadPreviewState(ref: ScopedThreadRef | null | undefined): ThreadPreviewState {
-  const atom = ref ? previewStateAtom(scopedThreadKey(ref)) : emptyPreviewStateAtom;
+  const atom = ref ? previewStateAtom(previewScopeKey(ref)) : emptyPreviewStateAtom;
   return useAtomValue(atom);
 }
 
@@ -170,14 +175,14 @@ export function useActivePreviewSessions(): Record<string, ThreadPreviewState> {
 }
 
 export function readThreadPreviewState(ref: ScopedThreadRef): ThreadPreviewState {
-  return appAtomRegistry.get(previewStateAtom(scopedThreadKey(ref)));
+  return appAtomRegistry.get(previewStateAtom(previewScopeKey(ref)));
 }
 
 export function subscribeThreadPreviewState(
   ref: ScopedThreadRef,
   listener: (state: ThreadPreviewState, previous: ThreadPreviewState) => void,
 ): () => void {
-  const atom = previewStateAtom(scopedThreadKey(ref));
+  const atom = previewStateAtom(previewScopeKey(ref));
   let previous = appAtomRegistry.get(atom);
   return appAtomRegistry.subscribe(atom, (state) => {
     const prior = previous;
@@ -473,7 +478,7 @@ export function rememberPreviewUrl(ref: ScopedThreadRef, url: string): void {
 }
 
 export function removePreviewThread(ref: ScopedThreadRef): void {
-  const threadKey = scopedThreadKey(ref);
+  const threadKey = previewScopeKey(ref);
   appAtomRegistry.set(previewStateAtom(threadKey), EMPTY_THREAD_PREVIEW_STATE);
   syncActivePreviewThread(threadKey, EMPTY_THREAD_PREVIEW_STATE);
   changedPreviewThreadKeys.delete(threadKey);
