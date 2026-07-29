@@ -120,6 +120,7 @@ const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({
   threadId: ProjectionThread.fields.threadId,
   turnId: TurnId,
+  pendingMessageId: Schema.NullOr(MessageId),
   state: Schema.String,
   requestedAt: IsoDateTime,
   startedAt: Schema.NullOr(IsoDateTime),
@@ -292,6 +293,7 @@ function mapLatestTurn(
 ): OrchestrationLatestTurn {
   return {
     turnId: row.turnId,
+    initiatingUserMessageId: row.pendingMessageId,
     state:
       row.state === "error"
         ? "error"
@@ -736,6 +738,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           turns.thread_id AS "threadId",
           turns.turn_id AS "turnId",
+          turns.pending_message_id AS "pendingMessageId",
           turns.state,
           turns.requested_at AS "requestedAt",
           turns.started_at AS "startedAt",
@@ -760,6 +763,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           turns.thread_id AS "threadId",
           turns.turn_id AS "turnId",
+          turns.pending_message_id AS "pendingMessageId",
           turns.state,
           turns.requested_at AS "requestedAt",
           turns.started_at AS "startedAt",
@@ -786,6 +790,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           turns.thread_id AS "threadId",
           turns.turn_id AS "turnId",
+          turns.pending_message_id AS "pendingMessageId",
           turns.state,
           turns.requested_at AS "requestedAt",
           turns.started_at AS "startedAt",
@@ -1227,6 +1232,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           turns.thread_id AS "threadId",
           turns.turn_id AS "turnId",
+          turns.pending_message_id AS "pendingMessageId",
           turns.state,
           turns.requested_at AS "requestedAt",
           turns.started_at AS "startedAt",
@@ -1838,6 +1844,7 @@ pending_approval_requests AS (
                 }
                 latestTurnByThread.set(row.threadId, {
                   turnId: row.turnId,
+                  initiatingUserMessageId: row.pendingMessageId,
                   state:
                     row.state === "error"
                       ? "error"
