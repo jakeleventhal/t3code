@@ -24,6 +24,7 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  isWorkspaceShortcutBlockedForChats,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveThreadMetadataUpdateForNextTurn,
@@ -38,6 +39,16 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+describe("isWorkspaceShortcutBlockedForChats", () => {
+  it("blocks terminal and diff shortcuts only for Chat projects", () => {
+    expect(isWorkspaceShortcutBlockedForChats("terminal.new", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("terminal.split", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("diff.toggle", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("rightPanel.toggle", true)).toBe(false);
+    expect(isWorkspaceShortcutBlockedForChats("terminal.new", false)).toBe(false);
+  });
+});
 
 describe("environment reconnect warning grace", () => {
   afterEach(() => vi.useRealTimers());

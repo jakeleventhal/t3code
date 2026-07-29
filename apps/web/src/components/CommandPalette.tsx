@@ -1364,10 +1364,7 @@ function OpenCommandPaletteDialog(props: {
   }, [clearOpenIntent, openAddProjectFlow, openIntent]);
 
   useLayoutEffect(() => {
-    if (
-      openIntent?.kind !== "new-thread-in" ||
-      (projectThreadItems.length === 0 && !chatProject)
-    ) {
+    if (openIntent?.kind !== "new-thread-in" || (projectThreadItems.length === 0 && !chatProject)) {
       return;
     }
     clearOpenIntent();

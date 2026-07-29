@@ -363,6 +363,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   ).pipe(Option.getOrUndefined);
   const projectKindForWorkspaceRoot = (workspaceRoot: string) =>
     resolveProjectKind(workspaceRoot, chatsDir);
+  const resolveRepositoryIdentityForWorkspaceRoot = Effect.fn(
+    "ProjectionSnapshotQuery.resolveRepositoryIdentityForWorkspaceRoot",
+  )(function* (workspaceRoot: string) {
+    if (projectKindForWorkspaceRoot(workspaceRoot) === "chats") {
+      return null;
+    }
+    return yield* repositoryIdentityResolver.resolve(workspaceRoot);
+  });
   const repositoryIdentityResolutionConcurrency = 4;
   const resolveRepositoryIdentitiesForProjects = Effect.fn(
     "ProjectionSnapshotQuery.resolveRepositoryIdentitiesForProjects",
@@ -381,9 +389,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       yield* Effect.forEach(
         uniqueWorkspaceRoots,
         (workspaceRoot) =>
-          repositoryIdentityResolver
-            .resolve(workspaceRoot)
-            .pipe(Effect.map((identity) => [workspaceRoot, identity] as const)),
+          resolveRepositoryIdentityForWorkspaceRoot(workspaceRoot).pipe(
+            Effect.map((identity) => [workspaceRoot, identity] as const),
+          ),
         { concurrency: repositoryIdentityResolutionConcurrency },
       ),
     );
@@ -2188,7 +2196,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         Effect.flatMap((option) =>
           Option.isNone(option)
             ? Effect.succeed(Option.none<OrchestrationProject>())
-            : repositoryIdentityResolver.resolve(option.value.workspaceRoot).pipe(
+            : resolveRepositoryIdentityForWorkspaceRoot(option.value.workspaceRoot).pipe(
                 Effect.map((repositoryIdentity) =>
                   Option.some({
                     id: option.value.projectId,
@@ -2220,19 +2228,17 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       Effect.flatMap((option) =>
         Option.isNone(option)
           ? Effect.succeed(Option.none<OrchestrationProjectShell>())
-          : repositoryIdentityResolver
-              .resolve(option.value.workspaceRoot)
-              .pipe(
-                Effect.map((repositoryIdentity) =>
-                  Option.some(
-                    mapProjectShellRow(
-                      option.value,
-                      repositoryIdentity,
-                      projectKindForWorkspaceRoot(option.value.workspaceRoot),
-                    ),
+          : resolveRepositoryIdentityForWorkspaceRoot(option.value.workspaceRoot).pipe(
+              Effect.map((repositoryIdentity) =>
+                Option.some(
+                  mapProjectShellRow(
+                    option.value,
+                    repositoryIdentity,
+                    projectKindForWorkspaceRoot(option.value.workspaceRoot),
                   ),
                 ),
               ),
+            ),
       ),
     );
 

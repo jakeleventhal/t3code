@@ -130,6 +130,7 @@ it.effect("ensureChatsProject creates the Chats project when missing", () =>
         getThreadShellById: () => Effect.die("unused"),
         getThreadDetailById: () => Effect.die("unused"),
         getThreadDetailSnapshot: () => Effect.die("unused"),
+        searchThreads: () => Effect.die("unused"),
       }),
       Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
         readEvents: () => Stream.empty,
@@ -187,6 +188,7 @@ it.effect("ensureChatsProject leaves an existing Chats project untouched", () =>
         getThreadShellById: () => Effect.die("unused"),
         getThreadDetailById: () => Effect.die("unused"),
         getThreadDetailSnapshot: () => Effect.die("unused"),
+        searchThreads: () => Effect.die("unused"),
       }),
       Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
         readEvents: () => Stream.empty,
