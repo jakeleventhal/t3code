@@ -32,7 +32,7 @@ import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import {
   formatWorktreePathForDisplay,
   getOrphanedWorktreePathForThread,
-  scheduleWorktreeRemoval,
+  scheduleThreadDeletionCleanup,
 } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
@@ -278,18 +278,6 @@ export function useThreadActions() {
         shouldDeleteWorktree = confirmationResult.value;
       }
 
-      if (thread.session && thread.session.status !== "stopped") {
-        await stopThreadSession({
-          environmentId: threadRef.environmentId,
-          input: { threadId: threadRef.threadId },
-        });
-      }
-
-      await closeTerminal({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, deleteHistory: true },
-      });
-
       const deletedThreadIds = deletedIds ?? new Set<ThreadId>();
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToFallback =
@@ -308,6 +296,52 @@ export function useThreadActions() {
       if (deleteResult._tag === "Failure") {
         return deleteResult;
       }
+
+      // Let the deletion project out of the UI before any potentially slow
+      // provider, terminal, or Git cleanup begins.
+      scheduleThreadDeletionCleanup({
+        stopSession:
+          thread.session && thread.session.status !== "stopped"
+            ? () =>
+                stopThreadSession({
+                  environmentId: threadRef.environmentId,
+                  input: { threadId: threadRef.threadId },
+                })
+            : null,
+        closeTerminals: () =>
+          closeTerminal({
+            environmentId: threadRef.environmentId,
+            input: { threadId: threadRef.threadId, deleteHistory: true },
+          }),
+        worktree:
+          shouldDeleteWorktree && orphanedWorktreePath && threadProject
+            ? {
+                environmentId: threadRef.environmentId,
+                cwd: threadProject.workspaceRoot,
+                path: orphanedWorktreePath,
+                remove: removeWorktree,
+                onFailure: (cleanupFailure) => {
+                  const error = squashAtomCommandFailure(cleanupFailure);
+                  const message =
+                    error instanceof Error ? error.message : "Unknown error removing worktree.";
+                  console.error("Failed to remove orphaned worktree after thread deletion", {
+                    threadId: threadRef.threadId,
+                    projectCwd: threadProject.workspaceRoot,
+                    worktreePath: orphanedWorktreePath,
+                    error,
+                  });
+                  toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title: "Thread deleted, but worktree removal failed",
+                      description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
+                    }),
+                  );
+                },
+              }
+            : null,
+      });
+
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       clearComposerDraftForThread(threadRef);
       clearProjectDraftThreadById(
@@ -352,34 +386,6 @@ export function useThreadActions() {
         }
       }
 
-      if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
-        return deleteResult;
-      }
-
-      scheduleWorktreeRemoval({
-        environmentId: threadRef.environmentId,
-        cwd: threadProject.workspaceRoot,
-        path: orphanedWorktreePath,
-        removeWorktree,
-        onFailure: (cleanupFailure) => {
-          const error = squashAtomCommandFailure(cleanupFailure);
-          const message =
-            error instanceof Error ? error.message : "Unknown error removing worktree.";
-          console.error("Failed to remove orphaned worktree after thread deletion", {
-            threadId: threadRef.threadId,
-            projectCwd: threadProject.workspaceRoot,
-            worktreePath: orphanedWorktreePath,
-            error,
-          });
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Thread deleted, but worktree removal failed",
-              description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
-            }),
-          );
-        },
-      });
       return deleteResult;
     },
     [

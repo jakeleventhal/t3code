@@ -1,19 +1,26 @@
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import {
+  isAtomCommandInterrupted,
+  type AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, VcsRemoveWorktreeInput } from "@t3tools/contracts";
 
 import type { ThreadShell } from "./types";
 
-interface ScheduleWorktreeRemovalInput<E> {
-  readonly environmentId: EnvironmentId;
-  readonly cwd: string;
-  readonly path: string;
-  readonly removeWorktree: (input: {
+interface ScheduleThreadDeletionCleanupInput<E> {
+  readonly stopSession: (() => Promise<unknown>) | null;
+  readonly closeTerminals: () => Promise<unknown>;
+  readonly worktree: {
     readonly environmentId: EnvironmentId;
-    readonly input: VcsRemoveWorktreeInput;
-  }) => Promise<AtomCommandResult<void, E>>;
-  readonly onFailure: (
-    failure: Extract<AtomCommandResult<void, E>, { readonly _tag: "Failure" }>,
-  ) => void;
+    readonly cwd: string;
+    readonly path: string;
+    readonly remove: (input: {
+      readonly environmentId: EnvironmentId;
+      readonly input: VcsRemoveWorktreeInput;
+    }) => Promise<AtomCommandResult<void, E>>;
+    readonly onFailure: (
+      failure: Extract<AtomCommandResult<void, E>, { readonly _tag: "Failure" }>,
+    ) => void;
+  } | null;
 }
 
 function normalizeWorktreePath(path: string | null): string | null {
@@ -60,19 +67,29 @@ export function formatWorktreePathForDisplay(worktreePath: string): string {
   return lastPart.length > 0 ? lastPart : trimmed;
 }
 
-export function scheduleWorktreeRemoval<E>(input: ScheduleWorktreeRemovalInput<E>): void {
-  void input
-    .removeWorktree({
-      environmentId: input.environmentId,
+export function scheduleThreadDeletionCleanup<E>(
+  input: ScheduleThreadDeletionCleanupInput<E>,
+): void {
+  // Each deletion owns an independent chain so cleanup for one thread cannot
+  // delay deletion or cleanup scheduling for another.
+  void (async () => {
+    await input.stopSession?.();
+    await input.closeTerminals();
+
+    if (input.worktree === null) {
+      return;
+    }
+
+    const result = await input.worktree.remove({
+      environmentId: input.worktree.environmentId,
       input: {
-        cwd: input.cwd,
-        path: input.path,
+        cwd: input.worktree.cwd,
+        path: input.worktree.path,
         force: true,
       },
-    })
-    .then((result) => {
-      if (result._tag === "Failure") {
-        input.onFailure(result);
-      }
     });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      input.worktree.onFailure(result);
+    }
+  })();
 }
