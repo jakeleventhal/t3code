@@ -223,10 +223,12 @@ export default function FileBrowserPanel({
     initialExpansion: 1,
     icons: T3_PIERRE_ICONS,
     onSelectionChange: (selectedPaths) => {
+      // The drag controller's selection cache must track every change,
+      // including reveal-driven ones, or drags act on a stale selection.
+      dragMention.handleSelectionChange(selectedPaths);
       // Selection changes driven by the reveal sync below are echoes of an
       // already-open file, not a request to open it again.
       if (syncingSelectionRef.current) return;
-      dragMention.handleSelectionChange(selectedPaths);
       // Starting a drag selects the dragged row; that selection is a side
       // effect of the gesture, not a request to open the file.
       if (dragMention.isDragInProgress()) {
@@ -259,6 +261,13 @@ export default function FileBrowserPanel({
 
   useEffect(() => {
     if (!selectedPath || entryKinds.get(selectedPath) !== "file") return;
+    // A selection that originated inside the tree (clicking a row, possibly
+    // in an active tree search) is already visible; re-revealing it would
+    // close the search and clobber the user's context. Only sync external
+    // opens (file picker, content search, chat links).
+    if (model.getSelectedPaths().some((path) => path.replace(/\/$/, "") === selectedPath)) {
+      return;
+    }
 
     syncingSelectionRef.current = true;
     model.closeSearch();
@@ -266,11 +275,13 @@ export default function FileBrowserPanel({
       model.getItem(path)?.deselect();
     }
 
+    // Directory rows are registered with a trailing slash (see treePath), so
+    // ancestor lookups must use the same form to expand them.
     const segments = selectedPath.split("/");
     let ancestorPath = "";
     for (const segment of segments.slice(0, -1)) {
       ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
-      const item = model.getItem(ancestorPath);
+      const item = model.getItem(`${ancestorPath}/`) ?? model.getItem(ancestorPath);
       if (item && "expand" in item) item.expand();
     }
 

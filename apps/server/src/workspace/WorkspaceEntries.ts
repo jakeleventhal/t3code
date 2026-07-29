@@ -154,33 +154,37 @@ export const make = Effect.gen(function* () {
       const normalizedCwd = yield* normalizeWorkspaceRoot(cwd).pipe(
         Effect.orElseSucceed(() => cwd),
       );
-      if (!(yield* RcMap.has(workspaceSearchIndexes.rcMap, normalizedCwd))) {
-        return;
-      }
-      const recoverRefreshFailure = (
-        cause:
-          | WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed
-          | WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut
-          | WorkspaceSearchIndex.WorkspaceSearchIndexRefreshFailed,
-      ) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning("Failed to refresh workspace search index", {
-            cwd,
-            cause,
+      for (const variant of WorkspaceSearchIndex.WORKSPACE_SEARCH_INDEX_VARIANTS) {
+        const indexKey = WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, variant);
+        if (!(yield* RcMap.has(workspaceSearchIndexes.rcMap, indexKey))) {
+          continue;
+        }
+        const recoverRefreshFailure = (
+          cause:
+            | WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed
+            | WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut
+            | WorkspaceSearchIndex.WorkspaceSearchIndexRefreshFailed,
+        ) =>
+          Effect.gen(function* () {
+            yield* Effect.logWarning("Failed to refresh workspace search index", {
+              cwd,
+              variant,
+              cause,
+            });
+            yield* workspaceSearchIndexes.invalidate(indexKey);
           });
-          yield* workspaceSearchIndexes.invalidate(normalizedCwd);
-        });
-      yield* Effect.gen(function* () {
-        const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
-        yield* searchIndex.refresh();
-      }).pipe(
-        Effect.provide(workspaceSearchIndexes.get(normalizedCwd)),
-        Effect.catchTags({
-          WorkspaceSearchIndexCreateFailed: recoverRefreshFailure,
-          WorkspaceSearchIndexScanTimedOut: recoverRefreshFailure,
-          WorkspaceSearchIndexRefreshFailed: recoverRefreshFailure,
-        }),
-      );
+        yield* Effect.gen(function* () {
+          const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
+          yield* searchIndex.refresh();
+        }).pipe(
+          Effect.provide(workspaceSearchIndexes.get(indexKey)),
+          Effect.catchTags({
+            WorkspaceSearchIndexCreateFailed: recoverRefreshFailure,
+            WorkspaceSearchIndexScanTimedOut: recoverRefreshFailure,
+            WorkspaceSearchIndexRefreshFailed: recoverRefreshFailure,
+          }),
+        );
+      }
     },
   );
 
@@ -242,7 +246,13 @@ export const make = Effect.gen(function* () {
       return yield* Effect.gen(function* () {
         const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
         return yield* searchIndex.search(normalizedQuery, input.limit, input.kind);
-      }).pipe(Effect.provide(workspaceSearchIndexes.get(normalizedCwd)));
+      }).pipe(
+        Effect.provide(
+          workspaceSearchIndexes.get(
+            WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, "paths"),
+          ),
+        ),
+      );
     },
   );
 
@@ -253,7 +263,13 @@ export const make = Effect.gen(function* () {
     return yield* Effect.gen(function* () {
       const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
       return yield* searchIndex.searchContents(input);
-    }).pipe(Effect.provide(workspaceSearchIndexes.get(normalizedCwd)));
+    }).pipe(
+      Effect.provide(
+        workspaceSearchIndexes.get(
+          WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, "content"),
+        ),
+      ),
+    );
   });
 
   const list: WorkspaceEntries["Service"]["list"] = Effect.fn("WorkspaceEntries.list")(
@@ -262,7 +278,13 @@ export const make = Effect.gen(function* () {
       return yield* Effect.gen(function* () {
         const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
         return yield* searchIndex.list();
-      }).pipe(Effect.provide(workspaceSearchIndexes.get(normalizedCwd)));
+      }).pipe(
+        Effect.provide(
+          workspaceSearchIndexes.get(
+            WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, "paths"),
+          ),
+        ),
+      );
     },
   );
 

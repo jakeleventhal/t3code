@@ -30,6 +30,7 @@ const WORKSPACE_INDEX_SCAN_TIMEOUT = "15 seconds";
 const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
 const WORKSPACE_INDEX_SCAN_POLL_INTERVAL = "50 millis";
 const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
+const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
 
 export class WorkspaceSearchIndexCreateFailed extends Schema.TaggedErrorClass<WorkspaceSearchIndexCreateFailed>()(
   "WorkspaceSearchIndexCreateFailed",
@@ -211,64 +212,53 @@ function mapMixedSearchResult(
 
 const WORD_CHARACTER = /[\p{Letter}\p{Mark}\p{Number}_]/u;
 
-function escapeRegexLiteral(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * `\b` only matches at word-character edges, so a pattern edge that is
- * punctuation (e.g. the query "foo-") would never match inside
- * `\b(?:foo-)\b`. Fall back to explicit non-word boundaries for those edges.
- */
-function wrapWholeWord(pattern: string, query: string): string {
-  const firstCharacter = Array.from(query).at(0) ?? "";
-  const lastCharacter = Array.from(query).at(-1) ?? "";
-  const leading = WORD_CHARACTER.test(firstCharacter) ? "\\b" : "(?:^|\\W)";
-  const trailing = WORD_CHARACTER.test(lastCharacter) ? "\\b" : "(?:$|\\W)";
-  return `${leading}(?:${pattern})${trailing}`;
-}
-
 function buildContentSearchQuery(input: Omit<ProjectSearchContentsInput, "cwd">): {
   readonly searchQuery: string;
   readonly regexMode: boolean;
 } {
-  const pattern = input.wholeWord
-    ? wrapWholeWord(input.useRegex ? input.query : escapeRegexLiteral(input.query), input.query)
-    : input.query;
-  const regexMode = input.useRegex || input.wholeWord;
   if (input.caseSensitive) {
-    return { searchQuery: pattern, regexMode };
+    return { searchQuery: input.query, regexMode: input.useRegex };
   }
   // Plain mode relies on smart case: an all-lowercase needle matches
   // case-insensitively. Regex mode needs an explicit inline flag instead.
-  return regexMode
-    ? { searchQuery: `(?i:${pattern})`, regexMode }
-    : { searchQuery: pattern.toLowerCase(), regexMode };
+  return input.useRegex
+    ? { searchQuery: `(?i:${input.query})`, regexMode: true }
+    : { searchQuery: input.query.toLowerCase(), regexMode: false };
 }
 
 function mapContentMatchRanges(
-  input: Omit<ProjectSearchContentsInput, "cwd">,
   line: string,
   byteRanges: ReadonlyArray<readonly [number, number]>,
 ): Array<{ readonly start: number; readonly end: number }> {
   const lineBytes = Buffer.from(line);
   const toStringIndex = (byteOffset: number) => lineBytes.subarray(0, byteOffset).toString().length;
-  return byteRanges.map(([startByte, endByte]) => {
-    const start = toStringIndex(startByte);
-    const end = toStringIndex(endByte);
-    if (!input.wholeWord || input.useRegex) return { start, end };
+  return byteRanges.map(([startByte, endByte]) => ({
+    start: toStringIndex(startByte),
+    end: toStringIndex(endByte),
+  }));
+}
 
-    // Non-word whole-word edges consume the boundary character, so the raw
-    // range can include punctuation around the literal query. Re-anchor the
-    // range on the query itself for exact highlighting.
-    const matchedText = line.slice(start, end);
-    const queryIndex = input.caseSensitive
-      ? matchedText.indexOf(input.query)
-      : matchedText.toLocaleLowerCase().indexOf(input.query.toLocaleLowerCase());
-    return queryIndex === -1
-      ? { start, end }
-      : { start: start + queryIndex, end: start + queryIndex + input.query.length };
-  });
+/**
+ * Whole-word filtering happens after the grep rather than by wrapping the
+ * pattern in boundary regex: consuming boundaries such as `(?:^|\W)` swallow
+ * the separator between adjacent matches and widen the reported ranges, and
+ * `\b` cannot match punctuation-edged queries at all. Matching VS Code, a
+ * match edge is a word boundary when it touches the line edge, the
+ * neighbouring character is not a word character, or the match's own edge
+ * character is not a word character.
+ */
+function isWholeWordRange(
+  line: string,
+  range: { readonly start: number; readonly end: number },
+): boolean {
+  if (range.end <= range.start) return false;
+  const isWord = (character: string | undefined) =>
+    character !== undefined && WORD_CHARACTER.test(character);
+  const leftIsBoundary =
+    range.start === 0 || !isWord(line[range.start - 1]) || !isWord(line[range.start]);
+  const rightIsBoundary =
+    range.end >= line.length || !isWord(line[range.end]) || !isWord(line[range.end - 1]);
+  return leftIsBoundary && rightIsBoundary;
 }
 
 function withDirectoryAncestors(entries: ReadonlyArray<ProjectEntry>): ProjectEntry[] {
@@ -285,13 +275,19 @@ function withDirectoryAncestors(entries: ReadonlyArray<ProjectEntry>): ProjectEn
   return [...entryByPath.values()];
 }
 
-const createFinder = Effect.fn("WorkspaceSearchIndex.createFinder")(function* (cwd: string) {
+const createFinder = Effect.fn("WorkspaceSearchIndex.createFinder")(function* (
+  cwd: string,
+  variant: WorkspaceSearchIndexVariant,
+) {
   const result = yield* Effect.try({
     try: () =>
       FileFinder.create({
         basePath: cwd,
         disableMmapCache: true,
-        disableContentIndexing: false,
+        // Content indexing costs scan CPU and memory, so only the on-demand
+        // content-search index pays for it; path-only consumers (file tree,
+        // composer path search, file picker) keep the lightweight index.
+        disableContentIndexing: variant !== "content",
         aiMode: false,
         enableFsRootScanning: true,
         enableHomeDirScanning: true,
@@ -327,8 +323,11 @@ const waitForScan = <E>(cwd: string, finder: FileFinder, onFailure: (cause: unkn
     Effect.withSpan("WorkspaceSearchIndex.waitForScan"),
   );
 
-export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: string) {
-  const finder = yield* Effect.acquireRelease(createFinder(cwd), (finder) =>
+export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
+  cwd: string,
+  variant: WorkspaceSearchIndexVariant = "paths",
+) {
+  const finder = yield* Effect.acquireRelease(createFinder(cwd, variant), (finder) =>
     Effect.try({
       try: () => finder.destroy(),
       catch: (cause) => new WorkspaceSearchIndexDestroyFailed({ cwd, cause }),
@@ -450,18 +449,28 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
       finder.grep(searchQuery, {
         mode: regexMode ? "regex" : "plain",
         smartCase: !input.caseSensitive && !regexMode,
-        maxMatchesPerFile: input.limit,
+        // A single dense file must not consume the whole result page.
+        maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, input.limit),
         pageSize: input.limit,
         timeBudgetMs: CONTENT_SEARCH_TIME_BUDGET_MS,
       }),
     );
+    const matches = result.items.flatMap((match) => {
+      const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
+        (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
+      );
+      if (matchRanges.length === 0) return [];
+      return [
+        {
+          path: toPosixPath(match.relativePath),
+          lineNumber: match.lineNumber,
+          lineContent: match.lineContent,
+          matchRanges,
+        },
+      ];
+    });
     return {
-      matches: result.items.map((match) => ({
-        path: toPosixPath(match.relativePath),
-        lineNumber: match.lineNumber,
-        lineContent: match.lineContent,
-        matchRanges: mapContentMatchRanges(input, match.lineContent, match.matchRanges),
-      })),
+      matches,
       truncated: result.nextCursor !== null,
       ...(result.regexFallbackError !== undefined
         ? { regexFallbackError: result.regexFallbackError }
@@ -472,12 +481,38 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
   return WorkspaceSearchIndex.of({ list, refresh, search, searchContents });
 });
 
+export const WORKSPACE_SEARCH_INDEX_VARIANTS = ["paths", "content"] as const;
+export type WorkspaceSearchIndexVariant = (typeof WORKSPACE_SEARCH_INDEX_VARIANTS)[number];
+
+/**
+ * Composite LayerMap key so the lightweight path index and the on-demand
+ * content-search index of the same workspace are separate resources with
+ * independent lifecycles. "\n" cannot appear in a filesystem path.
+ */
+export const workspaceSearchIndexKey = (cwd: string, variant: WorkspaceSearchIndexVariant) =>
+  `${variant}\n${cwd}`;
+
+function parseWorkspaceSearchIndexKey(key: string): {
+  readonly cwd: string;
+  readonly variant: WorkspaceSearchIndexVariant;
+} {
+  const separatorIndex = key.indexOf("\n");
+  return {
+    variant: key.slice(0, separatorIndex) as WorkspaceSearchIndexVariant,
+    cwd: key.slice(separatorIndex + 1),
+  };
+}
+
 /**
  * A layer factory is required because every index is scoped to a concrete
- * workspace root. WorkspaceSearchIndexMap owns memoization and idle cleanup;
- * using a default cwd here would mix resources from different workspaces.
+ * workspace root and variant. WorkspaceSearchIndexMap owns memoization and
+ * idle cleanup; using a default cwd here would mix resources from different
+ * workspaces.
  */
-export const layer = (cwd: string) => Layer.effect(WorkspaceSearchIndex, make(cwd));
+export const layer = (key: string) => {
+  const { cwd, variant } = parseWorkspaceSearchIndexKey(key);
+  return Layer.effect(WorkspaceSearchIndex, make(cwd, variant));
+};
 
 export class WorkspaceSearchIndexMap extends LayerMap.Service<WorkspaceSearchIndexMap>()(
   "t3/workspace/WorkspaceSearchIndexMap",

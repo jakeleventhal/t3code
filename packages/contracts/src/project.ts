@@ -1,5 +1,10 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  NonNegativeInt,
+  PositiveInt,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
@@ -11,7 +16,9 @@ export type ProjectEntryKind = typeof ProjectEntryKind.Type;
 
 export const ProjectSearchEntriesInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  query: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  // An empty query is a bounded browse: the index returns frecency-ordered
+  // entries, which the file picker uses for its initial results.
+  query: TrimmedString.check(Schema.isMaxLength(256)),
   limit: PositiveInt.check(Schema.isLessThanOrEqualTo(PROJECT_SEARCH_ENTRIES_MAX_LIMIT)),
   kind: Schema.optional(ProjectEntryKind),
 });
@@ -31,7 +38,9 @@ export type ProjectSearchEntriesResult = typeof ProjectSearchEntriesResult.Type;
 
 export const ProjectSearchContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  query: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  // Whitespace is significant in content queries (" foo", regex trailing
+  // spaces), so the query is deliberately not trimmed on the wire.
+  query: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
   limit: PositiveInt.check(Schema.isLessThanOrEqualTo(PROJECT_SEARCH_CONTENTS_MAX_LIMIT)),
   caseSensitive: Schema.Boolean,
   wholeWord: Schema.Boolean,

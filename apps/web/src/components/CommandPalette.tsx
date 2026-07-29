@@ -29,12 +29,14 @@ import {
   ArrowLeftIcon,
   ArrowUpIcon,
   CornerLeftUpIcon,
+  FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
   MessageSquareIcon,
   SettingsIcon,
   SquarePenIcon,
+  TextSearchIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -77,7 +79,9 @@ import {
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
 import { onOpenCommandPalette } from "../commandPaletteBus";
+import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
+import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -384,14 +388,23 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
       : false,
   );
+  const previewOpen = useRightPanelStore((state) =>
+    routeThreadRef
+      ? selectActiveRightPanel(state.byThreadKey, routeThreadRef) === "preview"
+      : false,
+  );
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      // Resolve with the complete shortcut context so customized bindings
+      // using any documented `when` condition (e.g. previewFocus) work.
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
           terminalFocus: isTerminalFocused(),
           terminalOpen,
+          previewFocus: isPreviewFocused(),
+          previewOpen,
         },
       });
       const mode = overlayModeForCommand(command);
@@ -404,7 +417,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleMode]);
+  }, [keybindings, previewOpen, terminalOpen, toggleMode]);
 
   useEffect(
     () =>
@@ -431,6 +444,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           mode={state.mode}
           openIntent={state.openIntent}
           setOpen={setOpen}
+          openOverlayMode={toggleMode}
           clearOpenIntent={clearOpenIntent}
         />
       </CommandDialog>
@@ -447,6 +461,7 @@ function CommandPaletteDialog(props: {
   readonly mode: SearchOverlayMode;
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
+  readonly openOverlayMode: (mode: SearchOverlayMode) => void;
   readonly clearOpenIntent: () => void;
 }) {
   if (!props.open) {
@@ -461,6 +476,7 @@ function CommandPaletteDialog(props: {
     <OpenCommandPaletteDialog
       openIntent={props.openIntent}
       setOpen={props.setOpen}
+      openOverlayMode={props.openOverlayMode}
       clearOpenIntent={props.clearOpenIntent}
     />
   );
@@ -469,10 +485,11 @@ function CommandPaletteDialog(props: {
 function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
+  readonly openOverlayMode: (mode: SearchOverlayMode) => void;
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
-  const { clearOpenIntent, openIntent, setOpen } = props;
+  const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const composerHandleRef = useComposerHandleContext();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -1269,6 +1286,32 @@ function OpenCommandPaletteDialog(props: {
       groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:open-file-picker",
+    searchTerms: ["go to file", "open file", "file picker", "find file", "quick open"],
+    title: "Go to file",
+    icon: <FileSearchIcon className={ITEM_ICON_CLASS} />,
+    keepOpen: true,
+    shortcutCommand: "filePicker.toggle",
+    run: async () => {
+      openOverlayMode("files");
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:search-project-contents",
+    searchTerms: ["search project", "find in files", "grep", "content search", "text search"],
+    title: "Search project contents",
+    icon: <TextSearchIcon className={ITEM_ICON_CLASS} />,
+    keepOpen: true,
+    shortcutCommand: "projectSearch.toggle",
+    run: async () => {
+      openOverlayMode("content");
+    },
+  });
 
   actionItems.push({
     kind: "action",

@@ -4,9 +4,38 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ProjectReadFileError,
   ProjectSearchContentsError,
+  ProjectSearchContentsInput,
   ProjectSearchEntriesError,
+  ProjectSearchEntriesInput,
   ProjectWriteFileError,
 } from "./project.ts";
+
+const decodeSearchEntriesInput = Schema.decodeUnknownSync(ProjectSearchEntriesInput);
+const decodeSearchContentsInput = Schema.decodeUnknownSync(ProjectSearchContentsInput);
+
+describe("project search inputs", () => {
+  it("allows an empty entries query for bounded frecency browsing", () => {
+    const decoded = decodeSearchEntriesInput({
+      cwd: "/workspace",
+      query: "   ",
+      limit: 10,
+      kind: "file",
+    });
+    expect(decoded.query).toBe("");
+  });
+
+  it("preserves whitespace in content search queries", () => {
+    const decoded = decodeSearchContentsInput({
+      cwd: "/workspace",
+      query: " foo ",
+      limit: 10,
+      caseSensitive: false,
+      wholeWord: false,
+      useRegex: false,
+    });
+    expect(decoded.query).toBe(" foo ");
+  });
+});
 
 describe("project RPC errors", () => {
   it("derives stable messages from structured request context while retaining causes", () => {

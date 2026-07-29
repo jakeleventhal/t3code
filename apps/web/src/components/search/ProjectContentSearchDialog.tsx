@@ -1,6 +1,6 @@
 import type { ProjectContentMatch } from "@t3tools/contracts";
 import { LoaderCircle, Search } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useTheme } from "~/hooks/useTheme";
@@ -18,6 +18,14 @@ interface ProjectContentSearchDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }
+
+/**
+ * Result rows are syntax highlighted, so mounting all 500 possible rows at
+ * once stalls the UI. Rows render in windows that grow as the sentinel at the
+ * bottom of the list scrolls into view (or keyboard navigation moves past
+ * the rendered window).
+ */
+const VISIBLE_MATCH_WINDOW = 100;
 
 interface MatchGroup {
   readonly path: string;
@@ -105,6 +113,8 @@ function OpenContentSearchDialog(props: {
   const [useRegex, setUseRegex] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_MATCH_WINDOW);
+
   const search = useProjectContentSearch({
     environmentId: target.environmentId,
     cwd: target.cwd,
@@ -114,23 +124,40 @@ function OpenContentSearchDialog(props: {
     useRegex,
   });
   const matches = search.matches;
-  const groups = useMemo(() => groupMatches(matches), [matches]);
+  const visibleMatches = useMemo(() => matches.slice(0, visibleCount), [matches, visibleCount]);
+  const groups = useMemo(() => groupMatches(visibleMatches), [visibleMatches]);
 
   useEffect(() => {
     setSelectedIndex(0);
+    setVisibleCount(VISIBLE_MATCH_WINDOW);
   }, [matches]);
 
   useEffect(() => {
+    if (selectedIndex >= visibleCount) {
+      setVisibleCount(selectedIndex + VISIBLE_MATCH_WINDOW);
+      return;
+    }
     document
       .querySelector<HTMLElement>(`[data-content-search-result="${selectedIndex}"]`)
       ?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex]);
+  }, [selectedIndex, visibleCount]);
+
+  const observeLoadMoreSentinel = useCallback((sentinel: HTMLElement | null) => {
+    if (!sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisibleCount((current) => current + VISIBLE_MATCH_WINDOW);
+      }
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
 
   const openMatch = (match: ProjectContentMatch) => {
     props.onOpenChange(false);
     useRightPanelStore.getState().openFile(target.threadRef, match.path, match.lineNumber);
   };
-  const fileCount = groups.length;
+  const fileCount = useMemo(() => new Set(matches.map((match) => match.path)).size, [matches]);
 
   return (
     <ContentSearchPopup>
@@ -151,6 +178,13 @@ function OpenContentSearchDialog(props: {
               event.preventDefault();
               setSelectedIndex((current) => (current - 1 + matches.length) % matches.length);
             } else if (event.key === "Enter") {
+              // While a newer query is debouncing or in flight, the visible
+              // matches belong to the previous query; opening one would jump
+              // to a result the user did not ask for.
+              if (search.isPending) {
+                event.preventDefault();
+                return;
+              }
               const match = matches[selectedIndex];
               if (match) {
                 event.preventDefault();
@@ -261,6 +295,9 @@ function OpenContentSearchDialog(props: {
                   </section>
                 );
               })}
+              {matches.length > visibleCount ? (
+                <div ref={observeLoadMoreSentinel} className="h-8" aria-hidden="true" />
+              ) : null}
             </div>
           </ScrollArea>
         )}

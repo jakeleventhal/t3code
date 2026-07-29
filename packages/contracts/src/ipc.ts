@@ -26,8 +26,6 @@ import type {
   ProjectListEntriesResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
-  ProjectSearchContentsInput,
-  ProjectSearchContentsResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -1160,7 +1158,6 @@ export interface EnvironmentApi {
   projects: {
     listEntries: (input: ProjectListEntriesInput) => Promise<ProjectListEntriesResult>;
     readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
-    searchContents: (input: ProjectSearchContentsInput) => Promise<ProjectSearchContentsResult>;
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
   };
