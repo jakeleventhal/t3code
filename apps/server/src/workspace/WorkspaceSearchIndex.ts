@@ -464,6 +464,11 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   )(function* (input) {
     const { searchQuery, regexMode } = buildContentSearchQuery(input);
     const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
+    // Grep cursors advance by file, so whole-word post-filtering needs enough
+    // raw candidates from the current file before moving to the next one.
+    const rawPageSize = input.wholeWord
+      ? Math.max(input.limit, CONTENT_SEARCH_MAX_MATCHES_PER_FILE)
+      : input.limit;
     const matches: Array<ProjectSearchContentsResult["matches"][number]> = [];
     let nextCursor: GrepCursor | null = null;
     let regexFallbackError: string | undefined;
@@ -475,8 +480,8 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
           mode: regexMode ? "regex" : "plain",
           smartCase: !input.caseSensitive && !regexMode,
           // A single dense file must not consume the whole result page.
-          maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, input.limit),
-          pageSize: input.limit,
+          maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, rawPageSize),
+          pageSize: rawPageSize,
           cursor: nextCursor,
           timeBudgetMs: remainingTimeBudgetMs,
         }),
