@@ -69,7 +69,7 @@ describe("diffPanelStore", () => {
     ).toEqual({ kind: "branch", baseRef: "origin/main" });
   });
 
-  it("reconciles a missing turn selection to the latest available turn", () => {
+  it("reconciles to the latest turn without retaining a sibling's file path", () => {
     const missingTurnId = TurnId.make("turn-missing");
     const latestTurnId = TurnId.make("turn-latest");
     useDiffPanelStore.getState().selectTurn(THREAD_REF, missingTurnId, "src/app.ts");
@@ -80,7 +80,7 @@ describe("diffPanelStore", () => {
     ).toEqual({
       kind: "turn",
       turnId: latestTurnId,
-      filePath: "src/app.ts",
+      filePath: null,
       revealRequestId: 1,
     });
   });

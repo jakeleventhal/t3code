@@ -1,7 +1,11 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { requestThreadUnpinConfirmation, ThreadArchiveBlockedError } from "./useThreadActions";
+import {
+  isFinalWorktreeThreadAfterDelete,
+  requestThreadUnpinConfirmation,
+  ThreadArchiveBlockedError,
+} from "./useThreadActions";
 
 describe("ThreadArchiveBlockedError", () => {
   it("keeps the blocked thread context with the fixed message", () => {
@@ -69,5 +73,20 @@ describe("requestThreadUnpinConfirmation", () => {
     });
 
     expect(result._tag).toBe("Failure");
+  });
+});
+
+describe("isFinalWorktreeThreadAfterDelete", () => {
+  const first = ThreadId.make("thread-1");
+  const final = ThreadId.make("thread-2");
+
+  it("waits until every sibling was actually deleted", () => {
+    expect(isFinalWorktreeThreadAfterDelete(first, [first, final], new Set())).toBe(false);
+    expect(isFinalWorktreeThreadAfterDelete(final, [first, final], new Set([first]))).toBe(true);
+  });
+
+  it("does not treat an intended but uncompleted sibling delete as cleanup authority", () => {
+    expect(isFinalWorktreeThreadAfterDelete(first, [first, final], new Set([final]))).toBe(true);
+    expect(isFinalWorktreeThreadAfterDelete(first, [first, final], new Set())).toBe(false);
   });
 });

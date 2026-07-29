@@ -12,6 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useThreadPreviewState } from "~/previewStateStore";
 import { selectThreadPreviewMiniPlayer, usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { useWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 import { previewBridge } from "./previewBridge";
 import {
@@ -55,8 +56,9 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
     selectThreadPreviewMiniPlayer(state.byThreadKey, threadRef),
   );
   const previewState = useThreadPreviewState(threadRef);
+  const canonicalThreadRef = useWorktreeCanonicalThreadRef(threadRef) ?? threadRef;
   const snapshot = previewState.sessions[tabId] ?? null;
-  const runtimeTabId = previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId);
+  const runtimeTabId = previewRuntimeTabId(canonicalThreadRef, previewState.serverEpoch, tabId);
   const desktopOverlay = previewState.desktopByTabId[tabId] ?? null;
   const position = miniPlayer?.tabId === tabId ? miniPlayer.position : null;
   const size =
