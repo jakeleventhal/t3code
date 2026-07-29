@@ -7,6 +7,8 @@ import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import type {
   EnvironmentId,
   OrchestrationThread,
+  ProjectContentMatch,
+  ProjectEntryKind,
   ThreadId,
   VcsListRefsResult,
   VcsRef,
@@ -24,10 +26,13 @@ import { useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
 
-const COMPOSER_PATH_SEARCH_DEBOUNCE_MS = 120;
+const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 120;
 const COMPOSER_PATH_SEARCH_LIMIT = 80;
+const PROJECT_CONTENT_SEARCH_DEBOUNCE_MS = 120;
+const PROJECT_CONTENT_SEARCH_LIMIT = 500;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
+const EMPTY_CONTENT_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 const INITIAL_BRANCH_CURSORS = [undefined] as const;
 
 export interface ThreadDetailView {
@@ -184,16 +189,33 @@ export function usePaginatedBranches(target: VcsRefTarget) {
   };
 }
 
-export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+type ProjectPathSearchTarget = ComposerPathSearchTarget & {
+  readonly kind?: ProjectEntryKind | undefined;
+};
+
+export function areProjectPathSearchTargetsEqual(
+  left: ProjectPathSearchTarget,
+  right: ProjectPathSearchTarget,
+): boolean {
+  return (
+    left.environmentId === right.environmentId &&
+    left.cwd === right.cwd &&
+    left.query === right.query &&
+    left.kind === right.kind
+  );
+}
+
+export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: number) {
   const normalizedTarget = useMemo(
     () => ({
       environmentId: target.environmentId,
       cwd: target.cwd,
       query: target.query?.trim() ?? "",
+      kind: target.kind,
     }),
-    [target.cwd, target.environmentId, target.query],
+    [target.cwd, target.environmentId, target.kind, target.query],
   );
-  const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
+  const debouncedTarget = useDebouncedValue(normalizedTarget, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
   const result = useEnvironmentQuery(
     debouncedTarget.environmentId !== null &&
       debouncedTarget.cwd !== null &&
@@ -203,7 +225,8 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
           input: {
             cwd: debouncedTarget.cwd,
             query: debouncedTarget.query,
-            limit: COMPOSER_PATH_SEARCH_LIMIT,
+            limit,
+            ...(debouncedTarget.kind ? { kind: debouncedTarget.kind } : {}),
           },
         })
       : null,
@@ -212,8 +235,55 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return {
     entries: result.data?.entries ?? [],
     error: result.error,
-    isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
+    isPending:
+      !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
+    searchedQuery: debouncedTarget.query,
     refresh: result.refresh,
+  };
+}
+
+export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+  return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
+}
+
+interface ProjectContentSearchTarget {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly query: string;
+  readonly caseSensitive: boolean;
+  readonly wholeWord: boolean;
+  readonly useRegex: boolean;
+}
+
+export function useProjectContentSearch(target: ProjectContentSearchTarget) {
+  const query = target.query.trim();
+  const debouncedQuery = useDebouncedValue(query, PROJECT_CONTENT_SEARCH_DEBOUNCE_MS);
+  const result = useEnvironmentQuery(
+    target.environmentId !== null &&
+      target.cwd !== null &&
+      query.length > 0 &&
+      debouncedQuery.length > 0
+      ? projectEnvironment.searchContents({
+          environmentId: target.environmentId,
+          input: {
+            cwd: target.cwd,
+            query: debouncedQuery,
+            limit: PROJECT_CONTENT_SEARCH_LIMIT,
+            caseSensitive: target.caseSensitive,
+            wholeWord: target.wholeWord,
+            useRegex: target.useRegex,
+          },
+        })
+      : null,
+  );
+
+  return {
+    matches: result.data?.matches ?? EMPTY_CONTENT_MATCHES,
+    error: result.error,
+    isPending: query !== debouncedQuery || result.isPending,
+    hasQuery: query.length > 0,
+    truncated: result.data?.truncated ?? false,
+    invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
   };
 }
 

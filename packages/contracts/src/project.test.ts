@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   ProjectReadFileError,
+  ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
 } from "./project.ts";
@@ -39,6 +40,18 @@ describe("project RPC errors", () => {
     expect(readError.message).toBe("Failed to read workspace file 'src/index.ts' in '/workspace'.");
     expect(readError.message).not.toContain(cause.message);
     expect(readError.cause).toBe(cause);
+
+    const contentSearchError = new ProjectSearchContentsError({
+      cwd: "/workspace",
+      queryLength: "authorization: Bearer secret-token".length,
+      limit: 100,
+      failure: "search_index_search_failed",
+      cause,
+    });
+    expect(contentSearchError.message).toBe("Failed to search workspace contents in '/workspace'.");
+    expect(contentSearchError.message).not.toContain(cause.message);
+    expect(contentSearchError).not.toHaveProperty("query");
+    expect(contentSearchError.cause).toBe(cause);
   });
 
   it("decodes legacy message-only errors during rolling upgrades", () => {

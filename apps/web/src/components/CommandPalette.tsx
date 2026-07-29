@@ -96,6 +96,7 @@ import {
   buildThreadActionItems,
   enumerateCommandPaletteItems,
   type CommandPaletteActionItem,
+  type CommandPaletteOpenIntent,
   type CommandPaletteSubmenuItem,
   type CommandPaletteView,
   filterCommandPaletteGroups,
@@ -103,12 +104,16 @@ import {
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
+  reduceCommandPaletteUiState,
+  type SearchOverlayMode,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "./Icons";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { ProjectFilePicker } from "./files/ProjectFilePicker";
+import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { resolveDefaultProviderModelSelection } from "../providerInstances";
@@ -340,50 +345,30 @@ function errorMessage(error: unknown): string {
   return "An error occurred.";
 }
 
-interface CommandPaletteOpenIntent {
-  readonly kind: "add-project" | "new-thread-in";
-}
+const OVERLAY_MODE_BY_COMMAND = {
+  "commandPalette.toggle": "command",
+  "filePicker.toggle": "files",
+  "projectSearch.toggle": "content",
+} as const satisfies Partial<Record<string, SearchOverlayMode>>;
 
-interface CommandPaletteUiState {
-  readonly open: boolean;
-  readonly openIntent: CommandPaletteOpenIntent | null;
-}
-
-type CommandPaletteUiAction =
-  | { readonly _tag: "SetOpen"; readonly open: boolean }
-  | { readonly _tag: "Toggle" }
-  | { readonly _tag: "OpenAddProject" }
-  | { readonly _tag: "OpenNewThreadIn" }
-  | { readonly _tag: "ClearOpenIntent" };
-
-function reduceCommandPaletteUiState(
-  state: CommandPaletteUiState,
-  action: CommandPaletteUiAction,
-): CommandPaletteUiState {
-  switch (action._tag) {
-    case "SetOpen":
-      return {
-        open: action.open,
-        openIntent: action.open ? state.openIntent : null,
-      };
-    case "Toggle":
-      return { open: !state.open, openIntent: null };
-    case "OpenAddProject":
-      return { open: true, openIntent: { kind: "add-project" } };
-    case "OpenNewThreadIn":
-      return { open: true, openIntent: { kind: "new-thread-in" } };
-    case "ClearOpenIntent":
-      return state.openIntent ? { ...state, openIntent: null } : state;
-  }
+function overlayModeForCommand(command: string | null): SearchOverlayMode | null {
+  if (command === null) return null;
+  return command in OVERLAY_MODE_BY_COMMAND
+    ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
+    : null;
 }
 
 export function CommandPalette({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduceCommandPaletteUiState, {
     open: false,
+    mode: "command",
     openIntent: null,
   });
   const setOpen = useCallback((open: boolean) => dispatch({ _tag: "SetOpen", open }), []);
-  const toggleOpen = useCallback(() => dispatch({ _tag: "Toggle" }), []);
+  const toggleMode = useCallback(
+    (mode: SearchOverlayMode) => dispatch({ _tag: "ToggleMode", mode }),
+    [],
+  );
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
@@ -409,16 +394,17 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           terminalOpen,
         },
       });
-      if (command !== "commandPalette.toggle") {
+      const mode = overlayModeForCommand(command);
+      if (mode === null) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      toggleOpen();
+      toggleMode(mode);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleOpen]);
+  }, [keybindings, terminalOpen, toggleMode]);
 
   useEffect(
     () =>
@@ -434,29 +420,41 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     [openAddProject, openNewThreadIn, setOpen],
   );
 
+  const commandDialogOpen = state.open && state.mode !== "content";
+
   return (
     <ComposerHandleContext value={composerHandleRef}>
-      <CommandDialog open={state.open} onOpenChange={setOpen}>
+      <CommandDialog open={commandDialogOpen} onOpenChange={setOpen}>
         {children}
         <CommandPaletteDialog
-          open={state.open}
+          open={commandDialogOpen}
+          mode={state.mode}
           openIntent={state.openIntent}
           setOpen={setOpen}
           clearOpenIntent={clearOpenIntent}
         />
       </CommandDialog>
+      <ProjectContentSearchDialog
+        open={state.open && state.mode === "content"}
+        onOpenChange={setOpen}
+      />
     </ComposerHandleContext>
   );
 }
 
 function CommandPaletteDialog(props: {
   readonly open: boolean;
+  readonly mode: SearchOverlayMode;
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
 }) {
   if (!props.open) {
     return null;
+  }
+
+  if (props.mode === "files") {
+    return <ProjectFilePicker setOpen={props.setOpen} />;
   }
 
   return (

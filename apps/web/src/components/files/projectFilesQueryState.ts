@@ -11,6 +11,7 @@ import { useCallback } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
+import { useProjectPathSearch } from "~/state/queries";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
 
 const EMPTY_PROJECT_FILE_PATH = "";
@@ -133,6 +134,42 @@ export function useProjectEntriesQuery(
     error: errorMessage(result),
     isPending: result.waiting,
     refresh,
+  };
+}
+
+/**
+ * Backing query for the project file picker: the workspace index listing when
+ * the query is blank, and a debounced file-only server search otherwise.
+ * `matchedQuery` is the query the returned entries were computed for, so the
+ * caller can highlight against results instead of half-typed input.
+ */
+export function useProjectFilePickerQuery(
+  environmentId: EnvironmentId,
+  cwd: string,
+  query: string,
+  limit: number,
+) {
+  const listing = useProjectEntriesQuery(environmentId, cwd);
+  const hasQuery = /\S/.test(query);
+  const search = useProjectPathSearch(
+    { environmentId, cwd, query: hasQuery ? query : null, kind: "file" },
+    limit,
+  );
+
+  if (hasQuery) {
+    return {
+      entries: search.isPending ? [] : search.entries,
+      error: search.error,
+      isPending: search.isPending,
+      matchedQuery: search.searchedQuery,
+    };
+  }
+
+  return {
+    entries: listing.data?.entries ?? [],
+    error: listing.data === null ? listing.error : null,
+    isPending: listing.data === null && listing.isPending,
+    matchedQuery: "",
   };
 }
 

@@ -26,6 +26,10 @@ interface FileBrowserPanelProps {
   environmentId: EnvironmentId;
   cwd: string;
   projectName: string;
+  /** File currently open in the preview pane; revealed and selected in the tree. */
+  selectedPath: string | null;
+  /** Bumped when the same path should be revealed again (e.g. re-opened from search). */
+  selectedPathRevealId: number;
   onOpenFile: (relativePath: string) => void;
 }
 
@@ -98,6 +102,8 @@ export default function FileBrowserPanel({
   environmentId,
   cwd,
   projectName,
+  selectedPath,
+  selectedPathRevealId,
   onOpenFile,
 }: FileBrowserPanelProps) {
   const { resolvedTheme } = useTheme();
@@ -111,6 +117,7 @@ export default function FileBrowserPanel({
   const entryKindsRef = useRef<ReadonlyMap<string, ProjectEntry["kind"]>>(entryKinds);
   const treePaths = useMemo(() => entries.map(treePath), [entries]);
   const previousTreePathsRef = useRef<readonly string[]>([]);
+  const syncingSelectionRef = useRef(false);
 
   // The tree renders rows in shadow DOM and its anchor rect is unreliable, so
   // capture the right-click position ourselves; contextmenu is a composed
@@ -216,6 +223,9 @@ export default function FileBrowserPanel({
     initialExpansion: 1,
     icons: T3_PIERRE_ICONS,
     onSelectionChange: (selectedPaths) => {
+      // Selection changes driven by the reveal sync below are echoes of an
+      // already-open file, not a request to open it again.
+      if (syncingSelectionRef.current) return;
       dragMention.handleSelectionChange(selectedPaths);
       // Starting a drag selects the dragged row; that selection is a side
       // effect of the gesture, not a request to open the file.
@@ -246,6 +256,30 @@ export default function FileBrowserPanel({
     previousTreePathsRef.current = treePaths;
     model.resetPaths(treePaths);
   }, [entryKinds, model, treePaths]);
+
+  useEffect(() => {
+    if (!selectedPath || entryKinds.get(selectedPath) !== "file") return;
+
+    syncingSelectionRef.current = true;
+    model.closeSearch();
+    for (const path of model.getSelectedPaths()) {
+      model.getItem(path)?.deselect();
+    }
+
+    const segments = selectedPath.split("/");
+    let ancestorPath = "";
+    for (const segment of segments.slice(0, -1)) {
+      ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
+      const item = model.getItem(ancestorPath);
+      if (item && "expand" in item) item.expand();
+    }
+
+    model.getItem(selectedPath)?.select();
+    model.scrollToPath(selectedPath, { focus: true, offset: "center" });
+    queueMicrotask(() => {
+      syncingSelectionRef.current = false;
+    });
+  }, [entryKinds, model, selectedPath, selectedPathRevealId, treePaths]);
 
   // Tag tree drags with the composer mention payload. The row is read from
   // the composed event path (the tree's shadow root is open), so this does
