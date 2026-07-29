@@ -45,7 +45,6 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
-import { OpenAddProjectCommandPaletteProvider } from "../commandPaletteContext";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -381,20 +380,18 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   }, [keybindings, terminalOpen, toggleCommand, toggleFiles]);
 
   return (
-    <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
-      <ComposerHandleContext value={composerHandleRef}>
-        <CommandDialog open={state.open} onOpenChange={setOpen}>
-          {children}
-          <CommandPaletteDialog
-            mode={state.mode}
-            open={state.open}
-            openIntent={state.openIntent}
-            setOpen={setOpen}
-            clearOpenIntent={clearOpenIntent}
-          />
-        </CommandDialog>
-      </ComposerHandleContext>
-    </OpenAddProjectCommandPaletteProvider>
+    <ComposerHandleContext value={composerHandleRef}>
+      <CommandDialog open={state.open} onOpenChange={setOpen}>
+        {children}
+        <CommandPaletteDialog
+          mode={state.mode}
+          open={state.open}
+          openIntent={state.openIntent}
+          setOpen={setOpen}
+          clearOpenIntent={clearOpenIntent}
+        />
+      </CommandDialog>
+    </ComposerHandleContext>
   );
 }
 
