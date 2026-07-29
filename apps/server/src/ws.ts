@@ -1031,8 +1031,7 @@ const makeWsRpcLayer = (
       // Mirrors the client's worktree identity rule (worktreeCleanup.ts):
       // blank and null both mean "the project's local checkout".
       const normalizeWorktreePathForArchive = (worktreePath: string | null): string | null => {
-        const trimmed = worktreePath?.trim();
-        return trimmed !== undefined && trimmed.length > 0 ? trimmed : null;
+        return worktreePath && worktreePath.length > 0 ? worktreePath : null;
       };
 
       const refreshGitStatus = (cwd: string) =>
@@ -1068,8 +1067,7 @@ const makeWsRpcLayer = (
                   : Option.none<OrchestrationThreadShell>();
               const shouldStopSessionAfterCommand = Option.match(threadShellBeforeCommand, {
                 onNone: () => false,
-                onSome: (thread) =>
-                  thread.session !== null && thread.session.status !== "stopped",
+                onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
               });
               const result = yield* dispatchNormalizedCommand(normalizedCommand);
               if (parkingCommand) {
@@ -1102,41 +1100,57 @@ const makeWsRpcLayer = (
                   );
                 }
 
-                // Terminals are user-opened panes, not thread background
-                // work: archive removes the thread from view so they close
-                // with it, but a settled thread stays reachable and may be
-                // un-settled, so its terminals stay up.
                 if (parkingCommand.type === "thread.archive") {
                   // Terminals are worktree-scoped on the client (every thread in
                   // a checkout shares one set of ptys via a canonical thread id),
                   // so archiving one thread must not kill sessions that sibling
                   // threads still use — e.g. a running dev server.
-                  const worktreeStillInUse = yield* Option.match(threadShellBeforeCommand, {
-                    onNone: () => Effect.succeed(false),
+                  const terminalOwnerToClose = yield* Option.match(threadShellBeforeCommand, {
+                    onNone: () => Effect.succeed(Option.none<ThreadId>()),
                     onSome: (archivedThread) =>
-                      projectionSnapshotQuery.getShellSnapshot().pipe(
-                        Effect.map((snapshot) =>
-                          snapshot.threads.some(
-                            (thread) =>
-                              thread.id !== archivedThread.id &&
-                              thread.projectId === archivedThread.projectId &&
-                              normalizeWorktreePathForArchive(thread.worktreePath) ===
-                                normalizeWorktreePathForArchive(archivedThread.worktreePath),
-                          ),
-                        ),
-                        Effect.orElseSucceed(() => false),
+                      Effect.all([
+                        projectionSnapshotQuery.getShellSnapshot(),
+                        projectionSnapshotQuery.getArchivedShellSnapshot(),
+                      ]).pipe(
+                        Effect.map(([activeSnapshot, archivedSnapshot]) => {
+                          const sameWorktree = (thread: OrchestrationThreadShell) =>
+                            thread.projectId === archivedThread.projectId &&
+                            normalizeWorktreePathForArchive(thread.worktreePath) ===
+                              normalizeWorktreePathForArchive(archivedThread.worktreePath);
+                          const worktreeStillInUse = activeSnapshot.threads.some(
+                            (thread) => thread.id !== archivedThread.id && sameWorktree(thread),
+                          );
+                          if (worktreeStillInUse) return Option.none<ThreadId>();
+                          const canonicalOwner = [
+                            archivedThread,
+                            ...archivedSnapshot.threads.filter(
+                              (thread) => thread.id !== archivedThread.id && sameWorktree(thread),
+                            ),
+                          ].toSorted(
+                            (left, right) =>
+                              left.createdAt.localeCompare(right.createdAt) ||
+                              left.id.localeCompare(right.id),
+                          )[0]!;
+                          return Option.some(canonicalOwner.id);
+                        }),
+                        // If either projection read fails, retain the sessions;
+                        // closing the wrong checkout owner is more disruptive
+                        // than a cleanup retry on a later lifecycle action.
+                        Effect.orElseSucceed(() => Option.none<ThreadId>()),
                       ),
                   });
-                  if (!worktreeStillInUse) {
-                    yield* terminalManager.close({ threadId: parkingCommand.threadId }).pipe(
-                      Effect.catch((error) =>
-                        Effect.logWarning("failed to close thread terminals after archive", {
-                          threadId: parkingCommand.threadId,
-                          error: error.message,
-                        }),
+                  yield* Option.match(terminalOwnerToClose, {
+                    onNone: () => Effect.void,
+                    onSome: (threadId) =>
+                      terminalManager.close({ threadId }).pipe(
+                        Effect.catch((error) =>
+                          Effect.logWarning("failed to close thread terminals after archive", {
+                            threadId,
+                            error: error.message,
+                          }),
+                        ),
                       ),
-                    );
-                  }
+                  });
                 }
               }
               return result;

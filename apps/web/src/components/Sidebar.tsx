@@ -109,6 +109,7 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments"
 import { useProjects, useThreadShells } from "../state/entities";
 import { useRunningTerminalsForThreads } from "../state/terminalSessions";
 import { useDiscoveredPortsForThreads } from "../portDiscoveryState";
+import { useWorktreeCanonicalThreadRef } from "../worktreeScope";
 import { previewEnvironment } from "../state/preview";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { vcsEnvironment } from "../state/vcs";
@@ -877,18 +878,27 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
                     isWoke && "group-hover/sidebar-row:static",
                   )}
                 >
-                  <Undo2Icon className="mb-px size-3.5" />
+                  <AlarmClockOffIcon className="size-3" />
                 </button>
-              )}
-            </span>
-            {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-          </TooltipTrigger>
-          {detailsTooltip}
-        </Tooltip>
-      </li>
+              )
+            ) : !props.settlementSupported ? null : (
+              <button
+                type="button"
+                aria-label="Un-settle thread"
+                onClick={handleUnsettleClick}
+                className="absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/v2-row:opacity-100"
+              >
+                <Undo2Icon className="mb-px size-3.5" />
+              </button>
+            )}
+          </span>
+          {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+        </TooltipTrigger>
+        {detailsTooltip}
+      </Tooltip>
+    </li>
   );
 });
-
 
 function latestTurnDiff(
   thread: SidebarThreadSummary,
@@ -1204,7 +1214,16 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
         ) ?? null);
   const isActiveCard = activeMember !== null;
   const environmentId = newest.environmentId;
-  const threadIds = useMemo(() => threads.map((thread) => thread.id), [threads]);
+  const canonicalThreadRef = useWorktreeCanonicalThreadRef(newestRef);
+  const threadIds = useMemo(
+    () => [
+      ...new Set([
+        ...threads.map((thread) => thread.id),
+        ...(canonicalThreadRef ? [canonicalThreadRef.threadId] : []),
+      ]),
+    ],
+    [canonicalThreadRef, threads],
+  );
 
   // Worktree-level activity: any member thread's terminal with a running
   // subprocess, and any dev server discovered on a member's terminal. These
@@ -1310,23 +1329,24 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   const worktreePath = threads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
   const gitCwd = worktreePath ?? props.projectCwd;
   const gitStatus = useEnvironmentQuery(
-    (newest.branch != null || worktreePath !== null) && gitCwd !== null
+    gitCwd !== null
       ? vcsEnvironment.status({
           environmentId,
           input: { cwd: gitCwd },
         })
       : null,
   );
+  const checkoutBranch =
+    worktreePath === null ? (gitStatus.data?.refName ?? newest.branch) : newest.branch;
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: worktreePath === null ? "local" : "worktree",
     activeWorktreePath: worktreePath,
-    activeThreadBranch: newest.branch,
+    activeThreadBranch: checkoutBranch,
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
   const pr = resolveThreadPr({
-    threadBranch: newest.branch,
+    threadBranch: checkoutBranch,
     gitStatus: gitStatus.data,
-    hasDedicatedWorktree: worktreePath !== null,
   });
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const prState = pr?.state ?? null;
@@ -1388,6 +1408,9 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   // member can take it — a half-applied snooze would leave the card in
   // place and read as a failed click.
   const snoozeNowIso = new Date().toISOString();
+  const showSettleButton =
+    props.settlementSupported &&
+    threads.every((thread) => canSettle(thread, { now: snoozeNowIso }));
   const showSnoozeButton =
     props.snoozeSupported && threads.every((thread) => canSnooze(thread, { now: snoozeNowIso }));
   const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
@@ -1409,7 +1432,10 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
         : shouldRecede
           ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    isInFlight && !isActiveCard && !anySelected && "opacity-70 transition-opacity hover:opacity-100",
+    isInFlight &&
+      !isActiveCard &&
+      !anySelected &&
+      "opacity-70 transition-opacity hover:opacity-100",
   );
 
   const sortable = props.sortable;
@@ -1493,7 +1519,10 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
               >
                 {topStatus ? (
                   <span
-                    className={cn("inline-flex items-center gap-1 font-medium", topStatus.className)}
+                    className={cn(
+                      "inline-flex items-center gap-1 font-medium",
+                      topStatus.className,
+                    )}
                   >
                     {topStatus.icon === "working" ? (
                       <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
@@ -1516,7 +1545,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   threadTimeLabel(timeLabelThread)
                 )}
               </span>
-              {props.settlementSupported || showSnoozeButton ? (
+              {showSettleButton || showSnoozeButton ? (
                 <span
                   className={cn(
                     "absolute inset-y-0 right-0 flex items-stretch gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/v2-row:opacity-100",
@@ -1530,7 +1559,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                       onSnooze={handleSnoozePreset}
                     />
                   ) : null}
-                  {props.settlementSupported ? (
+                  {showSettleButton ? (
                     <button
                       type="button"
                       aria-label="Settle worktree"
@@ -1574,8 +1603,8 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
             })}
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/75">
-            {newest.branch ? (
-              <span className="min-w-0 flex-1 truncate whitespace-nowrap">{newest.branch}</span>
+            {checkoutBranch ? (
+              <span className="min-w-0 flex-1 truncate whitespace-nowrap">{checkoutBranch}</span>
             ) : (
               <span className="flex-1" />
             )}
@@ -2079,11 +2108,13 @@ export default function SidebarV2() {
   // Shelf rows stand in for their whole group; the representative prefers
   // the route thread so highlight and navigation stay honest.
   const snoozedRepThreads = useMemo(
-    () => visibleSnoozedGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
+    () =>
+      visibleSnoozedGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
     [routeThreadKey, visibleSnoozedGroups],
   );
   const settledRepThreads = useMemo(
-    () => renderedSettledGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
+    () =>
+      renderedSettledGroups.map((group) => pickWorktreeGroupRepresentative(group, routeThreadKey)),
     [renderedSettledGroups, routeThreadKey],
   );
   // The flat jump/selection spine: card members in visual order, then the
@@ -2383,10 +2414,11 @@ export default function SidebarV2() {
           );
         });
         if (pending.length === 0) return;
-        // Prefer members the server will accept; when none qualify, send
-        // the first anyway so the user sees the server's reason.
-        const settleable = pending.filter((thread) => canSettle(thread, { now }));
-        const targets = settleable.length > 0 ? settleable : [pending[0]!];
+        // A worktree-level action is all-or-nothing. If any member is blocked,
+        // send only that member so the server's reason reaches the user without
+        // partially settling its siblings.
+        const blocked = pending.find((thread) => !canSettle(thread, { now }));
+        const targets = blocked ? [blocked] : pending;
         const targetKeys = targets.map(sidebarThreadKey);
         for (const key of targetKeys) settlingThreadKeysRef.current.add(key);
         try {
