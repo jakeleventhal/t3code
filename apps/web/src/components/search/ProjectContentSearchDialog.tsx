@@ -150,6 +150,8 @@ function OpenContentSearchDialog(props: {
     useRightPanelStore.getState().openFile(target.threadRef, match.path, match.lineNumber);
   };
   const fileCount = useMemo(() => new Set(matches.map((match) => match.path)).size, [matches]);
+  const showSearchStatus =
+    search.hasQuery || search.isPending || search.error !== null || search.invalidRegex;
 
   return (
     <CommandPaletteContent
@@ -213,21 +215,21 @@ function OpenContentSearchDialog(props: {
       testId="project-content-search"
       value={query}
     >
-      <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
-        {search.isPending ? (
-          <span className="flex items-center gap-2">
-            <LoaderCircle className="size-3.5 animate-spin" /> Searching…
-          </span>
-        ) : search.error ? (
-          <span className="text-destructive">{search.error}</span>
-        ) : search.invalidRegex ? (
-          <span className="text-destructive">Invalid regular expression</span>
-        ) : !search.hasQuery ? (
-          `Search every file in ${target.projectName}`
-        ) : (
-          `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
-        )}
-      </div>
+      {showSearchStatus ? (
+        <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
+          {search.isPending ? (
+            <span className="flex items-center gap-2">
+              <LoaderCircle className="size-3.5 animate-spin" /> Searching…
+            </span>
+          ) : search.error ? (
+            <span className="text-destructive">{search.error}</span>
+          ) : search.invalidRegex ? (
+            <span className="text-destructive">Invalid regular expression</span>
+          ) : (
+            `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
+          )}
+        </div>
+      ) : null}
 
       {matches.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
