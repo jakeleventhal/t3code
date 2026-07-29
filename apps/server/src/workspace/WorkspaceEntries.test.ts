@@ -437,6 +437,31 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    it.effect("treats astral-plane letters as whole word characters", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-astral-word-" });
+        yield* writeTextFile(cwd, "src/words.ts", "𐐀foo foo foo𐐀\n");
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.searchContents({
+          cwd,
+          query: "foo",
+          limit: 100,
+          caseSensitive: true,
+          wholeWord: true,
+          useRegex: false,
+        });
+
+        expect(result.matches).toEqual([
+          expect.objectContaining({
+            path: "src/words.ts",
+            lineNumber: 1,
+            matchRanges: [{ start: 6, end: 9 }],
+          }),
+        ]);
+      }),
+    );
+
     it.effect("matches punctuation-edged whole-word queries including adjacent occurrences", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-punctuation-" });

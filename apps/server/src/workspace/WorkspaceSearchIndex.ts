@@ -3,6 +3,7 @@ import {
   type DirSearchResult,
   type FileItem,
   FileFinder,
+  type GrepCursor,
   type MixedItem,
   type MixedSearchResult,
   type Result,
@@ -212,6 +213,19 @@ function mapMixedSearchResult(
 
 const WORD_CHARACTER = /[\p{Letter}\p{Mark}\p{Number}_]/u;
 
+function codePointAt(line: string, index: number): string | undefined {
+  const codePoint = line.codePointAt(index);
+  return codePoint === undefined ? undefined : String.fromCodePoint(codePoint);
+}
+
+function codePointBefore(line: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const previousCodeUnit = line.charCodeAt(index - 1);
+  const previousIndex =
+    previousCodeUnit >= 0xdc00 && previousCodeUnit <= 0xdfff ? index - 2 : index - 1;
+  return codePointAt(line, previousIndex);
+}
+
 function buildContentSearchQuery(input: Omit<ProjectSearchContentsInput, "cwd">): {
   readonly searchQuery: string;
   readonly regexMode: boolean;
@@ -255,9 +269,13 @@ function isWholeWordRange(
   const isWord = (character: string | undefined) =>
     character !== undefined && WORD_CHARACTER.test(character);
   const leftIsBoundary =
-    range.start === 0 || !isWord(line[range.start - 1]) || !isWord(line[range.start]);
+    range.start === 0 ||
+    !isWord(codePointBefore(line, range.start)) ||
+    !isWord(codePointAt(line, range.start));
   const rightIsBoundary =
-    range.end >= line.length || !isWord(line[range.end]) || !isWord(line[range.end - 1]);
+    range.end >= line.length ||
+    !isWord(codePointAt(line, range.end)) ||
+    !isWord(codePointBefore(line, range.end));
   return leftIsBoundary && rightIsBoundary;
 }
 
@@ -445,36 +463,45 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
     const { searchQuery, regexMode } = buildContentSearchQuery(input);
-    const result = yield* runSearch(input.query, input.limit, "grep", () =>
-      finder.grep(searchQuery, {
-        mode: regexMode ? "regex" : "plain",
-        smartCase: !input.caseSensitive && !regexMode,
-        // A single dense file must not consume the whole result page.
-        maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, input.limit),
-        pageSize: input.limit,
-        timeBudgetMs: CONTENT_SEARCH_TIME_BUDGET_MS,
-      }),
-    );
-    const matches = result.items.flatMap((match) => {
-      const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
-        (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
+    const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
+    const matches: Array<ProjectSearchContentsResult["matches"][number]> = [];
+    let nextCursor: GrepCursor | null = null;
+    let regexFallbackError: string | undefined;
+
+    do {
+      const remainingTimeBudgetMs = Math.max(1, Math.ceil(deadline - performance.now()));
+      const result = yield* runSearch(input.query, input.limit, "grep", () =>
+        finder.grep(searchQuery, {
+          mode: regexMode ? "regex" : "plain",
+          smartCase: !input.caseSensitive && !regexMode,
+          // A single dense file must not consume the whole result page.
+          maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, input.limit),
+          pageSize: input.limit,
+          cursor: nextCursor,
+          timeBudgetMs: remainingTimeBudgetMs,
+        }),
       );
-      if (matchRanges.length === 0) return [];
-      return [
-        {
+
+      for (const match of result.items) {
+        const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
+          (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
+        );
+        if (matchRanges.length === 0) continue;
+        matches.push({
           path: toPosixPath(match.relativePath),
           lineNumber: match.lineNumber,
           lineContent: match.lineContent,
           matchRanges,
-        },
-      ];
-    });
+        });
+      }
+      nextCursor = result.nextCursor;
+      regexFallbackError ??= result.regexFallbackError;
+    } while (matches.length < input.limit && nextCursor !== null && performance.now() < deadline);
+
     return {
-      matches,
-      truncated: result.nextCursor !== null,
-      ...(result.regexFallbackError !== undefined
-        ? { regexFallbackError: result.regexFallbackError }
-        : {}),
+      matches: matches.slice(0, input.limit),
+      truncated: matches.length > input.limit || nextCursor !== null,
+      ...(regexFallbackError !== undefined ? { regexFallbackError } : {}),
     };
   });
 

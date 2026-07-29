@@ -118,6 +118,7 @@ export default function FileBrowserPanel({
   const treePaths = useMemo(() => entries.map(treePath), [entries]);
   const previousTreePathsRef = useRef<readonly string[]>([]);
   const syncingSelectionRef = useRef(false);
+  const treeSelectionPathRef = useRef<string | null>(null);
 
   // The tree renders rows in shadow DOM and its anchor rect is unreliable, so
   // capture the right-click position ourselves; contextmenu is a composed
@@ -236,6 +237,7 @@ export default function FileBrowserPanel({
       }
       const selectedPath = selectedPaths.at(-1)?.replace(/\/$/, "");
       if (selectedPath && entryKindsRef.current.get(selectedPath) === "file") {
+        treeSelectionPathRef.current = selectedPath;
         onOpenFile(selectedPath);
       }
     },
@@ -265,9 +267,14 @@ export default function FileBrowserPanel({
     // in an active tree search) is already visible; re-revealing it would
     // close the search and clobber the user's context. Only sync external
     // opens (file picker, content search, chat links).
-    if (model.getSelectedPaths().some((path) => path.replace(/\/$/, "") === selectedPath)) {
+    const selectedInTree = model
+      .getSelectedPaths()
+      .some((path) => path.replace(/\/$/, "") === selectedPath);
+    if (selectedInTree && treeSelectionPathRef.current === selectedPath) {
+      treeSelectionPathRef.current = null;
       return;
     }
+    treeSelectionPathRef.current = null;
 
     syncingSelectionRef.current = true;
     model.closeSearch();
