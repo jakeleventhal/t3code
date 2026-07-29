@@ -51,6 +51,7 @@ import {
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
+import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { LocalCommentAnnotation } from "./LocalCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
 import { fileBreadcrumbs } from "./filePath";
@@ -194,7 +195,7 @@ const REVEAL_MAX_ATTEMPTS = 30;
  * guard immediately.
  */
 const REVEAL_GUARD_FRAMES = 20;
-const REVEAL_GUARD_TOLERANCE_PX = 80;
+const REVEAL_GUARD_TOLERANCE_PX = 2;
 
 interface FileRevealState {
   frameId: number | null;
@@ -264,7 +265,38 @@ function useFileLineReveal(
         return;
       }
 
-      const guardScrollTarget = (targetTop: number) => {
+      const resolveScrollTarget = (line: number): number | null => {
+        const linePosition = instance.getLinePosition(line);
+        if (!linePosition) return null;
+
+        const scrollContainerRect = scrollContainer.getBoundingClientRect();
+        const fileTop =
+          scrollContainer.scrollTop +
+          fileContainer.getBoundingClientRect().top -
+          scrollContainerRect.top;
+        const root = fileContainer.shadowRoot ?? fileContainer;
+        const renderedLineElement = root.querySelector<HTMLElement>(`[data-line="${line}"]`);
+        const renderedLineRect = renderedLineElement?.getBoundingClientRect();
+
+        return resolveCenteredFileLineScrollTop({
+          scrollTop: scrollContainer.scrollTop,
+          scrollHeight: scrollContainer.scrollHeight,
+          viewportTop: scrollContainerRect.top,
+          viewportHeight: scrollContainer.clientHeight,
+          fileTop,
+          estimatedLine: linePosition,
+          ...(renderedLineRect && renderedLineRect.height > 0
+            ? {
+                renderedLine: {
+                  top: renderedLineRect.top,
+                  height: renderedLineRect.height,
+                },
+              }
+            : {}),
+        });
+      };
+
+      const guardScrollTarget = (line: number) => {
         let framesLeft = REVEAL_GUARD_FRAMES;
         let guardFrameId: number | null = null;
         const cancelGuard = () => {
@@ -289,7 +321,11 @@ function useFileLineReveal(
             cancelGuard();
             return;
           }
-          if (Math.abs(scrollContainer.scrollTop - targetTop) > REVEAL_GUARD_TOLERANCE_PX) {
+          const targetTop = resolveScrollTarget(line);
+          if (
+            targetTop !== null &&
+            Math.abs(scrollContainer.scrollTop - targetTop) > REVEAL_GUARD_TOLERANCE_PX
+          ) {
             scrollContainer.scrollTop = targetTop;
           }
           guardFrameId = requestAnimationFrame(holdTarget);
@@ -311,32 +347,16 @@ function useFileLineReveal(
           const currentContents = instance.file?.contents;
           const line =
             currentContents === undefined ? null : clampFileLine(currentContents, revealLine);
-          const linePosition = line === null ? null : instance.getLinePosition(line);
-          if (line === null || !linePosition) {
+          const targetTop = line === null ? null : resolveScrollTarget(line);
+          if (line === null || targetTop === null) {
             if (attempt < REVEAL_MAX_ATTEMPTS) scheduleReveal(attempt + 1);
             return;
           }
           updateFileLinkReveal(fileContainer, line);
 
-          const fileTop =
-            scrollContainer.scrollTop +
-            fileContainer.getBoundingClientRect().top -
-            scrollContainer.getBoundingClientRect().top;
-          const centeredTop = Math.max(
-            0,
-            fileTop +
-              linePosition.top -
-              Math.max(0, (scrollContainer.clientHeight - linePosition.height) / 2),
-          );
-          const maxScrollTop = Math.max(
-            0,
-            scrollContainer.scrollHeight - scrollContainer.clientHeight,
-          );
-          const targetTop = Math.min(centeredTop, maxScrollTop);
-
           scrollContainer.scrollTop = targetTop;
           state.handledRequestId = revealRequestId;
-          guardScrollTarget(targetTop);
+          guardScrollTarget(line);
         });
       };
 
