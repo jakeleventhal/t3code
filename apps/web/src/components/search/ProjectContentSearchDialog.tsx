@@ -123,6 +123,7 @@ function OpenContentSearchDialog(props: {
     wholeWord,
     useRegex,
   });
+  const canOpenMatches = !search.isPending;
   const matches = search.matches;
   const visibleMatches = useMemo(() => matches.slice(0, visibleCount), [matches, visibleCount]);
   const groups = useMemo(() => groupMatches(visibleMatches), [visibleMatches]);
@@ -154,6 +155,7 @@ function OpenContentSearchDialog(props: {
   }, []);
 
   const openMatch = (match: ProjectContentMatch) => {
+    if (!canOpenMatches) return;
     props.onOpenChange(false);
     useRightPanelStore.getState().openFile(target.threadRef, match.path, match.lineNumber);
   };
@@ -181,7 +183,7 @@ function OpenContentSearchDialog(props: {
               // While a newer query is debouncing or in flight, the visible
               // matches belong to the previous query; opening one would jump
               // to a result the user did not ask for.
-              if (search.isPending) {
+              if (!canOpenMatches) {
                 event.preventDefault();
                 return;
               }
@@ -274,9 +276,10 @@ function OpenContentSearchDialog(props: {
                         key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
                         data-content-search-result={match.resultIndex}
                         className={cn(
-                          "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-xs hover:bg-accent/60",
+                          "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-xs hover:bg-accent/60 disabled:pointer-events-none",
                           match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
                         )}
+                        disabled={!canOpenMatches}
                         onMouseEnter={() => setSelectedIndex(match.resultIndex)}
                         onClick={() => openMatch(match)}
                       >
