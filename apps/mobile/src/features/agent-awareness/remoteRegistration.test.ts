@@ -285,6 +285,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     expect(resolveApsEnvironment("preview")).toBe("production");
     expect(resolveApsEnvironment("production")).toBe("production");
     expect(resolveApsEnvironment(undefined)).toBe("production");
+    expect(resolveApsEnvironment("production", true)).toBe("sandbox");
   });
 
   it("disables push features in Personal Team relay registrations", () => {
@@ -300,10 +301,76 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         pushToStartToken: "push-to-start-token",
         notificationsEnabled: true,
         preferences: {},
-      }).preferences,
+      }),
     ).toMatchObject({
-      liveActivitiesEnabled: false,
-      notificationsEnabled: false,
+      preferences: {
+        liveActivitiesEnabled: false,
+        notificationsEnabled: false,
+      },
+    });
+  });
+
+  it("enables sandbox device notifications without enabling Personal Team Live Activities", () => {
+    Constants.expoConfig!.extra = {
+      iosPersonalTeamBuild: true,
+      iosPersonalTeamPushNotifications: true,
+      iosPersonalTeamLiveActivities: false,
+    };
+
+    expect(
+      makeRelayDeviceRegistrationRequest({
+        deviceId: "device-1",
+        label: "Julius's iPhone",
+        iosMajorVersion: 18,
+        appVersion: "1.0.0",
+        pushToken: "apns-token",
+        pushToStartToken: "push-to-start-token",
+        notificationsEnabled: true,
+        preferences: {},
+      }),
+    ).toEqual({
+      deviceId: "device-1",
+      label: "Julius's iPhone",
+      platform: "ios",
+      iosMajorVersion: 18,
+      appVersion: "1.0.0",
+      pushToken: "apns-token",
+      preferences: {
+        liveActivitiesEnabled: false,
+        notificationsEnabled: true,
+        notifyOnApproval: true,
+        notifyOnInput: true,
+        notifyOnCompletion: true,
+        notifyOnFailure: true,
+      },
+    });
+  });
+
+  it("enables Personal Team Live Activities only when the build opts into them", () => {
+    Constants.expoConfig!.extra = {
+      iosPersonalTeamBuild: true,
+      iosPersonalTeamPushNotifications: true,
+      iosPersonalTeamLiveActivities: true,
+    };
+
+    expect(
+      makeRelayDeviceRegistrationRequest({
+        deviceId: "device-1",
+        label: "Julius's iPhone",
+        iosMajorVersion: 18,
+        appVersion: "1.0.0",
+        pushToken: "apns-token",
+        pushToStartToken: "push-to-start-token",
+        notificationsEnabled: true,
+        preferences: {},
+      }),
+    ).toMatchObject({
+      pushToken: "apns-token",
+      pushToStartToken: "push-to-start-token",
+      preferences: {
+        liveActivitiesEnabled: true,
+        notificationsEnabled: true,
+      },
     });
   });
 

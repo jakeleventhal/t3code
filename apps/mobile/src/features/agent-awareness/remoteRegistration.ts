@@ -31,7 +31,10 @@ import {
 } from "../../persistence/imperative";
 import AgentActivity, { type AgentActivityProps } from "../../widgets/AgentActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import {
+  supportsAgentAwarenessLiveActivities,
+  supportsAgentAwarenessNotifications,
+} from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 
 const REMOTE_ACTIVITY_REGISTRATION_RETRY_MS = 15_000;
@@ -158,7 +161,14 @@ function readRelayConfig(): { readonly url: string } | null {
 }
 
 function canRegisterRemoteLiveActivities(): boolean {
-  return Platform.OS === "ios";
+  return Platform.OS === "ios" && supportsAgentAwarenessLiveActivities();
+}
+
+function canRegisterAgentAwarenessDevice(): boolean {
+  return (
+    Platform.OS === "ios" &&
+    (supportsAgentAwarenessNotifications() || supportsAgentAwarenessLiveActivities())
+  );
 }
 
 export function shouldRegisterAgentAwarenessDeviceForProvider(
@@ -250,7 +260,7 @@ function iosMajorVersion(): number {
 
 function nativePushTokenRegistration(observedPushToken?: string) {
   return Effect.gen(function* () {
-    if (!canRegisterRemoteLiveActivities() || !supportsAgentAwarenessPush()) {
+    if (!canRegisterAgentAwarenessDevice() || !supportsAgentAwarenessNotifications()) {
       return { notificationsEnabled: false, pushToken: null };
     }
     if (observedPushToken) {
@@ -672,7 +682,7 @@ function registerDevice(
   expectedGeneration = deviceRegistrationGeneration,
 ): Effect.Effect<void, unknown, ManagedRelay.ManagedRelayClient> {
   return Effect.gen(function* () {
-    if (!canRegisterRemoteLiveActivities()) {
+    if (!canRegisterAgentAwarenessDevice()) {
       logRegistrationDebug("device registration skipped; platform does not support it");
       return;
     }
@@ -713,7 +723,10 @@ function registerDevice(
         iosMajorVersion: iosMajorVersion(),
         appVersion: Constants.expoConfig?.version,
         ...(bundleId ? { bundleId } : {}),
-        apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant),
+        apsEnvironment: resolveApsEnvironment(
+          Constants.expoConfig?.extra?.appVariant,
+          Constants.expoConfig?.extra?.iosPersonalTeamBuild === true,
+        ),
         ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
         notificationsEnabled: pushTokenRegistration.notificationsEnabled,
         preferences,
@@ -732,7 +745,11 @@ function registerDeviceForCurrentUser(): Effect.Effect<
 }
 
 function ensurePushTokenListener(): void {
-  if (pushTokenSubscription || !canRegisterRemoteLiveActivities()) {
+  if (
+    pushTokenSubscription ||
+    !canRegisterAgentAwarenessDevice() ||
+    !supportsAgentAwarenessNotifications()
+  ) {
     return;
   }
 
@@ -784,7 +801,7 @@ function endLocalLiveActivities(context: string): void {
 }
 
 export function registerAgentAwarenessConnection(connection: SavedRemoteConnection): void {
-  if (!canRegisterRemoteLiveActivities()) {
+  if (!canRegisterAgentAwarenessDevice()) {
     return;
   }
 
