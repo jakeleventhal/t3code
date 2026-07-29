@@ -114,7 +114,6 @@ interface RightPanelStoreState {
   ) => void;
   activateTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
-  removeTerminalSurfaces: (ref: ScopedThreadRef) => void;
   removeTerminalSurfacesForKey: (threadKey: string) => void;
   activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
@@ -526,10 +525,6 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               ),
             };
           }),
-        })),
-      removeTerminalSurfaces: (ref) =>
-        set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, ref, withoutTerminalSurfaces),
         })),
       removeTerminalSurfacesForKey: (threadKey) =>
         set((state) => {
