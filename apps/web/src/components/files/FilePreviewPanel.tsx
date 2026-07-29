@@ -306,13 +306,18 @@ function useFileLineReveal(
           }
           scrollContainer.removeEventListener("wheel", cancelGuard);
           scrollContainer.removeEventListener("touchstart", cancelGuard);
-          scrollContainer.removeEventListener("pointerdown", cancelGuard);
+          scrollContainer.removeEventListener("pointerdown", cancelGuard, true);
           window.removeEventListener("keydown", cancelGuard, true);
           if (state.cancelGuard === cancelGuard) state.cancelGuard = null;
         };
         scrollContainer.addEventListener("wheel", cancelGuard, { passive: true });
         scrollContainer.addEventListener("touchstart", cancelGuard, { passive: true });
-        scrollContainer.addEventListener("pointerdown", cancelGuard, { passive: true });
+        // Pierre stops gutter pointer events from bubbling. Listen in capture
+        // so starting a comment cancels the reveal guard before the row expands.
+        scrollContainer.addEventListener("pointerdown", cancelGuard, {
+          passive: true,
+          capture: true,
+        });
         window.addEventListener("keydown", cancelGuard, true);
         const holdTarget = () => {
           guardFrameId = null;
