@@ -3,6 +3,8 @@ import {
   WS_METHODS,
   type VcsListRefsInput,
   type VcsListRefsResult,
+  type VcsStatusLocalResult,
+  type VcsStatusRemoteResult,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -32,7 +34,9 @@ import {
   commitVcsRefsRefresh,
   createVcsEnvironmentAtoms,
   makeCachedVcsRefsChanges,
+  projectVcsStatusChanges,
 } from "./vcs.ts";
+import { reviewDiffPreviewRevisionAtom } from "./review.ts";
 import {
   invalidateCachedVcsRefs,
   invalidateVcsRefs,
@@ -82,6 +86,36 @@ const LIVE_REFS: VcsListRefsResult = {
   ],
 };
 
+const LOCAL_STATUS_WITH_FILE: VcsStatusLocalResult = {
+  isRepo: true,
+  hasPrimaryRemote: true,
+  isDefaultRef: false,
+  refName: "feature",
+  hasWorkingTreeChanges: true,
+  workingTree: {
+    files: [{ path: "temporary.txt", insertions: 1, deletions: 0 }],
+    insertions: 1,
+    deletions: 0,
+  },
+};
+
+const LOCAL_STATUS_AFTER_DELETION: VcsStatusLocalResult = {
+  ...LOCAL_STATUS_WITH_FILE,
+  hasWorkingTreeChanges: false,
+  workingTree: {
+    files: [],
+    insertions: 0,
+    deletions: 0,
+  },
+};
+
+const REMOTE_STATUS: VcsStatusRemoteResult = {
+  hasUpstream: true,
+  aheadCount: 0,
+  behindCount: 0,
+  pr: null,
+};
+
 function session(client: WsRpcProtocolClient): RpcSession {
   return {
     client,
@@ -114,6 +148,45 @@ function cacheWithRefs(
 }
 
 describe("cached VCS refs", () => {
+  it.effect(
+    "invalidates diff previews after a changed status event, not the initial snapshot",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* Effect.acquireRelease(Effect.sync(AtomRegistry.make), (registry) =>
+          Effect.sync(() => registry.dispose()),
+        );
+        const revisionAtom = reviewDiffPreviewRevisionAtom(TARGET);
+        const revisions: number[] = [];
+
+        const statuses = yield* projectVcsStatusChanges(
+          TARGET.environmentId,
+          Stream.make(
+            {
+              _tag: "snapshot" as const,
+              local: LOCAL_STATUS_WITH_FILE,
+              remote: REMOTE_STATUS,
+            },
+            {
+              _tag: "localUpdated" as const,
+              local: LOCAL_STATUS_AFTER_DELETION,
+            },
+          ),
+        ).pipe(
+          Stream.tap(() =>
+            Effect.sync(() => {
+              revisions.push(registry.get(revisionAtom));
+            }),
+          ),
+          Stream.provideService(AtomRegistry.AtomRegistry, registry),
+          Stream.runCollect,
+        );
+
+        expect(statuses).toHaveLength(2);
+        expect(statuses[1]?.workingTree.files).toEqual([]);
+        expect(revisions).toEqual([0, 1]);
+      }),
+  );
+
   it("invalidates all ref streams in the mutated environment", () => {
     const registry = AtomRegistry.make();
     const environment = {
@@ -260,6 +333,7 @@ describe("cached VCS refs", () => {
           revision: 1,
           persistedCacheReadable: true,
         });
+        expect(registry.get(reviewDiffPreviewRevisionAtom(TARGET))).toBe(1);
 
         expect(
           yield* commitVcsRefsRefresh(registry, cache, {
@@ -329,6 +403,7 @@ describe("cached VCS refs", () => {
         expect(AsyncResult.isFailure(result)).toBe(true);
         expect(yield* Ref.get(clears)).toBe(1);
         expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(1);
+        expect(registry.get(reviewDiffPreviewRevisionAtom(TARGET))).toBe(1);
 
         const refreshResult = yield* Effect.promise(() =>
           atoms.refreshStatus.run(registry, {
@@ -340,6 +415,7 @@ describe("cached VCS refs", () => {
         expect(AsyncResult.isSuccess(refreshResult)).toBe(true);
         expect(yield* Ref.get(clears)).toBe(2);
         expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(2);
+        expect(registry.get(reviewDiffPreviewRevisionAtom(TARGET))).toBe(2);
       }),
     ),
   );

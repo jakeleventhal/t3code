@@ -52,6 +52,10 @@ interface EnvironmentQueryAtomOptions<Input, A, E, R> extends EnvironmentAtomOpt
   readonly staleTimeMs?: number;
   readonly idleTtlMs?: number;
   readonly refreshIntervalMs?: number;
+  readonly refreshSignal?: (target: {
+    readonly environmentId: EnvironmentIdType;
+    readonly input: Input;
+  }) => Atom.Atom<unknown>;
 }
 
 interface EnvironmentSubscriptionAtomOptions<Input, A, E, R> {
@@ -488,6 +492,9 @@ function createEnvironmentQueryAtomFamily<R, ER, Input, A, E>(
     const idleTtlMs = options.idleTtlMs ?? 5 * 60_000;
     const queryAtom = runtime
       .atom((get) => {
+        if (options.refreshSignal !== undefined) {
+          get(options.refreshSignal(target));
+        }
         const generation = Option.getOrNull(
           AsyncResult.value(get(rpcGenerationAtom(target.environmentId))),
         );
@@ -576,6 +583,10 @@ export function createEnvironmentRpcQueryAtomFamily<R, ER, TTag extends Environm
     readonly staleTimeMs?: number;
     readonly idleTtlMs?: number;
     readonly refreshIntervalMs?: number;
+    readonly refreshSignal?: (target: {
+      readonly environmentId: EnvironmentIdType;
+      readonly input: EnvironmentRpcInput<TTag>;
+    }) => Atom.Atom<unknown>;
   },
 ) {
   return createEnvironmentQueryAtomFamily(runtime, {
@@ -585,6 +596,7 @@ export function createEnvironmentRpcQueryAtomFamily<R, ER, TTag extends Environm
     ...(options.refreshIntervalMs === undefined
       ? {}
       : { refreshIntervalMs: options.refreshIntervalMs }),
+    ...(options.refreshSignal === undefined ? {} : { refreshSignal: options.refreshSignal }),
     execute: (input: EnvironmentRpcInput<TTag>) => request(options.tag, input),
   });
 }

@@ -3,6 +3,7 @@ import {
   type VcsListRefsInput,
   type VcsListRefsResult,
   type VcsStatusResult,
+  type VcsStatusStreamEvent,
   WS_METHODS,
 } from "@t3tools/contracts";
 import { applyGitStatusStreamEvent } from "@t3tools/shared/git";
@@ -15,7 +16,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
-import { createEnvironmentRpcCommand, createEnvironmentSubscriptionAtomFamily } from "./runtime.ts";
+import { createEnvironmentRpcCommand } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
@@ -23,6 +24,7 @@ import { EnvironmentCacheStore } from "../platform/persistence.ts";
 import { request, subscribe, type EnvironmentRpcInput } from "../rpc/client.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 import { vcsCommandConcurrency, vcsCommandScheduler } from "./vcsCommandScheduler.ts";
+import { invalidateReviewDiffPreviews } from "./review.ts";
 import {
   invalidateCachedVcsRefs,
   vcsRefsCacheStateAtom,
@@ -233,6 +235,34 @@ export function cachedVcsRefsChanges(
   );
 }
 
+export function projectVcsStatusChanges<E, R>(
+  environmentId: EnvironmentId,
+  events: Stream.Stream<VcsStatusStreamEvent, E, R>,
+) {
+  return events.pipe(
+    Stream.mapAccumEffect(
+      () => null as VcsStatusResult | null,
+      (current, event) => {
+        const next = applyGitStatusStreamEvent(current, event);
+        return Effect.gen(function* () {
+          if (current !== null) {
+            const registry = yield* AtomRegistry.AtomRegistry;
+            invalidateReviewDiffPreviews(registry, { environmentId });
+          }
+          return [next, [next]] as const;
+        });
+      },
+    ),
+  );
+}
+
+export function vcsStatusChanges(
+  environmentId: EnvironmentId,
+  input: EnvironmentRpcInput<typeof WS_METHODS.subscribeVcsStatus>,
+) {
+  return projectVcsStatusChanges(environmentId, subscribe(WS_METHODS.subscribeVcsStatus, input));
+}
+
 export function createVcsEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | EnvironmentCacheStore | R, E>,
 ) {
@@ -259,6 +289,23 @@ export function createVcsEnvironmentAtoms<R, E>(
     readonly environmentId: EnvironmentId;
     readonly input: VcsListRefsInput;
   }) => listRefsByEnvironment(target.environmentId)(JSON.stringify(target.input));
+  const statusByEnvironment = Atom.family((environmentId: EnvironmentId) =>
+    Atom.family((inputKey: string) => {
+      const input = JSON.parse(inputKey) as EnvironmentRpcInput<
+        typeof WS_METHODS.subscribeVcsStatus
+      >;
+      return runtime
+        .atom(followStreamInEnvironment(environmentId, vcsStatusChanges(environmentId, input)))
+        .pipe(
+          Atom.setIdleTTL(5 * 60_000),
+          Atom.withLabel(`environment-data:vcs:status:${environmentId}:${inputKey}`),
+        );
+    }),
+  );
+  const status = (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: EnvironmentRpcInput<typeof WS_METHODS.subscribeVcsStatus>;
+  }) => statusByEnvironment(target.environmentId)(JSON.stringify(target.input));
   const invalidateRefs = (
     target: { readonly environmentId: EnvironmentId; readonly input: { readonly cwd: string } },
     registry: AtomRegistry.AtomRegistry,
@@ -270,19 +317,7 @@ export function createVcsEnvironmentAtoms<R, E>(
 
   return {
     listRefs,
-    status: createEnvironmentSubscriptionAtomFamily(runtime, {
-      label: "environment-data:vcs:status",
-      subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.subscribeVcsStatus>) =>
-        subscribe(WS_METHODS.subscribeVcsStatus, input).pipe(
-          Stream.mapAccum(
-            () => null as VcsStatusResult | null,
-            (current, event) => {
-              const next = applyGitStatusStreamEvent(current, event);
-              return [next, [next]] as const;
-            },
-          ),
-        ),
-    }),
+    status,
     pull: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:pull",
       tag: WS_METHODS.vcsPull,

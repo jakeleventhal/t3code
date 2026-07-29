@@ -5,6 +5,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
+import { invalidateReviewDiffPreviews } from "./review.ts";
 
 export interface VcsRefsInvalidationTarget {
   readonly environmentId: EnvironmentId;
@@ -78,6 +79,7 @@ export const invalidateCachedVcsRefs = Effect.fn("VcsRefsState.invalidateCached"
         ),
       );
       invalidateVcsRefs(registry, target, persistedCacheReadable);
+      invalidateReviewDiffPreviews(registry, target);
     }),
   );
 });
