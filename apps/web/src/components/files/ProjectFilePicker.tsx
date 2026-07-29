@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
@@ -9,7 +10,8 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { type CommandPaletteActionItem } from "../CommandPalette.logic";
 import { CommandPaletteResults } from "../CommandPaletteResults";
-import { Command, CommandDialogPopup, CommandInput, CommandPanel } from "../ui/command";
+import { Command, CommandFooter, CommandInput, CommandPanel } from "../ui/command";
+import { Kbd, KbdGroup } from "../ui/kbd";
 import {
   getProjectFilePickerMatches,
   PROJECT_FILE_PICKER_RESULT_LIMIT,
@@ -43,20 +45,29 @@ function HighlightedFuzzyText(props: {
   return <span className="text-muted-foreground">{parts}</span>;
 }
 
-function ProjectFilePickerPopup(props: {
-  readonly children: ReactNode;
-  readonly setOpen: (open: boolean) => void;
-}) {
+function FilePickerFooter() {
   return (
-    <CommandDialogPopup
-      aria-label="File picker"
-      className="max-w-3xl overflow-hidden p-0"
-      data-command-palette="true"
-      data-testid="project-file-picker"
-      onBackdropPointerDown={() => props.setOpen(false)}
-    >
-      {props.children}
-    </CommandDialogPopup>
+    <CommandFooter>
+      <div className="flex items-center gap-3">
+        <KbdGroup className="items-center gap-1.5">
+          <Kbd>
+            <ArrowUpIcon />
+          </Kbd>
+          <Kbd>
+            <ArrowDownIcon />
+          </Kbd>
+          <span>Navigate</span>
+        </KbdGroup>
+        <KbdGroup className="items-center gap-1.5">
+          <Kbd>Enter</Kbd>
+          <span>Open file</span>
+        </KbdGroup>
+        <KbdGroup className="items-center gap-1.5">
+          <Kbd>Esc</Kbd>
+          <span>Close</span>
+        </KbdGroup>
+      </div>
+    </CommandFooter>
   );
 }
 
@@ -67,9 +78,9 @@ function getEmptyStateMessage(query: string, error: string | null, isPending: bo
   return isSearching ? "No matching files." : "No files found.";
 }
 
-function EmptyProjectFilePicker(props: ProjectFilePickerProps) {
+function EmptyProjectFilePicker() {
   return (
-    <ProjectFilePickerPopup setOpen={props.setOpen}>
+    <div className="contents" data-testid="project-file-picker">
       <Command aria-label="File picker" mode="none" value="">
         <CommandInput disabled placeholder="Search files…" />
         <CommandPanel>
@@ -77,8 +88,9 @@ function EmptyProjectFilePicker(props: ProjectFilePickerProps) {
             Open a project to search its files.
           </div>
         </CommandPanel>
+        <FilePickerFooter />
       </Command>
-    </ProjectFilePickerPopup>
+    </div>
   );
 }
 
@@ -130,7 +142,7 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
   const emptyStateMessage = getEmptyStateMessage(query, result.error, result.isPending);
 
   return (
-    <ProjectFilePickerPopup setOpen={props.setOpen}>
+    <div className="contents" data-testid="project-file-picker">
       <Command
         aria-label="File picker"
         autoHighlight="always"
@@ -161,8 +173,9 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
             emptyStateMessage={emptyStateMessage}
           />
         </CommandPanel>
+        <FilePickerFooter />
       </Command>
-    </ProjectFilePickerPopup>
+    </div>
   );
 }
 
@@ -170,7 +183,7 @@ export function ProjectFilePicker(props: ProjectFilePickerProps) {
   const target = useActiveProjectTarget();
 
   if (!target) {
-    return <EmptyProjectFilePicker setOpen={props.setOpen} />;
+    return <EmptyProjectFilePicker />;
   }
 
   return <OpenProjectFilePicker setOpen={props.setOpen} target={target} />;

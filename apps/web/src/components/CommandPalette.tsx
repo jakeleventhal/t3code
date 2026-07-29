@@ -433,14 +433,12 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     [openAddProject, openNewThreadIn, setOpen],
   );
 
-  const commandDialogOpen = state.open && state.mode !== "content";
-
   return (
     <ComposerHandleContext value={composerHandleRef}>
-      <CommandDialog open={commandDialogOpen} onOpenChange={setOpen}>
+      <CommandDialog open={state.open} onOpenChange={setOpen}>
         {children}
         <CommandPaletteDialog
-          open={commandDialogOpen}
+          open={state.open}
           mode={state.mode}
           openIntent={state.openIntent}
           setOpen={setOpen}
@@ -448,10 +446,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           clearOpenIntent={clearOpenIntent}
         />
       </CommandDialog>
-      <ProjectContentSearchDialog
-        open={state.open && state.mode === "content"}
-        onOpenChange={setOpen}
-      />
     </ComposerHandleContext>
   );
 }
@@ -464,21 +458,46 @@ function CommandPaletteDialog(props: {
   readonly openOverlayMode: (mode: SearchOverlayMode) => void;
   readonly clearOpenIntent: () => void;
 }) {
+  const composerHandleRef = useComposerHandleContext();
+
   if (!props.open) {
     return null;
   }
 
-  if (props.mode === "files") {
-    return <ProjectFilePicker setOpen={props.setOpen} />;
-  }
-
   return (
-    <OpenCommandPaletteDialog
-      openIntent={props.openIntent}
-      setOpen={props.setOpen}
-      openOverlayMode={props.openOverlayMode}
-      clearOpenIntent={props.clearOpenIntent}
-    />
+    <CommandDialogPopup
+      aria-label={
+        props.mode === "files"
+          ? "File picker"
+          : props.mode === "content"
+            ? "Search project contents"
+            : "Command palette"
+      }
+      className="overflow-hidden p-0"
+      data-command-palette="true"
+      data-palette-mode={props.mode}
+      data-testid="command-palette"
+      finalFocus={() => {
+        composerHandleRef?.current?.focusAtEnd();
+        return false;
+      }}
+      onBackdropPointerDown={() => {
+        props.setOpen(false);
+      }}
+    >
+      {props.mode === "files" ? (
+        <ProjectFilePicker setOpen={props.setOpen} />
+      ) : props.mode === "content" ? (
+        <ProjectContentSearchDialog onOpenChange={props.setOpen} />
+      ) : (
+        <OpenCommandPaletteDialog
+          openIntent={props.openIntent}
+          setOpen={props.setOpen}
+          openOverlayMode={props.openOverlayMode}
+          clearOpenIntent={props.clearOpenIntent}
+        />
+      )}
+    </CommandDialogPopup>
   );
 }
 
@@ -490,7 +509,6 @@ function OpenCommandPaletteDialog(props: {
 }) {
   const navigate = useNavigate();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
-  const composerHandleRef = useComposerHandleContext();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const isActionsOnly = deferredQuery.startsWith(">");
@@ -2002,19 +2020,7 @@ function OpenCommandPaletteDialog(props: {
   ]);
 
   return (
-    <CommandDialogPopup
-      aria-label="Command palette"
-      className="overflow-hidden p-0"
-      data-command-palette="true"
-      data-testid="command-palette"
-      finalFocus={() => {
-        composerHandleRef?.current?.focusAtEnd();
-        return false;
-      }}
-      onBackdropPointerDown={() => {
-        setOpen(false);
-      }}
-    >
+    <div className="contents">
       <Command
         key={`${viewStack.length}-${browseGeneration}-${isBrowsing}-${addProjectCloneFlow?.step ?? "none"}`}
         aria-label="Command palette"
@@ -2228,6 +2234,6 @@ function OpenCommandPaletteDialog(props: {
           ) : null}
         </CommandFooter>
       </Command>
-    </CommandDialogPopup>
+    </div>
   );
 }
