@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
@@ -8,10 +7,9 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
+import { CommandPaletteContent } from "../CommandPaletteContent";
 import { type CommandPaletteActionItem } from "../CommandPalette.logic";
 import { CommandPaletteResults } from "../CommandPaletteResults";
-import { Command, CommandFooter, CommandInput, CommandPanel } from "../ui/command";
-import { Kbd, KbdGroup } from "../ui/kbd";
 import {
   getProjectFilePickerMatches,
   PROJECT_FILE_PICKER_RESULT_LIMIT,
@@ -45,32 +43,6 @@ function HighlightedFuzzyText(props: {
   return <span className="text-muted-foreground">{parts}</span>;
 }
 
-function FilePickerFooter() {
-  return (
-    <CommandFooter>
-      <div className="flex items-center gap-3">
-        <KbdGroup className="items-center gap-1.5">
-          <Kbd>
-            <ArrowUpIcon />
-          </Kbd>
-          <Kbd>
-            <ArrowDownIcon />
-          </Kbd>
-          <span>Navigate</span>
-        </KbdGroup>
-        <KbdGroup className="items-center gap-1.5">
-          <Kbd>Enter</Kbd>
-          <span>Open file</span>
-        </KbdGroup>
-        <KbdGroup className="items-center gap-1.5">
-          <Kbd>Esc</Kbd>
-          <span>Close</span>
-        </KbdGroup>
-      </div>
-    </CommandFooter>
-  );
-}
-
 function getEmptyStateMessage(query: string, error: string | null, isPending: boolean): string {
   if (error) return error;
   const isSearching = query.trim().length > 0;
@@ -80,17 +52,19 @@ function getEmptyStateMessage(query: string, error: string | null, isPending: bo
 
 function EmptyProjectFilePicker() {
   return (
-    <div className="contents" data-testid="project-file-picker">
-      <Command aria-label="File picker" mode="none" value="">
-        <CommandInput disabled placeholder="Search files…" />
-        <CommandPanel>
-          <div className="py-10 text-center text-sm text-muted-foreground">
-            Open a project to search its files.
-          </div>
-        </CommandPanel>
-        <FilePickerFooter />
-      </Command>
-    </div>
+    <CommandPaletteContent
+      aria-label="File picker"
+      escapeLabel="Back"
+      footerActionLabel="Open file"
+      inputProps={{ disabled: true, placeholder: "Search files…" }}
+      mode="none"
+      testId="project-file-picker"
+      value=""
+    >
+      <div className="py-10 text-center text-sm text-muted-foreground">
+        Open a project to search its files.
+      </div>
+    </CommandPaletteContent>
   );
 }
 
@@ -142,40 +116,39 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
   const emptyStateMessage = getEmptyStateMessage(query, result.error, result.isPending);
 
   return (
-    <div className="contents" data-testid="project-file-picker">
-      <Command
-        aria-label="File picker"
-        autoHighlight="always"
-        mode="none"
-        onItemHighlighted={(value) => {
-          setHighlightedItemValue(typeof value === "string" ? value : null);
+    <CommandPaletteContent
+      aria-label="File picker"
+      autoHighlight="always"
+      escapeLabel="Back"
+      footerActionLabel="Open file"
+      inputProps={{ placeholder: "Search files…" }}
+      mode="none"
+      onItemHighlighted={(value) => {
+        setHighlightedItemValue(typeof value === "string" ? value : null);
+      }}
+      onValueChange={(value) => {
+        setHighlightedItemValue(null);
+        setQuery(value);
+      }}
+      panelClassName="max-h-[min(34rem,76vh)]"
+      testId="project-file-picker"
+      value={query}
+    >
+      <CommandPaletteResults
+        groups={
+          items.length > 0 ? [{ value: "project-files", label: target.projectName, items }] : []
+        }
+        highlightedItemValue={highlightedItemValue}
+        isActionsOnly={false}
+        keybindings={keybindings}
+        onExecuteItem={(item) => {
+          if (item.kind !== "action") return;
+          props.setOpen(false);
+          void item.run();
         }}
-        onValueChange={(value) => {
-          setHighlightedItemValue(null);
-          setQuery(value);
-        }}
-        value={query}
-      >
-        <CommandInput placeholder="Search files…" />
-        <CommandPanel className="max-h-[min(34rem,76vh)]">
-          <CommandPaletteResults
-            groups={
-              items.length > 0 ? [{ value: "project-files", label: target.projectName, items }] : []
-            }
-            highlightedItemValue={highlightedItemValue}
-            isActionsOnly={false}
-            keybindings={keybindings}
-            onExecuteItem={(item) => {
-              if (item.kind !== "action") return;
-              props.setOpen(false);
-              void item.run();
-            }}
-            emptyStateMessage={emptyStateMessage}
-          />
-        </CommandPanel>
-        <FilePickerFooter />
-      </Command>
-    </div>
+        emptyStateMessage={emptyStateMessage}
+      />
+    </CommandPaletteContent>
   );
 }
 
