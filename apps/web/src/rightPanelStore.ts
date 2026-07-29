@@ -102,6 +102,8 @@ interface RightPanelStoreState {
   ) => void;
   activateTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
+  removeTerminalSurfaces: (ref: ScopedThreadRef) => void;
+  removeTerminalSurfacesForKey: (threadKey: string) => void;
   activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
@@ -162,6 +164,18 @@ const terminalSurface = (terminalId: string): RightPanelSurface => ({
   terminalIds: [terminalId],
   activeTerminalId: terminalId,
 });
+
+const withoutTerminalSurfaces = (current: ThreadRightPanelState): ThreadRightPanelState => {
+  const surfaces = current.surfaces.filter((surface) => surface.kind !== "terminal");
+  if (surfaces.length === current.surfaces.length) return current;
+  const activeStillExists = surfaces.some((surface) => surface.id === current.activeSurfaceId);
+  return {
+    ...current,
+    isOpen: surfaces.length > 0 && current.isOpen,
+    surfaces,
+    activeSurfaceId: activeStillExists ? current.activeSurfaceId : (surfaces.at(-1)?.id ?? null),
+  };
+};
 
 export type PullRequestSurface = Extract<RightPanelSurface, { kind: "pull-request" }>;
 
@@ -466,6 +480,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             };
           }),
         })),
+      removeTerminalSurfaces: (ref) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, ref, withoutTerminalSurfaces),
+        })),
+      removeTerminalSurfacesForKey: (threadKey) =>
+        set((state) => {
+          const current = state.byThreadKey[threadKey];
+          if (current === undefined) return state;
+          const next = withoutTerminalSurfaces(current);
+          if (next === current) return state;
+          if (!next.isOpen && next.activeSurfaceId === null && next.surfaces.length === 0) {
+            const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
+            return { byThreadKey };
+          }
+          return { byThreadKey: { ...state.byThreadKey, [threadKey]: next } };
+        }),
       activateSurface: (ref, surfaceId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, ref, (current) =>

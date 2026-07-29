@@ -107,8 +107,8 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
-import { useRunningTerminalsForThreads } from "../state/terminalSessions";
-import { useDiscoveredPortsForThreads } from "../portDiscoveryState";
+import { useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { useWorktreeCanonicalThreadRef } from "../worktreeScope";
 import { previewEnvironment } from "../state/preview";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
@@ -551,11 +551,26 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   const shouldRecede =
     (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
 
+  const gitCwd = thread.worktreePath ?? props.projectCwd;
+  const gitStatus = useEnvironmentQuery(
+    (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
+      ? vcsEnvironment.status({
+          environmentId: thread.environmentId,
+          input: { cwd: gitCwd },
+        })
+      : null,
+  );
+  const checkoutBranch =
+    thread.worktreePath === null ? (gitStatus.data?.refName ?? thread.branch) : thread.branch;
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
-    activeThreadBranch: thread.branch,
+    activeThreadBranch: checkoutBranch,
     currentGitBranch: gitStatus.data?.refName ?? null,
+  });
+  const pr = resolveThreadPr({
+    threadBranch: checkoutBranch,
+    gitStatus: gitStatus.data,
   });
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state) : undefined;
@@ -1215,22 +1230,17 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   const isActiveCard = activeMember !== null;
   const environmentId = newest.environmentId;
   const canonicalThreadRef = useWorktreeCanonicalThreadRef(newestRef);
-  const threadIds = useMemo(
-    () => [
-      ...new Set([
-        ...threads.map((thread) => thread.id),
-        ...(canonicalThreadRef ? [canonicalThreadRef.threadId] : []),
-      ]),
-    ],
-    [canonicalThreadRef, threads],
-  );
 
-  // Worktree-level activity: any member thread's terminal with a running
-  // subprocess, and any dev server discovered on a member's terminal. These
-  // sit inline with the repository row because terminals and dev servers
-  // belong to the checkout, not to an individual thread.
-  const runningTerminals = useRunningTerminalsForThreads({ environmentId, threadIds });
-  const discoveredPorts = useDiscoveredPortsForThreads({ environmentId, threadIds });
+  // Checkout-owned resources use one deterministic server key, so cards can
+  // select activity directly instead of rescanning every member thread.
+  const runningTerminalIds = useThreadRunningTerminalIds({
+    environmentId,
+    threadId: canonicalThreadRef?.threadId ?? null,
+  });
+  const discoveredPorts = useThreadDiscoveredPorts({
+    environmentId,
+    threadId: canonicalThreadRef?.threadId ?? null,
+  });
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const handleOpenDiscoveredPort = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -1269,10 +1279,10 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   // keeps the selector referentially stable while letting the card derive
   // per-member unread/woke without a hook per member.
   const visitedSignature = useUiStateStore((state) =>
-    memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join(" "),
+    memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join("\u0000"),
   );
   const { anyUnread, anyWoke, wokeAtByKey } = useMemo(() => {
-    const visited = visitedSignature.split(" ");
+    const visited = visitedSignature.split("\u0000");
     let anyUnread = false;
     let anyWoke = false;
     const wokeAtByKey = new Map<string, string | null>();
@@ -1472,7 +1482,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                 {props.projectTitle}
               </span>
             ) : null}
-            {runningTerminals.length > 0 ? (
+            {runningTerminalIds.length > 0 ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2661,6 +2671,7 @@ export default function SidebarV2() {
         }
       }
       const expandedThreads = [...expandedByKey.values()];
+      const lifecycleCount = expandedThreads.length;
       // Snooze (N) is offered when every affected thread can actually take
       // it — a mixed batch with blocked-on-you work would half-apply.
       const selectionNow = new Date().toISOString();
@@ -2685,12 +2696,12 @@ export default function SidebarV2() {
       const clicked = await settlePromise(() =>
         api.contextMenu.show(
           [
-            { id: "settle", label: `Settle (${count})` },
+            { id: "settle", label: `Settle (${lifecycleCount})` },
             ...(canSnoozeSelection
               ? [
                   {
                     id: "snooze",
-                    label: `Snooze (${count})`,
+                    label: `Snooze (${lifecycleCount})`,
                     children: snoozePresets.map((preset) => ({
                       id: `snooze:${preset.id}`,
                       label: `${preset.label} (${preset.whenLabel})`,

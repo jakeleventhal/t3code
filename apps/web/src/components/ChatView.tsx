@@ -521,7 +521,7 @@ type ChatViewProps =
     };
 
 interface TerminalLaunchContext {
-  threadId: ThreadId;
+  scopeKey: string;
   cwd: string;
   worktreePath: string | null;
 }
@@ -2658,7 +2658,7 @@ function ChatViewContent(props: ChatViewProps) {
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   const activeTerminalLaunchContext =
-    terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
+    terminalUiLaunchContext?.scopeKey === activeWorktreeScopeKey ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const showComposerContextStrip = shouldShowComposerContextStrip({
@@ -2964,7 +2964,15 @@ function ChatViewContent(props: ChatViewProps) {
         rememberAsLastInvoked?: boolean;
       },
     ) => {
-      if (!activeThreadId || !terminalThreadId || !activeProject || !activeThread) return;
+      if (
+        !activeThreadId ||
+        !terminalThreadId ||
+        !activeProject ||
+        !activeThread ||
+        !activeWorktreeScopeKey
+      ) {
+        return;
+      }
       if (options?.rememberAsLastInvoked !== false) {
         setLastInvokedScriptByProjectId((current) => {
           if (current[activeProject.id] === script.id) return current;
@@ -2980,7 +2988,7 @@ function ChatViewContent(props: ChatViewProps) {
       const targetWorktreePath = options?.worktreePath ?? activeThread.worktreePath ?? null;
 
       setTerminalUiLaunchContext({
-        threadId: activeThreadId,
+        scopeKey: activeWorktreeScopeKey,
         cwd: targetCwd,
         worktreePath: targetWorktreePath,
       });
@@ -3056,6 +3064,7 @@ function ChatViewContent(props: ChatViewProps) {
       activeProject,
       activeThread,
       activeThreadId,
+      activeWorktreeScopeKey,
       terminalThreadId,
       activeThreadRef,
       gitCwd,
@@ -3474,7 +3483,11 @@ function ChatViewContent(props: ChatViewProps) {
             storeCloseTerminal(activeThreadRef, terminalId);
             void closeTerminalMutation({
               environmentId: activeThreadRef.environmentId,
-              input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
+              input: {
+                threadId: terminalThreadId ?? activeThreadRef.threadId,
+                terminalId,
+                deleteHistory: true,
+              },
             });
           }
         }
@@ -3486,6 +3499,7 @@ function ChatViewContent(props: ChatViewProps) {
       closePreview,
       closeTerminalMutation,
       storeCloseTerminal,
+      terminalThreadId,
     ],
   );
   const syncActivePreviewSurface = useCallback(() => {
@@ -4602,23 +4616,23 @@ function ChatViewContent(props: ChatViewProps) {
   }, [canOverrideServerThreadEnvMode]);
 
   useEffect(() => {
-    if (!activeThreadId) {
+    if (!activeWorktreeScopeKey) {
       setTerminalUiLaunchContext(null);
       return;
     }
     setTerminalUiLaunchContext((current) => {
       if (!current) return current;
-      if (current.threadId === activeThreadId) return current;
+      if (current.scopeKey === activeWorktreeScopeKey) return current;
       return null;
     });
-  }, [activeThreadId]);
+  }, [activeWorktreeScopeKey]);
 
   useEffect(() => {
     if (!activeThreadId || !activeProjectCwd) {
       return;
     }
     setTerminalUiLaunchContext((current) => {
-      if (!current || current.threadId !== activeThreadId) {
+      if (!current || current.scopeKey !== activeWorktreeScopeKey) {
         return current;
       }
       const settledCwd = projectScriptCwd({
@@ -4633,16 +4647,16 @@ function ChatViewContent(props: ChatViewProps) {
       }
       return current;
     });
-  }, [activeProjectCwd, activeThreadId, activeThreadWorktreePath]);
+  }, [activeProjectCwd, activeThreadWorktreePath, activeWorktreeScopeKey]);
 
   useEffect(() => {
     if (terminalUiState.terminalOpen) {
       return;
     }
     setTerminalUiLaunchContext((current) =>
-      current?.threadId === activeThreadId ? null : current,
+      current?.scopeKey === activeWorktreeScopeKey ? null : current,
     );
-  }, [activeThreadId, terminalUiState.terminalOpen]);
+  }, [activeWorktreeScopeKey, terminalUiState.terminalOpen]);
 
   useEffect(() => {
     if (!activeWorktreeScopeKey) return;
@@ -6518,7 +6532,9 @@ function ChatViewContent(props: ChatViewProps) {
                 ? (activeTerminalLaunchContext ?? null)
                 : null
             }
-            focusRequestId={mountedThreadKey === activeWorktreeScopeKey ? terminalFocusRequestId : 0}
+            focusRequestId={
+              mountedThreadKey === activeWorktreeScopeKey ? terminalFocusRequestId : 0
+            }
             splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
             splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
             newShortcutLabel={newTerminalShortcutLabel ?? undefined}
