@@ -393,6 +393,18 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (!state.open || state.mode === "command") return;
+    const onEscapeKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMode("command");
+    };
+    window.addEventListener("keydown", onEscapeKeyDown, true);
+    return () => window.removeEventListener("keydown", onEscapeKeyDown, true);
+  }, [state.mode, state.open, toggleMode]);
+
+  useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // Resolve with the complete shortcut context so customized bindings
@@ -491,12 +503,6 @@ function CommandPaletteDialog(props: {
       }}
       onBackdropPointerDown={() => {
         props.setOpen(false);
-      }}
-      onKeyDownCapture={(event) => {
-        if (event.key !== "Escape" || props.mode === "command") return;
-        event.preventDefault();
-        event.stopPropagation();
-        props.openOverlayMode("command");
       }}
     >
       {props.mode === "files" ? (
