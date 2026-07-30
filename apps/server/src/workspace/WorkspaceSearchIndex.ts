@@ -13,7 +13,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as LayerMap from "effect/LayerMap";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import type {
@@ -28,8 +27,8 @@ import type {
 const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
 const WORKSPACE_INDEX_SCAN_TIMEOUT = "15 seconds";
+const WORKSPACE_INDEX_SCAN_TIMEOUT_MS = 15_000;
 const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
-const WORKSPACE_INDEX_SCAN_POLL_INTERVAL = "50 millis";
 const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
 const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
 
@@ -324,22 +323,29 @@ const createFinder = Effect.fn("WorkspaceSearchIndex.createFinder")(function* (
   });
 });
 
-const waitForScan = <E>(cwd: string, finder: FileFinder, onFailure: (cause: unknown) => E) =>
-  Effect.try({
-    try: () => finder.isScanning(),
-    catch: onFailure,
-  }).pipe(
-    Effect.repeat({
-      while: (scanning) => scanning,
-      schedule: Schedule.spaced(WORKSPACE_INDEX_SCAN_POLL_INTERVAL),
-    }),
-    Effect.timeoutOrElse({
-      duration: WORKSPACE_INDEX_SCAN_TIMEOUT,
-      orElse: () =>
-        new WorkspaceSearchIndexScanTimedOut({ cwd, timeout: WORKSPACE_INDEX_SCAN_TIMEOUT }),
-    }),
-    Effect.withSpan("WorkspaceSearchIndex.waitForScan"),
-  );
+const waitForIndexReady = Effect.fn("WorkspaceSearchIndex.waitForIndexReady")(function* <E>(
+  cwd: string,
+  finder: FileFinder,
+  onFailure: (input: { readonly reason: string; readonly cause?: unknown }) => E,
+): Effect.fn.Return<void, E | WorkspaceSearchIndexScanTimedOut> {
+  const result = yield* Effect.tryPromise({
+    try: () => finder.waitForIndexReady(WORKSPACE_INDEX_SCAN_TIMEOUT_MS),
+    catch: (cause) =>
+      onFailure({
+        reason: "FileFinder.waitForIndexReady rejected unexpectedly.",
+        cause,
+      }),
+  });
+  if (!result.ok) {
+    return yield* Effect.fail(onFailure({ reason: result.error }));
+  }
+  if (!result.value) {
+    return yield* new WorkspaceSearchIndexScanTimedOut({
+      cwd,
+      timeout: WORKSPACE_INDEX_SCAN_TIMEOUT,
+    });
+  }
+});
 
 export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   cwd: string,
@@ -351,13 +357,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
       catch: (cause) => new WorkspaceSearchIndexDestroyFailed({ cwd, cause }),
     }).pipe(Effect.orDie),
   );
-  yield* waitForScan(
+  yield* waitForIndexReady(
     cwd,
     finder,
-    (cause) =>
+    ({ reason, cause }) =>
       new WorkspaceSearchIndexCreateFailed({
         cwd,
-        reason: "FileFinder.isScanning threw while creating the index.",
+        reason,
         cause,
       }),
   );
@@ -408,13 +414,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         reason: result.error,
       });
     }
-    yield* waitForScan(
+    yield* waitForIndexReady(
       cwd,
       finder,
-      (cause) =>
+      ({ reason, cause }) =>
         new WorkspaceSearchIndexRefreshFailed({
           cwd,
-          reason: "FileFinder.isScanning threw while refreshing the index.",
+          reason,
           cause,
         }),
     );

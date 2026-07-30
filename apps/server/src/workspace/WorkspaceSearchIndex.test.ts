@@ -51,6 +51,41 @@ it.effect("keeps returned FileFinder creation diagnostics out of the cause chain
   }),
 );
 
+it.effect("waits for the full content index warmup before returning", () =>
+  Effect.gen(function* () {
+    const waitForIndexReady = vi.fn(async () => ({ ok: true as const, value: true }));
+    const finder = {
+      destroy: vi.fn(),
+      waitForIndexReady,
+    } as unknown as FileFinder;
+    vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+
+    yield* Effect.scoped(WorkspaceSearchIndex.make("/workspace/project", "content"));
+
+    expect(waitForIndexReady).toHaveBeenCalledWith(15_000);
+  }),
+);
+
+it.effect("preserves a full-index warmup timeout as a structured error", () =>
+  Effect.gen(function* () {
+    const finder = {
+      destroy: vi.fn(),
+      waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: false })),
+    } as unknown as FileFinder;
+    vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+
+    const error = yield* Effect.flip(
+      Effect.scoped(WorkspaceSearchIndex.make("/workspace/project", "content")),
+    );
+
+    expect(error).toMatchObject({
+      _tag: "WorkspaceSearchIndexScanTimedOut",
+      cwd: "/workspace/project",
+      timeout: "15 seconds",
+    });
+  }),
+);
+
 it.effect("preserves FileFinder destroy failures as structured defects", () =>
   Effect.gen(function* () {
     const cause = new Error("native destroy failed");
@@ -58,7 +93,7 @@ it.effect("preserves FileFinder destroy failures as structured defects", () =>
       destroy: vi.fn(() => {
         throw cause;
       }),
-      isScanning: vi.fn(() => false),
+      waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
     } as unknown as FileFinder;
     vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
 
@@ -88,7 +123,7 @@ it.effect("preserves search and refresh failures with operation context", () =>
       const contentSearchCause = new Error("native grep failed");
       const finder = {
         destroy: vi.fn(),
-        isScanning: vi.fn(() => false),
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
         mixedSearch: vi.fn(() => {
           throw searchCause;
         }),
@@ -150,7 +185,7 @@ it.effect("keeps returned search diagnostics out of the cause chain", () =>
     Effect.gen(function* () {
       const finder = {
         destroy: vi.fn(),
-        isScanning: vi.fn(() => false),
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
         mixedSearch: vi.fn(() => ({ ok: false, error: "native query rejected" })),
         scanFiles: vi.fn(() => ({ ok: false, error: "native refresh rejected" })),
       } as unknown as FileFinder;
@@ -227,7 +262,7 @@ it.effect("continues whole-word searches after a filtered grep page", () =>
       );
       const finder = {
         destroy: vi.fn(),
-        isScanning: vi.fn(() => false),
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
         grep,
       } as unknown as FileFinder;
       vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
