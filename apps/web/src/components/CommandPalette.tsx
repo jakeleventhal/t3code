@@ -395,7 +395,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.open || state.mode === "command") return;
     const onEscapeKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.isComposing || event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
       toggleMode("command");
