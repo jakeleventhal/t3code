@@ -235,7 +235,7 @@ function buildContentSearchQuery(input: Omit<ProjectSearchContentsInput, "cwd">)
   // Plain mode relies on smart case: an all-lowercase needle matches
   // case-insensitively. Regex mode needs an explicit inline flag instead.
   return input.useRegex
-    ? { searchQuery: `(?i:${input.query})`, regexMode: true }
+    ? { searchQuery: `(?i)${input.query}`, regexMode: true }
     : { searchQuery: input.query.toLowerCase(), regexMode: false };
 }
 
