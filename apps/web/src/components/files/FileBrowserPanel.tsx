@@ -119,6 +119,7 @@ export default function FileBrowserPanel({
   const previousTreePathsRef = useRef<readonly string[]>([]);
   const syncingSelectionRef = useRef(false);
   const treeSelectionPathRef = useRef<string | null>(null);
+  const handledRevealRef = useRef<{ path: string; revealId: number } | null>(null);
 
   // The tree renders rows in shadow DOM and its anchor rect is unreliable, so
   // capture the right-click position ourselves; contextmenu is a composed
@@ -262,7 +263,24 @@ export default function FileBrowserPanel({
   }, [entryKinds, model, treePaths]);
 
   useEffect(() => {
-    if (!selectedPath || entryKinds.get(selectedPath) !== "file") return;
+    if (!selectedPath) {
+      handledRevealRef.current = null;
+      return;
+    }
+    const revealRequest = { path: selectedPath, revealId: selectedPathRevealId };
+    const handledReveal = handledRevealRef.current;
+    // Entry refreshes rebuild treePaths while the same preview stays open.
+    // Replaying a handled reveal would close an active tree search and steal focus.
+    if (
+      handledReveal?.path === revealRequest.path &&
+      handledReveal.revealId === revealRequest.revealId
+    ) {
+      return;
+    }
+    if (entryKinds.get(selectedPath) !== "file") return;
+    const selectedItem = model.getItem(selectedPath);
+    if (!selectedItem) return;
+
     // A selection that originated inside the tree (clicking a row, possibly
     // in an active tree search) is already visible; re-revealing it would
     // close the search and clobber the user's context. Only sync external
@@ -272,9 +290,11 @@ export default function FileBrowserPanel({
       .some((path) => path.replace(/\/$/, "") === selectedPath);
     if (selectedInTree && treeSelectionPathRef.current === selectedPath) {
       treeSelectionPathRef.current = null;
+      handledRevealRef.current = revealRequest;
       return;
     }
     treeSelectionPathRef.current = null;
+    handledRevealRef.current = revealRequest;
 
     syncingSelectionRef.current = true;
     model.closeSearch();
@@ -292,7 +312,7 @@ export default function FileBrowserPanel({
       if (item && "expand" in item) item.expand();
     }
 
-    model.getItem(selectedPath)?.select();
+    selectedItem.select();
     model.scrollToPath(selectedPath, { focus: true, offset: "center" });
     queueMicrotask(() => {
       syncingSelectionRef.current = false;
