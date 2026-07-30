@@ -58,6 +58,7 @@ import {
 import {
   previewAutomationDefaultViewport,
   previewAutomationOpenNeedsOverlay,
+  previewAutomationOpenResizeTarget,
   shouldOpenPreviewMiniPlayer,
 } from "./previewAutomationOpenReadiness";
 import {
@@ -415,14 +416,9 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                       activeRuntimeTabId,
                       request,
                     );
-                    return await resize({
-                      environmentId,
-                      input: {
-                        threadId: request.threadId,
-                        tabId: activeTabId,
-                        viewport: defaultViewport,
-                      },
-                    });
+                    return await resize(
+                      previewAutomationOpenResizeTarget(threadRef, activeTabId, defaultViewport),
+                    );
                   },
                 );
                 if (resizeResult._tag === "Failure") {
