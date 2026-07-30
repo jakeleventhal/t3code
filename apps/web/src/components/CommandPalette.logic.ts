@@ -64,12 +64,19 @@ export function reduceCommandPaletteUiState(
   }
 }
 
+export interface CommandPaletteThreadContentMatch {
+  readonly source: "user" | "assistant";
+  readonly snippet: string;
+  readonly query: string;
+}
+
 export interface CommandPaletteItem {
   readonly kind: "action" | "submenu";
   readonly value: string;
   readonly searchTerms: ReadonlyArray<string>;
   readonly title: ReactNode;
   readonly description?: ReactNode;
+  readonly threadContentMatch?: CommandPaletteThreadContentMatch;
   readonly timestamp?: string;
   readonly icon: ReactNode;
   readonly disabled?: boolean;
@@ -163,6 +170,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   renderLeadingContent?: (thread: TThread) => ReactNode;
   /** Optional content rendered inline after the title text per-thread. */
   renderTrailingContent?: (thread: TThread) => ReactNode;
+  getContentMatch?: (thread: TThread) => CommandPaletteThreadContentMatch | undefined;
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
@@ -189,12 +197,18 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
 
     const leadingContent = input.renderLeadingContent?.(thread);
     const trailingContent = input.renderTrailingContent?.(thread);
+    const contentMatch = input.getContentMatch?.(thread);
 
     return Object.assign(
       {
         kind: "action" as const,
         value: `thread:${thread.id}`,
-        searchTerms: [thread.title, projectTitle ?? ``, thread.branch ?? ``],
+        searchTerms: [
+          thread.title,
+          projectTitle ?? ``,
+          thread.branch ?? ``,
+          contentMatch?.snippet ?? ``,
+        ],
         title: thread.title,
         description: descriptionParts.join(` · `),
         timestamp: formatRelativeTimeLabel(
@@ -204,6 +218,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
       },
       leadingContent ? { titleLeadingContent: leadingContent } : {},
       trailingContent ? { titleTrailingContent: trailingContent } : {},
+      contentMatch ? { threadContentMatch: contentMatch } : {},
       {
         run: async () => {
           await input.runThread(thread);
