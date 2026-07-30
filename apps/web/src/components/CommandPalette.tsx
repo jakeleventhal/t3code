@@ -492,6 +492,12 @@ function CommandPaletteDialog(props: {
       onBackdropPointerDown={() => {
         props.setOpen(false);
       }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== "Escape" || props.mode === "command") return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.openOverlayMode("command");
+      }}
     >
       {props.mode === "files" ? (
         <ProjectFilePicker setOpen={props.setOpen} />
