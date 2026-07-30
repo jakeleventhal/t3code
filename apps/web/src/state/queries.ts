@@ -334,7 +334,7 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
   return {
     matches: result.data?.matches ?? EMPTY_CONTENT_MATCHES,
     error: result.error,
-    isPending: query !== debouncedQuery || result.isPending,
+    isPending: hasQuery && (query !== debouncedQuery || result.isPending),
     hasQuery,
     truncated: result.data?.truncated ?? false,
     invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
