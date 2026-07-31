@@ -1,4 +1,4 @@
-import { ThreadId, type ProjectId } from "@t3tools/contracts";
+import { ProjectId, ThreadId } from "@t3tools/contracts";
 
 const LOCAL_CHECKOUT_SEGMENT = "local";
 
@@ -18,4 +18,36 @@ export function worktreeResourceThreadId(
       ? encodeURIComponent(worktreePath)
       : LOCAL_CHECKOUT_SEGMENT;
   return ThreadId.make(`worktree:${projectId}:${checkoutSegment}`);
+}
+
+const WORKTREE_RESOURCE_PREFIX = "worktree:";
+
+export interface WorktreeResourceIdentity {
+  readonly projectId: ProjectId;
+  readonly worktreePath: string | null;
+}
+
+/**
+ * Inverse of worktreeResourceThreadId. Synthetic owner threads have no shell
+ * entity, so checkout identity must be recoverable from the id alone for
+ * worktree-scoped state to converge with sibling threads' shell-derived keys.
+ */
+export function parseWorktreeResourceThreadId(threadId: string): WorktreeResourceIdentity | null {
+  if (!threadId.startsWith(WORKTREE_RESOURCE_PREFIX)) return null;
+  const rest = threadId.slice(WORKTREE_RESOURCE_PREFIX.length);
+  const separator = rest.indexOf(":");
+  if (separator <= 0 || separator === rest.length - 1) return null;
+  const projectId = rest.slice(0, separator);
+  const checkoutSegment = rest.slice(separator + 1);
+  if (checkoutSegment === LOCAL_CHECKOUT_SEGMENT) {
+    return { projectId: ProjectId.make(projectId), worktreePath: null };
+  }
+  try {
+    return {
+      projectId: ProjectId.make(projectId),
+      worktreePath: decodeURIComponent(checkoutSegment),
+    };
+  } catch {
+    return null;
+  }
 }

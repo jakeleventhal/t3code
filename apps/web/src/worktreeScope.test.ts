@@ -70,6 +70,20 @@ describe("worktreeScope", () => {
     });
   });
 
+  it("resolves synthetic worktree owner refs to the checkout scope without a shell", () => {
+    const environmentId = EnvironmentId.make("environment-1");
+    const projectId = ProjectId.make("project-1");
+    const worktreePath = "/repo/worktree";
+    const canonicalRef = scopeThreadRef(
+      environmentId,
+      worktreeResourceThreadId(projectId, worktreePath),
+    );
+
+    expect(resolveWorktreeScopeKeyForThreadRef(canonicalRef)).toBe(
+      worktreeScopeKey(environmentId, projectId, worktreePath),
+    );
+  });
+
   it("uses the final checkout scope and resource owner before a draft is sent", () => {
     const environmentId = EnvironmentId.make("environment-1");
     const projectId = ProjectId.make("project-1");
