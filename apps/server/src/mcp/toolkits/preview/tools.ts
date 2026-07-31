@@ -29,9 +29,13 @@ const dependencies = [
   PreviewAutomationBroker.PreviewAutomationBroker,
 ];
 
-const PreviewActionResult = Schema.Record(Schema.String, Schema.Never).annotate({
-  description: "The preview action completed successfully.",
-});
+// The MCP layer only attaches structuredContent when the encoded success value
+// is an object, and `typeof null === "object"` leaks a null structuredContent
+// that spec-compliant clients reject. Void operations acknowledge with a
+// record and evaluate wraps its arbitrary value for the same reason.
+const PreviewAutomationAcknowledged = Schema.Struct({ ok: Schema.Literal(true) });
+
+const PreviewAutomationEvaluateResult = Schema.Struct({ result: Schema.Unknown });
 
 /** Drives the real browser and can destroy page state. */
 const browserTool = <T extends Tool.Any>(tool: T): T =>
@@ -124,7 +128,7 @@ export const PreviewClickTool = browserTool(
     description:
       "Click exactly one target in the tab selected by tabId, or this agent session's current tab when omitted. Prefer a Playwright locator; selector accepts legacy CSS; x and y must be supplied together.",
     parameters: PreviewAutomationClickInput,
-    success: PreviewActionResult,
+    success: PreviewAutomationAcknowledged,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Click preview page"),
@@ -135,7 +139,7 @@ export const PreviewTypeTool = browserTool(
     description:
       "Insert literal text into one input in the tab selected by tabId, or this agent session's current tab when omitted. Prefer a Playwright locator; set clear=true to replace existing text.",
     parameters: PreviewAutomationTypeInput,
-    success: PreviewActionResult,
+    success: PreviewAutomationAcknowledged,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Type into preview page"),
@@ -146,7 +150,7 @@ export const PreviewPressTool = browserTool(
     description:
       "Press one keyboard key in the tab selected by tabId, or this agent session's current tab when omitted. Examples: {key:'Enter'}, {key:'Escape'}, or {key:'a',modifiers:['Meta']}.",
     parameters: PreviewAutomationPressInput,
-    success: PreviewActionResult,
+    success: PreviewAutomationAcknowledged,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Press key in preview page"),
@@ -157,7 +161,7 @@ export const PreviewScrollTool = safeBrowserTool(
     description:
       "Scroll the tab selected by tabId, or this agent session's current tab when omitted. Positive deltaY scrolls down and positive deltaX scrolls right; a locator/selector targets a container.",
     parameters: PreviewAutomationScrollInput,
-    success: PreviewActionResult,
+    success: PreviewAutomationAcknowledged,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Scroll preview page"),
@@ -166,9 +170,9 @@ export const PreviewScrollTool = safeBrowserTool(
 export const PreviewEvaluateTool = browserTool(
   Tool.make("preview_evaluate", {
     description:
-      "Evaluate JavaScript in the tab selected by tabId, or this agent session's current tab when omitted. Returns a serializable result up to 64 KB; the expression may mutate page state.",
+      "Evaluate JavaScript in the tab selected by tabId, or this agent session's current tab when omitted. Returns { result } with a serializable value up to 64 KB; the expression may mutate page state.",
     parameters: PreviewAutomationEvaluateInput,
-    success: Schema.Unknown,
+    success: PreviewAutomationEvaluateResult,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Evaluate JavaScript in preview"),
@@ -179,7 +183,7 @@ export const PreviewWaitForTool = readonlyBrowserTool(
     description:
       "Wait in the tab selected by tabId, or this agent session's current tab when omitted, until all supplied locator, selector, text, and URL conditions match.",
     parameters: PreviewAutomationWaitForInput,
-    success: PreviewActionResult,
+    success: PreviewAutomationAcknowledged,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Wait for preview page condition"),
