@@ -1,7 +1,10 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
-import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
+import {
+  parseWorktreeResourceThreadId,
+  worktreeResourceThreadId,
+} from "@t3tools/shared/worktreeResource";
 import { useMemo } from "react";
 
 import { useComposerDraftStore } from "./composerDraftStore";
@@ -35,6 +38,14 @@ export function threadWorktreeScopeKey(
     key when the shell is unknown (drafts, shells not yet bootstrapped) so state
     degrades to thread-scoped instead of colliding. */
 export function resolveWorktreeScopeKeyForThreadRef(ref: ScopedThreadRef): string {
+  // Synthetic worktree owner threads (wire-call canonical refs) have no shell
+  // or draft; their checkout identity is encoded in the id itself. Parsing it
+  // keeps state written via the canonical ref on the same key as state read
+  // via sibling threads' shells.
+  const resource = parseWorktreeResourceThreadId(ref.threadId);
+  if (resource) {
+    return worktreeScopeKey(ref.environmentId, resource.projectId, resource.worktreePath);
+  }
   const shell = readThreadShell(ref) ?? useComposerDraftStore.getState().getDraftThreadByRef(ref);
   return shell === null ? scopedThreadKey(ref) : threadWorktreeScopeKey(shell);
 }
@@ -152,6 +163,10 @@ export function useWorktreeScopeKeyForThreadRef(ref: ScopedThreadRef | null): st
   );
   if (ref === null) {
     return null;
+  }
+  const resource = parseWorktreeResourceThreadId(ref.threadId);
+  if (resource) {
+    return worktreeScopeKey(ref.environmentId, resource.projectId, resource.worktreePath);
   }
   const scope = shell ?? draft;
   return scope === null ? scopedThreadKey(ref) : threadWorktreeScopeKey(scope);
