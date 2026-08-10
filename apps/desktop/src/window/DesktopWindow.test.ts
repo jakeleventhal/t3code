@@ -14,18 +14,33 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Electron from "electron";
 import { vi } from "vite-plus/test";
 
-const { globalShortcutIsRegistered, globalShortcutRegister, globalShortcutUnregister } = vi.hoisted(
-  () => ({
-    globalShortcutIsRegistered: vi.fn<(accelerator: string) => boolean>(() => false),
-    globalShortcutRegister: vi.fn<(accelerator: string, callback: () => void) => boolean>(
-      () => true,
-    ),
-    globalShortcutUnregister: vi.fn<(accelerator: string) => void>(),
-  }),
-);
+const {
+  appListeners,
+  browserWindowGetFocusedWindow,
+  globalShortcutIsRegistered,
+  globalShortcutRegister,
+  globalShortcutUnregister,
+} = vi.hoisted(() => ({
+  appListeners: new Map<string, (...args: readonly unknown[]) => void>(),
+  browserWindowGetFocusedWindow: vi.fn<() => Electron.BrowserWindow | null>(() => null),
+  globalShortcutIsRegistered: vi.fn<(accelerator: string) => boolean>(() => false),
+  globalShortcutRegister: vi.fn<(accelerator: string, callback: () => void) => boolean>(() => true),
+  globalShortcutUnregister: vi.fn<(accelerator: string) => void>(),
+}));
 
 vi.mock("electron", async (importOriginal) => ({
   ...(await importOriginal<typeof import("electron")>()),
+  app: {
+    on: vi.fn((eventName: string, listener: (...args: readonly unknown[]) => void) => {
+      appListeners.set(eventName, listener);
+    }),
+    off: vi.fn((eventName: string, listener: (...args: readonly unknown[]) => void) => {
+      if (appListeners.get(eventName) === listener) appListeners.delete(eventName);
+    }),
+  },
+  BrowserWindow: {
+    getFocusedWindow: browserWindowGetFocusedWindow,
+  },
   globalShortcut: {
     isRegistered: globalShortcutIsRegistered,
     register: globalShortcutRegister,
@@ -452,7 +467,7 @@ describe("DesktopWindow", () => {
         assert.equal(fakeWindow.openDevTools.mock.calls.length, 1);
 
         const registrationStart = globalShortcutRegister.mock.calls.length;
-        fakeWindow.windowListeners.get("focus")?.();
+        appListeners.get("browser-window-focus")?.();
         const registrations = globalShortcutRegister.mock.calls.slice(registrationStart);
         assert.deepEqual(
           registrations.map(([accelerator]) => accelerator),
@@ -487,7 +502,14 @@ describe("DesktopWindow", () => {
           ],
         ]);
         const unregisterStart = globalShortcutUnregister.mock.calls.length;
-        fakeWindow.windowListeners.get("blur")?.();
+        browserWindowGetFocusedWindow.mockReturnValue({} as Electron.BrowserWindow);
+        appListeners.get("browser-window-blur")?.();
+        yield* TestClock.adjust(1);
+        assert.equal(globalShortcutUnregister.mock.calls.length, unregisterStart);
+
+        browserWindowGetFocusedWindow.mockReturnValue(null);
+        appListeners.get("browser-window-blur")?.();
+        yield* TestClock.adjust(1);
         assert.deepEqual(
           globalShortcutUnregister.mock.calls
             .slice(unregisterStart)

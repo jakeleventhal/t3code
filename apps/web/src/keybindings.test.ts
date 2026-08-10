@@ -14,7 +14,7 @@ import {
   modelPickerJumpCommandForIndex,
   modelPickerJumpIndexFromCommand,
   isOpenFavoriteEditorShortcut,
-  isUnmodifiedEscape,
+  isEscapeDismissal,
   isTerminalClearShortcut,
   isTerminalCloseShortcut,
   isTerminalNewShortcut,
@@ -44,13 +44,15 @@ function event(overrides: Partial<ShortcutEventLike> = {}): ShortcutEventLike {
   };
 }
 
-describe("isUnmodifiedEscape", () => {
-  it("matches bare Escape but not modified Escape", () => {
-    assert.isTrue(isUnmodifiedEscape(event({ key: "Escape" })));
-    assert.isFalse(isUnmodifiedEscape(event({ key: "Escape", metaKey: true })));
-    assert.isFalse(isUnmodifiedEscape(event({ key: "Escape", ctrlKey: true })));
-    assert.isFalse(isUnmodifiedEscape(event({ key: "Escape", altKey: true })));
-    assert.isFalse(isUnmodifiedEscape(event({ key: "Escape", shiftKey: true })));
+describe("isEscapeDismissal", () => {
+  it("preserves ordinary Escape dismissal while reserving mod+Escape", () => {
+    assert.isTrue(isEscapeDismissal(event({ key: "Escape" }), "MacIntel"));
+    assert.isFalse(isEscapeDismissal(event({ key: "Escape", metaKey: true }), "MacIntel"));
+    assert.isTrue(isEscapeDismissal(event({ key: "Escape", ctrlKey: true }), "MacIntel"));
+    assert.isTrue(isEscapeDismissal(event({ key: "Escape", altKey: true }), "MacIntel"));
+    assert.isTrue(isEscapeDismissal(event({ key: "Escape", shiftKey: true }), "MacIntel"));
+    assert.isFalse(isEscapeDismissal(event({ key: "Escape", ctrlKey: true }), "Win32"));
+    assert.isTrue(isEscapeDismissal(event({ key: "Escape", metaKey: true }), "Win32"));
   });
 });
 

@@ -27,12 +27,12 @@ export interface ShortcutModifierStateLike {
   altKey: boolean;
 }
 
-export function isUnmodifiedEscape(
+export function isEscapeDismissal(
   event: Pick<ShortcutEventLike, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
+  platform = navigator.platform,
 ): boolean {
-  return (
-    event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
-  );
+  const modPressed = isMacPlatform(platform) ? event.metaKey : event.ctrlKey;
+  return event.key === "Escape" && !modPressed;
 }
 
 export interface ShortcutMatchContext {

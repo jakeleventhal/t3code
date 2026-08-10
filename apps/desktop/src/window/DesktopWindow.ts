@@ -399,10 +399,18 @@ export const make = Effect.gen(function* () {
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
     }
-    let unregisterNativeModEscape = () => {};
+    let disposeNativeModEscape = () => {};
     if (environment.platform === "darwin") {
       const registeredAccelerators = new Set<string>();
+      let blurFiber: Fiber.Fiber<void, never> | undefined;
+      const cancelPendingBlur = () => {
+        if (blurFiber === undefined) return;
+        const fiber = blurFiber;
+        blurFiber = undefined;
+        runFork(Fiber.interrupt(fiber));
+      };
       const registerNativeModEscape = () => {
+        cancelPendingBlur();
         for (const shortcut of MACOS_MOD_ESCAPE_SHORTCUTS) {
           if (
             registeredAccelerators.has(shortcut.accelerator) ||
@@ -426,14 +434,35 @@ export const make = Effect.gen(function* () {
           }
         }
       };
-      unregisterNativeModEscape = () => {
+      const unregisterNativeModEscape = () => {
         for (const accelerator of registeredAccelerators) {
           Electron.globalShortcut.unregister(accelerator);
         }
         registeredAccelerators.clear();
       };
-      window.on("focus", registerNativeModEscape);
-      window.on("blur", unregisterNativeModEscape);
+      const handleBrowserWindowBlur = () => {
+        cancelPendingBlur();
+        blurFiber = runFork(
+          Effect.sleep(1).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                blurFiber = undefined;
+                if (Electron.BrowserWindow.getFocusedWindow() === null) {
+                  unregisterNativeModEscape();
+                }
+              }),
+            ),
+          ),
+        );
+      };
+      Electron.app.on("browser-window-focus", registerNativeModEscape);
+      Electron.app.on("browser-window-blur", handleBrowserWindowBlur);
+      disposeNativeModEscape = () => {
+        cancelPendingBlur();
+        Electron.app.off("browser-window-focus", registerNativeModEscape);
+        Electron.app.off("browser-window-blur", handleBrowserWindowBlur);
+        unregisterNativeModEscape();
+      };
     } else {
       window.webContents.on("before-input-event", (event, input) => {
         const captureInput = nativeKeybindingCaptureInput(input, environment.platform);
@@ -788,7 +817,7 @@ export const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
-      unregisterNativeModEscape();
+      disposeNativeModEscape();
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
       void runPromise(electronWindow.clearMain(Option.some(window)));

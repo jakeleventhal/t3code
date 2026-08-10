@@ -48,7 +48,8 @@ export function dispatchNativeKeybindingCaptureInput(input: unknown): void {
     return;
   }
 
-  const target = document.activeElement ?? document;
+  const activeElement = document.activeElement;
+  const target = activeElement?.hasAttribute("data-keybinding-capture") ? activeElement : window;
 
   target.dispatchEvent(
     new KeyboardEvent("keydown", {

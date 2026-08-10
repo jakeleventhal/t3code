@@ -35,7 +35,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
-import { formatShortcutLabel, isUnmodifiedEscape } from "../../keybindings";
+import { formatShortcutLabel, isEscapeDismissal } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import {
   primaryServerAvailableEditorsAtom,
@@ -154,7 +154,7 @@ function ExpandableHeaderSearch({
           if (query.length === 0) onOpenChange(false);
         }}
         onKeyDown={(event) => {
-          if (isUnmodifiedEscape(event)) {
+          if (isEscapeDismissal(event)) {
             event.preventDefault();
             onChange("");
             onOpenChange(false);

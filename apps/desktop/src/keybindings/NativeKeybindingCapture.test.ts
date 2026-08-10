@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { nativeKeybindingCaptureInput } from "./NativeKeybindingCapture.ts";
+import {
+  dispatchNativeKeybindingCaptureInput,
+  nativeKeybindingCaptureInput,
+} from "./NativeKeybindingCapture.ts";
 
 describe("nativeKeybindingCaptureInput", () => {
   it("forwards Command-Escape with its modifiers", () => {
@@ -70,5 +73,48 @@ describe("nativeKeybindingCaptureInput", () => {
         platform,
       ),
     ).toBeNull();
+  });
+
+  it("dispatches native shortcuts at the app window unless a keybinding recorder is active", () => {
+    const appDispatch = vi.fn(() => true);
+    const activeDispatch = vi.fn(() => true);
+    const activeElement = {
+      dispatchEvent: activeDispatch,
+      hasAttribute: vi.fn(() => false),
+    };
+    vi.stubGlobal("window", { dispatchEvent: appDispatch });
+    vi.stubGlobal("document", { activeElement });
+    vi.stubGlobal(
+      "KeyboardEvent",
+      class {
+        readonly type: string;
+        readonly init: KeyboardEventInit;
+
+        constructor(type: string, init: KeyboardEventInit) {
+          this.type = type;
+          this.init = init;
+        }
+      },
+    );
+
+    const input = {
+      key: "Escape" as const,
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+    };
+
+    try {
+      dispatchNativeKeybindingCaptureInput(input);
+      expect(appDispatch).toHaveBeenCalledOnce();
+      expect(activeDispatch).not.toHaveBeenCalled();
+
+      activeElement.hasAttribute.mockReturnValue(true);
+      dispatchNativeKeybindingCaptureInput(input);
+      expect(activeDispatch).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

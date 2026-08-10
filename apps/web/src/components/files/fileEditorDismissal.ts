@@ -1,4 +1,4 @@
-import { isUnmodifiedEscape } from "~/keybindings";
+import { isEscapeDismissal } from "~/keybindings";
 
 interface FileEditorDismissalOptions {
   root: HTMLElement;
@@ -40,7 +40,7 @@ export function installFileEditorDismissal({
     dismissFileEditorInteraction({ root, editor, onDismiss });
   };
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (!isUnmodifiedEscape(event) || isBlocked() || !isFileEditorFocused(root)) return;
+    if (!isEscapeDismissal(event) || isBlocked() || !isFileEditorFocused(root)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     dismissFileEditorInteraction({ root, editor, onDismiss });
