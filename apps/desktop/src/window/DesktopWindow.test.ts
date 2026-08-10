@@ -216,6 +216,9 @@ function makeTestLayer(input: {
   readonly beforeMainWindowBoundsUpdate?: (
     bounds: DesktopAppSettings.DesktopWindowBounds,
   ) => Effect.Effect<void>;
+  readonly setPreviewMainWindow?: (
+    window: Electron.BrowserWindow,
+  ) => Effect.Effect<void, PreviewManager.PreviewManagerError>;
   readonly openedExternalUrls?: unknown[];
 }) {
   let desktopSettings = input.desktopSettings ?? DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS;
@@ -292,7 +295,7 @@ function makeTestLayer(input: {
         electronWindowLayer,
         Layer.mock(PreviewManager.PreviewManager)({
           getBrowserSession: () => Effect.succeed({} as Electron.Session),
-          setMainWindow: () => Effect.void,
+          setMainWindow: input.setPreviewMainWindow ?? (() => Effect.void),
           isBrowserPartition: (partition) => partition.startsWith("persist:t3code-preview-"),
           getBrowserPartition: () => Effect.succeed("persist:t3code-preview-test"),
         }),
@@ -516,6 +519,34 @@ describe("DesktopWindow", () => {
             .map(([accelerator]) => accelerator),
           registrations.map(([accelerator]) => accelerator),
         );
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("removes native Escape listeners when preview setup fails", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        setPreviewMainWindow: () =>
+          Effect.fail(
+            new PreviewManager.PreviewOperationError({
+              operation: "setMainWindow",
+              cause: new Error("preview setup failed"),
+            }),
+          ),
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* Effect.flip(desktopWindow.createMain);
+
+        assert.isFalse(appListeners.has("browser-window-focus"));
+        assert.isFalse(appListeners.has("browser-window-blur"));
       }).pipe(Effect.provide(layer));
     }),
   );

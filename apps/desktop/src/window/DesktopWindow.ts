@@ -559,7 +559,9 @@ export const make = Effect.gen(function* () {
     );
     flushMainWindowBounds = flushBoundsPersist;
 
-    yield* previewManager.setMainWindow(window);
+    yield* previewManager
+      .setMainWindow(window)
+      .pipe(Effect.onError(() => Effect.sync(disposeNativeModEscape)));
     window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
       if (
         typeof params.partition !== "string" ||
