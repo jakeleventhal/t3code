@@ -233,7 +233,7 @@ export const make = Effect.gen(function* () {
                 ),
               );
             }),
-            Effect.catchTag("GitHubPullRequestNotFoundError", () => Effect.succeed([])),
+            Effect.catchTags({ GitHubPullRequestNotFoundError: () => Effect.succeed([]) }),
             Effect.mapError(
               (error) =>
                 new SourceControlProviderError({
