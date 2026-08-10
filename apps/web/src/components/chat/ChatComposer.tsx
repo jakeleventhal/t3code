@@ -2275,7 +2275,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         isComposerApprovalState ||
         pendingUserInputs.length > 0 ||
         projectSelectionRequired ||
-        activePendingProgress !== null
+        activePendingProgress !== null ||
+        (activeThreadId !== null &&
+          ((pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0 ||
+            (pendingTextAttachmentWritesRef.current.get(activeThreadId) ?? 0) > 0))
       ) {
         return;
       }
@@ -2285,6 +2288,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return () => window.removeEventListener("keydown", handler, true);
   }, [
     activePendingProgress,
+    activeThreadId,
     isComposerApprovalState,
     isComposerModelPickerOpen,
     keybindings,
@@ -2382,7 +2386,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       reservedCount += 1;
     }
     if (acceptedImages.length === 0 && acceptedTextFiles.length === 0) {
-      setThreadError(threadId, validationErrors.length > 0 ? validationErrors.join(" ") : null);
+      if (validationErrors.length > 0) {
+        setThreadError(threadId, validationErrors.join(" "));
+      }
       return;
     }
 
@@ -2435,7 +2441,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         } else if (nextImages.length > 1) {
           addComposerImagesToDraft(nextImages);
         }
-        setThreadError(threadId, errors.length > 0 ? errors.join(" ") : null);
+        if (errors.length > 0) {
+          setThreadError(threadId, errors.join(" "));
+        }
       });
     textAttachmentQueuesRef.current.set(threadId, operation);
     void operation.finally(() => {

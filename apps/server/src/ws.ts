@@ -40,7 +40,6 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
-  ProjectWriteTextAttachmentError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   type ServerSelfUpdateError,
@@ -1808,16 +1807,7 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectsWriteTextAttachment]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsWriteTextAttachment,
-            workspaceFileSystem.writeTextAttachment(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProjectWriteTextAttachmentError({
-                    name: input.name,
-                    message: cause.message,
-                    cause,
-                  }),
-              ),
-            ),
+            workspaceFileSystem.writeTextAttachment(input),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>

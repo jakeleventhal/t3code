@@ -314,11 +314,41 @@ export const ProjectWriteTextAttachmentResult = Schema.Struct({
 });
 export type ProjectWriteTextAttachmentResult = typeof ProjectWriteTextAttachmentResult.Type;
 
+export const ProjectWriteTextAttachmentFailure = Schema.Literals([
+  "contents_empty",
+  "contents_binary",
+  "contents_too_large",
+  "attachment_path_unsafe",
+  "make_directory_failed",
+  "write_failed",
+]);
+export type ProjectWriteTextAttachmentFailure = typeof ProjectWriteTextAttachmentFailure.Type;
+
 export class ProjectWriteTextAttachmentError extends Schema.TaggedErrorClass<ProjectWriteTextAttachmentError>()(
   "ProjectWriteTextAttachmentError",
   {
-    name: Schema.optional(TrimmedNonEmptyString),
-    message: TrimmedNonEmptyString,
+    name: TrimmedNonEmptyString,
+    failure: ProjectWriteTextAttachmentFailure,
+    byteLength: Schema.optional(NonNegativeInt),
     cause: Schema.optional(Schema.Defect()),
   },
-) {}
+) {
+  override get message(): string {
+    switch (this.failure) {
+      case "contents_empty":
+        return `Text attachment '${this.name}' is empty.`;
+      case "contents_binary":
+        return `Text attachment '${this.name}' contains binary data.`;
+      case "contents_too_large":
+        return `Text attachment '${this.name}' exceeds the 1 MB limit${
+          this.byteLength === undefined ? "." : ` (${this.byteLength} bytes).`
+        }`;
+      case "attachment_path_unsafe":
+        return `Could not create a safe attachment path for '${this.name}'.`;
+      case "make_directory_failed":
+        return `Could not create the attachment directory for '${this.name}'.`;
+      case "write_failed":
+        return `Could not persist text attachment '${this.name}'.`;
+    }
+  }
+}

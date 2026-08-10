@@ -6,7 +6,9 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  collectTextAttachmentRelativePaths,
   createAttachmentId,
+  parseAttachmentIdFromRootEntry,
   parseThreadSegmentFromAttachmentId,
   resolveAttachmentPathById,
 } from "./attachmentStore.ts";
@@ -42,6 +44,27 @@ describe("attachmentStore", () => {
       return;
     }
     expect(parseThreadSegmentFromAttachmentId(attachmentId)).toBe("thread-foo");
+  });
+
+  it("parses both flat image files and text attachment directories", () => {
+    const attachmentId = "thread-1-00000000-0000-4000-8000-000000000001";
+
+    expect(parseAttachmentIdFromRootEntry(`${attachmentId}.png`)).toBe(attachmentId);
+    expect(parseAttachmentIdFromRootEntry(attachmentId)).toBe(attachmentId);
+    expect(parseAttachmentIdFromRootEntry("unrelated-directory")).toBeNull();
+  });
+
+  it("collects generated text attachment paths for the matching thread", () => {
+    const attachmentId = "thread-1-00000000-0000-4000-8000-000000000001";
+    const otherAttachmentId = "thread-10-00000000-0000-4000-8000-000000000002";
+    const text = [
+      `[My%20Notes.md](/tmp/attachments/${attachmentId}/My%20Notes.md)`,
+      `[Other.md](/tmp/attachments/${otherAttachmentId}/Other.md)`,
+    ].join(" ");
+
+    expect(collectTextAttachmentRelativePaths("thread.1", text)).toEqual([
+      `${attachmentId}/My Notes.md`,
+    ]);
   });
 
   it("resolves attachment path by id using the extension that exists on disk", () => {

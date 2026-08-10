@@ -799,6 +799,10 @@ it.layer(
       const threadId = ThreadId.make("Thread Revert.Files");
       const keepAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000001";
       const removeAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000002";
+      const keepTextAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000004";
+      const removeTextAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000005";
+      const keepTextPath = path.join(attachmentsDir, keepTextAttachmentId, "keep.md");
+      const removeTextPath = path.join(attachmentsDir, removeTextAttachmentId, "remove.md");
       const otherThreadAttachmentId =
         "thread-revert-files-extra-00000000-0000-4000-8000-000000000003";
 
@@ -890,7 +894,7 @@ it.layer(
           threadId,
           messageId: MessageId.make("message-keep"),
           role: "assistant",
-          text: "Keep",
+          text: `Keep [keep.md](${keepTextPath})`,
           attachments: [
             {
               type: "image",
@@ -943,7 +947,7 @@ it.layer(
           threadId,
           messageId: MessageId.make("message-remove"),
           role: "assistant",
-          text: "Remove",
+          text: `Remove [remove.md](${removeTextPath})`,
           attachments: [
             {
               type: "image",
@@ -963,12 +967,18 @@ it.layer(
       const keepPath = path.join(attachmentsDir, `${keepAttachmentId}.png`);
       const removePath = path.join(attachmentsDir, `${removeAttachmentId}.png`);
       yield* fileSystem.makeDirectory(attachmentsDir, { recursive: true });
+      yield* fileSystem.makeDirectory(path.dirname(keepTextPath), { recursive: true });
+      yield* fileSystem.makeDirectory(path.dirname(removeTextPath), { recursive: true });
       yield* fileSystem.writeFileString(keepPath, "keep");
       yield* fileSystem.writeFileString(removePath, "remove");
+      yield* fileSystem.writeFileString(keepTextPath, "keep text");
+      yield* fileSystem.writeFileString(removeTextPath, "remove text");
       const otherThreadPath = path.join(attachmentsDir, `${otherThreadAttachmentId}.png`);
       yield* fileSystem.writeFileString(otherThreadPath, "other");
       assert.isTrue(yield* exists(keepPath));
       assert.isTrue(yield* exists(removePath));
+      assert.isTrue(yield* exists(keepTextPath));
+      assert.isTrue(yield* exists(removeTextPath));
       assert.isTrue(yield* exists(otherThreadPath));
 
       yield* appendAndProject({
@@ -989,6 +999,8 @@ it.layer(
 
       assert.isTrue(yield* exists(keepPath));
       assert.isFalse(yield* exists(removePath));
+      assert.isTrue(yield* exists(keepTextPath));
+      assert.isFalse(yield* exists(removeTextPath));
       assert.isTrue(yield* exists(otherThreadPath));
     }),
   );

@@ -315,27 +315,46 @@ export const make = Effect.gen(function* () {
     "WorkspaceFileSystem.writeTextAttachment",
   )(function* (input) {
     const bytes = new TextEncoder().encode(input.contents);
-    if (
-      bytes.byteLength === 0 ||
-      bytes.byteLength > PROJECT_TEXT_ATTACHMENT_MAX_BYTES ||
-      bytes.includes(0)
-    ) {
+    if (bytes.byteLength === 0) {
       return yield* new ProjectWriteTextAttachmentError({
         name: input.name,
-        message: `Text attachment '${input.name}' is empty, binary, or exceeds the 1 MB limit.`,
+        failure: "contents_empty",
+        byteLength: bytes.byteLength,
+      });
+    }
+    if (bytes.byteLength > PROJECT_TEXT_ATTACHMENT_MAX_BYTES) {
+      return yield* new ProjectWriteTextAttachmentError({
+        name: input.name,
+        failure: "contents_too_large",
+        byteLength: bytes.byteLength,
+      });
+    }
+    if (bytes.includes(0)) {
+      return yield* new ProjectWriteTextAttachmentError({
+        name: input.name,
+        failure: "contents_binary",
+        byteLength: bytes.byteLength,
       });
     }
     const attachmentId = createAttachmentId(input.threadId);
+    const sanitizedAttachmentName = input.name
+      .replaceAll("/", "-")
+      .replaceAll("\\", "-")
+      .replaceAll("\0", "-");
+    const attachmentName =
+      sanitizedAttachmentName === "." || sanitizedAttachmentName === ".."
+        ? "attachment.txt"
+        : sanitizedAttachmentName;
     const absolutePath = attachmentId
       ? resolveAttachmentRelativePath({
           attachmentsDir: serverConfig.attachmentsDir,
-          relativePath: `${attachmentId}.txt`,
+          relativePath: `${attachmentId}/${attachmentName}`,
         })
       : null;
     if (!absolutePath) {
       return yield* new ProjectWriteTextAttachmentError({
         name: input.name,
-        message: `Could not create a safe attachment path for '${input.name}'.`,
+        failure: "attachment_path_unsafe",
       });
     }
     yield* fileSystem.makeDirectory(path.dirname(absolutePath), { recursive: true }).pipe(
@@ -343,7 +362,7 @@ export const make = Effect.gen(function* () {
         (cause) =>
           new ProjectWriteTextAttachmentError({
             name: input.name,
-            message: `Could not create the attachment directory for '${input.name}'.`,
+            failure: "make_directory_failed",
             cause,
           }),
       ),
@@ -353,7 +372,7 @@ export const make = Effect.gen(function* () {
         (cause) =>
           new ProjectWriteTextAttachmentError({
             name: input.name,
-            message: `Could not persist text attachment '${input.name}'.`,
+            failure: "write_failed",
             cause,
           }),
       ),

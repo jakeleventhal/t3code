@@ -108,3 +108,51 @@ export function parseAttachmentIdFromRelativePath(relativePath: string): string 
   const id = normalized.slice(0, extensionIndex);
   return id.length > 0 && !id.includes(".") ? id : null;
 }
+
+export function parseAttachmentIdFromRootEntry(entry: string): string | null {
+  const normalized = normalizeAttachmentRelativePath(entry);
+  if (!normalized || normalized.includes("/")) {
+    return null;
+  }
+  const fileAttachmentId = parseAttachmentIdFromRelativePath(normalized);
+  if (fileAttachmentId) {
+    return fileAttachmentId;
+  }
+  return parseThreadSegmentFromAttachmentId(normalized) ? normalized : null;
+}
+
+const TEXT_ATTACHMENT_PATH_PATTERN = new RegExp(
+  `(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN}-${ATTACHMENT_ID_UUID_PATTERN})/([^\\s)]+)`,
+  "gi",
+);
+
+export function collectTextAttachmentRelativePaths(
+  threadId: string,
+  text: string,
+): ReadonlyArray<string> {
+  const threadSegment = toSafeThreadAttachmentSegment(threadId);
+  if (!threadSegment) {
+    return [];
+  }
+
+  const relativePaths = new Set<string>();
+  for (const match of text.matchAll(TEXT_ATTACHMENT_PATH_PATTERN)) {
+    const encodedRelativePath = match[0];
+    let decodedRelativePath = encodedRelativePath;
+    try {
+      decodedRelativePath = decodeURIComponent(encodedRelativePath);
+    } catch {
+      continue;
+    }
+    const normalized = normalizeAttachmentRelativePath(decodedRelativePath);
+    if (!normalized || normalized.split("/").length !== 2) {
+      continue;
+    }
+    const attachmentId = normalized.slice(0, normalized.indexOf("/"));
+    if (parseThreadSegmentFromAttachmentId(attachmentId) !== threadSegment) {
+      continue;
+    }
+    relativePaths.add(normalized);
+  }
+  return [...relativePaths];
+}

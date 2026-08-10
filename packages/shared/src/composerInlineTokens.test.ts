@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { collectComposerInlineTokens } from "./composerInlineTokens.ts";
+import {
+  collectComposerInlineTokens,
+  measureComposerMarkdownVisibleLength,
+} from "./composerInlineTokens.ts";
 
 describe("collectComposerInlineTokens", () => {
   it("collects file links, mentions, and skills with source ranges", () => {
@@ -141,6 +144,22 @@ describe("collectComposerInlineTokens", () => {
   it("leaves a file link past the label cap as plain text", () => {
     const label = `${"a".repeat(509)}.tsx`;
     expect(collectComposerInlineTokens(`see [${label}](src/${label}) ok`)).toEqual([]);
+  });
+
+  it("measures canonical file links by their visible filename", () => {
+    const path = `/tmp/t3/attachments/${"nested/".repeat(100)}notes.txt`;
+    const text = `Review [notes.txt](${path}) please`;
+
+    expect(text.length).toBeGreaterThan(600);
+    expect(measureComposerMarkdownVisibleLength(text)).toBe("Review notes.txt please".length);
+  });
+
+  it.each([
+    "Review `[notes.txt](/very/long/path/notes.txt)` please",
+    "Review \\[notes.txt](/very/long/path/notes.txt) please",
+    "```md\n[notes.txt](/very/long/path/notes.txt)\n```",
+  ])("keeps literal Markdown file syntax visible in %s", (text) => {
+    expect(measureComposerMarkdownVisibleLength(text)).toBe(text.length);
   });
 
   it("stays fast on unterminated bracket runs", () => {

@@ -273,6 +273,7 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
         const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
         const { attachmentsDir } = yield* ServerConfig.ServerConfig;
 
         const result = yield* workspaceFileSystem.writeTextAttachment({
@@ -282,7 +283,10 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         });
 
         expect(result.absolutePath.startsWith(attachmentsDir)).toBe(true);
-        expect(result.absolutePath.endsWith(".txt")).toBe(true);
+        expect(result.absolutePath.endsWith("/Dockerfile")).toBe(true);
+        expect(path.basename(path.dirname(result.absolutePath))).toMatch(
+          /^thread-text-attachment-[0-9a-f-]{36}$/,
+        );
         expect(yield* fileSystem.readFileString(result.absolutePath)).toBe("FROM node:24\n");
       }),
     );
@@ -298,7 +302,31 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           })
           .pipe(Effect.flip);
 
-        expect(error.message).toContain("empty, binary, or exceeds the 1 MB limit");
+        expect(error).toMatchObject({
+          name: "payload.bin",
+          failure: "contents_binary",
+          byteLength: 12,
+        });
+        expect(error.message).toBe("Text attachment 'payload.bin' contains binary data.");
+      }),
+    );
+
+    it.effect("reports empty text attachments as a distinct failure", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const error = yield* workspaceFileSystem
+          .writeTextAttachment({
+            threadId: ThreadId.make("thread-empty-attachment"),
+            name: "empty.txt",
+            contents: "",
+          })
+          .pipe(Effect.flip);
+
+        expect(error).toMatchObject({
+          name: "empty.txt",
+          failure: "contents_empty",
+          byteLength: 0,
+        });
       }),
     );
   });
