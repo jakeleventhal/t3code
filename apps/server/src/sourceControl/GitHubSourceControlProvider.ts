@@ -132,9 +132,9 @@ export const make = Effect.gen(function* () {
         .split("/")
         .filter((part) => part.length > 0);
       if (!owner || !name || rest.length > 0) return undefined;
-      return parsed.hostname.toLowerCase() === "github.com"
+      return parsed.host.toLowerCase() === "github.com"
         ? `${owner}/${name}`
-        : `${parsed.hostname}/${owner}/${name}`;
+        : `${parsed.host}/${owner}/${name}`;
     } catch {
       return undefined;
     }
@@ -200,30 +200,31 @@ export const make = Effect.gen(function* () {
               return Effect.sync(() => decodeGitHubPullRequestJson(raw)).pipe(
                 Effect.flatMap((decoded) =>
                   Result.isSuccess(decoded)
-                    ? Effect.succeed(() => {
-                        const item = decoded.success;
-                        if (
-                          item.headRefName !== qualifiedHead[2] ||
-                          item.headRepositoryOwnerLogin?.toLowerCase() !==
-                            qualifiedHead[1]?.toLowerCase() ||
-                          (stateArg !== "all" && item.state !== stateArg)
-                        ) {
-                          return [];
-                        }
-                        const { updatedAt, ...summary } = item;
-                        return [
-                          {
-                            ...toChangeRequest({
-                              ...summary,
-                              ...(Option.isSome(updatedAt)
-                                ? { updatedAt: DateTime.formatIso(updatedAt.value) }
-                                : {}),
-                            }),
-                            updatedAt,
-                          },
-                        ];
-                      })
-                    .pipe(Effect.map((build) => build()))
+                    ? Effect.succeed(
+                        (() => {
+                          const item = decoded.success;
+                          if (
+                            item.headRefName !== qualifiedHead[2] ||
+                            item.headRepositoryOwnerLogin?.toLowerCase() !==
+                              qualifiedHead[1]?.toLowerCase() ||
+                            (stateArg !== "all" && item.state !== stateArg)
+                          ) {
+                            return [];
+                          }
+                          const { updatedAt, ...summary } = item;
+                          return [
+                            {
+                              ...toChangeRequest({
+                                ...summary,
+                                ...(Option.isSome(updatedAt)
+                                  ? { updatedAt: DateTime.formatIso(updatedAt.value) }
+                                  : {}),
+                              }),
+                              updatedAt,
+                            },
+                          ];
+                        })(),
+                      )
                     : Effect.fail(
                         new GitHubCli.GitHubChangeRequestListDecodeError({
                           command: "gh",
