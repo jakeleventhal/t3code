@@ -53,6 +53,7 @@ import {
   collectTextAttachmentRelativePaths,
   parseAttachmentIdFromRootEntry,
   parseThreadSegmentFromAttachmentId,
+  toOwnedThreadAttachmentSegment,
   toSafeThreadAttachmentSegment,
 } from "../../attachmentStore.ts";
 
@@ -104,6 +105,7 @@ interface ProjectorDefinition {
 
 interface AttachmentSideEffects {
   readonly removedRootEntries: Set<string>;
+  readonly scannedThreadKeptRootEntries: Map<string, Set<string>>;
 }
 
 const materializeAttachmentsForProjection = Effect.fn("materializeAttachmentsForProjection")(
@@ -344,10 +346,6 @@ function collectThreadAttachmentRelativePaths(
       if (attachment.type !== "image") {
         continue;
       }
-      const attachmentThreadSegment = parseThreadSegmentFromAttachmentId(attachment.id);
-      if (!attachmentThreadSegment || attachmentThreadSegment !== threadSegment) {
-        continue;
-      }
       relativePaths.add(attachmentRelativePath(attachment));
     }
   }
@@ -385,6 +383,42 @@ const runAttachmentSideEffects = Effect.fn("runAttachmentSideEffects")(function*
         recursive: true,
       });
     }),
+    { concurrency: 1 },
+  );
+
+  if (sideEffects.scannedThreadKeptRootEntries.size === 0) {
+    return;
+  }
+  const rootEntries = yield* fileSystem
+    .readDirectory(attachmentsRootDir, { recursive: false })
+    .pipe(Effect.orElseSucceed(() => [] as Array<string>));
+  yield* Effect.forEach(
+    sideEffects.scannedThreadKeptRootEntries,
+    ([threadId, keptRootEntries]) =>
+      Effect.gen(function* () {
+        const ownedThreadSegment = toOwnedThreadAttachmentSegment(threadId);
+        if (!ownedThreadSegment) {
+          return;
+        }
+        yield* Effect.forEach(
+          rootEntries,
+          Effect.fn("removeUnreferencedOwnedAttachmentRootEntry")(function* (entry) {
+            const attachmentId = parseAttachmentIdFromRootEntry(entry);
+            if (
+              !attachmentId ||
+              parseThreadSegmentFromAttachmentId(attachmentId) !== ownedThreadSegment ||
+              keptRootEntries.has(entry)
+            ) {
+              return;
+            }
+            yield* fileSystem.remove(path.join(attachmentsRootDir, entry), {
+              force: true,
+              recursive: true,
+            });
+          }),
+          { concurrency: 1 },
+        );
+      }),
     { concurrency: 1 },
   );
 });
@@ -766,6 +800,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           )) {
             attachmentSideEffects.removedRootEntries.add(entry);
           }
+          attachmentSideEffects.scannedThreadKeptRootEntries.set(event.payload.threadId, new Set());
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
           });
@@ -955,6 +990,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               attachmentSideEffects.removedRootEntries.add(entry);
             }
           }
+          attachmentSideEffects.scannedThreadKeptRootEntries.set(
+            event.payload.threadId,
+            keptRootEntries,
+          );
           return;
         }
 
@@ -1590,6 +1629,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     ) {
       const attachmentSideEffects: AttachmentSideEffects = {
         removedRootEntries: new Set<string>(),
+        scannedThreadKeptRootEntries: new Map<string, Set<string>>(),
       };
 
       yield* sql.withTransaction(

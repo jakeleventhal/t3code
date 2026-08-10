@@ -12,6 +12,7 @@ import { inferImageExtension, SAFE_IMAGE_FILE_EXTENSIONS } from "./imageMime.ts"
 
 const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
+const ATTACHMENT_ID_THREAD_HASH_CHARS = 64;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const ATTACHMENT_ID_PATTERN = new RegExp(
@@ -35,11 +36,25 @@ export function toSafeThreadAttachmentSegment(threadId: string): string | null {
 }
 
 export function createAttachmentId(threadId: string): string | null {
-  const threadSegment = toSafeThreadAttachmentSegment(threadId);
+  const threadSegment = toOwnedThreadAttachmentSegment(threadId);
   if (!threadSegment) {
     return null;
   }
   return `${threadSegment}-${NodeCrypto.randomUUID()}`;
+}
+
+export function toOwnedThreadAttachmentSegment(threadId: string): string | null {
+  const safeSegment = toSafeThreadAttachmentSegment(threadId);
+  if (!safeSegment) {
+    return null;
+  }
+  const hash = NodeCrypto.createHash("sha256")
+    .update(threadId)
+    .digest("hex")
+    .slice(0, ATTACHMENT_ID_THREAD_HASH_CHARS);
+  const slugMaxChars = ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS - ATTACHMENT_ID_THREAD_HASH_CHARS - 1;
+  const slug = safeSegment.slice(0, slugMaxChars).replace(/[-_]+$/g, "");
+  return `${slug}-${hash}`;
 }
 
 export function parseThreadSegmentFromAttachmentId(attachmentId: string): string | null {
@@ -52,6 +67,14 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
     return null;
   }
   return match[1]?.toLowerCase() ?? null;
+}
+
+export function attachmentIdBelongsToThread(attachmentId: string, threadId: string): boolean {
+  const attachmentThreadSegment = parseThreadSegmentFromAttachmentId(attachmentId);
+  if (!attachmentThreadSegment) {
+    return false;
+  }
+  return attachmentThreadSegment === toOwnedThreadAttachmentSegment(threadId);
 }
 
 export function attachmentRelativePath(attachment: ChatAttachment): string {
@@ -149,7 +172,7 @@ export function collectTextAttachmentRelativePaths(
       continue;
     }
     const attachmentId = normalized.slice(0, normalized.indexOf("/"));
-    if (parseThreadSegmentFromAttachmentId(attachmentId) !== threadSegment) {
+    if (!attachmentIdBelongsToThread(attachmentId, threadId)) {
       continue;
     }
     relativePaths.add(normalized);

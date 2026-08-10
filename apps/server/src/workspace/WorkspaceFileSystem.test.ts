@@ -285,7 +285,7 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         expect(result.absolutePath.startsWith(attachmentsDir)).toBe(true);
         expect(result.absolutePath.endsWith("/Dockerfile")).toBe(true);
         expect(path.basename(path.dirname(result.absolutePath))).toMatch(
-          /^thread-text-attachment-[0-9a-f-]{36}$/,
+          /^thread-text-att-[0-9a-f]{64}-[0-9a-f-]{36}$/,
         );
         expect(yield* fileSystem.readFileString(result.absolutePath)).toBe("FROM node:24\n");
       }),

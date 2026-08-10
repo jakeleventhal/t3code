@@ -36,6 +36,7 @@ import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
 import { ServerConfig } from "../../config.ts";
+import { createAttachmentId } from "../../attachmentStore.ts";
 
 const makeProjectionPipelinePrefixedTestLayer = (prefix: string) =>
   OrchestrationProjectionPipelineLive.pipe(
@@ -799,11 +800,23 @@ it.layer(
       const threadId = ThreadId.make("Thread Revert.Files");
       const keepAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000001";
       const removeAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000002";
-      const keepTextAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000004";
-      const removeTextAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000005";
+      const keepTextAttachmentId = createAttachmentId(threadId);
+      const removeTextAttachmentId = createAttachmentId(threadId);
+      assert.isNotNull(keepTextAttachmentId);
+      assert.isNotNull(removeTextAttachmentId);
+      if (!keepTextAttachmentId || !removeTextAttachmentId) {
+        return;
+      }
       const keepTextPath = path.join(attachmentsDir, keepTextAttachmentId, "keep.md");
       const removeTextPath = path.join(attachmentsDir, removeTextAttachmentId, "remove.md");
       const otherThreadAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000003";
+      const orphanAttachmentId = createAttachmentId(threadId);
+      const collidingThreadAttachmentId = createAttachmentId("Thread Revert/Files");
+      assert.isNotNull(orphanAttachmentId);
+      assert.isNotNull(collidingThreadAttachmentId);
+      if (!orphanAttachmentId || !collidingThreadAttachmentId) {
+        return;
+      }
 
       const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
         eventStore
@@ -974,11 +987,17 @@ it.layer(
       yield* fileSystem.writeFileString(removeTextPath, "remove text");
       const otherThreadPath = path.join(attachmentsDir, `${otherThreadAttachmentId}.png`);
       yield* fileSystem.writeFileString(otherThreadPath, "other");
+      const orphanPath = path.join(attachmentsDir, `${orphanAttachmentId}.png`);
+      const collidingThreadPath = path.join(attachmentsDir, `${collidingThreadAttachmentId}.png`);
+      yield* fileSystem.writeFileString(orphanPath, "orphan");
+      yield* fileSystem.writeFileString(collidingThreadPath, "colliding-thread");
       assert.isTrue(yield* exists(keepPath));
       assert.isTrue(yield* exists(removePath));
       assert.isTrue(yield* exists(keepTextPath));
       assert.isTrue(yield* exists(removeTextPath));
       assert.isTrue(yield* exists(otherThreadPath));
+      assert.isTrue(yield* exists(orphanPath));
+      assert.isTrue(yield* exists(collidingThreadPath));
 
       yield* appendAndProject({
         type: "thread.reverted",
@@ -1001,6 +1020,8 @@ it.layer(
       assert.isTrue(yield* exists(keepTextPath));
       assert.isFalse(yield* exists(removeTextPath));
       assert.isTrue(yield* exists(otherThreadPath));
+      assert.isFalse(yield* exists(orphanPath));
+      assert.isTrue(yield* exists(collidingThreadPath));
     }),
   );
 });
@@ -1019,6 +1040,13 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
         const threadId = ThreadId.make("Thread Delete.Files");
         const attachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000001";
         const otherThreadAttachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000002";
+        const orphanAttachmentId = createAttachmentId(threadId);
+        const collidingThreadAttachmentId = createAttachmentId("Thread Delete/Files");
+        assert.isNotNull(orphanAttachmentId);
+        assert.isNotNull(collidingThreadAttachmentId);
+        if (!orphanAttachmentId || !collidingThreadAttachmentId) {
+          return;
+        }
 
         const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
           eventStore
@@ -1108,11 +1136,20 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
           attachmentsDir,
           `${otherThreadAttachmentId}.png`,
         );
+        const orphanAttachmentPath = path.join(attachmentsDir, `${orphanAttachmentId}.png`);
+        const collidingThreadAttachmentPath = path.join(
+          attachmentsDir,
+          `${collidingThreadAttachmentId}.png`,
+        );
         yield* fileSystem.makeDirectory(attachmentsDir, { recursive: true });
         yield* fileSystem.writeFileString(threadAttachmentPath, "delete");
         yield* fileSystem.writeFileString(otherThreadAttachmentPath, "other-thread");
+        yield* fileSystem.writeFileString(orphanAttachmentPath, "orphan");
+        yield* fileSystem.writeFileString(collidingThreadAttachmentPath, "colliding-thread");
         assert.isTrue(yield* exists(threadAttachmentPath));
         assert.isTrue(yield* exists(otherThreadAttachmentPath));
+        assert.isTrue(yield* exists(orphanAttachmentPath));
+        assert.isTrue(yield* exists(collidingThreadAttachmentPath));
 
         yield* appendAndProject({
           type: "thread.deleted",
@@ -1132,6 +1169,8 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
 
         assert.isFalse(yield* exists(threadAttachmentPath));
         assert.isTrue(yield* exists(otherThreadAttachmentPath));
+        assert.isFalse(yield* exists(orphanAttachmentPath));
+        assert.isTrue(yield* exists(collidingThreadAttachmentPath));
       }),
     );
   },
