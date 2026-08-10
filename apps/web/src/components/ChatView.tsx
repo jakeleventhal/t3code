@@ -352,7 +352,6 @@ import {
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
   buildRevertTurnCountByUserMessageId,
-  buildRunningThreadTurnInterruptInput,
   buildThreadTurnInterruptInput,
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
@@ -3135,8 +3134,8 @@ function ChatViewContent(props: ChatViewProps) {
   interruptContextRef.current = { activeThread, phase, setThreadError };
   const onInterrupt = useCallback(async () => {
     const { activeThread, phase, setThreadError } = interruptContextRef.current;
-    const input = buildRunningThreadTurnInterruptInput(activeThread, phase);
-    if (!activeThread || input === null) return;
+    if (phase !== "running" || activeThread?.session?.status !== "running") return;
+    const input = buildThreadTurnInterruptInput(activeThread);
     const result = await interruptThreadTurn({
       environmentId: activeThread.environmentId,
       input,
