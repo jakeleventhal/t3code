@@ -1372,7 +1372,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         updatedAt: "2026-04-05T15:00:00.000Z",
       });
       expect(
-        ghCalls.some((call) => call.includes("--head contributor:feature/deleted-fork-branch")),
+        ghCalls.some((call) => call.startsWith("pr view contributor:feature/deleted-fork-branch ")),
       ).toBe(true);
     }),
   );
@@ -2145,6 +2145,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           baseRef: "main",
           headRef: "feature/upstream-pr",
           state: "open",
+          updatedAt: "2026-07-11T12:00:00.000Z",
         });
         expect(ghCalls).toContain(
           "pr view contributor:feature/upstream-pr --json number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
@@ -4302,7 +4303,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* configureVisibleRemoteUrlWithLocalRewrite(
         repoDir,
         "fork-seed",
-        "git@github.com:octocat/codething-mvp.git",
+        "https://github.com/octocat/codething-mvp.git/",
         forkDir,
       );
 

@@ -286,6 +286,7 @@ function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string |
   try {
     const parsed = new URL(trimmed);
     const [owner, name, ...rest] = parsed.pathname
+      .replace(/\/+$/, "")
       .replace(/\.git$/i, "")
       .split("/")
       .filter((part) => part.length > 0);
