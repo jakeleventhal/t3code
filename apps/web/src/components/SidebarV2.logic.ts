@@ -6,7 +6,7 @@ import {
   firstValidTimestampMs,
   parseTimestampMs,
   resolveSettledTimestamp,
-  resolveSidebarV2Status,
+  resolveSidebarThreadStatus,
   resolveWorkingStartedAt,
 } from "./Sidebar.logic";
 
@@ -191,7 +191,7 @@ export function resolveWorktreeGroupLiveStatus(
   let workingStartedAt: string | null = null;
   let workingStartedAtMs = Number.POSITIVE_INFINITY;
   for (const thread of threads) {
-    const status = resolveSidebarV2Status(thread);
+    const status = resolveSidebarThreadStatus(thread);
     if (status === "approval") hasApproval = true;
     else if (status === "input") hasInput = true;
     else if (status === "failed") hasFailed = true;
