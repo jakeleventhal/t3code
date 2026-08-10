@@ -2160,10 +2160,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           const sharedIndexPath = path.isAbsolute(sharedIndexValue)
             ? sharedIndexValue
             : path.resolve(cwd, sharedIndexValue);
-          yield* fileSystem.copyFile(
-            sharedIndexPath,
-            path.join(tempDirectory, path.basename(sharedIndexPath)),
-          );
+          yield* fileSystem
+            .copyFile(sharedIndexPath, path.join(tempDirectory, path.basename(sharedIndexPath)))
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new GitCommandError({
+                    operation: "GitVcsDriver.readWorkingTreeReviewDiff.copySharedIndex",
+                    command: "git diff",
+                    cwd,
+                    detail: "Failed to copy the shared Git index for the review diff.",
+                    cause,
+                  }),
+              ),
+            );
           yield* executeGit(
             "GitVcsDriver.readWorkingTreeReviewDiff.expandSplitIndex",
             cwd,
@@ -2181,15 +2191,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }
 
       const stagedDeletionResult = hasHead
-        ? yield* executeGit("GitVcsDriver.readWorkingTreeReviewDiff.stagedDeletions", cwd, [
-            "diff",
-            "--cached",
-            "--name-only",
-            "--diff-filter=D",
-            "-z",
-            "HEAD",
-            "--",
-          ])
+        ? yield* executeGit(
+            "GitVcsDriver.readWorkingTreeReviewDiff.stagedDeletions",
+            cwd,
+            ["diff", "--cached", "--name-only", "--diff-filter=D", "-z", "HEAD", "--"],
+            {
+              maxOutputBytes: WORKSPACE_FILES_MAX_OUTPUT_BYTES,
+              appendTruncationMarker: true,
+            },
+          )
         : null;
       const stagedDeletions = new Set(
         stagedDeletionResult ? splitNullSeparatedGitStdoutPaths(stagedDeletionResult) : [],
@@ -2242,7 +2252,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       return {
         ...result,
-        stdoutTruncated: result.stdoutTruncated || untrackedResult.stdoutTruncated,
+        stdoutTruncated:
+          result.stdoutTruncated ||
+          stagedDeletionResult?.stdoutTruncated === true ||
+          untrackedResult.stdoutTruncated,
       };
     }).pipe(
       Effect.ensuring(
