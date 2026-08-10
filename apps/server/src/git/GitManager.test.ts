@@ -382,13 +382,22 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
         headSelectorIndex >= 0 && headSelectorIndex < args.length - 1
           ? args[headSelectorIndex + 1]
           : undefined;
-      const mappedQueue =
+      const mappedHeadSelector =
         typeof headSelector === "string"
-          ? prListQueueByHeadSelector.get(headSelector)?.shift()
+          ? ([
+              ...prListQueueByHeadSelector.keys(),
+              ...Object.keys(scenario.prListByHeadSelector ?? {}),
+            ].find(
+              (candidate) => candidate === headSelector || candidate.endsWith(`:${headSelector}`),
+            ) ?? headSelector)
+          : undefined;
+      const mappedQueue =
+        typeof mappedHeadSelector === "string"
+          ? prListQueueByHeadSelector.get(mappedHeadSelector)?.shift()
           : undefined;
       const mappedStdout =
-        typeof headSelector === "string"
-          ? scenario.prListByHeadSelector?.[headSelector]
+        typeof mappedHeadSelector === "string"
+          ? scenario.prListByHeadSelector?.[mappedHeadSelector]
           : undefined;
       const stdout = (mappedQueue ?? mappedStdout ?? prListQueue.shift() ?? "[]") + "\n";
       return Effect.succeed(fakeGhOutput(stdout));
@@ -504,30 +513,48 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
   return {
     service: {
       execute,
-      listOpenPullRequests: (input) =>
-        execute({
-          cwd: input.cwd,
-          args: [
-            "pr",
-            "list",
-            "--head",
-            input.headSelector,
-            "--state",
-            "open",
-            "--limit",
-            String(input.limit ?? 1),
-            ...(input.repository ? ["--repo", input.repository] : []),
-            "--json",
-            "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
-          ],
-        }).pipe(
-          Effect.map((result) => JSON.parse(result.stdout) as unknown[]),
+      listOpenPullRequests: (input) => {
+        const qualifiedHead = /^([^:/\s]+):(.+)$/u.exec(input.headSelector);
+        const requestedLimit = input.limit ?? 1;
+        const args = [
+          "pr",
+          "list",
+          "--head",
+          qualifiedHead?.[2] ?? input.headSelector,
+          "--state",
+          "open",
+          "--limit",
+          String(qualifiedHead ? Math.max(requestedLimit, 100) : requestedLimit),
+          ...(input.repository ? ["--repo", input.repository] : []),
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ];
+        ghCalls.push(args.join(" "));
+        if (scenario.failWith && ghCalls.length > (scenario.failAfterCalls ?? 0)) {
+          return Effect.fail(scenario.failWith);
+        }
+        const stdout =
+          prListQueueByHeadSelector.get(input.headSelector)?.shift() ??
+          scenario.prListByHeadSelector?.[input.headSelector] ??
+          prListQueue.shift() ??
+          "[]";
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        return Effect.sync(() => JSON.parse(stdout) as unknown[]).pipe(
           Effect.map((raw) =>
             raw
               .map((entry) => normalizeFakePullRequestSummary(entry))
-              .filter((entry): entry is GitHubCli.GitHubPullRequestSummary => entry !== null),
+              .filter((entry): entry is GitHubCli.GitHubPullRequestSummary => entry !== null)
+              .filter(
+                (entry) =>
+                  !qualifiedHead ||
+                  (entry.headRefName === qualifiedHead[2] &&
+                    entry.headRepositoryOwnerLogin?.toLowerCase() ===
+                      qualifiedHead[1]?.toLowerCase()),
+              )
+              .slice(0, requestedLimit),
           ),
-        ),
+        );
+      },
       createPullRequest: (input) =>
         execute({
           cwd: input.cwd,
@@ -1922,7 +1949,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           updatedAt: "2026-03-10T07:00:00.000Z",
         });
         expect(ghCalls).toContain(
-          "pr list --head jasonLaster:statemachine --state all --limit 20 --json number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "pr list --head statemachine --state all --limit 100 --json number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         );
       }),
     20_000,
@@ -2052,7 +2079,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           state: "open",
         });
         expect(ghCalls).toContain(
-          "pr list --head contributor:feature/upstream-pr --state all --limit 20 --json number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "pr list --head feature/upstream-pr --state all --limit 100 --json number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         );
       }),
     20_000,
@@ -3593,8 +3620,6 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           ghScenario: {
             prListSequence: [
               // @effect-diagnostics-next-line preferSchemaOverJson:off
-              JSON.stringify([]),
-              // @effect-diagnostics-next-line preferSchemaOverJson:off
               JSON.stringify([
                 {
                   number: 142,
@@ -3625,7 +3650,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(result.pr.number).toBe(142);
         expect(
           ghCalls.some((call) =>
-            call.includes("pr list --head octocat:statemachine --state open --limit 1"),
+            call.includes("pr list --head statemachine --state open --limit 100"),
           ),
         ).toBe(true);
         expect(ghCalls.some((call) => call.startsWith("pr create "))).toBe(false);
@@ -3800,7 +3825,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(result.pr.number).toBe(142);
 
         const ownerSelectorCallIndex = ghCalls.findIndex((call) =>
-          call.includes("pr list --head octocat:statemachine --state open --limit 1"),
+          call.includes("pr list --head statemachine --state open --limit 100"),
         );
         expect(ownerSelectorCallIndex).toBeGreaterThanOrEqual(0);
         expect(ghCalls.some((call) => call.startsWith("pr create "))).toBe(false);
@@ -3869,7 +3894,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         const openLookupCalls = ghCalls.filter((call) => call.includes("--state open --limit 1"));
         expect(openLookupCalls).toHaveLength(1);
         expect(openLookupCalls[0]).toContain(
-          "pr list --head octocat:statemachine --state open --limit 1",
+          "pr list --head statemachine --state open --limit 100",
         );
       }),
     12_000,
