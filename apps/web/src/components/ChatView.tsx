@@ -286,7 +286,6 @@ import {
   useProject,
   useProjects,
   useThread,
-  useThreadRefs,
   useThreadShell,
   useThreadShells,
 } from "../state/entities";

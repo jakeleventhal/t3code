@@ -404,7 +404,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         })),
       openPullRequest: (ref, target) =>
         set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+          byThreadKey: updateThread(state.byThreadKey, ref, (current) => {
             return upsertSurface(current, pullRequestSurface(target));
           }),
         })),
