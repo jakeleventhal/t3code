@@ -1023,6 +1023,18 @@ describe("buildRunningThreadTurnInterruptInput", () => {
     ).toBeNull();
     expect(buildRunningThreadTurnInterruptInput(null, "disconnected")).toBeNull();
   });
+
+  it("targets a running thread before its active turn has been projected", () => {
+    const runningThread = makeThread({
+      session: {
+        ...readySession,
+        status: "running",
+        activeTurnId: null,
+      },
+    });
+
+    expect(buildRunningThreadTurnInterruptInput(runningThread, "running")).toEqual({ threadId });
+  });
 });
 
 describe("deriveComposerSendState", () => {
