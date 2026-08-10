@@ -926,6 +926,41 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("preserves staged deletions when their bulk enumeration is truncated", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "untracked-again.txt", "still here\n");
+        yield* git(cwd, ["add", "untracked-again.txt"]);
+        yield* git(cwd, ["commit", "-m", "add file"]);
+        yield* git(cwd, ["rm", "--cached", "untracked-again.txt"]);
+
+        const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const truncatingSpawner = ChildProcessSpawner.make((command) => {
+          if (
+            ChildProcess.isStandardCommand(command) &&
+            command.args.includes("--cached") &&
+            command.args.includes("--name-only") &&
+            command.args.includes("--diff-filter=D")
+          ) {
+            return Effect.succeed(makeSuccessfulHandle("x".repeat(130_000)));
+          }
+          return delegate.spawn(command);
+        });
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, truncatingSpawner),
+          Effect.provide(ServerConfigLayer),
+        );
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "diff --git a/untracked-again.txt b/untracked-again.txt");
+        assert.include(diff, "deleted file mode");
+        assert.include(diff, "-still here");
+      }),
+    );
+
     it.effect("keeps tracked diffs when an untracked nested repository cannot be added", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -961,6 +996,37 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.include(diff, "+# changed");
         assert.strictEqual(after, before);
+      }),
+    );
+
+    it.effect("keeps tracked diffs when temporary split-index expansion fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["update-index", "--split-index"]);
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const failingSpawner = ChildProcessSpawner.make((command) => {
+          if (
+            ChildProcess.isStandardCommand(command) &&
+            command.args.includes("update-index") &&
+            command.args.includes("--no-split-index")
+          ) {
+            return Effect.succeed(makeNonRepositoryHandle());
+          }
+          return delegate.spawn(command);
+        });
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, failingSpawner),
+          Effect.provide(ServerConfigLayer),
+        );
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "diff --git a/README.md b/README.md");
+        assert.include(diff, "+# changed");
       }),
     );
 

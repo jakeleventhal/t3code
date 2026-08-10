@@ -2213,11 +2213,23 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           appendTruncationMarker: true,
         },
       );
-      const untrackedPaths = splitNullSeparatedGitStdoutPaths(untrackedResult).filter(
-        (relativePath) => !stagedDeletions.has(relativePath),
-      );
+      const untrackedPaths = splitNullSeparatedGitStdoutPaths(untrackedResult);
+      const intentToAddPaths =
+        stagedDeletionResult?.stdoutTruncated === true
+          ? yield* Effect.filter(
+              untrackedPaths,
+              (relativePath) =>
+                executeGit(
+                  "GitVcsDriver.readWorkingTreeReviewDiff.checkStagedDeletion",
+                  cwd,
+                  ["diff", "--cached", "--quiet", "--diff-filter=D", "HEAD", "--", relativePath],
+                  { allowNonZeroExit: true },
+                ).pipe(Effect.map((result) => result.exitCode === 0)),
+              { concurrency: 1 },
+            )
+          : untrackedPaths.filter((relativePath) => !stagedDeletions.has(relativePath));
       yield* Effect.forEach(
-        untrackedPaths,
+        intentToAddPaths,
         (relativePath) =>
           executeGit(
             "GitVcsDriver.readWorkingTreeReviewDiff.addIntentToAdd",
@@ -2264,6 +2276,49 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
   });
 
+  const readTrackedWorkingTreeReviewDiff = Effect.fn("readTrackedWorkingTreeReviewDiff")(function* (
+    cwd: string,
+    ignoreWhitespace: boolean | undefined,
+  ) {
+    const headResult = yield* executeGit(
+      "GitVcsDriver.readTrackedWorkingTreeReviewDiff.resolveHead",
+      cwd,
+      ["rev-parse", "--verify", "--quiet", "HEAD"],
+      { allowNonZeroExit: true },
+    );
+    const baseline =
+      headResult.exitCode === 0
+        ? "HEAD"
+        : (yield* executeGit(
+            "GitVcsDriver.readTrackedWorkingTreeReviewDiff.resolveEmptyTree",
+            cwd,
+            ["hash-object", "-t", "tree", "--stdin"],
+            { stdin: "" },
+          )).stdout.trim();
+
+    return yield* executeGit(
+      "GitVcsDriver.readTrackedWorkingTreeReviewDiff.diff",
+      cwd,
+      [
+        "diff",
+        "--patch",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--minimal",
+        "--find-renames",
+        ...(ignoreWhitespace ? ["--ignore-all-space"] : []),
+        baseline,
+        "--",
+      ],
+      {
+        allowNonZeroExit: true,
+        maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+        appendTruncationMarker: true,
+      },
+    );
+  });
+
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
@@ -2286,6 +2341,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         : null);
 
     const dirtyResult = yield* readWorkingTreeReviewDiff(input.cwd, input.ignoreWhitespace).pipe(
+      Effect.catchTags({
+        GitCommandError: () => readTrackedWorkingTreeReviewDiff(input.cwd, input.ignoreWhitespace),
+      }),
       Effect.orElseSucceed(() => ({
         exitCode: 0,
         stdout: "",
