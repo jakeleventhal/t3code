@@ -1062,10 +1062,10 @@ const makeWsRpcLayer = (
               // fail because this cleanup read blipped, so a failed read
               // logs and skips the stop instead of propagating.
               const threadShellBeforeCommand = parkingCommand
-                  ? yield* projectionSnapshotQuery
-                      .getThreadShellById(parkingCommand.threadId)
-                      .pipe(Effect.orElseSucceed(() => Option.none<OrchestrationThreadShell>()))
-                  : Option.none<OrchestrationThreadShell>();
+                ? yield* projectionSnapshotQuery
+                    .getThreadShellById(parkingCommand.threadId)
+                    .pipe(Effect.orElseSucceed(() => Option.none<OrchestrationThreadShell>()))
+                : Option.none<OrchestrationThreadShell>();
               const shouldStopSessionAfterCommand = Option.match(threadShellBeforeCommand, {
                 onNone: () => false,
                 onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
@@ -1109,8 +1109,8 @@ const makeWsRpcLayer = (
                   const terminalOwnerToClose = yield* Option.match(threadShellBeforeCommand, {
                     onNone: () => Effect.succeed(Option.none<ThreadId>()),
                     onSome: (archivedThread) =>
-                    projectionSnapshotQuery.getShellSnapshot().pipe(
-                      Effect.map((activeSnapshot) => {
+                      projectionSnapshotQuery.getShellSnapshot().pipe(
+                        Effect.map((activeSnapshot) => {
                           const sameWorktree = (thread: OrchestrationThreadShell) =>
                             thread.projectId === archivedThread.projectId &&
                             normalizeWorktreePathForArchive(thread.worktreePath) ===
