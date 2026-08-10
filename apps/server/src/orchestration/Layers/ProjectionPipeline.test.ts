@@ -803,8 +803,7 @@ it.layer(
       const removeTextAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000005";
       const keepTextPath = path.join(attachmentsDir, keepTextAttachmentId, "keep.md");
       const removeTextPath = path.join(attachmentsDir, removeTextAttachmentId, "remove.md");
-      const otherThreadAttachmentId =
-        "thread-revert-files-extra-00000000-0000-4000-8000-000000000003";
+      const otherThreadAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000003";
 
       const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
         eventStore
@@ -1009,7 +1008,7 @@ it.layer(
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-attachments-revert-")))(
   "OrchestrationProjectionPipeline",
   (it) => {
-    it.effect("removes thread attachment directory when thread is deleted", () =>
+    it.effect("removes only the deleted thread's referenced attachment entries", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -1019,8 +1018,7 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
         const now = "2026-01-01T00:00:00.000Z";
         const threadId = ThreadId.make("Thread Delete.Files");
         const attachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000001";
-        const otherThreadAttachmentId =
-          "thread-delete-files-extra-00000000-0000-4000-8000-000000000002";
+        const otherThreadAttachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000002";
 
         const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
           eventStore

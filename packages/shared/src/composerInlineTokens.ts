@@ -55,7 +55,7 @@ function isEscaped(text: string, index: number): boolean {
 }
 
 function collectMarkdownCodeRanges(text: string): ReadonlyArray<MarkdownCodeRange> {
-  const ranges: MarkdownCodeRange[] = [];
+  const fencedRanges: MarkdownCodeRange[] = [];
   let activeFence: {
     readonly char: "`" | "~";
     readonly length: number;
@@ -67,56 +67,79 @@ function collectMarkdownCodeRanges(text: string): ReadonlyArray<MarkdownCodeRang
     const newlineIndex = text.indexOf("\n", lineStart);
     const lineEnd = newlineIndex === -1 ? text.length : newlineIndex + 1;
     const line = text.slice(lineStart, newlineIndex === -1 ? text.length : newlineIndex);
-    const fenceMatch = /^(?: {0,3})(`{3,}|~{3,})/.exec(line);
+    const fenceMatch = /^(?: {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
     if (fenceMatch?.[1]) {
       const marker = fenceMatch[1];
       const char = marker[0] as "`" | "~";
+      const remainder = fenceMatch[2] ?? "";
       if (activeFence === null) {
-        activeFence = { char, length: marker.length, start: lineStart };
-      } else if (activeFence.char === char && marker.length >= activeFence.length) {
-        ranges.push({ start: activeFence.start, end: lineEnd });
+        if (char !== "`" || !remainder.includes("`")) {
+          activeFence = { char, length: marker.length, start: lineStart };
+        }
+      } else if (
+        activeFence.char === char &&
+        marker.length >= activeFence.length &&
+        remainder.trim().length === 0
+      ) {
+        fencedRanges.push({ start: activeFence.start, end: lineEnd });
         activeFence = null;
       }
       lineStart = lineEnd;
       continue;
     }
-
-    if (activeFence === null) {
-      let cursor = lineStart;
-      const contentEnd = newlineIndex === -1 ? text.length : newlineIndex;
-      while (cursor < contentEnd) {
-        if (text[cursor] !== "`" || isEscaped(text, cursor)) {
-          cursor += 1;
-          continue;
-        }
-        let runEnd = cursor + 1;
-        while (runEnd < contentEnd && text[runEnd] === "`") runEnd += 1;
-        const runLength = runEnd - cursor;
-        let closingStart = runEnd;
-        while (closingStart < contentEnd) {
-          closingStart = text.indexOf("`", closingStart);
-          if (closingStart === -1 || closingStart >= contentEnd) break;
-          let closingEnd = closingStart + 1;
-          while (closingEnd < contentEnd && text[closingEnd] === "`") closingEnd += 1;
-          if (closingEnd - closingStart === runLength) {
-            ranges.push({ start: cursor, end: closingEnd });
-            cursor = closingEnd;
-            break;
-          }
-          closingStart = closingEnd;
-        }
-        if (closingStart === -1 || closingStart >= contentEnd) {
-          cursor = runEnd;
-        }
-      }
-    }
     lineStart = lineEnd;
   }
 
   if (activeFence !== null) {
-    ranges.push({ start: activeFence.start, end: text.length });
+    fencedRanges.push({ start: activeFence.start, end: text.length });
   }
-  return ranges;
+
+  const inlineRanges: MarkdownCodeRange[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const containingFence = fencedRanges.find(
+      (range) => range.start <= cursor && cursor < range.end,
+    );
+    if (containingFence) {
+      cursor = containingFence.end;
+      continue;
+    }
+    if (text[cursor] !== "`" || isEscaped(text, cursor)) {
+      cursor += 1;
+      continue;
+    }
+
+    let runEnd = cursor + 1;
+    while (runEnd < text.length && text[runEnd] === "`") runEnd += 1;
+    const runLength = runEnd - cursor;
+    let closingStart = runEnd;
+    let foundClosingRun = false;
+    while (closingStart < text.length) {
+      closingStart = text.indexOf("`", closingStart);
+      if (closingStart === -1) break;
+      const closingFence = fencedRanges.find(
+        (range) => range.start <= closingStart && closingStart < range.end,
+      );
+      if (closingFence) {
+        closingStart = closingFence.end;
+        continue;
+      }
+      let closingEnd = closingStart + 1;
+      while (closingEnd < text.length && text[closingEnd] === "`") closingEnd += 1;
+      if (closingEnd - closingStart === runLength) {
+        inlineRanges.push({ start: cursor, end: closingEnd });
+        cursor = closingEnd;
+        foundClosingRun = true;
+        break;
+      }
+      closingStart = closingEnd;
+    }
+    if (!foundClosingRun) {
+      cursor = runEnd;
+    }
+  }
+
+  return [...fencedRanges, ...inlineRanges].sort((left, right) => left.start - right.start);
 }
 
 function isInsideMarkdownCode(ranges: ReadonlyArray<MarkdownCodeRange>, index: number): boolean {

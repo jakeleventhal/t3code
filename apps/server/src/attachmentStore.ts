@@ -122,7 +122,7 @@ export function parseAttachmentIdFromRootEntry(entry: string): string | null {
 }
 
 const TEXT_ATTACHMENT_PATH_PATTERN = new RegExp(
-  `(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN}-${ATTACHMENT_ID_UUID_PATTERN})/([^\\s)]+)`,
+  `(?:^|/|%5c)(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN}-${ATTACHMENT_ID_UUID_PATTERN})(?:/|%5c)([^\\s)]+)`,
   "gi",
 );
 

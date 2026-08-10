@@ -162,6 +162,29 @@ describe("collectComposerInlineTokens", () => {
     expect(measureComposerMarkdownVisibleLength(text)).toBe(text.length);
   });
 
+  it("keeps links inside fenced code when a fence-like content line has trailing text", () => {
+    const path = `/tmp/${"nested/".repeat(100)}notes.txt`;
+    const text = `\`\`\`\n\`\`\` content\n[notes.txt](${path})\n\`\`\``;
+
+    expect(measureComposerMarkdownVisibleLength(text)).toBe(text.length);
+  });
+
+  it("does not treat backticks in a backtick fence info string as a valid opener", () => {
+    const path = `/tmp/${"nested/".repeat(100)}notes.txt`;
+    const text = `\`\`\` info \`\nReview [notes.txt](${path}) please`;
+
+    expect(measureComposerMarkdownVisibleLength(text)).toBe(
+      "``` info `\nReview notes.txt please".length,
+    );
+  });
+
+  it("keeps links inside multiline inline code visible", () => {
+    const path = `/tmp/${"nested/".repeat(100)}notes.txt`;
+    const text = `\`\n[notes.txt](${path})\n\``;
+
+    expect(measureComposerMarkdownVisibleLength(text)).toBe(text.length);
+  });
+
   it("stays fast on unterminated bracket runs", () => {
     // Unbounded, the label body rescanned the rest of the text from every
     // whitespace: this input took seconds.

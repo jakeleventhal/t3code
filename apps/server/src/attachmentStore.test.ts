@@ -67,6 +67,15 @@ describe("attachmentStore", () => {
     ]);
   });
 
+  it("collects encoded Windows text attachment paths", () => {
+    const attachmentId = "thread-1-00000000-0000-4000-8000-000000000001";
+    const text = `[Notes.md](C:%5Ctmp%5Cattachments%5C${attachmentId}%5CNotes.md)`;
+
+    expect(collectTextAttachmentRelativePaths("thread.1", text)).toEqual([
+      `${attachmentId}/Notes.md`,
+    ]);
+  });
+
   it("resolves attachment path by id using the extension that exists on disk", () => {
     const attachmentsDir = NodeFS.mkdtempSync(
       NodePath.join(NodeOS.tmpdir(), "t3code-attachment-store-"),
