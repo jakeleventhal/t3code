@@ -510,15 +510,11 @@ export function getAntigravitySendBlockReason(
 export function buildRunningThreadTurnInterruptInput(
   thread: Pick<Thread, "id" | "session"> | null | undefined,
   phase: SessionPhase,
-): { threadId: ThreadId; turnId: TurnId } | null {
-  if (
-    phase !== "running" ||
-    thread?.session?.status !== "running" ||
-    thread.session.activeTurnId === null
-  ) {
+): { threadId: ThreadId; turnId?: TurnId } | null {
+  if (phase !== "running" || thread?.session?.status !== "running") {
     return null;
   }
-  return { threadId: thread.id, turnId: thread.session.activeTurnId };
+  return buildThreadTurnInterruptInput(thread);
 }
 
 export function reconcileMountedTerminalThreadIds(input: {
