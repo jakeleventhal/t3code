@@ -798,13 +798,20 @@ it.layer(
       const { attachmentsDir } = yield* ServerConfig;
       const now = "2026-01-01T00:00:00.000Z";
       const threadId = ThreadId.make("Thread Revert.Files");
-      const keepAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000001";
-      const removeAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000002";
+      const keepAttachmentId = createAttachmentId(threadId);
+      const removeAttachmentId = createAttachmentId(threadId);
       const keepTextAttachmentId = createAttachmentId(threadId);
       const removeTextAttachmentId = createAttachmentId(threadId);
+      assert.isNotNull(keepAttachmentId);
+      assert.isNotNull(removeAttachmentId);
       assert.isNotNull(keepTextAttachmentId);
       assert.isNotNull(removeTextAttachmentId);
-      if (!keepTextAttachmentId || !removeTextAttachmentId) {
+      if (
+        !keepAttachmentId ||
+        !removeAttachmentId ||
+        !keepTextAttachmentId ||
+        !removeTextAttachmentId
+      ) {
         return;
       }
       const keepTextPath = path.join(attachmentsDir, keepTextAttachmentId, "keep.md");
@@ -1038,13 +1045,14 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
         const { attachmentsDir } = yield* ServerConfig;
         const now = "2026-01-01T00:00:00.000Z";
         const threadId = ThreadId.make("Thread Delete.Files");
-        const attachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000001";
+        const attachmentId = createAttachmentId(threadId);
         const otherThreadAttachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000002";
         const orphanAttachmentId = createAttachmentId(threadId);
         const collidingThreadAttachmentId = createAttachmentId("Thread Delete/Files");
+        assert.isNotNull(attachmentId);
         assert.isNotNull(orphanAttachmentId);
         assert.isNotNull(collidingThreadAttachmentId);
-        if (!orphanAttachmentId || !collidingThreadAttachmentId) {
+        if (!attachmentId || !orphanAttachmentId || !collidingThreadAttachmentId) {
           return;
         }
 

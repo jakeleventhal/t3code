@@ -49,6 +49,7 @@ import {
   type OrchestrationProjectionPipelineShape,
 } from "../Services/ProjectionPipeline.ts";
 import {
+  attachmentIdBelongsToThread,
   attachmentRelativePath,
   collectTextAttachmentRelativePaths,
   parseAttachmentIdFromRootEntry,
@@ -344,6 +345,9 @@ function collectThreadAttachmentRelativePaths(
     }
     for (const attachment of message.attachments ?? []) {
       if (attachment.type !== "image") {
+        continue;
+      }
+      if (!attachmentIdBelongsToThread(attachment.id, threadId)) {
         continue;
       }
       relativePaths.add(attachmentRelativePath(attachment));
