@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import {
   NonNegativeInt,
   PositiveInt,
+  ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas.ts";
@@ -10,6 +11,8 @@ const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_READ_FILE_PATH_MAX_LENGTH = 512;
+export const PROJECT_TEXT_ATTACHMENT_MAX_BYTES = 1024 * 1024;
+const PROJECT_TEXT_ATTACHMENT_MAX_CONTENT_CHARS = PROJECT_TEXT_ATTACHMENT_MAX_BYTES;
 
 export const ProjectEntryKind = Schema.Literals(["file", "directory"]);
 export type ProjectEntryKind = typeof ProjectEntryKind.Type;
@@ -298,3 +301,24 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
     } as any);
   }
 }
+
+export const ProjectWriteTextAttachmentInput = Schema.Struct({
+  threadId: ThreadId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  contents: Schema.String.check(Schema.isMaxLength(PROJECT_TEXT_ATTACHMENT_MAX_CONTENT_CHARS)),
+});
+export type ProjectWriteTextAttachmentInput = typeof ProjectWriteTextAttachmentInput.Type;
+
+export const ProjectWriteTextAttachmentResult = Schema.Struct({
+  absolutePath: TrimmedNonEmptyString,
+});
+export type ProjectWriteTextAttachmentResult = typeof ProjectWriteTextAttachmentResult.Type;
+
+export class ProjectWriteTextAttachmentError extends Schema.TaggedErrorClass<ProjectWriteTextAttachmentError>()(
+  "ProjectWriteTextAttachmentError",
+  {
+    name: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
