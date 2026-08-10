@@ -799,19 +799,13 @@ it.layer(
       const now = "2026-01-01T00:00:00.000Z";
       const threadId = ThreadId.make("Thread Revert.Files");
       const keepAttachmentId = createAttachmentId(threadId);
-      const removeAttachmentId = createAttachmentId(threadId);
+      const removeAttachmentId = "thread-revert-files-00000000-0000-4000-8000-000000000002";
       const keepTextAttachmentId = createAttachmentId(threadId);
       const removeTextAttachmentId = createAttachmentId(threadId);
       assert.isNotNull(keepAttachmentId);
-      assert.isNotNull(removeAttachmentId);
       assert.isNotNull(keepTextAttachmentId);
       assert.isNotNull(removeTextAttachmentId);
-      if (
-        !keepAttachmentId ||
-        !removeAttachmentId ||
-        !keepTextAttachmentId ||
-        !removeTextAttachmentId
-      ) {
+      if (!keepAttachmentId || !keepTextAttachmentId || !removeTextAttachmentId) {
         return;
       }
       const keepTextPath = path.join(attachmentsDir, keepTextAttachmentId, "keep.md");
@@ -1045,14 +1039,14 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
         const { attachmentsDir } = yield* ServerConfig;
         const now = "2026-01-01T00:00:00.000Z";
         const threadId = ThreadId.make("Thread Delete.Files");
-        const attachmentId = createAttachmentId(threadId);
+        const otherThreadId = ThreadId.make("Thread Delete/Files");
+        const attachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000001";
         const otherThreadAttachmentId = "thread-delete-files-00000000-0000-4000-8000-000000000002";
         const orphanAttachmentId = createAttachmentId(threadId);
         const collidingThreadAttachmentId = createAttachmentId("Thread Delete/Files");
-        assert.isNotNull(attachmentId);
         assert.isNotNull(orphanAttachmentId);
         assert.isNotNull(collidingThreadAttachmentId);
-        if (!attachmentId || !orphanAttachmentId || !collidingThreadAttachmentId) {
+        if (!orphanAttachmentId || !collidingThreadAttachmentId) {
           return;
         }
 
@@ -1128,6 +1122,70 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
                 type: "image",
                 id: attachmentId,
                 name: "delete.png",
+                mimeType: "image/png",
+                sizeBytes: 5,
+              },
+              {
+                type: "image",
+                id: otherThreadAttachmentId,
+                name: "foreign.png",
+                mimeType: "image/png",
+                sizeBytes: 5,
+              },
+            ],
+            turnId: null,
+            streaming: false,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.created",
+          eventId: EventId.make("evt-delete-files-other-1"),
+          aggregateKind: "thread",
+          aggregateId: otherThreadId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-delete-files-other-1"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-delete-files-other-1"),
+          metadata: {},
+          payload: {
+            threadId: otherThreadId,
+            projectId: ProjectId.make("project-delete-files"),
+            title: "Other Thread Delete Files",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.message-sent",
+          eventId: EventId.make("evt-delete-files-other-2"),
+          aggregateKind: "thread",
+          aggregateId: otherThreadId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-delete-files-other-2"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-delete-files-other-2"),
+          metadata: {},
+          payload: {
+            threadId: otherThreadId,
+            messageId: MessageId.make("message-delete-files-other"),
+            role: "user",
+            text: "Keep foreign legacy attachment",
+            attachments: [
+              {
+                type: "image",
+                id: otherThreadAttachmentId,
+                name: "foreign.png",
                 mimeType: "image/png",
                 sizeBytes: 5,
               },

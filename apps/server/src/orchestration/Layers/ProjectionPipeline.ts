@@ -106,6 +106,7 @@ interface ProjectorDefinition {
 
 interface AttachmentSideEffects {
   readonly removedRootEntries: Set<string>;
+  readonly legacyRemovedRootEntries: Map<string, string>;
   readonly scannedThreadKeptRootEntries: Map<string, Set<string>>;
 }
 
@@ -368,12 +369,35 @@ function collectThreadAttachmentRootEntries(
   );
 }
 
+function collectLegacyImageAttachmentRootEntries(
+  threadId: string,
+  messages: ReadonlyArray<ProjectionThreadMessage>,
+): Set<string> {
+  const legacyThreadSegment = toSafeThreadAttachmentSegment(threadId);
+  if (!legacyThreadSegment) {
+    return new Set();
+  }
+  const rootEntries = new Set<string>();
+  for (const message of messages) {
+    for (const attachment of message.attachments ?? []) {
+      if (
+        attachment.type === "image" &&
+        parseThreadSegmentFromAttachmentId(attachment.id) === legacyThreadSegment
+      ) {
+        rootEntries.add(attachmentRelativePath(attachment));
+      }
+    }
+  }
+  return rootEntries;
+}
+
 const runAttachmentSideEffects = Effect.fn("runAttachmentSideEffects")(function* (
   sideEffects: AttachmentSideEffects,
 ) {
   const serverConfig = yield* Effect.service(ServerConfig);
   const fileSystem = yield* Effect.service(FileSystem.FileSystem);
   const path = yield* Effect.service(Path.Path);
+  const sql = yield* SqlClient.SqlClient;
 
   const attachmentsRootDir = serverConfig.attachmentsDir;
   yield* Effect.forEach(
@@ -387,6 +411,32 @@ const runAttachmentSideEffects = Effect.fn("runAttachmentSideEffects")(function*
         recursive: true,
       });
     }),
+    { concurrency: 1 },
+  );
+
+  yield* Effect.forEach(
+    sideEffects.legacyRemovedRootEntries,
+    ([entry, threadId]) =>
+      Effect.gen(function* () {
+        const attachmentId = parseAttachmentIdFromRootEntry(entry);
+        if (!attachmentId) {
+          return;
+        }
+        const foreignReferences = yield* sql<{ readonly count: number }>`
+          SELECT COUNT(*) AS "count"
+          FROM projection_thread_messages AS message,
+               json_each(COALESCE(message.attachments_json, '[]')) AS attachment
+          WHERE message.thread_id <> ${threadId}
+            AND json_extract(attachment.value, '$.id') = ${attachmentId}
+        `;
+        if ((foreignReferences[0]?.count ?? 0) > 0) {
+          return;
+        }
+        yield* fileSystem.remove(path.join(attachmentsRootDir, entry), {
+          force: true,
+          recursive: true,
+        });
+      }),
     { concurrency: 1 },
   );
 
@@ -804,6 +854,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           )) {
             attachmentSideEffects.removedRootEntries.add(entry);
           }
+          for (const entry of collectLegacyImageAttachmentRootEntries(
+            event.payload.threadId,
+            messages,
+          )) {
+            attachmentSideEffects.legacyRemovedRootEntries.set(entry, event.payload.threadId);
+          }
           attachmentSideEffects.scannedThreadKeptRootEntries.set(event.payload.threadId, new Set());
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
@@ -992,6 +1048,19 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           for (const entry of existingRootEntries) {
             if (!keptRootEntries.has(entry)) {
               attachmentSideEffects.removedRootEntries.add(entry);
+            }
+          }
+          const existingLegacyRootEntries = collectLegacyImageAttachmentRootEntries(
+            event.payload.threadId,
+            existingRows,
+          );
+          const keptLegacyRootEntries = collectLegacyImageAttachmentRootEntries(
+            event.payload.threadId,
+            keptRows,
+          );
+          for (const entry of existingLegacyRootEntries) {
+            if (!keptLegacyRootEntries.has(entry)) {
+              attachmentSideEffects.legacyRemovedRootEntries.set(entry, event.payload.threadId);
             }
           }
           attachmentSideEffects.scannedThreadKeptRootEntries.set(
@@ -1633,6 +1702,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     ) {
       const attachmentSideEffects: AttachmentSideEffects = {
         removedRootEntries: new Set<string>(),
+        legacyRemovedRootEntries: new Map<string, string>(),
         scannedThreadKeptRootEntries: new Map<string, Set<string>>(),
       };
 
@@ -1683,6 +1753,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
         Effect.provideService(ServerConfig, serverConfig),
+        Effect.provideService(SqlClient.SqlClient, sql),
         Effect.asVoid,
         Effect.catchTag("SqlError", (sqlError) =>
           Effect.fail(toPersistenceSqlError("ProjectionPipeline.projectEvent:query")(sqlError)),
@@ -1697,6 +1768,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
       Effect.provideService(ServerConfig, serverConfig),
+      Effect.provideService(SqlClient.SqlClient, sql),
       Effect.asVoid,
       Effect.tap(() =>
         Effect.logDebug("orchestration projection pipeline bootstrapped").pipe(
