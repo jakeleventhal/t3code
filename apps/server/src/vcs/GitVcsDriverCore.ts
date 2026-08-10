@@ -2135,7 +2135,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ? gitIndexResult.stdout.trim()
         : path.resolve(cwd, gitIndexResult.stdout.trim());
 
-      if (yield* fileSystem.exists(gitIndexPath)) {
+      const gitIndexExists = yield* fileSystem.exists(gitIndexPath).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              operation: "GitVcsDriver.readWorkingTreeReviewDiff.checkIndex",
+              command: "git diff",
+              cwd,
+              detail: "Failed to inspect the Git index for the review diff.",
+              cause,
+            }),
+        ),
+      );
+
+      if (gitIndexExists) {
         yield* fileSystem.copyFile(gitIndexPath, indexPath).pipe(
           Effect.mapError(
             (cause) =>
@@ -2257,7 +2270,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ],
         {
           env,
-          allowNonZeroExit: true,
           maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
           appendTruncationMarker: true,
         },

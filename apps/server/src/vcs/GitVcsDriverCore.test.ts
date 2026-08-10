@@ -1030,6 +1030,88 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("keeps tracked diffs when inspecting the Git index fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        let failNextExists = false;
+        const delegateSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const failingSpawner = ChildProcessSpawner.make((command) => {
+          if (
+            ChildProcess.isStandardCommand(command) &&
+            command.args.includes("rev-parse") &&
+            command.args.includes("--git-path") &&
+            command.args.includes("index")
+          ) {
+            failNextExists = true;
+          }
+          return delegateSpawner.spawn(command);
+        });
+        const delegateFileSystem = yield* FileSystem.FileSystem;
+        const failingFileSystem = {
+          ...delegateFileSystem,
+          exists: (pathOrDescriptor: string) => {
+            if (!failNextExists) return delegateFileSystem.exists(pathOrDescriptor);
+            failNextExists = false;
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                module: "FileSystem",
+                method: "exists",
+                pathOrDescriptor,
+              }),
+            );
+          },
+        };
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, failingSpawner),
+          Effect.provideService(FileSystem.FileSystem, failingFileSystem),
+          Effect.provide(ServerConfigLayer),
+        );
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "diff --git a/README.md b/README.md");
+        assert.include(diff, "+# changed");
+      }),
+    );
+
+    it.effect("keeps tracked diffs when the temporary-index diff fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        let patchDiffCount = 0;
+        const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const failingSpawner = ChildProcessSpawner.make((command) => {
+          if (
+            ChildProcess.isStandardCommand(command) &&
+            command.args.includes("diff") &&
+            command.args.includes("--patch") &&
+            ++patchDiffCount === 1
+          ) {
+            return Effect.succeed(makeNonRepositoryHandle());
+          }
+          return delegate.spawn(command);
+        });
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, failingSpawner),
+          Effect.provide(ServerConfigLayer),
+        );
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.strictEqual(patchDiffCount, 2);
+        assert.include(diff, "diff --git a/README.md b/README.md");
+        assert.include(diff, "+# changed");
+      }),
+    );
+
     it.effect("detects a committed rename with edits in the branch diff", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
