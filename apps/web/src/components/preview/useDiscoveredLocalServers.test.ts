@@ -1,7 +1,11 @@
 import type { DiscoveredLocalServer } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { mergeServers } from "./useDiscoveredLocalServers";
+import {
+  formatDiscoveredServerHost,
+  mergeServers,
+  selectPreferredDiscoveredServer,
+} from "./useDiscoveredLocalServers";
 
 const scannerServer = (
   overrides: Partial<DiscoveredLocalServer & { requestedUrl: string }>,
@@ -142,5 +146,31 @@ describe("mergeServers", () => {
     });
     expect(result[0]?.url).toBe("https://env-42.example.dev:5173/");
     expect(result[0]?.requestedUrl).toBe("http://localhost:5173/");
+  });
+});
+
+describe("formatDiscoveredServerHost", () => {
+  it("shows a named proxy instead of its underlying listener", () => {
+    expect(
+      formatDiscoveredServerHost(scannerServer({ url: "https://feature-branch.artelo.localhost" })),
+    ).toBe("feature-branch.artelo.localhost");
+  });
+
+  it("falls back to the listener host and port for an invalid URL", () => {
+    expect(formatDiscoveredServerHost(scannerServer({ url: "not a url" }))).toBe("localhost:5173");
+  });
+});
+
+describe("selectPreferredDiscoveredServer", () => {
+  it("prefers a named proxy over another listener from the same terminal", () => {
+    const portless = scannerServer({ port: 4314, url: "https://artelo.localhost" });
+    expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), portless])).toBe(
+      portless,
+    );
+  });
+
+  it("falls back to the first listener when none has a named URL", () => {
+    const first = scannerServer({ port: 3000, url: "http://localhost:3000" });
+    expect(selectPreferredDiscoveredServer([first, scannerServer({ port: 5173 })])).toBe(first);
   });
 });
