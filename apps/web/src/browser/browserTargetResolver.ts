@@ -1,5 +1,6 @@
 import type {
   BrowserNavigationTarget,
+  DiscoveredLocalServerUrlKind,
   EnvironmentId,
   PreviewUrlResolution,
 } from "@t3tools/contracts";
@@ -217,23 +218,40 @@ export function resolveBrowserNavigationTarget(
   return resolveEnvironmentPortTarget(environmentId, target, readEnvironmentUrl(environmentId));
 }
 
-export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
+export function resolveDiscoveredServerUrl(
+  environmentId: EnvironmentId,
+  rawUrl: string,
+  targetPort?: number,
+  urlKind?: DiscoveredLocalServerUrlKind,
+): string {
   try {
     const normalizedUrl = normalizePreviewUrl(rawUrl);
     const parsed = new URL(normalizedUrl);
-    if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
-    return resolveEnvironmentPortTarget(
-      environmentId,
-      {
-        kind: "environment-port",
-        port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
-        protocol: parsed.protocol === "https:" ? "https" : "http",
-        path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
-      },
-      readEnvironmentUrl(environmentId),
-      rawUrl,
-      parsed,
-    ).resolvedUrl;
+    const isLocalProxy =
+      urlKind === "local-proxy" ||
+      (urlKind === undefined &&
+        parsed.hostname !== "localhost" &&
+        parsed.hostname.endsWith(".localhost"));
+    if (targetPort !== undefined && isLocalProxy) {
+      const environmentUrl = readEnvironmentUrl(environmentId);
+      if (!isLocalLoopbackHost(environmentUrl.hostname)) {
+        return resolveEnvironmentPortTarget(
+          environmentId,
+          {
+            kind: "environment-port",
+            port: targetPort,
+            protocol: "http",
+            path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+          },
+          environmentUrl,
+          normalizedUrl,
+        ).resolvedUrl;
+      }
+    }
+    return resolveBrowserNavigationTarget(environmentId, {
+      kind: "url",
+      url: normalizedUrl,
+    }).resolvedUrl;
   } catch {
     return rawUrl;
   }
