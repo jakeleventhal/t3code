@@ -89,6 +89,7 @@ vi.mock("../../widgets/AgentActivity", () => ({
     getInstances: widgetMocks.getInstances,
     start: widgetMocks.start,
   },
+  publishAgentActivityWidget: vi.fn(),
 }));
 
 // The state modules pull the whole connection stack (and native expo modules)
