@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock("./useDiscoveredLocalServers", () => ({
+vi.mock("./useDiscoveredLocalServers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./useDiscoveredLocalServers")>()),
   useDiscoveredLocalServers: () => mocks.servers,
 }));
 vi.mock("./PreviewFaviconIcon", () => ({
