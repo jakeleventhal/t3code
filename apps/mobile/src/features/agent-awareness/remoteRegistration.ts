@@ -454,13 +454,6 @@ function environmentPublishesAgentActivity(environmentId: EnvironmentId): boolea
   );
 }
 
-function publishHomeScreenWidget(props: AgentActivityProps): void {
-  if (typeof publishAgentActivityWidget !== "function") {
-    return;
-  }
-  publishAgentActivityWidget(props);
-}
-
 function widgetPropsFromAggregate(
   aggregate: NonNullable<RelayAgentActivitySnapshotResponse["aggregate"]>,
 ): AgentActivityProps {
@@ -542,7 +535,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
         },
       ],
     };
-    publishHomeScreenWidget(props);
+    publishAgentActivityWidget(props);
     const activity = AgentActivity.start(props);
     logRegistrationDebug("live activity card armed for local work", {
       threadTitle: input.threadTitle,
@@ -1077,7 +1070,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     // "Connecting" snapshot from local arming.
     const snapshot = yield* readAgentActivitySnapshot();
     if (snapshot) {
-      publishHomeScreenWidget(
+      publishAgentActivityWidget(
         snapshot.aggregate ? widgetPropsFromAggregate(snapshot.aggregate) : idleWidgetProps(),
       );
     }
