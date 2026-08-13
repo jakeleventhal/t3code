@@ -181,6 +181,17 @@ describe("Portless route enrichment", () => {
 
     expect([...routes]).toEqual([[3001, "http://current.test:8080"]]);
   });
+
+  it.each(["8080abc", "443.5"])("ignores a malformed proxy port of %s", (proxyPortRaw) => {
+    const routes = PortScanner.__testing.parsePortlessRouteSnapshot({
+      routesJson: JSON.stringify([{ hostname: "current.test", port: 3001, pid: 222 }]),
+      proxyPortRaw,
+      tls: true,
+      isProcessAlive: (pid) => pid === 222,
+    });
+
+    expect([...routes]).toEqual([[3001, "https://current.test"]]);
+  });
 });
 
 const openServer = (
