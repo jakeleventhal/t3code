@@ -1,7 +1,10 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { PreviewFaviconIcon } from "./PreviewFaviconIcon";
-import type { PreviewableServer } from "./useDiscoveredLocalServers";
+import {
+  formatDiscoveredServerHost,
+  type PreviewableServer,
+} from "./useDiscoveredLocalServers";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -20,9 +23,9 @@ export function PreviewLocalServerCard({ threadRef, server, onOpen }: Props) {
       <PreviewFaviconIcon threadRef={threadRef} url={server.requestedUrl} />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-foreground">{subtitle}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {server.host}:{server.port}
-        </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {formatDiscoveredServerHost(server)}
+          </span>
       </div>
     </button>
   );
