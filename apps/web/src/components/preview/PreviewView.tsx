@@ -774,7 +774,7 @@ export function PreviewView({
             configuredUrls={configuredUrls}
             recentEntries={recentHistoryEntries}
             onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
-            onOpenUrl={(next) => void handleOpenServerUrl(next)}
+            onOpenUrl={(next, targetPort) => void handleOpenServerUrl(next, targetPort)}
           />
         ) : null}
         {snapshot && desktopOverlay ? (
