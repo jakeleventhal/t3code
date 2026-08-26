@@ -118,6 +118,7 @@ let activeLiveActivityRegistrationRetry: ReturnType<typeof setTimeout> | null = 
 let relayTokenProvider: (() => Promise<string | null>) | null = null;
 let relayTokenProviderIdentity: string | null = null;
 let deviceRegistrationGeneration = 0;
+let widgetRefreshGeneration = 0;
 let activeDeviceRegistration: {
   readonly input: DeviceRegistrationInput;
   operation: Promise<void>;
@@ -190,6 +191,7 @@ export function setAgentAwarenessRelayTokenProvider(
     // Without a signed-in user the relay can no longer update or end these
     // activities, so they would sit orphaned on the lock screen.
     endLocalLiveActivities("live activity cleanup after cloud sign-out failed");
+    publishAgentActivityWidget(idleWidgetProps());
     setRegistrationStatus("unknown");
     // Sign-out is the only thing that invalidates a stored registration, so the
     // next sign-in re-registers.
@@ -541,7 +543,10 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
       threadTitle: input.threadTitle,
     });
     runRegistrationInBackground(
-      registerLiveActivityPushToken({ activity }).pipe(Effect.asVoid),
+      registerLiveActivityPushToken({ activity }).pipe(
+        Effect.ensuring(refreshAgentActivityWidget()),
+        Effect.asVoid,
+      ),
       "live activity arming after local task start failed",
     );
   } catch (error) {
@@ -570,6 +575,30 @@ function readAgentActivitySnapshot(): Effect.Effect<
       }),
     ),
   );
+}
+
+function refreshAgentActivityWidget(): Effect.Effect<
+  RelayAgentActivitySnapshotResponse | null,
+  never,
+  ManagedRelay.ManagedRelayClient
+> {
+  return Effect.gen(function* () {
+    const expectedDeviceGeneration = deviceRegistrationGeneration;
+    const expectedRefreshGeneration = ++widgetRefreshGeneration;
+    const snapshot = yield* readAgentActivitySnapshot();
+    if (
+      expectedDeviceGeneration !== deviceRegistrationGeneration ||
+      expectedRefreshGeneration !== widgetRefreshGeneration
+    ) {
+      return null;
+    }
+    if (snapshot) {
+      publishAgentActivityWidget(
+        snapshot.aggregate ? widgetPropsFromAggregate(snapshot.aggregate) : idleWidgetProps(),
+      );
+    }
+    return snapshot;
+  });
 }
 
 function registerLiveActivityWithRelay(
@@ -892,6 +921,7 @@ export function __resetAgentAwarenessRemoteRegistrationForTest(): void {
   relayTokenProvider = null;
   relayTokenProviderIdentity = null;
   deviceRegistrationGeneration++;
+  widgetRefreshGeneration++;
   activeDeviceRegistration = null;
   pendingDeviceRegistration = null;
   registrationStatus = "unknown";
@@ -1068,12 +1098,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     // the latest aggregate even when a Live Activity already exists or the
     // user has turned Live Activities off; otherwise the widget stays on the
     // "Connecting" snapshot from local arming.
-    const snapshot = yield* readAgentActivitySnapshot();
-    if (snapshot) {
-      publishAgentActivityWidget(
-        snapshot.aggregate ? widgetPropsFromAggregate(snapshot.aggregate) : idleWidgetProps(),
-      );
-    }
+    const snapshot = yield* refreshAgentActivityWidget();
 
     // Activities are only ever created here, in the foreground, where the
     // update token can be observed and registered immediately — the relay
