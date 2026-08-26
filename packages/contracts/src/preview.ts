@@ -301,10 +301,14 @@ export type PreviewEvent = typeof PreviewEvent.Type;
  * A local server detected by the port scanner. `url` may be a named local
  * proxy or public tunnel URL while `host` and `port` identify the underlying listener.
  */
+export const DiscoveredLocalServerUrlKind = Schema.Literals(["local-proxy", "public-tunnel"]);
+export type DiscoveredLocalServerUrlKind = typeof DiscoveredLocalServerUrlKind.Type;
+
 export const DiscoveredLocalServer = Schema.Struct({
   host: TrimmedNonEmptyString,
   port: Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThan(65536)),
   url: Url,
+  urlKind: Schema.optional(DiscoveredLocalServerUrlKind),
   processName: Schema.NullOr(TrimmedNonEmptyString),
   pid: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
   terminal: Schema.NullOr(

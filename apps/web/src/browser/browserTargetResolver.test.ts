@@ -186,8 +186,9 @@ describe("browser target resolver", () => {
     expect(
       resolveDiscoveredServerUrl(
         EnvironmentId.make("environment-1"),
-        "https://feature.artelo.localhost/dashboard?mode=test#results",
+        "https://current.test/dashboard?mode=test#results",
         4058,
+        "local-proxy",
       ),
     ).toBe("http://100.65.180.100:4058/dashboard?mode=test#results");
   });
@@ -200,6 +201,7 @@ describe("browser target resolver", () => {
         EnvironmentId.make("environment-1"),
         "https://feature.ngrok-free.app/dashboard?mode=test#results",
         4058,
+        "public-tunnel",
       ),
     ).toBe("https://feature.ngrok-free.app/dashboard?mode=test#results");
   });
