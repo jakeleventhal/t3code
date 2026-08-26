@@ -14,12 +14,6 @@ import type {
   ProjectReadFileResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
-  ProjectWriteTextAttachmentInput,
-  ProjectWriteTextAttachmentResult,
-} from "@t3tools/contracts";
-import {
-  PROJECT_TEXT_ATTACHMENT_MAX_BYTES,
-  ProjectWriteTextAttachmentError,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -28,9 +22,6 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { createAttachmentId } from "../attachmentStore.ts";
-import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
-import * as ServerConfig from "../config.ts";
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 
@@ -132,10 +123,6 @@ export class WorkspaceFileSystem extends Context.Service<
       ProjectWriteFileResult,
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
-    /** Persist a browser-provided text file outside the tracked workspace. */
-    readonly writeTextAttachment: (
-      input: ProjectWriteTextAttachmentInput,
-    ) => Effect.Effect<ProjectWriteTextAttachmentResult, ProjectWriteTextAttachmentError>;
   }
 >()("t3/workspace/WorkspaceFileSystem") {}
 
@@ -144,7 +131,6 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
-  const serverConfig = yield* ServerConfig.ServerConfig;
 
   const readFile: WorkspaceFileSystem["Service"]["readFile"] = Effect.fn(
     "WorkspaceFileSystem.readFile",
@@ -311,76 +297,7 @@ export const make = Effect.gen(function* () {
     return { relativePath: target.relativePath };
   });
 
-  const writeTextAttachment: WorkspaceFileSystem["Service"]["writeTextAttachment"] = Effect.fn(
-    "WorkspaceFileSystem.writeTextAttachment",
-  )(function* (input) {
-    const bytes = new TextEncoder().encode(input.contents);
-    if (bytes.byteLength === 0) {
-      return yield* new ProjectWriteTextAttachmentError({
-        name: input.name,
-        failure: "contents_empty",
-        byteLength: bytes.byteLength,
-      });
-    }
-    if (bytes.byteLength > PROJECT_TEXT_ATTACHMENT_MAX_BYTES) {
-      return yield* new ProjectWriteTextAttachmentError({
-        name: input.name,
-        failure: "contents_too_large",
-        byteLength: bytes.byteLength,
-      });
-    }
-    if (bytes.includes(0)) {
-      return yield* new ProjectWriteTextAttachmentError({
-        name: input.name,
-        failure: "contents_binary",
-        byteLength: bytes.byteLength,
-      });
-    }
-    const attachmentId = createAttachmentId(input.threadId);
-    const sanitizedAttachmentName = input.name
-      .replaceAll("/", "-")
-      .replaceAll("\\", "-")
-      .replaceAll("\0", "-");
-    const attachmentName =
-      sanitizedAttachmentName === "." || sanitizedAttachmentName === ".."
-        ? "attachment.txt"
-        : sanitizedAttachmentName;
-    const absolutePath = attachmentId
-      ? resolveAttachmentRelativePath({
-          attachmentsDir: serverConfig.attachmentsDir,
-          relativePath: `${attachmentId}/${attachmentName}`,
-        })
-      : null;
-    if (!absolutePath) {
-      return yield* new ProjectWriteTextAttachmentError({
-        name: input.name,
-        failure: "attachment_path_unsafe",
-      });
-    }
-    yield* fileSystem.makeDirectory(path.dirname(absolutePath), { recursive: true }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProjectWriteTextAttachmentError({
-            name: input.name,
-            failure: "make_directory_failed",
-            cause,
-          }),
-      ),
-    );
-    yield* fileSystem.writeFile(absolutePath, bytes).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProjectWriteTextAttachmentError({
-            name: input.name,
-            failure: "write_failed",
-            cause,
-          }),
-      ),
-    );
-    return { absolutePath };
-  });
-
-  return WorkspaceFileSystem.of({ readFile, writeFile, writeTextAttachment });
+  return WorkspaceFileSystem.of({ readFile, writeFile });
 });
 
 export const layer = Layer.effect(WorkspaceFileSystem, make);
