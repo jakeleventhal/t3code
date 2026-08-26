@@ -72,6 +72,7 @@ import {
 import {
   observeThreadSoundState,
   shouldPlayInteractionSound,
+  type InteractionSoundCue,
   type ThreadSoundStateByKey,
 } from "@t3tools/client-runtime/interaction-sounds";
 import {
@@ -258,7 +259,7 @@ function InteractionSoundCoordinator() {
       // Cuelume owns a lazy AudioContext. Touch it from the first real user
       // gesture at an effectively inaudible level so later background cues
       // are not rejected by browser autoplay policy.
-      play("press", { volume: 0.0001 });
+      playInteractionSound("press", { volume: 0.0001 });
       cleanup();
     };
 
@@ -320,7 +321,7 @@ function InteractionSoundThreadCoordinator({
     previousStateRef.current = observation.state;
     for (const cue of observation.cues) {
       if (shouldPlayInteractionSound(cue, completionSoundEnabled)) {
-        play(cue);
+        playInteractionSound(cue);
       }
     }
   }, [
@@ -332,6 +333,17 @@ function InteractionSoundThreadCoordinator({
   ]);
 
   return null;
+}
+
+function playInteractionSound(
+  cue: InteractionSoundCue | "press",
+  options?: { readonly volume?: number },
+) {
+  try {
+    play(cue, options);
+  } catch (error) {
+    console.warn(`[interaction-sounds] Could not play ${cue} cue.`, error);
+  }
 }
 
 function DocumentTitleSync() {
