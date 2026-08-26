@@ -98,6 +98,7 @@ import {
   useUiStateStore,
 } from "../uiStateStore";
 import {
+  isEscapeDismissal,
   resolveShortcutCommand,
   shortcutLabelForCommand,
   shouldShowThreadJumpHintsForModifiers,
@@ -614,7 +615,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         event.preventDefault();
         renamingCommittedRef.current = true;
         void commitRename(threadRef, renamingTitle, thread.title);
-      } else if (event.key === "Escape") {
+      } else if (isEscapeDismissal(event)) {
         event.preventDefault();
         renamingCommittedRef.current = true;
         cancelRename();

@@ -34,6 +34,7 @@ import {
   type ThemeColorRole,
   type ThemeDefinition,
 } from "../../themePalette";
+import { isEscapeDismissal } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -687,7 +688,7 @@ export function ThemeEditorPanel({
       shouldDisarmAfterClick = false;
     };
     const cancelInspection = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isEscapeDismissal(event)) return;
       event.preventDefault();
       clearHover();
       clearInspectorSelection();

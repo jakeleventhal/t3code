@@ -22,6 +22,7 @@ import { useRef, useState } from "react";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { cn } from "~/lib/utils";
 
+import { isEscapeDismissal } from "../../keybindings";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { isCommentSubmitShortcut } from "../diffs/commentSubmitShortcut";
@@ -46,7 +47,7 @@ function submitKeys(input: {
   readonly onCancel?: (() => void) | undefined;
 }) {
   return (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Escape" && input.onCancel) {
+    if (isEscapeDismissal(event) && input.onCancel) {
       event.preventDefault();
       input.onCancel();
     }

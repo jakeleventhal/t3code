@@ -10,6 +10,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { isEscapeDismissal } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import {
   getThemeDefinition,
@@ -173,7 +174,7 @@ function ThemeLibraryCard({
                     }
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Escape") setRadialModeOpen(null);
+                    if (isEscapeDismissal(event)) setRadialModeOpen(null);
                   }}
                   onMouseLeave={() => setRadialModeOpen(null)}
                 >

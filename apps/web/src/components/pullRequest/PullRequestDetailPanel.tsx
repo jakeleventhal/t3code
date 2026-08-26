@@ -65,6 +65,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
+import { isEscapeDismissal } from "../../keybindings";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -1648,7 +1649,7 @@ export function PullRequestDetailPanel({
                         if (event.key === "Enter") {
                           event.preventDefault();
                           void saveTitle(titleDraft);
-                        } else if (event.key === "Escape") {
+                        } else if (isEscapeDismissal(event)) {
                           event.preventDefault();
                           setTitleScope(null);
                         }

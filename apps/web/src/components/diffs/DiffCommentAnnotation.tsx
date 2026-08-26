@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
+import { isEscapeDismissal } from "../../keybindings";
 
 import { isCommentSubmitShortcut } from "./commentSubmitShortcut";
 
@@ -91,7 +92,7 @@ export function DiffCommentAnnotation({
           event.currentTarget.setSelectionRange(end, end);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          if (isEscapeDismissal(event)) {
             event.preventDefault();
             onCancel();
           }

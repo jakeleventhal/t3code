@@ -3,6 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
+import { isEscapeDismissal } from "../../keybindings";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
@@ -56,7 +57,7 @@ export function PullRequestMarkdownEditor({
     <div
       className={cn("space-y-2", className)}
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || saving) return;
+        if (!isEscapeDismissal(event) || saving) return;
         event.preventDefault();
         onCancel();
       }}

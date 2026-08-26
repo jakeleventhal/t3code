@@ -45,6 +45,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import { isEscapeDismissal } from "../../keybindings";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -276,7 +277,7 @@ export const ChatHeader = memo(function ChatHeader({
       if (event.key === "Enter") {
         renameCommittedRef.current = true;
         commitRename(event.currentTarget.value);
-      } else if (event.key === "Escape") {
+      } else if (isEscapeDismissal(event)) {
         renameCommittedRef.current = true;
         setRenaming(null);
       }

@@ -83,6 +83,7 @@ import { primaryServerObservabilityAtom, primaryServerProvidersAtom } from "../.
 import { useProjects } from "../../state/entities";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { isEscapeDismissal } from "../../keybindings";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -1625,7 +1626,7 @@ function FontFamilySettingsRow({
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") flushDraft();
-          if (event.key === "Escape") {
+          if (isEscapeDismissal(event)) {
             // Discard uncommitted typing without closing the settings page,
             // which is what an unhandled Escape does.
             event.preventDefault();

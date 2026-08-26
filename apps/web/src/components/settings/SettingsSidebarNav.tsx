@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
+import { isEscapeDismissal } from "../../keybindings";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Kbd } from "../ui/kbd";
@@ -152,7 +153,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   );
   const handleSearchKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Escape" && isSearching) {
+      if (isEscapeDismissal(event) && isSearching) {
         event.preventDefault();
         event.stopPropagation();
         clearSearch();

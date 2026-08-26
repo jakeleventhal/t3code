@@ -75,6 +75,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { isElectron } from "../env";
 import {
+  isEscapeDismissal,
   resolveShortcutCommand,
   shortcutLabelForCommand,
   shouldShowThreadJumpHintsForModifiers,
@@ -1023,7 +1024,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         event.preventDefault();
         renameCommittedRef.current = true;
         onCommitRename(threadRef, renamingTitle, thread.title);
-      } else if (event.key === "Escape") {
+      } else if (isEscapeDismissal(event)) {
         event.preventDefault();
         renameCommittedRef.current = true;
         onCancelRename();
@@ -2362,7 +2363,7 @@ export default function Sidebar() {
       // IME composition (Japanese/Chinese input) uses the same keys; committing
       // a candidate must not move the highlight or navigate away mid-compose.
       if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-      if (event.key === "Escape" && isSearchingThreads) {
+      if (isEscapeDismissal(event) && isSearchingThreads) {
         event.preventDefault();
         event.stopPropagation();
         clearThreadSearch();
