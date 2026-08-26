@@ -233,7 +233,17 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
 }
 
 function MenuSub(props: MenuPrimitive.SubmenuRoot.Props) {
-  return <MenuPrimitive.SubmenuRoot data-slot="menu-sub" {...props} />;
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <MenuPrimitive.SubmenuRoot
+      data-slot="menu-sub"
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
 }
 
 function MenuSubTrigger({

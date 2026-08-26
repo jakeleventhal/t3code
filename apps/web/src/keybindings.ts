@@ -37,7 +37,12 @@ export function isEscapeDismissal(
 
 export function cancelNonDismissalEscape(
   open: boolean,
-  eventDetails: { reason: string; event: unknown; cancel: () => void },
+  eventDetails: {
+    reason: string;
+    event: unknown;
+    cancel: () => void;
+    allowPropagation: () => void;
+  },
   platform = navigator.platform,
 ): boolean {
   if (open || eventDetails.reason !== "escape-key") return false;
@@ -65,6 +70,7 @@ export function cancelNonDismissalEscape(
   }
 
   eventDetails.cancel();
+  eventDetails.allowPropagation();
   return true;
 }
 

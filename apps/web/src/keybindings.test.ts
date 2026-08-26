@@ -51,6 +51,7 @@ describe("cancelNonDismissalEscape", () => {
     ["Win32", { metaKey: false, ctrlKey: true }],
   ])("cancels Base UI dismissal for modified Escape on %s", (platform, modifiers) => {
     let canceled = false;
+    let allowedPropagation = false;
     assert.isTrue(
       cancelNonDismissalEscape(
         false,
@@ -60,15 +61,20 @@ describe("cancelNonDismissalEscape", () => {
           cancel: () => {
             canceled = true;
           },
+          allowPropagation: () => {
+            allowedPropagation = true;
+          },
         },
         platform,
       ),
     );
     assert.isTrue(canceled);
+    assert.isTrue(allowedPropagation);
   });
 
   it("preserves ordinary Escape dismissal", () => {
     let canceled = false;
+    let allowedPropagation = false;
     assert.isFalse(
       cancelNonDismissalEscape(
         false,
@@ -78,11 +84,15 @@ describe("cancelNonDismissalEscape", () => {
           cancel: () => {
             canceled = true;
           },
+          allowPropagation: () => {
+            allowedPropagation = true;
+          },
         },
         "MacIntel",
       ),
     );
     assert.isFalse(canceled);
+    assert.isFalse(allowedPropagation);
   });
 });
 
