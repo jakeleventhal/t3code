@@ -3,6 +3,7 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 
 import { cn } from "~/lib/utils";
+import { cancelNonDismissalEscape } from "~/keybindings";
 import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
@@ -11,7 +12,18 @@ import {
 
 const AlertDialogCreateHandle = AlertDialogPrimitive.createHandle;
 
-const AlertDialog = AlertDialogPrimitive.Root;
+function AlertDialog<Payload>(props: AlertDialogPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <AlertDialogPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 const AlertDialogPortal = AlertDialogPrimitive.Portal;
 

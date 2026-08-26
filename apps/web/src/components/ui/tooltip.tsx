@@ -1,12 +1,24 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "~/lib/utils";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
 const TooltipCreateHandle = TooltipPrimitive.createHandle;
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
-const Tooltip = TooltipPrimitive.Root;
+function Tooltip<Payload>(props: TooltipPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <TooltipPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 function TooltipTrigger(props: TooltipPrimitive.Trigger.Props) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;

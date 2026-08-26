@@ -6,8 +6,24 @@ import { ChevronsUpDownIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
-const Autocomplete = AutocompletePrimitive.Root;
+const AutocompleteRoot = AutocompletePrimitive.Root as <ItemValue>(
+  props: AutocompletePrimitive.Root.Props<ItemValue>,
+) => React.JSX.Element;
+
+function Autocomplete<ItemValue>(props: AutocompletePrimitive.Root.Props<ItemValue>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <AutocompleteRoot
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 function AutocompleteInput({
   className,

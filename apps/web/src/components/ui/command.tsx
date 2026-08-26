@@ -17,8 +17,20 @@ import {
 } from "~/components/ui/autocomplete";
 import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS } from "~/components/ui/dialog-styles";
 import { Button } from "~/components/ui/button";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
-const CommandDialog = CommandDialogPrimitive.Root;
+function CommandDialog<Payload>(props: CommandDialogPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <CommandDialogPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 const CommandDialogPortal = CommandDialogPrimitive.Portal;
 

@@ -10,10 +10,22 @@ import {
   DIALOG_POPUP_CLASS,
 } from "~/components/ui/dialog-styles";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
 const DialogCreateHandle = DialogPrimitive.createHandle;
 
-const Dialog = DialogPrimitive.Root;
+function Dialog<Payload>(props: DialogPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <DialogPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 const DialogPortal = DialogPrimitive.Portal;
 

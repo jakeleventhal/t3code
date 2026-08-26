@@ -23,7 +23,7 @@ import {
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
 import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
-import { cancelNonDismissalEscape, isEscapeDismissal } from "~/keybindings";
+import { isEscapeDismissal } from "~/keybindings";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
 import {
   AlertDialog,
@@ -246,8 +246,7 @@ export function ProjectScriptEditorDialog({
     <>
       <Dialog
         open={isOpen}
-        onOpenChange={(open, eventDetails) => {
-          if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange={(open) => {
           if (!open) {
             setIconPickerOpen(false);
             onClose();

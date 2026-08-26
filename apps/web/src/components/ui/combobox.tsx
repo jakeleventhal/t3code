@@ -7,6 +7,7 @@ import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
 const ComboboxContext = React.createContext<{
   chipsRef: React.RefObject<Element | null> | null;
@@ -19,11 +20,18 @@ const ComboboxContext = React.createContext<{
 function Combobox<Value, Multiple extends boolean | undefined = false>(
   props: ComboboxPrimitive.Root.Props<Value, Multiple>,
 ) {
+  const { onOpenChange, ...rootProps } = props;
   const chipsRef = React.useRef<Element | null>(null);
   const value = React.useMemo(() => ({ chipsRef, multiple: !!props.multiple }), [props.multiple]);
   return (
     <ComboboxContext value={value}>
-      <ComboboxPrimitive.Root {...props} />
+      <ComboboxPrimitive.Root
+        {...rootProps}
+        onOpenChange={(open, eventDetails) => {
+          if (cancelNonDismissalEscape(open, eventDetails)) return;
+          onOpenChange?.(open, eventDetails);
+        }}
+      />
     </ComboboxContext>
   );
 }

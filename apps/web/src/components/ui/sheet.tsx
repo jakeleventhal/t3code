@@ -5,8 +5,20 @@ import { XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
-const Sheet = SheetPrimitive.Root;
+function Sheet<Payload>(props: SheetPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <SheetPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 const SheetPortal = SheetPrimitive.Portal;
 

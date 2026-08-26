@@ -153,7 +153,6 @@ import {
   type ProviderInstanceEntry,
 } from "../providerInstances";
 import {
-  cancelNonDismissalEscape,
   isEscapeDismissal,
   resolveShortcutCommand,
   threadJumpIndexFromCommand,
@@ -494,7 +493,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
-          if (cancelNonDismissalEscape(open, eventDetails)) return;
           if (!open && eventDetails.reason === "escape-key" && state.mode !== "command") {
             eventDetails.cancel();
             toggleMode("command");

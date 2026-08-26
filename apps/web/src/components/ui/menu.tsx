@@ -5,10 +5,22 @@ import { ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
+import { cancelNonDismissalEscape } from "~/keybindings";
 
 const MenuCreateHandle = MenuPrimitive.createHandle;
 
-const Menu = MenuPrimitive.Root;
+function Menu<Payload>(props: MenuPrimitive.Root.Props<Payload>) {
+  const { onOpenChange, ...rootProps } = props;
+  return (
+    <MenuPrimitive.Root
+      {...rootProps}
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
+        onOpenChange?.(open, eventDetails);
+      }}
+    />
+  );
+}
 
 const MenuPortal = MenuPrimitive.Portal;
 
