@@ -23,6 +23,7 @@ import {
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
 import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
+import { isEscapeDismissal } from "~/keybindings";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
 import {
   AlertDialog,
@@ -181,6 +182,7 @@ export function ProjectScriptEditorDialog({
       setKeybinding("");
       return;
     }
+    if (isEscapeDismissal(event)) return;
     const next = keybindingFromKeyboardEvent(event, navigator.platform);
     if (!next) return;
     setKeybinding(next);
