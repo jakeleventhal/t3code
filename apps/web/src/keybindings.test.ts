@@ -7,6 +7,7 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import {
+  cancelNonDismissalEscape,
   formatShortcutLabel,
   isChatNewShortcut,
   isChatNewLocalShortcut,
@@ -43,6 +44,47 @@ function event(overrides: Partial<ShortcutEventLike> = {}): ShortcutEventLike {
     ...overrides,
   };
 }
+
+describe("cancelNonDismissalEscape", () => {
+  it.each([
+    ["MacIntel", { metaKey: true, ctrlKey: false }],
+    ["Win32", { metaKey: false, ctrlKey: true }],
+  ])("cancels Base UI dismissal for modified Escape on %s", (platform, modifiers) => {
+    let canceled = false;
+    assert.isTrue(
+      cancelNonDismissalEscape(
+        false,
+        {
+          reason: "escape-key",
+          event: event({ key: "Escape", ...modifiers }),
+          cancel: () => {
+            canceled = true;
+          },
+        },
+        platform,
+      ),
+    );
+    assert.isTrue(canceled);
+  });
+
+  it("preserves ordinary Escape dismissal", () => {
+    let canceled = false;
+    assert.isFalse(
+      cancelNonDismissalEscape(
+        false,
+        {
+          reason: "escape-key",
+          event: event({ key: "Escape" }),
+          cancel: () => {
+            canceled = true;
+          },
+        },
+        "MacIntel",
+      ),
+    );
+    assert.isFalse(canceled);
+  });
+});
 
 describe("isEscapeDismissal", () => {
   it("preserves ordinary Escape dismissal while reserving mod+Escape", () => {

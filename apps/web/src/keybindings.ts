@@ -35,6 +35,39 @@ export function isEscapeDismissal(
   return event.key === "Escape" && !modPressed;
 }
 
+export function cancelNonDismissalEscape(
+  open: boolean,
+  eventDetails: { reason: string; event: unknown; cancel: () => void },
+  platform = navigator.platform,
+): boolean {
+  if (open || eventDetails.reason !== "escape-key") return false;
+
+  const event = eventDetails.event;
+  if (typeof event !== "object" || event === null) return false;
+  if (!("key" in event) || typeof event.key !== "string") return false;
+  if (!("metaKey" in event) || typeof event.metaKey !== "boolean") return false;
+  if (!("ctrlKey" in event) || typeof event.ctrlKey !== "boolean") return false;
+  if (!("shiftKey" in event) || typeof event.shiftKey !== "boolean") return false;
+  if (!("altKey" in event) || typeof event.altKey !== "boolean") return false;
+  if (
+    isEscapeDismissal(
+      {
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      },
+      platform,
+    )
+  ) {
+    return false;
+  }
+
+  eventDetails.cancel();
+  return true;
+}
+
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
   terminalOpen: boolean;

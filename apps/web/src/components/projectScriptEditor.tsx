@@ -23,7 +23,7 @@ import {
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
 import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
-import { isEscapeDismissal } from "~/keybindings";
+import { cancelNonDismissalEscape, isEscapeDismissal } from "~/keybindings";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
 import {
   AlertDialog,
@@ -247,14 +247,7 @@ export function ProjectScriptEditorDialog({
       <Dialog
         open={isOpen}
         onOpenChange={(open, eventDetails) => {
-          if (
-            !open &&
-            eventDetails.reason === "escape-key" &&
-            !isEscapeDismissal(eventDetails.event)
-          ) {
-            eventDetails.cancel();
-            return;
-          }
+          if (cancelNonDismissalEscape(open, eventDetails)) return;
           if (!open) {
             setIconPickerOpen(false);
             onClose();

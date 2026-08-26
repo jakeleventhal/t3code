@@ -18,6 +18,7 @@ import {
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+import { cancelNonDismissalEscape } from "../../keybindings";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   /**
@@ -134,7 +135,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   return (
     <Popover
       open={isMenuOpen}
-      onOpenChange={(open) => {
+      onOpenChange={(open, eventDetails) => {
+        if (cancelNonDismissalEscape(open, eventDetails)) return;
         if (props.disabled) {
           setIsMenuOpen(false);
           return;
