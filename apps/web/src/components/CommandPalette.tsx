@@ -493,6 +493,14 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
+          if (
+            !open &&
+            eventDetails.reason === "escape-key" &&
+            !isEscapeDismissal(eventDetails.event)
+          ) {
+            eventDetails.cancel();
+            return;
+          }
           if (!open && eventDetails.reason === "escape-key" && state.mode !== "command") {
             eventDetails.cancel();
             toggleMode("command");

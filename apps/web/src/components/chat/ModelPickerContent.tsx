@@ -630,6 +630,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           open
           virtualized
           value={modelPickerModelKey(props.activeInstanceId, props.model)}
+          onOpenChange={(open, eventDetails) => {
+            if (
+              !open &&
+              eventDetails.reason === "escape-key" &&
+              !isEscapeDismissal(eventDetails.event)
+            ) {
+              eventDetails.cancel();
+            }
+          }}
           onItemHighlighted={(modelKey, eventDetails) => {
             highlightedModelKeyRef.current = typeof modelKey === "string" ? modelKey : null;
             if (eventDetails.reason === "keyboard" && eventDetails.index >= 0) {
