@@ -119,6 +119,7 @@ export const remoteSchemeForEditor = (id: EditorId): string | undefined => {
 export const buildRemoteOpenUrl = (input: {
   readonly editor: EditorId;
   readonly host: string;
+  readonly username?: string;
   readonly absolutePath: string;
 }): string | undefined => {
   const scheme = remoteSchemeForEditor(input.editor);
@@ -139,7 +140,8 @@ export const buildRemoteOpenUrl = (input: {
     return `${scheme}://ssh/${encodedHost}${encodedZedPath}`;
   }
   const encodedPath = rootedPath.split("/").map(encodeURIComponent).join("/");
-  return `${scheme}://vscode-remote/ssh-remote+${encodedHost}${encodedPath}`;
+  const destination = input.username === undefined ? input.host : `${input.username}@${input.host}`;
+  return `${scheme}://vscode-remote/ssh-remote+${encodeURIComponent(destination)}${encodedPath}`;
 };
 
 /**
@@ -154,6 +156,9 @@ export type RemoteOpenTargetKind = typeof RemoteOpenTargetKind.Type;
 export const RemoteOpenTarget = Schema.Struct({
   kind: RemoteOpenTargetKind,
   host: TrimmedNonEmptyString,
+  /** Login account on the environment host. Optional for compatibility with
+      servers that advertised only a hostname. */
+  username: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type RemoteOpenTarget = typeof RemoteOpenTarget.Type;
 
