@@ -57,7 +57,6 @@ describe("findDiscoveredServerTargetPort", () => {
       pid: 123,
       terminal: null,
       source: "scanner",
-      listening: true,
     } satisfies PreviewableServer;
 
     expect(

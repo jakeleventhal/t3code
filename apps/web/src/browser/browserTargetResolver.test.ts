@@ -192,6 +192,18 @@ describe("browser target resolver", () => {
     ).toBe("http://100.65.180.100:4058/dashboard?mode=test#results");
   });
 
+  it("opens an ngrok URL directly for a remote environment", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://100.65.180.100:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://feature.ngrok-free.app/dashboard?mode=test#results",
+        4058,
+      ),
+    ).toBe("https://feature.ngrok-free.app/dashboard?mode=test#results");
+  });
+
   it("normalizes public URLs without treating them as environment ports", async () => {
     const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
     expect(resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "example.com/app")).toBe(

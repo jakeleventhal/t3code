@@ -7,7 +7,7 @@ import {
   PREVIEW_URL_MAX_LENGTH,
   type DiscoveredLocalServer,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Net from "@t3tools/shared/Net";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -61,6 +61,7 @@ const makeProbeFailureLayer = (
     Layer.provide(
       Layer.mergeAll(
         NodeServices.layer,
+        Layer.succeed(HostProcessEnvironment, {}),
         Layer.succeed(ProcessRunner.ProcessRunner, { run }),
         Layer.succeed(Net.NetService, {
           canListenOnHost: () => Effect.succeed(true),
@@ -79,6 +80,7 @@ const TestPortDiscoveryLive = PortScanner.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       NodeServices.layer,
+      Layer.succeed(HostProcessEnvironment, {}),
       TestProcessRunner,
       TestIntegrationNet,
       Layer.succeed(HostProcessPlatform, "win32"),
@@ -97,6 +99,7 @@ const makeLsofScannerLayer = (input: {
     Layer.provide(
       Layer.mergeAll(
         NodeServices.layer,
+        Layer.succeed(HostProcessEnvironment, {}),
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: () =>
             Effect.succeed({
@@ -142,7 +145,7 @@ describe("Portless route enrichment", () => {
 
     expect(routes.get(4058)).toBe("https://eng-1252-simplify-the-onboarding.artelo.localhost");
     expect(
-      PortScanner.__testing.applyPortlessRoutes(
+      PortScanner.__testing.applyNamedRoutes(
         [
           {
             host: "localhost",
@@ -192,6 +195,89 @@ describe("Portless route enrichment", () => {
 
     expect([...routes]).toEqual([[3001, "https://current.test"]]);
   });
+});
+
+describe("ngrok route enrichment", () => {
+  it("maps public HTTP tunnels to their loopback target and prefers HTTPS", () => {
+    const routes = PortScanner.__testing.parseNgrokTunnelSnapshot({
+      tunnels: [
+        {
+          public_url: "http://feature.ngrok-free.app",
+          config: { addr: "http://localhost:4058" },
+        },
+        {
+          public_url: "https://feature.ngrok-free.app",
+          config: { addr: "http://127.0.0.1:4058" },
+        },
+      ],
+    });
+
+    expect(routes && [...routes]).toEqual([[4058, "https://feature.ngrok-free.app/"]]);
+  });
+
+  it("accepts current forwards_to entries and ignores unsafe or non-web tunnels", () => {
+    const routes = PortScanner.__testing.parseNgrokTunnelSnapshot({
+      tunnels: [
+        { public_url: "https://docs.example.com", forwards_to: "[::1]:4312" },
+        { public_url: "https://invalid.example.com", forwards_to: "internal.example.com:4313" },
+        { public_url: "tcp://1.tcp.ngrok.io:12345", config: { addr: "localhost:4314" } },
+        { public_url: "https://user:secret@example.com", config: { addr: "4315" } },
+      ],
+    });
+
+    expect(routes && [...routes]).toEqual([[4312, "https://docs.example.com/"]]);
+  });
+
+  it("returns null when the agent response does not match the tunnel list contract", () => {
+    expect(PortScanner.__testing.parseNgrokTunnelSnapshot({ tunnels: "invalid" })).toBeNull();
+  });
+});
+
+effectIt.effect("replaces a discovered listener with its ngrok public URL", () => {
+  const targetPort = 43_127;
+  const configuredUrl = `http://localhost:${targetPort}/docs?mode=test#results`;
+  const requests: string[] = [];
+  const fetchFn = ((input: Parameters<typeof globalThis.fetch>[0]) => {
+    const url = String(input);
+    requests.push(url);
+    if (url === "http://localhost:4040/api/tunnels") {
+      return Promise.resolve(
+        Response.json({
+          tunnels: [
+            {
+              public_url: "https://feature.ngrok-free.app",
+              config: { addr: `http://localhost:${targetPort}` },
+            },
+          ],
+        }),
+      );
+    }
+    return Promise.resolve(new Response("app", { headers: { "content-type": "text/html" } }));
+  }) as typeof globalThis.fetch;
+  const layer = makeProbeFailureLayer(
+    () =>
+      Effect.succeed({
+        stdout: `p1234\ncnode\nn*:${targetPort}\np5678\ncngrok\nn127.0.0.1:4040\n`,
+        stderr: "",
+        code: null,
+        timedOut: false,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
+      }),
+    fetchFn,
+  );
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    const servers = yield* scanner.scan([configuredUrl]);
+    expect(servers.map((server) => [server.port, server.url])).toEqual([
+      [targetPort, "https://feature.ngrok-free.app/docs?mode=test#results"],
+    ]);
+    expect(requests).toContain("http://localhost:4040/api/tunnels");
+    expect(requests).toContain(configuredUrl);
+  }).pipe(Effect.provide(layer));
 });
 
 const openServer = (
