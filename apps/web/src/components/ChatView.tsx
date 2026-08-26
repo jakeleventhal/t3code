@@ -6073,9 +6073,10 @@ export default function ChatView(props: ChatViewProps) {
       }
 
       if (command === "thread.stop") {
-        if (event.repeat || !canInterruptRunningThread) return;
+        if (!canInterruptRunningThread) return;
         event.preventDefault();
         event.stopPropagation();
+        if (event.repeat) return;
         void onInterrupt();
         return;
       }
