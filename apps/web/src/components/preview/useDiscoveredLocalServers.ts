@@ -105,15 +105,20 @@ export function formatDiscoveredServerHost(
 export function selectPreferredDiscoveredServer(
   servers: ReadonlyArray<DiscoveredLocalServer>,
 ): DiscoveredLocalServer | null {
-  const namedServer = servers.find((server) => {
-    if (server.urlKind !== undefined) return true;
+  const publicTunnel = servers.find((server) => server.urlKind === "public-tunnel");
+  if (publicTunnel) return publicTunnel;
+
+  const localProxy = servers.find((server) => server.urlKind === "local-proxy");
+  if (localProxy) return localProxy;
+
+  const legacyNamedServer = servers.find((server) => {
     try {
       return new URL(server.url).hostname !== server.host;
     } catch {
       return false;
     }
   });
-  return namedServer ?? servers[0] ?? null;
+  return legacyNamedServer ?? servers[0] ?? null;
 }
 
 function parseLocalUrl(raw: string): { host: string; port: number; url: string } | null {

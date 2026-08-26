@@ -188,6 +188,20 @@ describe("selectPreferredDiscoveredServer", () => {
     expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), ngrok])).toBe(ngrok);
   });
 
+  it("prefers an ngrok tunnel over Portless regardless of scan order", () => {
+    const portless = scannerServer({
+      port: 4004,
+      url: "https://artelo.localhost",
+      urlKind: "local-proxy",
+    });
+    const ngrok = scannerServer({
+      port: 4314,
+      url: "https://feature.ngrok-free.app/",
+      urlKind: "public-tunnel",
+    });
+    expect(selectPreferredDiscoveredServer([portless, ngrok])).toBe(ngrok);
+  });
+
   it("falls back to the first listener when none has a named URL", () => {
     const first = scannerServer({ port: 3000, url: "http://localhost:3000" });
     expect(selectPreferredDiscoveredServer([first, scannerServer({ port: 5173 })])).toBe(first);
