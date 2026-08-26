@@ -19,7 +19,7 @@ export function shouldPlayInteractionSound(
 }
 
 function threadKey(thread: EnvironmentThreadShell): string {
-  return `${thread.environmentId}:${thread.id}`;
+  return JSON.stringify([thread.environmentId, thread.id]);
 }
 
 function completedTurn(thread: EnvironmentThreadShell): string | null {

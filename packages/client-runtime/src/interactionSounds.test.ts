@@ -1,4 +1,4 @@
-import { MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentThreadShell } from "./state/shell.ts";
 import {
@@ -171,6 +171,24 @@ describe("interaction sounds", () => {
 
     expect(
       deriveInteractionSoundCues(captureThreadSoundState([pendingApproval]), [pendingInput]),
+    ).toEqual(["bloom"]);
+  });
+
+  it("keeps thread state distinct when scoped IDs contain colons", () => {
+    const first = makeThread({
+      environmentId: EnvironmentId.make("a:b"),
+      id: ThreadId.make("c"),
+    });
+    const second = makeThread({
+      environmentId: EnvironmentId.make("a"),
+      id: ThreadId.make("b:c"),
+      hasPendingUserInput: true,
+    });
+    const previous = captureThreadSoundState([first, second]);
+
+    expect(previous.size).toBe(2);
+    expect(
+      deriveInteractionSoundCues(previous, [{ ...first, hasPendingUserInput: true }, second]),
     ).toEqual(["bloom"]);
   });
 
