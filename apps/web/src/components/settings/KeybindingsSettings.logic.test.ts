@@ -62,6 +62,12 @@ describe("KeybindingsSettings.logic", () => {
         "Win32",
       ),
     ).toBe("mod+shift+k");
+    expect(
+      keybindingFromKeyboardEvent(
+        { key: "Escape", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false },
+        "MacIntel",
+      ),
+    ).toBe("mod+esc");
   });
 
   it("serializes shortcuts and when expressions for upserts", () => {

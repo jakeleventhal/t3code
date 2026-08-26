@@ -14,8 +14,23 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Electron from "electron";
 import { vi } from "vite-plus/test";
 
+const { globalShortcutIsRegistered, globalShortcutRegister, globalShortcutUnregister } = vi.hoisted(
+  () => ({
+    globalShortcutIsRegistered: vi.fn(() => false),
+    globalShortcutRegister: vi.fn<(accelerator: string, callback: () => void) => boolean>(
+      () => true,
+    ),
+    globalShortcutUnregister: vi.fn<(accelerator: string) => void>(),
+  }),
+);
+
 vi.mock("electron", async (importOriginal) => ({
   ...(await importOriginal<typeof import("electron")>()),
+  globalShortcut: {
+    isRegistered: globalShortcutIsRegistered,
+    register: globalShortcutRegister,
+    unregister: globalShortcutUnregister,
+  },
   session: {
     fromPartition: vi.fn(() => ({
       getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
@@ -43,7 +58,11 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
-import { MENU_ACTION_CHANNEL, WINDOW_FULLSCREEN_STATE_CHANNEL } from "../ipc/channels.ts";
+import {
+  COMMAND_ESCAPE_CHANNEL,
+  MENU_ACTION_CHANNEL,
+  WINDOW_FULLSCREEN_STATE_CHANNEL,
+} from "../ipc/channels.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -461,6 +480,15 @@ describe("DesktopWindow", () => {
         assert.deepEqual(fakeWindow.setAutoHideCursor.mock.calls, [[false]]);
         assert.deepEqual(fakeWindow.loadURL.mock.calls[0], ["t3code-dev://app/"]);
         assert.equal(fakeWindow.openDevTools.mock.calls.length, 1);
+
+        fakeWindow.windowListeners.get("focus")?.();
+        const registration = globalShortcutRegister.mock.calls.at(-1);
+        assert.equal(registration?.[0], "Command+Escape");
+        registration?.[1]();
+        assert.deepEqual(fakeWindow.send.mock.calls, [[COMMAND_ESCAPE_CHANNEL]]);
+
+        fakeWindow.windowListeners.get("blur")?.();
+        assert.deepEqual(globalShortcutUnregister.mock.calls.at(-1), ["Command+Escape"]);
       }).pipe(Effect.provide(layer));
     }),
   );

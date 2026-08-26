@@ -11,6 +11,20 @@ import * as IpcChannels from "./ipc/channels.ts";
 
 exposeClerkBridge({ passkeys: true });
 
+ipcRenderer.on(IpcChannels.COMMAND_ESCAPE_CHANNEL, () => {
+  const activeElement = document.activeElement;
+  const target = activeElement?.hasAttribute("data-keybinding-capture") ? activeElement : window;
+  target.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+});
+
 function unwrapEnsureSshEnvironmentResult(result: unknown) {
   if (
     typeof result === "object" &&

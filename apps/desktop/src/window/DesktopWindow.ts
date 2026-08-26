@@ -19,6 +19,7 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import {
+  COMMAND_ESCAPE_CHANNEL,
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
@@ -374,6 +375,26 @@ export const make = Effect.gen(function* () {
 
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
+    }
+    let unregisterCommandEscape = () => {};
+    if (environment.platform === "darwin") {
+      const accelerator = "Command+Escape";
+      let registered = false;
+      const registerCommandEscape = () => {
+        if (registered || Electron.globalShortcut.isRegistered(accelerator)) return;
+        registered = Electron.globalShortcut.register(accelerator, () => {
+          if (!window.isDestroyed()) {
+            window.webContents.send(COMMAND_ESCAPE_CHANNEL);
+          }
+        });
+      };
+      unregisterCommandEscape = () => {
+        if (!registered) return;
+        Electron.globalShortcut.unregister(accelerator);
+        registered = false;
+      };
+      window.on("focus", registerCommandEscape);
+      window.on("blur", unregisterCommandEscape);
     }
     let boundsPersistFiber: Fiber.Fiber<void, never> | undefined;
     let pendingBoundsPersistFiber: Fiber.Fiber<void, never> | undefined;
@@ -750,6 +771,7 @@ export const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
+      unregisterCommandEscape();
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
       void runPromise(electronWindow.clearMain(Option.some(window)));
