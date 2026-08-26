@@ -169,6 +169,16 @@ const desktopClientSettingsLayer = Layer.mock(DesktopClientSettings.DesktopClien
 
 const electronAppLayer = Layer.mock(ElectronApp.ElectronApp)({
   quit: Effect.void,
+  on: (eventName, listener) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        appListeners.set(eventName, listener as (...args: readonly unknown[]) => void);
+      }),
+      () =>
+        Effect.sync(() => {
+          if (appListeners.get(eventName) === listener) appListeners.delete(eventName);
+        }),
+    ).pipe(Effect.asVoid),
 });
 
 const desktopAssetsLayer = Layer.succeed(DesktopAssets.DesktopAssets, {

@@ -1,10 +1,12 @@
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
@@ -417,7 +419,7 @@ export const make = Effect.gen(function* () {
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
     }
-    let disposeNativeModEscape = () => {};
+    let disposeNativeModEscape: Effect.Effect<void> = Effect.void;
     if (environment.platform === "darwin") {
       const registeredAccelerators = new Set<string>();
       let blurFiber: Fiber.Fiber<void, never> | undefined;
@@ -473,14 +475,21 @@ export const make = Effect.gen(function* () {
           ),
         );
       };
-      Electron.app.on("browser-window-focus", registerNativeModEscape);
-      Electron.app.on("browser-window-blur", handleBrowserWindowBlur);
-      disposeNativeModEscape = () => {
-        cancelPendingBlur();
-        Electron.app.off("browser-window-focus", registerNativeModEscape);
-        Electron.app.off("browser-window-blur", handleBrowserWindowBlur);
-        unregisterNativeModEscape();
-      };
+      const nativeModEscapeScope = yield* Scope.make("sequential");
+      disposeNativeModEscape = Scope.close(nativeModEscapeScope, Exit.void).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            cancelPendingBlur();
+            unregisterNativeModEscape();
+          }),
+        ),
+      );
+      yield* electronApp
+        .on("browser-window-focus", registerNativeModEscape)
+        .pipe(Effect.provideService(Scope.Scope, nativeModEscapeScope));
+      yield* electronApp
+        .on("browser-window-blur", handleBrowserWindowBlur)
+        .pipe(Effect.provideService(Scope.Scope, nativeModEscapeScope));
     } else {
       window.webContents.on("before-input-event", (event, input) => {
         const captureInput = nativeKeybindingCaptureInput(input, environment.platform);
@@ -577,9 +586,7 @@ export const make = Effect.gen(function* () {
     );
     flushMainWindowBounds = flushBoundsPersist;
 
-    yield* previewManager
-      .setMainWindow(window)
-      .pipe(Effect.onError(() => Effect.sync(disposeNativeModEscape)));
+    yield* previewManager.setMainWindow(window).pipe(Effect.onError(() => disposeNativeModEscape));
     window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
       if (
         typeof params.partition !== "string" ||
@@ -867,7 +874,7 @@ export const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
-      disposeNativeModEscape();
+      void runPromise(disposeNativeModEscape);
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
       void runPromise(electronWindow.clearMain(Option.some(window)));
