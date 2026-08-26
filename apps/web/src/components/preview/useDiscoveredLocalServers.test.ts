@@ -169,14 +169,22 @@ describe("formatDiscoveredServerHost", () => {
 
 describe("selectPreferredDiscoveredServer", () => {
   it("prefers a named proxy over another listener from the same terminal", () => {
-    const portless = scannerServer({ port: 4314, url: "https://artelo.localhost" });
+    const portless = scannerServer({
+      port: 4314,
+      url: "https://artelo.localhost",
+      urlKind: "local-proxy",
+    });
     expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), portless])).toBe(
       portless,
     );
   });
 
   it("prefers an ngrok tunnel over a bare listener", () => {
-    const ngrok = scannerServer({ port: 4314, url: "https://feature.ngrok-free.app/" });
+    const ngrok = scannerServer({
+      port: 4314,
+      url: "https://feature.ngrok-free.app/",
+      urlKind: "public-tunnel",
+    });
     expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), ngrok])).toBe(ngrok);
   });
 

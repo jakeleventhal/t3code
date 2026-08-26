@@ -21,6 +21,7 @@ import {
   PREVIEW_URL_MAX_LENGTH,
   ThreadId,
   type DiscoveredLocalServer,
+  type DiscoveredLocalServerUrlKind,
 } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Net from "@t3tools/shared/Net";
@@ -112,7 +113,14 @@ interface PortlessRouteSnapshot {
   readonly isProcessAlive: (pid: number) => boolean;
 }
 
-const parsePortlessRouteSnapshot = (input: PortlessRouteSnapshot): ReadonlyMap<number, string> => {
+interface NamedRoute {
+  readonly url: string;
+  readonly urlKind: DiscoveredLocalServerUrlKind;
+}
+
+const parsePortlessRouteSnapshot = (
+  input: PortlessRouteSnapshot,
+): ReadonlyMap<number, NamedRoute> => {
   const decoded = decodePortlessRouteEntries(input.routesJson);
   if (Option.isNone(decoded)) return new Map();
 
@@ -123,19 +131,22 @@ const parsePortlessRouteSnapshot = (input: PortlessRouteSnapshot): ReadonlyMap<n
       ? parsedProxyPort
       : defaultProxyPort;
   const protocol = input.tls ? "https" : "http";
-  const urlsByTargetPort = new Map<number, string>();
+  const routesByTargetPort = new Map<number, NamedRoute>();
 
   for (const entry of decoded.value) {
     if (!isPortlessRoute(entry)) continue;
     if (entry.pid !== 0 && !input.isProcessAlive(entry.pid)) continue;
     if (!PORTLESS_HOSTNAME_PATTERN.test(entry.hostname)) continue;
-    if (urlsByTargetPort.has(entry.port)) continue;
+    if (routesByTargetPort.has(entry.port)) continue;
 
     const portSuffix = proxyPort === defaultProxyPort ? "" : `:${proxyPort}`;
-    urlsByTargetPort.set(entry.port, `${protocol}://${entry.hostname}${portSuffix}`);
+    routesByTargetPort.set(entry.port, {
+      url: `${protocol}://${entry.hostname}${portSuffix}`,
+      urlKind: "local-proxy",
+    });
   }
 
-  return urlsByTargetPort;
+  return routesByTargetPort;
 };
 
 const parseLoopbackTargetPort = (raw: string): number | null => {
@@ -156,11 +167,11 @@ const parseLoopbackTargetPort = (raw: string): number | null => {
   }
 };
 
-const parseNgrokTunnelSnapshot = (input: unknown): ReadonlyMap<number, string> | null => {
+const parseNgrokTunnelSnapshot = (input: unknown): ReadonlyMap<number, NamedRoute> | null => {
   const decoded = decodeNgrokTunnelList(input);
   if (Option.isNone(decoded)) return null;
 
-  const urlsByTargetPort = new Map<number, string>();
+  const routesByTargetPort = new Map<number, NamedRoute>();
   for (const entry of decoded.value.tunnels) {
     if (!isNgrokTunnel(entry)) continue;
     const targetPort = parseLoopbackTargetPort(entry.config?.addr ?? entry.forwards_to ?? "");
@@ -175,21 +186,27 @@ const parseNgrokTunnelSnapshot = (input: unknown): ReadonlyMap<number, string> |
     if (publicUrl.protocol !== "http:" && publicUrl.protocol !== "https:") continue;
     if (publicUrl.username || publicUrl.password) continue;
 
-    const current = urlsByTargetPort.get(targetPort);
-    if (current === undefined || (current.startsWith("http:") && publicUrl.protocol === "https:")) {
-      urlsByTargetPort.set(targetPort, publicUrl.href);
+    const current = routesByTargetPort.get(targetPort);
+    if (
+      current === undefined ||
+      (current.url.startsWith("http:") && publicUrl.protocol === "https:")
+    ) {
+      routesByTargetPort.set(targetPort, {
+        url: publicUrl.href,
+        urlKind: "public-tunnel",
+      });
     }
   }
-  return urlsByTargetPort;
+  return routesByTargetPort;
 };
 
 const applyNamedRoutes = (
   servers: ReadonlyArray<DiscoveredLocalServer>,
-  urlsByTargetPort: ReadonlyMap<number, string>,
+  routesByTargetPort: ReadonlyMap<number, NamedRoute>,
 ): ReadonlyArray<DiscoveredLocalServer> =>
   servers.map((server) => {
-    const namedUrl = urlsByTargetPort.get(server.port);
-    return namedUrl === undefined ? server : { ...server, url: namedUrl };
+    const route = routesByTargetPort.get(server.port);
+    return route === undefined ? server : { ...server, ...route };
   });
 
 type Listener = (servers: ReadonlyArray<DiscoveredLocalServer>) => Effect.Effect<void>;
@@ -283,7 +300,7 @@ const projectWebProbeSnapshot = (
   const visibleByServer = new Map<string, DiscoveredLocalServer>();
   const namedRouteByServer = new Map<string, DiscoveredLocalServer>();
   for (const server of snapshot.discovered) {
-    if (new URL(server.url).hostname !== server.host) {
+    if (server.urlKind !== undefined) {
       namedRouteByServer.set(localServerKey(server.host, server.port), server);
     }
   }
@@ -303,7 +320,11 @@ const projectWebProbeSnapshot = (
     namedUrl.pathname = url.pathname;
     namedUrl.search = url.search;
     namedUrl.hash = url.hash;
-    visibleByServer.set(serverKey, { ...configured, url: namedUrl.href });
+    visibleByServer.set(serverKey, {
+      ...configured,
+      url: namedUrl.href,
+      urlKind: namedRoute.urlKind,
+    });
   }
   for (const server of snapshot.discovered) {
     const key = localServerKey(server.host, server.port);
@@ -408,6 +429,7 @@ const serversEqual = (
       a.host !== b.host ||
       a.port !== b.port ||
       a.url !== b.url ||
+      a.urlKind !== b.urlKind ||
       a.processName !== b.processName ||
       a.pid !== b.pid ||
       a.terminal?.threadId !== b.terminal?.threadId ||
@@ -439,11 +461,11 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const configuredStateDir = hostEnvironment.PORTLESS_STATE_DIR?.trim();
     const homeDirectory = hostEnvironment.HOME?.trim() || hostEnvironment.USERPROFILE?.trim();
     const stateDir = configuredStateDir || (homeDirectory && path.join(homeDirectory, ".portless"));
-    if (!stateDir) return new Map<number, string>();
+    if (!stateDir) return new Map<number, NamedRoute>();
     const routesJson = yield* fileSystem
       .readFileString(path.join(stateDir, "routes.json"))
       .pipe(Effect.option);
-    if (Option.isNone(routesJson)) return new Map<number, string>();
+    if (Option.isNone(routesJson)) return new Map<number, NamedRoute>();
 
     const proxyPortRaw = yield* fileSystem
       .readFileString(path.join(stateDir, "proxy.port"))
@@ -470,26 +492,21 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   const readNgrokRoutes = Effect.fn("PortDiscovery.readNgrokRoutes")(function* (
     servers: ReadonlyArray<DiscoveredLocalServer>,
   ) {
-    const candidatePorts = [
-      ...new Set(
-        servers
-          .filter(
-            (server) =>
-              server.port === NGROK_DEFAULT_AGENT_API_PORT ||
-              server.processName?.toLowerCase().includes("ngrok") === true,
-          )
-          .map((server) => server.port),
-      ),
-    ];
+    const candidatesByPort = new Map<number, boolean>();
+    for (const server of servers) {
+      const processNameIsNgrok = server.processName?.toLowerCase() === "ngrok";
+      if (server.port !== NGROK_DEFAULT_AGENT_API_PORT && !processNameIsNgrok) continue;
+      candidatesByPort.set(server.port, candidatesByPort.get(server.port) || processNameIsNgrok);
+    }
     const responses = yield* Effect.forEach(
-      candidatePorts,
-      (port) =>
+      candidatesByPort,
+      ([port, processNameIsNgrok]) =>
         httpClient.get(`http://localhost:${port}/api/tunnels`).pipe(
           Effect.flatMap(HttpClientResponse.filterStatusOk),
           Effect.flatMap((response) => response.json),
           Effect.map((body) => {
             const routes = parseNgrokTunnelSnapshot(body);
-            return routes === null ? null : { port, routes };
+            return routes === null ? null : { port, processNameIsNgrok, routes };
           }),
           Effect.scoped,
           Effect.timeoutOption(WEB_PROBE_TIMEOUT),
@@ -499,11 +516,11 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       { concurrency: "unbounded" },
     );
     const agentPorts = new Set<number>();
-    const routes = new Map<number, string>();
+    const routes = new Map<number, NamedRoute>();
     for (const response of responses) {
       if (response === null) continue;
-      agentPorts.add(response.port);
-      for (const [targetPort, publicUrl] of response.routes) routes.set(targetPort, publicUrl);
+      if (response.routes.size > 0 || response.processNameIsNgrok) agentPorts.add(response.port);
+      for (const [targetPort, route] of response.routes) routes.set(targetPort, route);
     }
     return { agentPorts, routes };
   });
@@ -688,7 +705,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       configuredUrls,
     );
     const namedRoutes = new Map(portlessRoutes);
-    for (const [targetPort, publicUrl] of ngrok.routes) namedRoutes.set(targetPort, publicUrl);
+    for (const [targetPort, route] of ngrok.routes) namedRoutes.set(targetPort, route);
     return { ...snapshot, discovered: applyNamedRoutes(snapshot.discovered, namedRoutes) };
   });
 

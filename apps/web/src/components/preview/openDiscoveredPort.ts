@@ -19,6 +19,7 @@ export async function openDiscoveredPort<E>(input: {
     input.threadRef.environmentId,
     input.port.url,
     input.port.port,
+    input.port.urlKind,
   );
   const result = await openPreviewSession({
     openPreview: input.openPreview,

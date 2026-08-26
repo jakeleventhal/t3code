@@ -14,15 +14,16 @@ export function getConfiguredPreviewUrls(
   return scripts?.flatMap((script) => (script.previewUrl ? [script.previewUrl] : [])) ?? [];
 }
 
-export function findDiscoveredServerTargetPort(
+export function findDiscoveredServerTarget(
   url: string,
   servers: ReadonlyArray<PreviewableServer>,
-): number | undefined {
+): { readonly port: number; readonly urlKind: PreviewableServer["urlKind"] } | undefined {
   const normalizedUrl = normalizeHistoryUrl(url);
   if (normalizedUrl === null) return undefined;
   const origin = new URL(normalizedUrl).origin;
-  return servers.find((server) => {
-    const normalizedRequestedUrl = normalizeHistoryUrl(server.requestedUrl);
+  const server = servers.find((candidate) => {
+    const normalizedRequestedUrl = normalizeHistoryUrl(candidate.requestedUrl);
     return normalizedRequestedUrl !== null && new URL(normalizedRequestedUrl).origin === origin;
-  })?.port;
+  });
+  return server ? { port: server.port, urlKind: server.urlKind } : undefined;
 }

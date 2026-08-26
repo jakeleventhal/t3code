@@ -34,7 +34,12 @@ export function useDiscoveredLocalServers(
       mergeServers({
         scanner: scannerState.servers.map((server) => ({
           ...server,
-          url: resolveDiscoveredServerUrl(input.environmentId, server.url, server.port),
+          url: resolveDiscoveredServerUrl(
+            input.environmentId,
+            server.url,
+            server.port,
+            server.urlKind,
+          ),
           requestedUrl: server.url,
         })),
         configuredUrls: input.configuredUrls ?? [],
@@ -101,6 +106,7 @@ export function selectPreferredDiscoveredServer(
   servers: ReadonlyArray<DiscoveredLocalServer>,
 ): DiscoveredLocalServer | null {
   const namedServer = servers.find((server) => {
+    if (server.urlKind !== undefined) return true;
     try {
       return new URL(server.url).hostname !== server.host;
     } catch {
