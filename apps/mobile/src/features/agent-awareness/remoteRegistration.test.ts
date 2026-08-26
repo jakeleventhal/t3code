@@ -5,8 +5,10 @@ import * as NodeCrypto from "node:crypto";
 import { beforeEach, vi } from "vite-plus/test";
 import { describe, expect, it } from "@effect/vitest";
 import Constants from "expo-constants";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/unstable/http";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
@@ -219,7 +221,10 @@ const activeAgentActivitySnapshot = {
   },
 } satisfies RelayAgentActivitySnapshotResponse;
 
-function snapshotRelayLayer() {
+function snapshotRelayLayer(
+  getAgentActivitySnapshot: () => Effect.Effect<RelayAgentActivitySnapshotResponse> = () =>
+    Effect.succeed(activeAgentActivitySnapshot),
+) {
   Constants.expoConfig!.extra = {
     relay: {
       url: "https://relay.example.test/",
@@ -239,7 +244,7 @@ function snapshotRelayLayer() {
       registerDevice: () => Effect.die("unused"),
       unregisterDevice: () => Effect.die("unused"),
       registerLiveActivity: () => Effect.succeed({ ok: true }),
-      getAgentActivitySnapshot: () => Effect.succeed(activeAgentActivitySnapshot),
+      getAgentActivitySnapshot,
       resetTokenCache: Effect.void,
     }),
   );
@@ -582,7 +587,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     },
   );
 
-  it("ends local Live Activities and stops foreground reconciliation on cloud sign-out", () => {
+  it("ends local Live Activities and clears the home-screen widget on cloud sign-out", () => {
     const end = vi.fn(() => Promise.resolve());
     const activity = {
       getPushToken: vi.fn(() => Promise.resolve("activity-token")),
@@ -596,6 +601,14 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     setAgentAwarenessRelayTokenProvider(null);
 
     expect(end).toHaveBeenCalledWith("immediate");
+    expect(publishAgentActivityWidget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "T3 Code",
+        subtitle: "No active agents",
+        activeCount: 0,
+        activities: [],
+      }),
+    );
     expect(appStateMock.listeners).toHaveLength(0);
   });
 
@@ -1031,4 +1044,119 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(widgetMocks.start).toHaveBeenCalledTimes(1);
   });
+  it.effect("refreshes the home-screen widget after arming local agent work", () => {
+    const activity = {
+      getPushToken: vi.fn(() => Promise.resolve("activity-token")),
+      addPushTokenListener: vi.fn(),
+    };
+    widgetMocks.start.mockReturnValueOnce(activity);
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    backgroundRuntime.pending.length = 0;
+    environmentConfigsMock.configs.set("env-1", {
+      environment: { capabilities: { agentActivityPublishing: true } },
+    });
+    vi.mocked(loadPreferences).mockResolvedValueOnce({
+      liveActivitiesEnabled: true,
+    } as Preferences);
+
+    armAgentAwarenessLiveActivityForLocalWork({
+      environmentId: "env-1" as EnvironmentId,
+      threadTitle: "Fix the flaky test",
+      projectTitle: "t3code",
+    });
+
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
+          subtitle: "Agent work in progress",
+          activities: [expect.objectContaining({ status: "Working" })],
+        }),
+      );
+    }).pipe(Effect.provide(snapshotRelayLayer()));
+  });
+
+  it.effect("discards an older widget snapshot when a newer refresh finishes first", () =>
+    Effect.gen(function* () {
+      const firstReadStarted = yield* Deferred.make<void>();
+      const finishFirstRead = yield* Deferred.make<void>();
+      const olderSnapshot = {
+        aggregate: {
+          ...activeAgentActivitySnapshot.aggregate,
+          updatedAt: "2026-05-25T13:06:00.000Z",
+          activities: [
+            {
+              ...activeAgentActivitySnapshot.aggregate.activities[0],
+              status: "Older status",
+              updatedAt: "2026-05-25T13:06:00.000Z",
+            },
+          ],
+        },
+      } satisfies RelayAgentActivitySnapshotResponse;
+      let readCount = 0;
+      const layer = snapshotRelayLayer(() => {
+        readCount++;
+        if (readCount === 1) {
+          return Deferred.succeed(firstReadStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(finishFirstRead)),
+            Effect.as(olderSnapshot),
+          );
+        }
+        return Effect.succeed(activeAgentActivitySnapshot);
+      });
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      backgroundRuntime.pending.length = 0;
+
+      const olderRefresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+        Effect.provide(layer),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(firstReadStarted);
+      yield* refreshActiveLiveActivityRemoteRegistration().pipe(Effect.provide(layer));
+      yield* Deferred.succeed(finishFirstRead, undefined);
+      yield* Fiber.join(olderRefresh);
+
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(1);
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activities: [expect.objectContaining({ status: "Working" })],
+        }),
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not restore an in-flight widget snapshot after cloud sign-out", () =>
+    Effect.gen(function* () {
+      const readStarted = yield* Deferred.make<void>();
+      const finishRead = yield* Deferred.make<void>();
+      const layer = snapshotRelayLayer(() =>
+        Deferred.succeed(readStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(finishRead)),
+          Effect.as(activeAgentActivitySnapshot),
+        ),
+      );
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      backgroundRuntime.pending.length = 0;
+
+      const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+        Effect.provide(layer),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(readStarted);
+      setAgentAwarenessRelayTokenProvider(null);
+      yield* Deferred.succeed(finishRead, undefined);
+      yield* Fiber.join(refresh);
+
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(1);
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          subtitle: "No active agents",
+          activeCount: 0,
+          activities: [],
+        }),
+      );
+    }).pipe(Effect.scoped),
+  );
 });
