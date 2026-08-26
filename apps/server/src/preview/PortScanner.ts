@@ -116,6 +116,7 @@ interface PortlessRouteSnapshot {
 interface NamedRoute {
   readonly url: string;
   readonly urlKind: DiscoveredLocalServerUrlKind;
+  readonly terminal?: Exclude<DiscoveredLocalServer["terminal"], null>;
 }
 
 const parsePortlessRouteSnapshot = (
@@ -324,6 +325,7 @@ const projectWebProbeSnapshot = (
       ...configured,
       url: namedUrl.href,
       urlKind: namedRoute.urlKind,
+      terminal: namedRoute.terminal,
     });
   }
   for (const server of snapshot.discovered) {
@@ -492,21 +494,31 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   const readNgrokRoutes = Effect.fn("PortDiscovery.readNgrokRoutes")(function* (
     servers: ReadonlyArray<DiscoveredLocalServer>,
   ) {
-    const candidatesByPort = new Map<number, boolean>();
+    const candidatesByPort = new Map<
+      number,
+      {
+        readonly processNameIsNgrok: boolean;
+        readonly terminal: DiscoveredLocalServer["terminal"];
+      }
+    >();
     for (const server of servers) {
       const processNameIsNgrok = server.processName?.toLowerCase() === "ngrok";
       if (server.port !== NGROK_DEFAULT_AGENT_API_PORT && !processNameIsNgrok) continue;
-      candidatesByPort.set(server.port, candidatesByPort.get(server.port) || processNameIsNgrok);
+      const current = candidatesByPort.get(server.port);
+      candidatesByPort.set(server.port, {
+        processNameIsNgrok: current?.processNameIsNgrok === true || processNameIsNgrok,
+        terminal: current?.terminal ?? server.terminal,
+      });
     }
     const responses = yield* Effect.forEach(
       candidatesByPort,
-      ([port, processNameIsNgrok]) =>
+      ([port, candidate]) =>
         httpClient.get(`http://localhost:${port}/api/tunnels`).pipe(
           Effect.flatMap(HttpClientResponse.filterStatusOk),
           Effect.flatMap((response) => response.json),
           Effect.map((body) => {
             const routes = parseNgrokTunnelSnapshot(body);
-            return routes === null ? null : { port, processNameIsNgrok, routes };
+            return routes === null ? null : { port, ...candidate, routes };
           }),
           Effect.scoped,
           Effect.timeoutOption(WEB_PROBE_TIMEOUT),
@@ -520,7 +532,12 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     for (const response of responses) {
       if (response === null) continue;
       if (response.routes.size > 0 || response.processNameIsNgrok) agentPorts.add(response.port);
-      for (const [targetPort, route] of response.routes) routes.set(targetPort, route);
+      for (const [targetPort, route] of response.routes) {
+        routes.set(
+          targetPort,
+          response.terminal === null ? route : { ...route, terminal: response.terminal },
+        );
+      }
     }
     return { agentPorts, routes };
   });
