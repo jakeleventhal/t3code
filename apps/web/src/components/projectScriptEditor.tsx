@@ -246,7 +246,15 @@ export function ProjectScriptEditorDialog({
     <>
       <Dialog
         open={isOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open, eventDetails) => {
+          if (
+            !open &&
+            eventDetails.reason === "escape-key" &&
+            !isEscapeDismissal(eventDetails.event)
+          ) {
+            eventDetails.cancel();
+            return;
+          }
           if (!open) {
             setIconPickerOpen(false);
             onClose();
