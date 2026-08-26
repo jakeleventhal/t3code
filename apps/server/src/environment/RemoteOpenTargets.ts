@@ -54,7 +54,11 @@ export const make = Effect.gen(function* () {
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     if (magicDnsName !== null) {
-      targets.push({ kind: "tailscale", host: magicDnsName, username });
+      targets.push({
+        kind: "tailscale",
+        host: magicDnsName,
+        ...(username === null ? {} : { username }),
+      });
     }
 
     // os.hostname() may already be an FQDN (macOS often reports
@@ -62,7 +66,11 @@ export const make = Effect.gen(function* () {
     const hostname = yield* HostProcessHostname;
     const shortHostname = hostname.split(".")[0]?.trim();
     if (shortHostname !== undefined && shortHostname.length > 0) {
-      targets.push({ kind: "mdns", host: `${shortHostname}.local`, username });
+      targets.push({
+        kind: "mdns",
+        host: `${shortHostname}.local`,
+        ...(username === null ? {} : { username }),
+      });
     }
 
     return targets;

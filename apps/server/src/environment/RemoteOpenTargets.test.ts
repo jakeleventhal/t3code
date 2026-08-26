@@ -52,11 +52,11 @@ const resolveTargets = (input: {
   readonly sshd: { readonly ipv4: boolean; readonly ipv6: boolean };
   readonly tailscale: { readonly exitCode: number; readonly stdout: string };
   readonly hostname: string;
-  readonly username?: string;
+  readonly username: string | null;
 }) =>
   Effect.flatMap(RemoteOpenTargets.RemoteOpenTargets, (service) => service.resolveTargets()).pipe(
     Effect.provideService(HostProcessHostname, input.hostname),
-    Effect.provideService(HostProcessUsername, input.username ?? "t3-user"),
+    Effect.provideService(HostProcessUsername, input.username),
     Effect.provide(
       RemoteOpenTargets.layer.pipe(
         Layer.provide(Layer.mergeAll(netLayer(input.sshd), spawnerLayer(input.tailscale))),
@@ -74,6 +74,7 @@ describe("RemoteOpenTargets", () => {
         sshd: { ipv4: false, ipv6: false },
         tailscale: TAILSCALE_UP,
         hostname: "bb-1",
+        username: "t3-user",
       });
       expect(targets).toEqual([]);
     }),
@@ -85,6 +86,7 @@ describe("RemoteOpenTargets", () => {
         sshd: { ipv4: true, ipv6: true },
         tailscale: TAILSCALE_UP,
         hostname: "bb-1",
+        username: "t3-user",
       });
       expect(targets).toEqual([
         { kind: "tailscale", host: "bb-1.tail1234.ts.net", username: "t3-user" },
@@ -99,6 +101,7 @@ describe("RemoteOpenTargets", () => {
         sshd: { ipv4: false, ipv6: true },
         tailscale: TAILSCALE_DOWN,
         hostname: "bb-1",
+        username: "t3-user",
       });
       expect(targets).toEqual([{ kind: "mdns", host: "bb-1.local", username: "t3-user" }]);
     }),
@@ -110,6 +113,7 @@ describe("RemoteOpenTargets", () => {
         sshd: { ipv4: true, ipv6: false },
         tailscale: TAILSCALE_DOWN,
         hostname: "bb-1",
+        username: "t3-user",
       });
       expect(targets).toEqual([{ kind: "mdns", host: "bb-1.local", username: "t3-user" }]);
     }),
@@ -121,8 +125,24 @@ describe("RemoteOpenTargets", () => {
         sshd: { ipv4: true, ipv6: true },
         tailscale: TAILSCALE_DOWN,
         hostname: "bb-1.example.com",
+        username: "t3-user",
       });
       expect(targets).toEqual([{ kind: "mdns", host: "bb-1.local", username: "t3-user" }]);
+    }),
+  );
+
+  it.effect("still advertises hostname targets when the username is unavailable", () =>
+    Effect.gen(function* () {
+      const targets = yield* resolveTargets({
+        sshd: { ipv4: true, ipv6: true },
+        tailscale: TAILSCALE_UP,
+        hostname: "bb-1",
+        username: null,
+      });
+      expect(targets).toEqual([
+        { kind: "tailscale", host: "bb-1.tail1234.ts.net" },
+        { kind: "mdns", host: "bb-1.local" },
+      ]);
     }),
   );
 });
