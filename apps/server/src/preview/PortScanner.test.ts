@@ -281,10 +281,19 @@ effectIt.effect("replaces a discovered listener with its ngrok public URL", () =
 
   return Effect.gen(function* () {
     const scanner = yield* PortScanner.PortDiscovery;
+    yield* scanner.registerTerminalProcesses({
+      threadId: "thread-ngrok",
+      terminalId: "term-ngrok",
+      processIds: [5678],
+    });
     const servers = yield* scanner.scan([configuredUrl]);
     expect(servers.map((server) => [server.port, server.url, server.urlKind])).toEqual([
       [targetPort, "https://feature.ngrok-free.app/docs?mode=test#results", "public-tunnel"],
     ]);
+    expect(servers[0]?.terminal).toEqual({
+      threadId: "thread-ngrok",
+      terminalId: "term-ngrok",
+    });
     expect(requests).toContain("http://localhost:4040/api/tunnels");
     expect(requests).toContain(configuredUrl);
   }).pipe(Effect.provide(layer));
