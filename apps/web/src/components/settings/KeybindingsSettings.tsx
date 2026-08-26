@@ -778,7 +778,7 @@ function KeybindingTableRow({
     if (event.key === "Tab") return;
     event.preventDefault();
     const next = keybindingFromKeyboardEvent(event.nativeEvent, navigator.platform);
-    if (!next && event.key === "Escape") {
+    if (isEscapeDismissal(event)) {
       setDraft({ keyDraft: row.key, isRecording: false });
       return;
     }
@@ -949,7 +949,7 @@ function NewKeybindingTableRow({
     if (event.key === "Tab") return;
     event.preventDefault();
     const next = keybindingFromKeyboardEvent(event.nativeEvent, navigator.platform);
-    if (!next && event.key === "Escape") {
+    if (isEscapeDismissal(event)) {
       setDraft({ keyDraft: "", isRecording: false });
       return;
     }
