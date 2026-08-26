@@ -143,7 +143,10 @@ describe("Portless route enrichment", () => {
       isProcessAlive: (pid) => pid === 123,
     });
 
-    expect(routes.get(4058)).toBe("https://eng-1252-simplify-the-onboarding.artelo.localhost");
+    expect(routes.get(4058)).toEqual({
+      url: "https://eng-1252-simplify-the-onboarding.artelo.localhost",
+      urlKind: "local-proxy",
+    });
     expect(
       PortScanner.__testing.applyNamedRoutes(
         [
@@ -163,6 +166,7 @@ describe("Portless route enrichment", () => {
         host: "localhost",
         port: 4058,
         url: "https://eng-1252-simplify-the-onboarding.artelo.localhost",
+        urlKind: "local-proxy",
         processName: "node",
         pid: 456,
         terminal: null,
@@ -182,7 +186,9 @@ describe("Portless route enrichment", () => {
       isProcessAlive: (pid) => pid === 222,
     });
 
-    expect([...routes]).toEqual([[3001, "http://current.test:8080"]]);
+    expect([...routes]).toEqual([
+      [3001, { url: "http://current.test:8080", urlKind: "local-proxy" }],
+    ]);
   });
 
   it.each(["8080abc", "443.5"])("ignores a malformed proxy port of %s", (proxyPortRaw) => {
@@ -193,7 +199,7 @@ describe("Portless route enrichment", () => {
       isProcessAlive: (pid) => pid === 222,
     });
 
-    expect([...routes]).toEqual([[3001, "https://current.test"]]);
+    expect([...routes]).toEqual([[3001, { url: "https://current.test", urlKind: "local-proxy" }]]);
   });
 });
 
@@ -212,7 +218,9 @@ describe("ngrok route enrichment", () => {
       ],
     });
 
-    expect(routes && [...routes]).toEqual([[4058, "https://feature.ngrok-free.app/"]]);
+    expect(routes && [...routes]).toEqual([
+      [4058, { url: "https://feature.ngrok-free.app/", urlKind: "public-tunnel" }],
+    ]);
   });
 
   it("accepts current forwards_to entries and ignores unsafe or non-web tunnels", () => {
@@ -225,7 +233,9 @@ describe("ngrok route enrichment", () => {
       ],
     });
 
-    expect(routes && [...routes]).toEqual([[4312, "https://docs.example.com/"]]);
+    expect(routes && [...routes]).toEqual([
+      [4312, { url: "https://docs.example.com/", urlKind: "public-tunnel" }],
+    ]);
   });
 
   it("returns null when the agent response does not match the tunnel list contract", () => {
@@ -272,11 +282,39 @@ effectIt.effect("replaces a discovered listener with its ngrok public URL", () =
   return Effect.gen(function* () {
     const scanner = yield* PortScanner.PortDiscovery;
     const servers = yield* scanner.scan([configuredUrl]);
-    expect(servers.map((server) => [server.port, server.url])).toEqual([
-      [targetPort, "https://feature.ngrok-free.app/docs?mode=test#results"],
+    expect(servers.map((server) => [server.port, server.url, server.urlKind])).toEqual([
+      [targetPort, "https://feature.ngrok-free.app/docs?mode=test#results", "public-tunnel"],
     ]);
     expect(requests).toContain("http://localhost:4040/api/tunnels");
     expect(requests).toContain(configuredUrl);
+  }).pipe(Effect.provide(layer));
+});
+
+effectIt.effect("keeps a non-ngrok web server on the default agent port", () => {
+  const fetchFn = ((input: Parameters<typeof globalThis.fetch>[0]) =>
+    Promise.resolve(
+      String(input) === "http://localhost:4040/api/tunnels"
+        ? Response.json({ tunnels: [] })
+        : new Response("app", { headers: { "content-type": "text/html" } }),
+    )) as typeof globalThis.fetch;
+  const layer = makeProbeFailureLayer(
+    () =>
+      Effect.succeed({
+        stdout: "p1234\ncnode\nn*:4040\n",
+        stderr: "",
+        code: null,
+        timedOut: false,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
+      }),
+    fetchFn,
+  );
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    expect(yield* scanner.scan()).toMatchObject([{ port: 4040, url: "http://localhost:4040" }]);
   }).pipe(Effect.provide(layer));
 });
 

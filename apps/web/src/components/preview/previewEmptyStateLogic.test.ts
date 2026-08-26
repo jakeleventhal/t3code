@@ -2,7 +2,7 @@ import type { PreviewSessionSnapshot, ProjectScript } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  findDiscoveredServerTargetPort,
+  findDiscoveredServerTarget,
   getConfiguredPreviewUrls,
   shouldShowPreviewEmptyState,
 } from "./previewEmptyStateLogic";
@@ -46,7 +46,7 @@ describe("getConfiguredPreviewUrls", () => {
   });
 });
 
-describe("findDiscoveredServerTargetPort", () => {
+describe("findDiscoveredServerTarget", () => {
   it("finds the listener port for a Portless history URL", () => {
     const server = {
       host: "localhost",
@@ -57,13 +57,12 @@ describe("findDiscoveredServerTargetPort", () => {
       pid: 123,
       terminal: null,
       source: "scanner",
+      urlKind: "local-proxy",
     } satisfies PreviewableServer;
 
     expect(
-      findDiscoveredServerTargetPort("https://artelo.localhost/products?sort=new#featured", [
-        server,
-      ]),
-    ).toBe(4058);
-    expect(findDiscoveredServerTargetPort("https://other.localhost/", [server])).toBeUndefined();
+      findDiscoveredServerTarget("https://artelo.localhost/products?sort=new#featured", [server]),
+    ).toEqual({ port: 4058, urlKind: "local-proxy" });
+    expect(findDiscoveredServerTarget("https://other.localhost/", [server])).toBeUndefined();
   });
 });
