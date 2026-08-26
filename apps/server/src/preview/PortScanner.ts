@@ -39,7 +39,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as ProcessRunner from "../processRunner.ts";
 
@@ -70,7 +70,8 @@ export class PortDiscovery extends Context.Service<
 >()("t3/preview/PortScanner/PortDiscovery") {}
 
 export const COMMON_DEV_PORTS: ReadonlyArray<number> = Object.freeze([
-  3000, 3001, 3333, 4173, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 8000, 8080, 8081, 8888, 9000,
+  3000, 3001, 3333, 4040, 4173, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 8000, 8080, 8081, 8888,
+  9000,
 ]);
 
 const POLL_INTERVAL = Duration.seconds(3);
@@ -80,6 +81,7 @@ const WEB_PROBE_TIMEOUT = Duration.seconds(1);
 const WEB_PROBE_CACHE_TTL_MS = Duration.toMillis(Duration.seconds(15));
 const WEB_PROBE_CONCURRENCY = 16;
 const NAVIGATION_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const NGROK_DEFAULT_AGENT_API_PORT = 4040;
 
 const PortlessRoute = Schema.Struct({
   hostname: Schema.String,
@@ -92,6 +94,16 @@ const decodePortlessRouteEntries = Schema.decodeUnknownOption(
 );
 const PORTLESS_HOSTNAME_PATTERN =
   /^(?=.{1,253}$)(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)*[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i;
+
+const NgrokTunnel = Schema.Struct({
+  public_url: Schema.String,
+  config: Schema.optional(Schema.Struct({ addr: Schema.String })),
+  forwards_to: Schema.optional(Schema.String),
+});
+const isNgrokTunnel = Schema.is(NgrokTunnel);
+const decodeNgrokTunnelList = Schema.decodeUnknownOption(
+  Schema.Struct({ tunnels: Schema.Array(Schema.Unknown) }),
+);
 
 interface PortlessRouteSnapshot {
   readonly routesJson: string;
@@ -126,13 +138,58 @@ const parsePortlessRouteSnapshot = (input: PortlessRouteSnapshot): ReadonlyMap<n
   return urlsByTargetPort;
 };
 
-const applyPortlessRoutes = (
+const parseLoopbackTargetPort = (raw: string): number | null => {
+  const target = raw.trim();
+  if (/^\d+$/.test(target)) {
+    const port = Number(target);
+    return port > 0 && port < 65_536 ? port : null;
+  }
+
+  try {
+    const url = new URL(target.includes("://") ? target : `http://${target}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!isLoopbackHost(url.hostname)) return null;
+    const port = urlPort(url);
+    return port > 0 && port < 65_536 ? port : null;
+  } catch {
+    return null;
+  }
+};
+
+const parseNgrokTunnelSnapshot = (input: unknown): ReadonlyMap<number, string> | null => {
+  const decoded = decodeNgrokTunnelList(input);
+  if (Option.isNone(decoded)) return null;
+
+  const urlsByTargetPort = new Map<number, string>();
+  for (const entry of decoded.value.tunnels) {
+    if (!isNgrokTunnel(entry)) continue;
+    const targetPort = parseLoopbackTargetPort(entry.config?.addr ?? entry.forwards_to ?? "");
+    if (targetPort === null) continue;
+
+    let publicUrl: URL;
+    try {
+      publicUrl = new URL(entry.public_url.trim());
+    } catch {
+      continue;
+    }
+    if (publicUrl.protocol !== "http:" && publicUrl.protocol !== "https:") continue;
+    if (publicUrl.username || publicUrl.password) continue;
+
+    const current = urlsByTargetPort.get(targetPort);
+    if (current === undefined || (current.startsWith("http:") && publicUrl.protocol === "https:")) {
+      urlsByTargetPort.set(targetPort, publicUrl.href);
+    }
+  }
+  return urlsByTargetPort;
+};
+
+const applyNamedRoutes = (
   servers: ReadonlyArray<DiscoveredLocalServer>,
   urlsByTargetPort: ReadonlyMap<number, string>,
 ): ReadonlyArray<DiscoveredLocalServer> =>
   servers.map((server) => {
-    const portlessUrl = urlsByTargetPort.get(server.port);
-    return portlessUrl === undefined ? server : { ...server, url: portlessUrl };
+    const namedUrl = urlsByTargetPort.get(server.port);
+    return namedUrl === undefined ? server : { ...server, url: namedUrl };
   });
 
 type Listener = (servers: ReadonlyArray<DiscoveredLocalServer>) => Effect.Effect<void>;
@@ -224,13 +281,29 @@ const projectWebProbeSnapshot = (
   configuredUrls: ReadonlyArray<string>,
 ): ReadonlyArray<DiscoveredLocalServer> => {
   const visibleByServer = new Map<string, DiscoveredLocalServer>();
+  const namedRouteByServer = new Map<string, DiscoveredLocalServer>();
+  for (const server of snapshot.discovered) {
+    if (new URL(server.url).hostname !== server.host) {
+      namedRouteByServer.set(localServerKey(server.host, server.port), server);
+    }
+  }
   for (const raw of normalizeConfiguredUrls(configuredUrls)) {
     const url = new URL(raw);
     const port = urlPort(url);
     const serverKey = localServerKey(url.hostname, port);
     if (visibleByServer.has(serverKey)) continue;
     const configured = snapshot.configured.get(webProbeCacheKey(raw));
-    if (configured) visibleByServer.set(serverKey, { ...configured, url: raw });
+    if (!configured) continue;
+    const namedRoute = namedRouteByServer.get(serverKey);
+    if (!namedRoute) {
+      visibleByServer.set(serverKey, { ...configured, url: raw });
+      continue;
+    }
+    const namedUrl = new URL(namedRoute.url);
+    namedUrl.pathname = url.pathname;
+    namedUrl.search = url.search;
+    namedUrl.hash = url.hash;
+    visibleByServer.set(serverKey, { ...configured, url: namedUrl.href });
   }
   for (const server of snapshot.discovered) {
     const key = localServerKey(server.host, server.port);
@@ -392,6 +465,47 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         }
       },
     });
+  });
+
+  const readNgrokRoutes = Effect.fn("PortDiscovery.readNgrokRoutes")(function* (
+    servers: ReadonlyArray<DiscoveredLocalServer>,
+  ) {
+    const candidatePorts = [
+      ...new Set(
+        servers
+          .filter(
+            (server) =>
+              server.port === NGROK_DEFAULT_AGENT_API_PORT ||
+              server.processName?.toLowerCase().includes("ngrok") === true,
+          )
+          .map((server) => server.port),
+      ),
+    ];
+    const responses = yield* Effect.forEach(
+      candidatePorts,
+      (port) =>
+        httpClient.get(`http://localhost:${port}/api/tunnels`).pipe(
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap((response) => response.json),
+          Effect.map((body) => {
+            const routes = parseNgrokTunnelSnapshot(body);
+            return routes === null ? null : { port, routes };
+          }),
+          Effect.scoped,
+          Effect.timeoutOption(WEB_PROBE_TIMEOUT),
+          Effect.map(Option.getOrNull),
+          Effect.orElseSucceed(() => null),
+        ),
+      { concurrency: "unbounded" },
+    );
+    const agentPorts = new Set<number>();
+    const routes = new Map<number, string>();
+    for (const response of responses) {
+      if (response === null) continue;
+      agentPorts.add(response.port);
+      for (const [targetPort, publicUrl] of response.routes) routes.set(targetPort, publicUrl);
+    }
+    return { agentPorts, routes };
   });
 
   const probeCommonPorts = Effect.fn("PortDiscovery.probeCommonPorts")(function* () {
@@ -561,6 +675,23 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     return { discovered, configured } satisfies WebProbeSnapshot;
   });
 
+  const probeAndEnrichWebServers = Effect.fn("PortDiscovery.probeAndEnrichWebServers")(function* (
+    servers: ReadonlyArray<DiscoveredLocalServer>,
+    configuredUrls: ReadonlyArray<string>,
+  ) {
+    const [portlessRoutes, ngrok] = yield* Effect.all([
+      readPortlessRoutes(),
+      readNgrokRoutes(servers),
+    ]);
+    const snapshot = yield* probeWebServers(
+      servers.filter((server) => !ngrok.agentPorts.has(server.port)),
+      configuredUrls,
+    );
+    const namedRoutes = new Map(portlessRoutes);
+    for (const [targetPort, publicUrl] of ngrok.routes) namedRoutes.set(targetPort, publicUrl);
+    return { ...snapshot, discovered: applyNamedRoutes(snapshot.discovered, namedRoutes) };
+  });
+
   const recoverProcessProbeFailure =
     (probe: "lsof" | "windows-listeners") => (error: ProcessRunner.ProcessRunError) =>
       Effect.logDebug("preview port process probe failed; falling back to common-port probes", {
@@ -573,7 +704,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     configuredUrls: ReadonlyArray<string>,
   ) {
     const state = yield* Ref.get(stateRef);
-    const portlessRoutes = yield* readPortlessRoutes();
     const terminalByProcessId = new Map<number, TerminalProcessOwner>();
     for (const registration of state.terminalProcesses.values()) {
       for (const processId of registration.processIds) {
@@ -602,11 +732,10 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
             ProcessTimeoutError: recoverWindowsProbeFailure,
           }),
         );
-      const snapshot = yield* probeWebServers(
+      return yield* probeAndEnrichWebServers(
         listeners ?? (yield* probeCommonPorts()),
         configuredUrls,
       );
-      return { ...snapshot, discovered: applyPortlessRoutes(snapshot.discovered, portlessRoutes) };
     }
     const recoverLsofProbeFailure = recoverProcessProbeFailure("lsof");
     const lsofResult = yield* processRunner
@@ -627,11 +756,10 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
           ProcessTimeoutError: recoverLsofProbeFailure,
         }),
       );
-    const snapshot = yield* probeWebServers(
+    return yield* probeAndEnrichWebServers(
       lsofResult ?? (yield* probeCommonPorts()),
       configuredUrls,
     );
-    return { ...snapshot, discovered: applyPortlessRoutes(snapshot.discovered, portlessRoutes) };
   });
 
   const scanSnapshot = Effect.fn("PortDiscovery.scanSnapshot")(
@@ -763,6 +891,8 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
 export const layer = Layer.effect(PortDiscovery, make);
 
 export const __testing = {
-  applyPortlessRoutes,
+  applyNamedRoutes,
+  parseLoopbackTargetPort,
+  parseNgrokTunnelSnapshot,
   parsePortlessRouteSnapshot,
 };

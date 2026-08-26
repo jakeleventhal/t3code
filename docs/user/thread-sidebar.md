@@ -90,5 +90,5 @@ be selected again. The option is hidden when the connected environment needs a s
 ## Dev server shortcuts
 
 When a terminal starts a local dev server, a globe appears on its thread. Select it to open the
-server in T3 Code's browser. T3 Code recognizes Portless routes and opens their stable named URL
-instead of the underlying `localhost` port.
+server in T3 Code's browser. T3 Code recognizes Portless routes and active ngrok HTTP tunnels, then
+opens their named or public URL instead of the underlying `localhost` port.

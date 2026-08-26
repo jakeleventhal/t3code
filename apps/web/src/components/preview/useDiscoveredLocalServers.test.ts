@@ -156,6 +156,12 @@ describe("formatDiscoveredServerHost", () => {
     ).toBe("feature-branch.artelo.localhost");
   });
 
+  it("shows an ngrok host instead of its underlying listener", () => {
+    expect(
+      formatDiscoveredServerHost(scannerServer({ url: "https://feature.ngrok-free.app/" })),
+    ).toBe("feature.ngrok-free.app");
+  });
+
   it("falls back to the listener host and port for an invalid URL", () => {
     expect(formatDiscoveredServerHost(scannerServer({ url: "not a url" }))).toBe("localhost:5173");
   });
@@ -167,6 +173,11 @@ describe("selectPreferredDiscoveredServer", () => {
     expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), portless])).toBe(
       portless,
     );
+  });
+
+  it("prefers an ngrok tunnel over a bare listener", () => {
+    const ngrok = scannerServer({ port: 4314, url: "https://feature.ngrok-free.app/" });
+    expect(selectPreferredDiscoveredServer([scannerServer({ port: 4004 }), ngrok])).toBe(ngrok);
   });
 
   it("falls back to the first listener when none has a named URL", () => {
