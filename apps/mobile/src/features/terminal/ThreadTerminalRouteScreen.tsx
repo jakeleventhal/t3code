@@ -92,6 +92,7 @@ class TerminalClipboardReadError extends Schema.TaggedErrorClass<TerminalClipboa
 type TerminalToolbarAction =
   | { readonly kind: "send"; readonly key: string; readonly label: string; readonly data: string }
   | { readonly kind: "clear"; readonly key: string; readonly label: string }
+  | { readonly kind: "paste"; readonly key: string; readonly label: string }
   | {
       readonly kind: "modifier";
       readonly key: string;
@@ -480,6 +481,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       { kind: "send", key: "esc", label: "esc", data: "\u001b" },
       ...modifierActions,
       { kind: "send", key: "tab", label: "tab", data: "\t" },
+      { kind: "paste", key: "paste", label: "paste" },
       { kind: "clear", key: "clear", label: "clear" },
       { kind: "send", key: "up", label: "↑", data: "\u001b[A" },
       { kind: "send", key: "down", label: "↓", data: "\u001b[B" },
@@ -1045,9 +1047,15 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         return;
       }
 
+      if (action.kind === "paste") {
+        setPendingModifierState({ terminalId, value: null });
+        void pasteFromClipboard();
+        return;
+      }
+
       writeModifiedInput(action.data);
     },
-    [handleClearTerminal, writeModifiedInput],
+    [handleClearTerminal, pasteFromClipboard, terminalId, writeModifiedInput],
   );
 
   const handleDismissKeyboard = useCallback(() => {
