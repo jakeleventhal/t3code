@@ -137,6 +137,7 @@ interface PortlessRouteSnapshot {
   readonly routesJson: string;
   readonly proxyPortRaw: string | null;
   readonly tls: boolean;
+  readonly proxyListening: boolean;
   readonly isProcessAlive: (pid: number) => boolean;
 }
 
@@ -150,7 +151,7 @@ const parsePortlessRouteSnapshot = (
   input: PortlessRouteSnapshot,
 ): ReadonlyMap<number, NamedRoute> => {
   const decoded = decodePortlessRouteEntries(input.routesJson);
-  if (Option.isNone(decoded)) return new Map();
+  if (Option.isNone(decoded) || !input.proxyListening) return new Map();
 
   const defaultProxyPort = input.tls ? 443 : 80;
   const parsedProxyPort = Number(input.proxyPortRaw?.trim() ?? "");
@@ -287,8 +288,19 @@ const applyNamedRoutes = (
 ): ReadonlyArray<DiscoveredLocalServer> =>
   servers.map((server) => {
     const route = routesByTargetPort.get(server.port);
-    return route === undefined ? server : { ...server, ...route };
+    return route === undefined
+      ? server
+      : { ...server, ...route, terminal: server.terminal ?? route.terminal ?? null };
   });
+
+const hasNamedRoute = (server: DiscoveredLocalServer): boolean => {
+  if (server.urlKind !== undefined) return true;
+  try {
+    return new URL(server.url).hostname !== server.host;
+  } catch {
+    return false;
+  }
+};
 
 type Listener = (servers: ReadonlyArray<DiscoveredLocalServer>) => Effect.Effect<void>;
 
@@ -386,13 +398,7 @@ const projectWebProbeSnapshot = (
   const visibleByServer = new Map<string, DiscoveredLocalServer>();
   const namedRouteByServer = new Map<string, DiscoveredLocalServer>();
   for (const server of snapshot.discovered) {
-    let isNamedRoute = server.urlKind !== undefined;
-    try {
-      isNamedRoute ||= new URL(server.url).hostname !== server.host;
-    } catch {
-      // The scanner only emits parsed HTTP(S) URLs, but keep projection total.
-    }
-    if (isNamedRoute) {
+    if (hasNamedRoute(server)) {
       namedRouteByServer.set(localServerKey(server.host, server.port), server);
     }
   }
@@ -403,7 +409,8 @@ const projectWebProbeSnapshot = (
     if (visibleByServer.has(serverKey)) continue;
     const configured = snapshot.configured.get(webProbeCacheKey(raw));
     if (!configured) continue;
-    const namedRoute = namedRouteByServer.get(serverKey);
+    const namedRoute =
+      namedRouteByServer.get(serverKey) ?? (hasNamedRoute(configured) ? configured : null);
     if (!namedRoute) {
       visibleByServer.set(serverKey, { ...configured, url: raw });
       continue;
@@ -570,11 +577,23 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const tls = yield* fileSystem
       .exists(path.join(stateDir, "proxy.tls"))
       .pipe(Effect.orElseSucceed(() => false));
+    const defaultProxyPort = tls ? 443 : 80;
+    const parsedProxyPort = Number(Option.getOrNull(proxyPortRaw)?.trim() ?? "");
+    const proxyPort =
+      Number.isInteger(parsedProxyPort) && parsedProxyPort > 0 && parsedProxyPort < 65_536
+        ? parsedProxyPort
+        : defaultProxyPort;
+    const proxyListening = yield* Effect.zipWith(
+      net.hasListenerOnHost(proxyPort, "127.0.0.1"),
+      net.hasListenerOnHost(proxyPort, "::1"),
+      (ipv4, ipv6) => ipv4 || ipv6,
+    );
 
     return parsePortlessRouteSnapshot({
       routesJson: routesJson.value,
       proxyPortRaw: Option.getOrNull(proxyPortRaw),
       tls,
+      proxyListening,
       isProcessAlive: (pid) => {
         try {
           process.kill(pid, 0);
@@ -855,7 +874,15 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const namedRoutes = new Map(portlessRoutes);
     for (const [targetPort, route] of tailscaleRoutes) namedRoutes.set(targetPort, route);
     for (const [targetPort, route] of ngrok.routes) namedRoutes.set(targetPort, route);
-    return { ...snapshot, discovered: applyNamedRoutes(snapshot.discovered, namedRoutes) };
+    return {
+      discovered: applyNamedRoutes(snapshot.discovered, namedRoutes),
+      configured: new Map(
+        [...snapshot.configured].map(([key, server]) => [
+          key,
+          applyNamedRoutes([server], namedRoutes)[0] ?? server,
+        ]),
+      ),
+    };
   });
 
   const recoverProcessProbeFailure =
