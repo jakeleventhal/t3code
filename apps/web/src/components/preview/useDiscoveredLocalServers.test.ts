@@ -202,6 +202,27 @@ describe("selectPreferredDiscoveredServer", () => {
     expect(selectPreferredDiscoveredServer([portless, ngrok])).toBe(ngrok);
   });
 
+  it("uses ngrok, Tailscale, Portless, localhost priority regardless of scan order", () => {
+    const localhost = scannerServer({ port: 3000, url: "http://localhost:3000" });
+    const portless = scannerServer({
+      port: 4004,
+      url: "https://artelo.localhost",
+      urlKind: "local-proxy",
+    });
+    const tailscale = scannerServer({
+      port: 4173,
+      url: "https://desktop.example-tailnet.ts.net/",
+    });
+    const ngrok = scannerServer({
+      port: 4314,
+      url: "https://feature.ngrok-free.app/",
+      urlKind: "public-tunnel",
+    });
+
+    expect(selectPreferredDiscoveredServer([localhost, portless, tailscale])).toBe(tailscale);
+    expect(selectPreferredDiscoveredServer([tailscale, portless, ngrok, localhost])).toBe(ngrok);
+  });
+
   it("falls back to the first listener when none has a named URL", () => {
     const first = scannerServer({ port: 3000, url: "http://localhost:3000" });
     expect(selectPreferredDiscoveredServer([first, scannerServer({ port: 5173 })])).toBe(first);

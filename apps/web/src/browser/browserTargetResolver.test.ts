@@ -206,6 +206,18 @@ describe("browser target resolver", () => {
     ).toBe("https://feature.ngrok-free.app/dashboard?mode=test#results");
   });
 
+  it("opens a Tailscale Serve URL directly for a remote environment", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://100.65.180.100:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://desktop.example-tailnet.ts.net/dashboard",
+        4058,
+      ),
+    ).toBe("https://desktop.example-tailnet.ts.net/dashboard");
+  });
+
   it("normalizes public URLs without treating them as environment ports", async () => {
     const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
     expect(resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "example.com/app")).toBe(
