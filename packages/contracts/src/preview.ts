@@ -299,7 +299,7 @@ export type PreviewEvent = typeof PreviewEvent.Type;
 
 /**
  * A local server detected by the port scanner. `url` may be a named local
- * proxy or public tunnel URL while `host` and `port` identify the underlying listener.
+ * proxy or tunnel URL while `host` and `port` identify the underlying listener.
  */
 export const DiscoveredLocalServerUrlKind = Schema.Literals(["local-proxy", "public-tunnel"]);
 export type DiscoveredLocalServerUrlKind = typeof DiscoveredLocalServerUrlKind.Type;
