@@ -376,6 +376,18 @@ const webProbeCacheKey = (raw: string): string => {
   return url.href;
 };
 
+const projectConfiguredPath = (namedUrl: URL, configuredUrl: URL): void => {
+  const mountPath = namedUrl.pathname.replace(/\/+$/, "");
+  namedUrl.pathname =
+    mountPath.length === 0
+      ? configuredUrl.pathname
+      : configuredUrl.pathname === "/"
+        ? namedUrl.pathname
+        : `${mountPath}/${configuredUrl.pathname.replace(/^\/+/, "")}`;
+  namedUrl.search = configuredUrl.search;
+  namedUrl.hash = configuredUrl.hash;
+};
+
 const normalizeConfiguredUrls = (urls: ReadonlyArray<string>): ReadonlyArray<string> => [
   ...new Set(
     urls
@@ -416,9 +428,7 @@ const projectWebProbeSnapshot = (
       continue;
     }
     const namedUrl = new URL(namedRoute.url);
-    namedUrl.pathname = url.pathname;
-    namedUrl.search = url.search;
-    namedUrl.hash = url.hash;
+    projectConfiguredPath(namedUrl, url);
     visibleByServer.set(serverKey, {
       ...configured,
       url: namedUrl.href,
