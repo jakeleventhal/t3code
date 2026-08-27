@@ -108,6 +108,15 @@ export function selectPreferredDiscoveredServer(
   const publicTunnel = servers.find((server) => server.urlKind === "public-tunnel");
   if (publicTunnel) return publicTunnel;
 
+  const tailnetTunnel = servers.find((server) => {
+    try {
+      return new URL(server.url).hostname.toLowerCase().endsWith(".ts.net");
+    } catch {
+      return false;
+    }
+  });
+  if (tailnetTunnel) return tailnetTunnel;
+
   const localProxy = servers.find((server) => server.urlKind === "local-proxy");
   if (localProxy) return localProxy;
 

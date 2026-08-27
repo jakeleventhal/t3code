@@ -83,6 +83,7 @@ const WEB_PROBE_CACHE_TTL_MS = Duration.toMillis(Duration.seconds(15));
 const WEB_PROBE_CONCURRENCY = 16;
 const NAVIGATION_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const NGROK_DEFAULT_AGENT_API_PORT = 4040;
+const TAILSCALE_SERVE_STATUS_TIMEOUT = Duration.millis(1_500);
 
 const PortlessRoute = Schema.Struct({
   hostname: Schema.String,
@@ -106,6 +107,32 @@ const decodeNgrokTunnelList = Schema.decodeUnknownOption(
   Schema.Struct({ tunnels: Schema.Array(Schema.Unknown) }),
 );
 
+const TailscaleServeEndpoint = Schema.Struct({
+  HTTP: Schema.optional(Schema.Boolean),
+  HTTPS: Schema.optional(Schema.Boolean),
+});
+const isTailscaleServeEndpoint = Schema.is(TailscaleServeEndpoint);
+const TailscaleServeHandler = Schema.Struct({ Proxy: Schema.optional(Schema.String) });
+const isTailscaleServeHandler = Schema.is(TailscaleServeHandler);
+const TailscaleServeWeb = Schema.Struct({
+  Handlers: Schema.Record(Schema.String, Schema.Unknown),
+});
+const isTailscaleServeWeb = Schema.is(TailscaleServeWeb);
+const TailscaleServeConfig = Schema.Struct({
+  TCP: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  Web: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+const isTailscaleServeConfig = Schema.is(TailscaleServeConfig);
+const decodeTailscaleServeStatus = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      TCP: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+      Web: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+      Services: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+    }),
+  ),
+);
+
 interface PortlessRouteSnapshot {
   readonly routesJson: string;
   readonly proxyPortRaw: string | null;
@@ -115,7 +142,7 @@ interface PortlessRouteSnapshot {
 
 interface NamedRoute {
   readonly url: string;
-  readonly urlKind: DiscoveredLocalServerUrlKind;
+  readonly urlKind?: DiscoveredLocalServerUrlKind;
   readonly terminal?: Exclude<DiscoveredLocalServer["terminal"], null>;
 }
 
@@ -159,7 +186,7 @@ const parseLoopbackTargetPort = (raw: string): number | null => {
 
   try {
     const url = new URL(target.includes("://") ? target : `http://${target}`);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!["http:", "https:", "https+insecure:"].includes(url.protocol)) return null;
     if (!isLoopbackHost(url.hostname)) return null;
     const port = urlPort(url);
     return port > 0 && port < 65_536 ? port : null;
@@ -196,6 +223,59 @@ const parseNgrokTunnelSnapshot = (input: unknown): ReadonlyMap<number, NamedRout
         url: publicUrl.href,
         urlKind: "public-tunnel",
       });
+    }
+  }
+  return routesByTargetPort;
+};
+
+const parseTailscaleServeStatus = (raw: string): ReadonlyMap<number, NamedRoute> => {
+  const decoded = decodeTailscaleServeStatus(raw);
+  if (Option.isNone(decoded)) return new Map();
+
+  const configs: Array<typeof TailscaleServeConfig.Type> = [decoded.value];
+  for (const service of Object.values(decoded.value.Services ?? {})) {
+    if (isTailscaleServeConfig(service)) configs.push(service);
+  }
+
+  const routesByTargetPort = new Map<number, NamedRoute>();
+  for (const config of configs) {
+    for (const [authority, rawWeb] of Object.entries(config.Web ?? {})) {
+      if (!isTailscaleServeWeb(rawWeb)) continue;
+
+      let inboundUrl: URL;
+      try {
+        inboundUrl = new URL(`http://${authority}`);
+      } catch {
+        continue;
+      }
+      if (inboundUrl.username || inboundUrl.password) continue;
+      if (!inboundUrl.hostname.toLowerCase().endsWith(".ts.net")) continue;
+
+      const inboundPort = urlPort(inboundUrl);
+      const rawEndpoint = config.TCP?.[String(inboundPort)];
+      if (!isTailscaleServeEndpoint(rawEndpoint)) continue;
+      const protocol =
+        rawEndpoint.HTTPS === true ? "https" : rawEndpoint.HTTP === true ? "http" : null;
+      if (protocol === null) continue;
+
+      for (const [mountPath, rawHandler] of Object.entries(rawWeb.Handlers)) {
+        if (!isTailscaleServeHandler(rawHandler) || rawHandler.Proxy === undefined) continue;
+        if (!mountPath.startsWith("/") || mountPath.startsWith("//")) continue;
+        const targetPort = parseLoopbackTargetPort(rawHandler.Proxy);
+        if (targetPort === null) continue;
+
+        const routeUrl = new URL(`${protocol}://${inboundUrl.host}`);
+        routeUrl.pathname = mountPath;
+        const candidate = { url: routeUrl.href };
+        const current = routesByTargetPort.get(targetPort);
+        const shouldReplace =
+          current === undefined ||
+          (current.url.startsWith("http:") && routeUrl.protocol === "https:") ||
+          (current.url.startsWith(`${routeUrl.protocol}//`) &&
+            new URL(current.url).pathname !== "/" &&
+            routeUrl.pathname === "/");
+        if (shouldReplace) routesByTargetPort.set(targetPort, candidate);
+      }
     }
   }
   return routesByTargetPort;
@@ -251,6 +331,11 @@ interface WebProbeSnapshot {
   readonly configured: ReadonlyMap<string, DiscoveredLocalServer>;
 }
 
+interface NamedRouteCacheEntry {
+  readonly routes: ReadonlyMap<number, NamedRoute>;
+  readonly expiresAtMillis: number;
+}
+
 const terminalOwnerKey = (owner: {
   readonly threadId: string;
   readonly terminalId: string;
@@ -301,7 +386,13 @@ const projectWebProbeSnapshot = (
   const visibleByServer = new Map<string, DiscoveredLocalServer>();
   const namedRouteByServer = new Map<string, DiscoveredLocalServer>();
   for (const server of snapshot.discovered) {
-    if (server.urlKind !== undefined) {
+    let isNamedRoute = server.urlKind !== undefined;
+    try {
+      isNamedRoute ||= new URL(server.url).hostname !== server.host;
+    } catch {
+      // The scanner only emits parsed HTTP(S) URLs, but keep projection total.
+    }
+    if (isNamedRoute) {
       namedRouteByServer.set(localServerKey(server.host, server.port), server);
     }
   }
@@ -457,6 +548,10 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     retainCount: 0,
   });
   const webProbeCacheRef = yield* Ref.make<ReadonlyMap<string, WebProbeCacheEntry>>(new Map());
+  const tailscaleRouteCacheRef = yield* Ref.make<NamedRouteCacheEntry>({
+    routes: new Map(),
+    expiresAtMillis: 0,
+  });
   const scanSemaphore = yield* Semaphore.make(1);
 
   const readPortlessRoutes = Effect.fn("PortDiscovery.readPortlessRoutes")(function* () {
@@ -540,6 +635,42 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       }
     }
     return { agentPorts, routes };
+  });
+
+  const readTailscaleRoutes = Effect.fn("PortDiscovery.readTailscaleRoutes")(function* () {
+    const nowMillis = yield* Clock.currentTimeMillis;
+    const cached = yield* Ref.get(tailscaleRouteCacheRef);
+    if (cached.expiresAtMillis > nowMillis) return cached.routes;
+
+    const result = yield* processRunner
+      .run({
+        command: hostPlatform === "win32" ? "tailscale.exe" : "tailscale",
+        args: ["serve", "status", "--json"],
+        timeout: TAILSCALE_SERVE_STATUS_TIMEOUT,
+        maxOutputBytes: 1024 * 1024,
+        outputMode: "truncate",
+      })
+      .pipe(Effect.option);
+    if (
+      Option.isNone(result) ||
+      result.value.code !== 0 ||
+      result.value.timedOut ||
+      result.value.stdoutTruncated ||
+      result.value.stdoutInvalidUtf8
+    ) {
+      const routes = new Map<number, NamedRoute>();
+      yield* Ref.set(tailscaleRouteCacheRef, {
+        routes,
+        expiresAtMillis: nowMillis + WEB_PROBE_CACHE_TTL_MS,
+      });
+      return routes;
+    }
+    const routes = parseTailscaleServeStatus(result.value.stdout);
+    yield* Ref.set(tailscaleRouteCacheRef, {
+      routes,
+      expiresAtMillis: nowMillis + WEB_PROBE_CACHE_TTL_MS,
+    });
+    return routes;
   });
 
   const probeCommonPorts = Effect.fn("PortDiscovery.probeCommonPorts")(function* () {
@@ -713,15 +844,16 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     servers: ReadonlyArray<DiscoveredLocalServer>,
     configuredUrls: ReadonlyArray<string>,
   ) {
-    const [portlessRoutes, ngrok] = yield* Effect.all([
-      readPortlessRoutes(),
-      readNgrokRoutes(servers),
-    ]);
+    const [portlessRoutes, tailscaleRoutes, ngrok] = yield* Effect.all(
+      [readPortlessRoutes(), readTailscaleRoutes(), readNgrokRoutes(servers)],
+      { concurrency: "unbounded" },
+    );
     const snapshot = yield* probeWebServers(
       servers.filter((server) => !ngrok.agentPorts.has(server.port)),
       configuredUrls,
     );
     const namedRoutes = new Map(portlessRoutes);
+    for (const [targetPort, route] of tailscaleRoutes) namedRoutes.set(targetPort, route);
     for (const [targetPort, route] of ngrok.routes) namedRoutes.set(targetPort, route);
     return { ...snapshot, discovered: applyNamedRoutes(snapshot.discovered, namedRoutes) };
   });
@@ -929,4 +1061,5 @@ export const __testing = {
   parseLoopbackTargetPort,
   parseNgrokTunnelSnapshot,
   parsePortlessRouteSnapshot,
+  parseTailscaleServeStatus,
 };

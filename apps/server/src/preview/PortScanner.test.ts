@@ -21,6 +21,7 @@ import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
 import { FetchHttpClient } from "effect/unstable/http";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "./PortScanner.ts";
@@ -243,6 +244,87 @@ describe("ngrok route enrichment", () => {
   });
 });
 
+describe("Tailscale Serve route enrichment", () => {
+  it("maps legacy Serve routes to their loopback targets and prefers HTTPS", () => {
+    const routes = PortScanner.__testing.parseTailscaleServeStatus(
+      JSON.stringify({
+        TCP: {
+          80: { HTTP: true },
+          443: { HTTPS: true },
+        },
+        Web: {
+          "desktop.example-tailnet.ts.net:80": {
+            Handlers: { "/": { Proxy: "http://127.0.0.1:4058" } },
+          },
+          "desktop.example-tailnet.ts.net:443": {
+            Handlers: { "/": { Proxy: "https+insecure://localhost:4058" } },
+          },
+        },
+      }),
+    );
+
+    expect([...routes]).toEqual([
+      [
+        4058,
+        {
+          url: "https://desktop.example-tailnet.ts.net/",
+        },
+      ],
+    ]);
+  });
+
+  it("supports Tailscale Services and preserves a non-root mount", () => {
+    const routes = PortScanner.__testing.parseTailscaleServeStatus(
+      JSON.stringify({
+        Services: {
+          "svc:docs": {
+            TCP: { 8443: { HTTPS: true } },
+            Web: {
+              "docs.example-tailnet.ts.net:8443": {
+                Handlers: { "/preview": { Proxy: "http://[::1]:4312/docs" } },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect([...routes]).toEqual([
+      [
+        4312,
+        {
+          url: "https://docs.example-tailnet.ts.net:8443/preview",
+        },
+      ],
+    ]);
+  });
+
+  it("ignores malformed, credentialed, non-tailnet, and non-loopback routes", () => {
+    const routes = PortScanner.__testing.parseTailscaleServeStatus(
+      JSON.stringify({
+        TCP: { 443: { HTTPS: true } },
+        Web: {
+          "user:secret@desktop.example-tailnet.ts.net:443": {
+            Handlers: { "/": { Proxy: "http://localhost:3000" } },
+          },
+          "public.example.com:443": {
+            Handlers: { "/": { Proxy: "http://localhost:3001" } },
+          },
+          "desktop.example-tailnet.ts.net:443": {
+            Handlers: {
+              "//redirect": { Proxy: "http://localhost:3002" },
+              "/": { Proxy: "http://internal.example.com:3003" },
+            },
+          },
+        },
+      }),
+    );
+
+    expect([...routes]).toEqual([]);
+    expect(PortScanner.__testing.parseTailscaleServeStatus("not json").size).toBe(0);
+  });
+});
+
 effectIt.effect("replaces a discovered listener with its ngrok public URL", () => {
   const targetPort = 43_127;
   const configuredUrl = `http://localhost:${targetPort}/docs?mode=test#results`;
@@ -296,6 +378,58 @@ effectIt.effect("replaces a discovered listener with its ngrok public URL", () =
     });
     expect(requests).toContain("http://localhost:4040/api/tunnels");
     expect(requests).toContain(configuredUrl);
+  }).pipe(Effect.provide(layer));
+});
+
+effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", () => {
+  const targetPort = 43_128;
+  const configuredUrl = `http://localhost:${targetPort}/docs?mode=test#results`;
+  let tailscaleStatusRuns = 0;
+  const fetchFn = ((_input: Parameters<typeof globalThis.fetch>[0]) =>
+    Promise.resolve(
+      new Response("app", { headers: { "content-type": "text/html" } }),
+    )) as typeof globalThis.fetch;
+  const layer = makeProbeFailureLayer((input) => {
+    if (input.command === "tailscale") tailscaleStatusRuns += 1;
+    return Effect.succeed({
+      stdout:
+        input.command === "tailscale"
+          ? JSON.stringify({
+              TCP: { 443: { HTTPS: true } },
+              Web: {
+                "desktop.example-tailnet.ts.net:443": {
+                  Handlers: { "/": { Proxy: `http://localhost:${targetPort}` } },
+                },
+              },
+            })
+          : `p1234\ncnode\nn*:${targetPort}\n`,
+      stderr: "",
+      code: ChildProcessSpawner.ExitCode(0),
+      timedOut: false,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      stdoutInvalidUtf8: false,
+      stderrInvalidUtf8: false,
+    });
+  }, fetchFn);
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    yield* scanner.registerTerminalProcesses({
+      threadId: "thread-tailscale",
+      terminalId: "term-dev-server",
+      processIds: [1234],
+    });
+    const servers = yield* scanner.scan([configuredUrl]);
+    expect(servers.map((server) => [server.port, server.url, server.urlKind])).toEqual([
+      [targetPort, "https://desktop.example-tailnet.ts.net/docs?mode=test#results", undefined],
+    ]);
+    expect(servers[0]?.terminal).toEqual({
+      threadId: "thread-tailscale",
+      terminalId: "term-dev-server",
+    });
+    expect(yield* scanner.scan([configuredUrl])).toEqual(servers);
+    expect(tailscaleStatusRuns).toBe(1);
   }).pipe(Effect.provide(layer));
 });
 
