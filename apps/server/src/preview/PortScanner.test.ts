@@ -449,7 +449,7 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
               TCP: { 443: { HTTPS: true } },
               Web: {
                 "desktop.example-tailnet.ts.net:443": {
-                  Handlers: { "/": { Proxy: `http://localhost:${targetPort}` } },
+                  Handlers: { "/preview": { Proxy: `http://localhost:${targetPort}` } },
                 },
               },
             })
@@ -473,7 +473,11 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
     });
     const servers = yield* scanner.scan([configuredUrl]);
     expect(servers.map((server) => [server.port, server.url, server.urlKind])).toEqual([
-      [targetPort, "https://desktop.example-tailnet.ts.net/docs?mode=test#results", undefined],
+      [
+        targetPort,
+        "https://desktop.example-tailnet.ts.net/preview/docs?mode=test#results",
+        undefined,
+      ],
     ]);
     expect(servers[0]?.terminal).toEqual({
       threadId: "thread-tailscale",
