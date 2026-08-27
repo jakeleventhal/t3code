@@ -11,13 +11,17 @@ import {
   type ViewProps,
 } from "react-native";
 
+import { isTerminalUrl, terminalLinkAtIndex } from "@t3tools/shared/terminalLinks";
+
 import { AppText as Text } from "../../components/ui/AppText";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
   resolveNativeTerminalSurfaceView,
   supportsNativeTerminalOutput,
   type NativeTerminalSurfaceHandle,
+  type TerminalLinkTapEvent,
 } from "./nativeTerminalModule";
 import {
   buildGhosttyThemeConfig,
@@ -250,6 +254,22 @@ const ReadyTerminalSurface = memo(function ReadyTerminalSurface(props: ReadyTerm
       rows: event.nativeEvent.rows,
     });
   };
+  const handleNativeLinkTap = useCallback((event: NativeSyntheticEvent<TerminalLinkTapEvent>) => {
+    const { uri, lineText, tapIndex } = event.nativeEvent;
+    let url = uri;
+    if (url === undefined && lineText !== undefined && tapIndex !== undefined) {
+      const match = terminalLinkAtIndex(lineText, tapIndex);
+      if (match?.kind === "url") {
+        url = match.text;
+      }
+    }
+    // Only http(s) opens for now; path links would need an in-app target.
+    if (url === undefined || !isTerminalUrl(url)) {
+      return;
+    }
+    terminalDebugLog("native:onLinkTap", { url });
+    void tryOpenExternalUrl(url, "terminal-link");
+  }, []);
 
   if (NativeTerminalSurfaceView) {
     return (
@@ -271,6 +291,7 @@ const ReadyTerminalSurface = memo(function ReadyTerminalSurface(props: ReadyTerm
           style={{ flex: 1 }}
           themeConfig={buildGhosttyThemeConfig(theme)}
           onInput={handleNativeInput}
+          onLinkTap={handleNativeLinkTap}
           onResize={handleNativeResize}
           captureRequest={props.captureRequest}
           onCapture={(event) => props.onCapture?.(event.nativeEvent.text)}
