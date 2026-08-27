@@ -5,6 +5,7 @@ import { it as effectIt } from "@effect/vitest";
 import {
   CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS,
   PREVIEW_URL_MAX_LENGTH,
+  ThreadId,
   type DiscoveredLocalServer,
 } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -141,6 +142,7 @@ describe("Portless route enrichment", () => {
       ]),
       proxyPortRaw: "443\n",
       tls: true,
+      proxyListening: true,
       isProcessAlive: (pid) => pid === 123,
     });
 
@@ -184,6 +186,7 @@ describe("Portless route enrichment", () => {
       ]),
       proxyPortRaw: "8080",
       tls: false,
+      proxyListening: true,
       isProcessAlive: (pid) => pid === 222,
     });
 
@@ -197,10 +200,23 @@ describe("Portless route enrichment", () => {
       routesJson: JSON.stringify([{ hostname: "current.test", port: 3001, pid: 222 }]),
       proxyPortRaw,
       tls: true,
+      proxyListening: true,
       isProcessAlive: (pid) => pid === 222,
     });
 
     expect([...routes]).toEqual([[3001, { url: "https://current.test", urlKind: "local-proxy" }]]);
+  });
+
+  it("ignores routes when the Portless proxy is no longer listening", () => {
+    const routes = PortScanner.__testing.parsePortlessRouteSnapshot({
+      routesJson: JSON.stringify([{ hostname: "stale.localhost", port: 3001, pid: 222 }]),
+      proxyPortRaw: "443",
+      tls: true,
+      proxyListening: false,
+      isProcessAlive: () => true,
+    });
+
+    expect([...routes]).toEqual([]);
   });
 });
 
@@ -241,6 +257,39 @@ describe("ngrok route enrichment", () => {
 
   it("returns null when the agent response does not match the tunnel list contract", () => {
     expect(PortScanner.__testing.parseNgrokTunnelSnapshot({ tunnels: "invalid" })).toBeNull();
+  });
+
+  it("keeps app terminal ownership when ngrok runs in another terminal", () => {
+    const appTerminal = { threadId: ThreadId.make("thread-app"), terminalId: "term-app" } as const;
+    const ngrokTerminal = {
+      threadId: ThreadId.make("thread-ngrok"),
+      terminalId: "term-ngrok",
+    } as const;
+    const [server] = PortScanner.__testing.applyNamedRoutes(
+      [
+        {
+          host: "localhost",
+          port: 4058,
+          url: "http://localhost:4058",
+          processName: "node",
+          pid: 456,
+          terminal: appTerminal,
+        },
+      ],
+      new Map([
+        [
+          4058,
+          {
+            url: "https://feature.ngrok-free.app/",
+            urlKind: "public-tunnel" as const,
+            terminal: ngrokTerminal,
+          },
+        ],
+      ]),
+    );
+
+    expect(server?.terminal).toEqual(appTerminal);
+    expect(server?.url).toBe("https://feature.ngrok-free.app/");
   });
 });
 
@@ -385,9 +434,11 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
   const targetPort = 43_128;
   const configuredUrl = `http://localhost:${targetPort}/docs?mode=test#results`;
   let tailscaleStatusRuns = 0;
-  const fetchFn = ((_input: Parameters<typeof globalThis.fetch>[0]) =>
+  const fetchFn = ((input: Parameters<typeof globalThis.fetch>[0]) =>
     Promise.resolve(
-      new Response("app", { headers: { "content-type": "text/html" } }),
+      String(input) === configuredUrl
+        ? new Response("app", { headers: { "content-type": "text/html" } })
+        : new Response("not found", { status: 404 }),
     )) as typeof globalThis.fetch;
   const layer = makeProbeFailureLayer((input) => {
     if (input.command === "tailscale") tailscaleStatusRuns += 1;
