@@ -18,6 +18,8 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
+import { devServerDescription, devServerLabel, type ResolvedDevServer } from "../../lib/devServers";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useEnvironmentScope } from "../../state/session";
 import {
   basename,
@@ -74,6 +76,7 @@ type ThreadGitHeaderActionItems = {
   readonly terminal: HeaderItem;
   readonly files: HeaderItem;
   readonly git: HeaderItem;
+  readonly devServers: HeaderItem | null;
 };
 type QuickActionIcon =
   | "arrow.down.circle"
@@ -106,6 +109,8 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly canOpenFiles: boolean;
   readonly projectScripts: ReadonlyArray<ProjectScript>;
   readonly terminalSessions: ReadonlyArray<TerminalMenuSession>;
+  readonly devServers: ReadonlyArray<ResolvedDevServer>;
+  readonly onOpenDevServer: (server: ResolvedDevServer) => Promise<void>;
   readonly showActionControls?: boolean;
   readonly showDirectFileControl?: boolean;
   readonly onOpenTerminal: (terminalId?: string | null) => void;
@@ -279,6 +284,29 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
 
   return useMemo(
     () => ({
+      devServers:
+        props.devServers.length === 0
+          ? null
+          : {
+              accessibilityLabel: "Open dev server",
+              icon: { name: "globe", type: "sfSymbol" },
+              identifier: "thread-right-dev-servers",
+              label: "Dev servers",
+              menu: {
+                items: props.devServers.map((resolved) => ({
+                  description: devServerDescription(resolved),
+                  disabled: !resolved.reachable,
+                  icon: { name: "globe", type: "sfSymbol" as const },
+                  label: devServerLabel(resolved.server),
+                  onPress: () => void props.onOpenDevServer(resolved),
+                  type: "action" as const,
+                })),
+                title: "Dev servers",
+              },
+              sharesBackground: true,
+              type: "menu",
+              variant: "plain",
+            },
       terminal: {
         accessibilityLabel: "Open terminal",
         disabled: !props.canOpenTerminal,
@@ -422,8 +450,10 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       props.canOpenFiles,
       props.canOpenTerminal,
       props.canOperateTerminal,
+      props.devServers,
       props.gitStatus,
       props.onMergeBack,
+      props.onOpenDevServer,
       props.onOpenNewTerminal,
       props.onOpenTerminal,
       props.onRunProjectScript,
@@ -436,7 +466,13 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
 export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
   return useMemo(
-    () => [actionItems.git, actionItems.files, actionItems.terminal] as HeaderItems,
+    () =>
+      [
+        ...(actionItems.devServers ? [actionItems.devServers] : []),
+        actionItems.git,
+        actionItems.files,
+        actionItems.terminal,
+      ] as HeaderItems,
     [actionItems],
   );
 }
@@ -444,7 +480,13 @@ export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): Hea
 export function useThreadGitCenterHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
   return useMemo(
-    () => [actionItems.files, actionItems.git, actionItems.terminal] as HeaderItems,
+    () =>
+      [
+        ...(actionItems.devServers ? [actionItems.devServers] : []),
+        actionItems.files,
+        actionItems.git,
+        actionItems.terminal,
+      ] as HeaderItems,
     [actionItems],
   );
 }
@@ -466,6 +508,23 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
           onPress={props.auxiliaryPaneControl.onPress}
           separateBackground
         />
+      ) : null}
+      {showActionControls && props.devServers.length > 0 ? (
+        <NativeHeaderToolbar.Menu icon="globe" separateBackground>
+          {props.devServers.map((resolved) => (
+            <NativeHeaderToolbar.MenuAction
+              key={`${resolved.server.host}:${resolved.server.port}`}
+              icon="globe"
+              disabled={!resolved.reachable}
+              onPress={() => void props.onOpenDevServer(resolved)}
+              subtitle={devServerDescription(resolved)}
+            >
+              <NativeHeaderToolbar.Label>
+                {devServerLabel(resolved.server)}
+              </NativeHeaderToolbar.Label>
+            </NativeHeaderToolbar.MenuAction>
+          ))}
+        </NativeHeaderToolbar.Menu>
       ) : null}
       {showActionControls ? (
         <NativeHeaderToolbar.Menu
