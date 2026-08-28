@@ -49,6 +49,7 @@ import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIco
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { relativeTime } from "../../lib/time";
+import { ThreadDevServerIndicator } from "./thread-dev-server-indicator";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
@@ -1054,6 +1055,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               {statusLabel.label}
             </Text>
           ) : null}
+          <ThreadDevServerIndicator thread={thread} selected={selected} />
           {providerInstance ? (
             // Earlier owners peek out behind the current provider so a
             // handed-off thread shows where it has been. The current owner
