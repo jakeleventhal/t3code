@@ -44,6 +44,7 @@ import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIco
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { relativeTime } from "../../lib/time";
+import { ThreadDevServerIndicator } from "./thread-dev-server-indicator";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
@@ -1059,6 +1060,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             </View>
           ) : null}
+          <ThreadDevServerIndicator
+            environmentId={thread.environmentId}
+            threadId={worktreeResourceThreadId(thread.projectId, thread.worktreePath)}
+          />
         </View>
       </View>
     </RowPressable>

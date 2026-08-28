@@ -39,6 +39,8 @@ import { dismissGitActionResult, useGitActionProgress } from "../../state/use-vc
 import { vcsEnvironment } from "../../state/vcs";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
+import { resolveDevServerUrl, type ResolvedDevServer } from "../../lib/devServers";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { connectionTone } from "../connection/connectionTone";
@@ -47,6 +49,8 @@ import {
   useRemoteConnectionStatus,
   useRemoteEnvironmentRuntime,
 } from "../../state/use-remote-environment-registry";
+import { useThreadDevServers } from "../../state/preview";
+import { usePreparedConnection } from "../../state/session";
 import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useSelectedThreadDetailState } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
@@ -99,8 +103,15 @@ function ThreadHeader(
 ) {
   const navigation = useNavigation();
   const { layout, panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
-  const { onOpenTerminal, onMergeBack } = props.gitControls;
+  const { devServers, onOpenDevServer, onOpenTerminal, onMergeBack } = props.gitControls;
   const native = useThreadHeaderOptions(props);
+  // Header item factories are stabilized by source text, so a menu that was
+  // empty while discovery was still running cannot reapply itself. Version the
+  // native options on the resolved servers instead.
+  const devServersOptionsVersion = useMemo(
+    () => devServers.map((entry) => `${entry.url}:${entry.reachable}`),
+    [devServers],
+  );
   const androidHeaderActions = useMemo<ReadonlyArray<ScreenHeaderAction>>(() => {
     const actions: ScreenHeaderAction[] = [];
     if (props.onReturnToThread) {
@@ -127,6 +138,16 @@ function ThreadHeader(
         onPress: () => onOpenTerminal(null),
       });
     }
+    if (devServers.length > 0) {
+      // Android's in-flow header has no menus, so mirror the web sidebar
+      // globe: one tap opens the first reachable linked dev server.
+      const firstReachable = devServers.find((resolved) => resolved.reachable) ?? devServers[0]!;
+      actions.push({
+        accessibilityLabel: "Open dev server",
+        icon: "globe",
+        onPress: () => void onOpenDevServer(firstReachable),
+      });
+    }
     actions.push({
       accessibilityLabel: "Open git controls",
       icon: "point.topleft.down.curvedto.point.bottomright.up",
@@ -142,6 +163,8 @@ function ThreadHeader(
     return actions;
   }, [
     props.gitControls.showActionControls,
+    devServers,
+    onOpenDevServer,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
@@ -161,7 +184,7 @@ function ThreadHeader(
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}
-        optionsVersion={props.gitControls.projectScripts}
+        optionsVersion={[props.gitControls.projectScripts, devServersOptionsVersion]}
         trailing={
           props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
@@ -814,6 +837,31 @@ function ThreadRouteContent(
       terminalMenuSessions,
     ],
   );
+  const linkedDevServers = useThreadDevServers({
+    environmentId: selectedThread?.environmentId ?? null,
+    threadId: selectedThread?.id ?? null,
+  });
+  const preparedConnection = usePreparedConnection(selectedThread?.environmentId ?? null);
+  const devServers = useMemo(() => {
+    const httpBaseUrl = Option.isSome(preparedConnection)
+      ? preparedConnection.value.httpBaseUrl
+      : null;
+    return linkedDevServers.map((server) => resolveDevServerUrl(httpBaseUrl, server));
+  }, [linkedDevServers, preparedConnection]);
+
+  const handleOpenDevServer = useCallback(async (resolved: ResolvedDevServer) => {
+    if (!resolved.reachable) {
+      Alert.alert(
+        "Dev server unreachable",
+        "This dev server cannot be reached from this device over the current connection.",
+      );
+      return;
+    }
+    if (!(await tryOpenExternalUrl(resolved.url, "dev-server"))) {
+      Alert.alert("Unable to open dev server", "The dev server URL could not be opened.");
+    }
+  }, []);
+
   const threadGitControlProps = {
     environmentId: environmentIdRaw ?? "",
     threadId: threadId ?? "",
@@ -851,6 +899,8 @@ function ThreadRouteContent(
         : [],
     terminalSessions: terminalMenuSessions,
     showActionControls: !selectedProjectIsChats,
+    devServers,
+    onOpenDevServer: handleOpenDevServer,
     showDirectFileControl: layout.usesSplitView,
     onOpenTerminal: handleOpenTerminal,
     onOpenNewTerminal: handleOpenNewTerminal,
