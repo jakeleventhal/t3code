@@ -18,6 +18,7 @@
 - [Devices](./user/devices.md)
 - [Usage and limits](./user/usage.md)
 - [Product usage data](./user/telemetry.md)
+- [Linked dev servers](./user/dev-servers.md)
 - [Remote access](./user/remote-access.md)
 - [T3 Connect troubleshooting](./user/t3-connect-troubleshooting.md)
 - [Outside agents (MCP)](./user/outside-agents.md)
