@@ -267,6 +267,68 @@ it("rewrites an exact all-uppercase skill once skills have been discovered", () 
 });
 
 it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
+  it.effect("sends runtime context with the current model without changing saved prompts", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-runtime-context");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-runtime-context-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({ T3_ACP_REQUEST_LOG_PATH: requestLogPath }),
+      );
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      yield* adapter.startSession({
+        threadId,
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "First prompt" });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "Second prompt",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("grok"),
+          model: "grok-4.6",
+          options: [{ id: "reasoningEffort", value: "low" }],
+        },
+      });
+      const snapshot = yield* adapter.readThread(threadId);
+      assert.deepEqual(
+        snapshot.turns.map((turn) => turn.items),
+        [
+          [
+            {
+              prompt: [{ type: "text", text: "First prompt" }],
+              result: { stopReason: "end_turn" },
+            },
+          ],
+          [
+            {
+              prompt: [{ type: "text", text: "Second prompt" }],
+              result: { stopReason: "end_turn" },
+            },
+          ],
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      const prompts = requests
+        .filter((request) => request.method === "session/prompt")
+        .map(
+          (request) => (request.params as { prompt: Array<{ type: string; text: string }> }).prompt,
+        );
+      assert.equal(prompts.length, 2);
+      assert.deepEqual(prompts[0]?.[0], { type: "text", text: "First prompt" });
+      assert.include(prompts[0]?.[1]?.text, "Grok harness, as grok-mock-alt");
+      assert.deepEqual(prompts[1]?.[0], { type: "text", text: "Second prompt" });
+      assert.include(prompts[1]?.[1]?.text, "Grok harness, as grok-4.6");
+      assert.include(prompts[1]?.[1]?.text, "with low reasoning effort");
+      assert.include(prompts[1]?.[1]?.text, "embed images and videos");
+    }),
+  );
+
   it.effect("rewrites discovered skill references only in the ACP prompt", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-skill-rewrite");
@@ -304,9 +366,12 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       const params = promptRequest?.params;
       assert.isTrue(typeof params === "object" && params !== null && "prompt" in params);
       if (typeof params === "object" && params !== null && "prompt" in params) {
-        assert.deepStrictEqual(params.prompt, [
-          { type: "text", text: "Please /review this and preserve $PATH" },
-        ]);
+        const prompt = params.prompt as Array<{ type: string; text: string }>;
+        assert.deepStrictEqual(prompt[0], {
+          type: "text",
+          text: "Please /review this and preserve $PATH",
+        });
+        assert.include(prompt[1]?.text, "Grok harness");
       }
       assert.equal(originalInput, "Please $review this and preserve $PATH");
 
