@@ -461,6 +461,8 @@ describe("ProviderCommandReactor", () => {
           refreshLocalStatus: () =>
             Effect.die("refreshLocalStatus should not be called in this test"),
           refreshStatus,
+          refreshPullRequestStatus: () =>
+            Effect.die("refreshPullRequestStatus should not be called in this test"),
           streamStatus: () => Stream.die("streamStatus should not be called in this test"),
         }),
       ),
@@ -798,12 +800,18 @@ describe("ProviderCommandReactor", () => {
         text,
         hasAttachments: attachments.length > 0,
       });
-      expect(harness.sendTurn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          input: text,
-          ...(attachments.length > 0 ? { attachments } : {}),
-        }),
-      );
+      const sendTurnRequest = harness.sendTurn.mock.calls[0]?.[0] as
+        | { input?: string; attachments?: unknown }
+        | undefined;
+      expect(sendTurnRequest).toBeDefined();
+      if (attachments.length > 0) {
+        expect(sendTurnRequest?.input).toContain(text);
+        expect(sendTurnRequest?.input).toContain("[Attached file:");
+        expect(sendTurnRequest?.input).toContain("(notes.txt, text/plain, 8 B)");
+        expect(sendTurnRequest).not.toHaveProperty("attachments");
+      } else {
+        expect(sendTurnRequest).toMatchObject({ input: text });
+      }
     }),
   );
 

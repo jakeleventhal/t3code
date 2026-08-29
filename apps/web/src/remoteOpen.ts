@@ -57,6 +57,46 @@ function parseHostname(url: string): string | null {
   }
 }
 
+/*
+ * ============================================================================
+ * TODO(PERSONAL-BRANCH-REMOVE-AFTER-PR-8305): PERSONAL BRANCH ONLY.
+ *
+ * Before carrying this block through ANY personal sync, upstream update, merge,
+ * rebase, or conflict resolution, check whether
+ * https://github.com/pingdotgg/t3code/pull/8305 has merged AND whether the
+ * released/managed `t3` server version launched by Desktop contains that fix.
+ * Once both are true, DELETE THIS ENTIRE BLOCK. Do not upstream these machine-
+ * specific environment IDs or usernames.
+ *
+ * This temporarily bridges personal Desktop builds that contain PR #8305 to
+ * older remote `t3` releases that omit `RemoteOpenTarget.username`. An explicit
+ * username from a newer server must always win.
+ * ============================================================================
+ */
+const PERSONAL_DESKTOP_REMOTE_USERNAMES: Readonly<Record<string, string>> = {
+  "15405915-756f-4970-9c8f-e8b61a021fd4": "r2d2",
+  "7a80c1f1-4401-4164-ab6e-406e4df91650": "macbot",
+};
+
+function applyPersonalDesktopRemoteUsername(input: {
+  readonly target: ConnectionTarget;
+  readonly advertised: RemoteOpenTarget;
+  readonly isDesktopRenderer: boolean;
+}): RemoteOpenTarget {
+  if (!input.isDesktopRenderer || input.advertised.username !== undefined) {
+    return input.advertised;
+  }
+  const username = PERSONAL_DESKTOP_REMOTE_USERNAMES[input.target.environmentId];
+  return username === undefined ? input.advertised : { ...input.advertised, username };
+}
+/*
+ * ============================================================================
+ * TODO(PERSONAL-BRANCH-REMOVE-AFTER-PR-8305): END PERSONAL-ONLY WORKAROUND.
+ * Re-check PR #8305 and the Desktop-managed remote server release before ever
+ * resolving a conflict by retaining this code.
+ * ============================================================================
+ */
+
 export function resolveRemoteOpenState(input: {
   readonly target: ConnectionTarget | null;
   /** Configured target for desktop-SSH environments; null elsewhere. */
@@ -99,7 +139,14 @@ export function resolveRemoteOpenState(input: {
   }
   const advertised = input.remoteOpenTargets?.[0];
   if (advertised !== undefined) {
-    return { mode: "remote-links", host: advertised };
+    return {
+      mode: "remote-links",
+      host: applyPersonalDesktopRemoteUsername({
+        target,
+        advertised,
+        isDesktopRenderer: input.isDesktopRenderer,
+      }),
+    };
   }
   return REMOTE_UNAVAILABLE;
 }
