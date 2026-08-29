@@ -57,6 +57,16 @@ function groupNewestCreatedAtMs(group: SidebarWorktreeGroup): number {
   return newest;
 }
 
+function groupPinOrderKey(group: SidebarWorktreeGroup): string | null {
+  let key: string | null = null;
+  for (const thread of group.threads) {
+    const orderKey = thread.pinOrderKey;
+    if (thread.pinnedAt === null || orderKey == null) continue;
+    if (key === null || orderKey < key) key = orderKey;
+  }
+  return key;
+}
+
 /**
  * Group per-thread classifications into worktree rows. A worktree with any
  * active member is a full card (settled/snoozed members ride along inside
@@ -78,7 +88,10 @@ export function buildSidebarWorktreeGroups(
 } {
   const byKey = new Map<
     string,
-    { threads: EnvironmentThreadShell[]; classifications: SidebarThreadClassification[] }
+    {
+      threads: EnvironmentThreadShell[];
+      classifications: SidebarThreadClassification[];
+    }
   >();
   for (const { thread, classification } of classified) {
     const key = threadWorktreeScopeKey(thread);
@@ -108,17 +121,32 @@ export function buildSidebarWorktreeGroups(
       : classifications.includes("snoozed")
         ? "snoozed"
         : "settled";
-    const group: SidebarWorktreeGroup = { key, section, threads, classifications, memberKeys };
+    const group: SidebarWorktreeGroup = {
+      key,
+      section,
+      threads,
+      classifications,
+      memberKeys,
+    };
     if (section === "active") activeGroups.push(group);
     else if (section === "snoozed") snoozedGroups.push(group);
     else settledGroups.push(group);
   }
 
-  activeGroups.sort(
-    (left, right) =>
+  activeGroups.sort((left, right) => {
+    const leftPin = groupPinOrderKey(left);
+    const rightPin = groupPinOrderKey(right);
+    if (leftPin !== null || rightPin !== null) {
+      if (leftPin === null) return 1;
+      if (rightPin === null) return -1;
+      const pinnedOrder = leftPin.localeCompare(rightPin);
+      if (pinnedOrder !== 0) return pinnedOrder;
+    }
+    return (
       groupNewestCreatedAtMs(right) - groupNewestCreatedAtMs(left) ||
-      left.key.localeCompare(right.key),
-  );
+      left.key.localeCompare(right.key)
+    );
+  });
   snoozedGroups.sort(
     (left, right) =>
       groupSoonestWakeMs(left) - groupSoonestWakeMs(right) || left.key.localeCompare(right.key),
@@ -181,9 +209,10 @@ export function pickWorktreeGroupRepresentative(
     how urgently it needs the user (act now > answer > in motion > broken).
     Per-thread Done/Woke signals stay on the member rows — this is only the
     shells-derived aggregate for the card's top-right slot. */
-export function resolveWorktreeGroupLiveStatus(
-  threads: ReadonlyArray<EnvironmentThreadShell>,
-): { kind: "approval" | "input" | "working" | "failed"; workingStartedAt: string | null } | null {
+export function resolveWorktreeGroupLiveStatus(threads: ReadonlyArray<EnvironmentThreadShell>): {
+  kind: "approval" | "input" | "working" | "failed";
+  workingStartedAt: string | null;
+} | null {
   let hasApproval = false;
   let hasInput = false;
   let hasFailed = false;

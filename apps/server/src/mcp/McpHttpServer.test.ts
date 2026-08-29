@@ -221,8 +221,9 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(clickTool?.tool.annotations?.openWorldHint).toBe(true);
       expect(clickTool?.tool.outputSchema).toEqual({
         type: "object",
+        properties: { ok: { type: "boolean", enum: [true] } },
+        required: ["ok"],
         additionalProperties: false,
-        description: "The preview action completed successfully.",
       });
 
       const navigateTool = server.tools.find(({ tool }) => tool.name === "preview_navigate");
