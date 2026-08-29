@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
 import {
@@ -8,8 +8,8 @@ import {
   pickWorktreeGroupRepresentative,
   pickWorktreeGroupTimeLabelThread,
   resolveWorktreeGroupLiveStatus,
-  sidebarThreadKey,
   type SidebarThreadClassification,
+  sidebarThreadKey,
 } from "./SidebarV2.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -86,15 +86,27 @@ describe("buildSidebarWorktreeGroups", () => {
   });
 
   it("keeps distinct worktrees as distinct cards", () => {
-    const first = makeShell({ id: ThreadId.make("thread-a"), worktreePath: "/wt/one" });
-    const second = makeShell({ id: ThreadId.make("thread-b"), worktreePath: "/wt/two" });
+    const first = makeShell({
+      id: ThreadId.make("thread-a"),
+      worktreePath: "/wt/one",
+    });
+    const second = makeShell({
+      id: ThreadId.make("thread-b"),
+      worktreePath: "/wt/two",
+    });
     const { activeGroups } = buildSidebarWorktreeGroups(classifyAll([first, second]));
     expect(activeGroups).toHaveLength(2);
   });
 
   it("classifies the group by its most-alive member: any active member keeps the card active", () => {
-    const settled = makeShell({ id: ThreadId.make("thread-settled"), worktreePath: "/wt/x" });
-    const active = makeShell({ id: ThreadId.make("thread-active"), worktreePath: "/wt/x" });
+    const settled = makeShell({
+      id: ThreadId.make("thread-settled"),
+      worktreePath: "/wt/x",
+    });
+    const active = makeShell({
+      id: ThreadId.make("thread-active"),
+      worktreePath: "/wt/x",
+    });
     const { activeGroups, settledGroups } = buildSidebarWorktreeGroups([
       { thread: settled, classification: "settled" },
       { thread: active, classification: "active" },
@@ -110,7 +122,10 @@ describe("buildSidebarWorktreeGroups", () => {
       worktreePath: "/wt/x",
       snoozedUntil: "2026-03-10T10:00:00.000Z",
     });
-    const settled = makeShell({ id: ThreadId.make("thread-settled"), worktreePath: "/wt/x" });
+    const settled = makeShell({
+      id: ThreadId.make("thread-settled"),
+      worktreePath: "/wt/x",
+    });
     const { activeGroups, snoozedGroups, settledGroups } = buildSidebarWorktreeGroups([
       { thread: snoozed, classification: "snoozed" },
       { thread: settled, classification: "settled" },
@@ -160,12 +175,46 @@ describe("buildSidebarWorktreeGroups", () => {
       "/wt/old",
     ]);
   });
+
+  it("keeps pinned worktrees above unpinned worktrees in persisted pin order", () => {
+    const unpinned = makeShell({
+      id: ThreadId.make("thread-unpinned"),
+      worktreePath: "/wt/new",
+      createdAt: "2026-03-09T15:00:00.000Z",
+    });
+    const pinnedLater = makeShell({
+      id: ThreadId.make("thread-pinned-later"),
+      worktreePath: "/wt/pinned-later",
+      pinnedAt: "2026-03-09T11:00:00.000Z",
+      pinOrderKey: "m",
+    });
+    const pinnedFirst = makeShell({
+      id: ThreadId.make("thread-pinned-first"),
+      worktreePath: "/wt/pinned-first",
+      pinnedAt: "2026-03-09T12:00:00.000Z",
+      pinOrderKey: "a",
+    });
+    const { activeGroups } = buildSidebarWorktreeGroups(
+      classifyAll([unpinned, pinnedLater, pinnedFirst]),
+    );
+    expect(activeGroups.map((group) => group.key)).toEqual([
+      "environment-local:project-1:/wt/pinned-first",
+      "environment-local:project-1:/wt/pinned-later",
+      "environment-local:project-1:/wt/new",
+    ]);
+  });
 });
 
 describe("pickWorktreeGroupRepresentative", () => {
   it("prefers the route thread when it is a member", () => {
-    const first = makeShell({ id: ThreadId.make("thread-a"), worktreePath: "/wt/x" });
-    const second = makeShell({ id: ThreadId.make("thread-b"), worktreePath: "/wt/x" });
+    const first = makeShell({
+      id: ThreadId.make("thread-a"),
+      worktreePath: "/wt/x",
+    });
+    const second = makeShell({
+      id: ThreadId.make("thread-b"),
+      worktreePath: "/wt/x",
+    });
     const { activeGroups } = buildSidebarWorktreeGroups(classifyAll([first, second]));
     const representative = pickWorktreeGroupRepresentative(
       activeGroups[0]!,
@@ -231,7 +280,10 @@ describe("resolveWorktreeGroupLiveStatus", () => {
   it("ranks approval above working", () => {
     const status = resolveWorktreeGroupLiveStatus([
       running("2026-03-09T10:00:00.000Z"),
-      makeShell({ id: ThreadId.make("thread-approval"), hasPendingApprovals: true }),
+      makeShell({
+        id: ThreadId.make("thread-approval"),
+        hasPendingApprovals: true,
+      }),
     ]);
     expect(status?.kind).toBe("approval");
   });
