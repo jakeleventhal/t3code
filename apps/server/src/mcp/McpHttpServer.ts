@@ -109,6 +109,8 @@ export class PreviewScreenshotSaveError extends Schema.TaggedErrorClass<PreviewS
   }
 }
 
+const encodeJsonText = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 const MAX_SCREENSHOT_SITE_SLUG_LENGTH = 40;
 
 /** Hostname reduced to a filename-safe slug, mirroring the desktop's own screenshot names. */
@@ -241,7 +243,7 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                 isError: false,
                 structuredContent: metadata,
                 content: [
-                  { type: "text", text: JSON.stringify(metadata) },
+                  { type: "text", text: encodeJsonText(metadata) },
                   { type: "image", data: png, mimeType: screenshot.mimeType },
                 ],
               });
