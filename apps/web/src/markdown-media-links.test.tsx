@@ -8,14 +8,21 @@ import { remarkStandaloneMediaLinks } from "./markdown-media-links";
 
 function renderMarkdown(
   markdown: string,
-  options?: { lineBreaks?: boolean; embedLocalPaths?: boolean },
+  options?: { lineBreaks?: boolean; embedLocalPaths?: boolean; workspaceRoot?: string | null },
 ): string {
   return renderToStaticMarkup(
     <ReactMarkdown
       remarkPlugins={[
         remarkGfm,
         ...(options?.lineBreaks ? [remarkBreaks] : []),
-        [remarkStandaloneMediaLinks, { embedLocalPaths: options?.embedLocalPaths ?? true }],
+        [
+          remarkStandaloneMediaLinks,
+          {
+            embedLocalPaths: options?.embedLocalPaths ?? true,
+            workspaceRoot:
+              options?.workspaceRoot === undefined ? "/workspace" : options.workspaceRoot,
+          },
+        ],
       ]}
     >
       {markdown}
@@ -102,6 +109,16 @@ describe("remarkStandaloneMediaLinks", () => {
 
     expect(html).toContain('<a href="/tmp/shot.png">shot.png</a>');
     expect(html).toContain('<img src="https://cdn.example.com/clip.mp4"');
+  });
+
+  it("keeps a path link the image renderer could not load", () => {
+    expect(renderMarkdown("[shot.png](~/Downloads/shot.png)")).toContain(
+      '<a href="~/Downloads/shot.png">shot.png</a>',
+    );
+    expect(renderMarkdown("[shot.png](docs/shot.png)", { workspaceRoot: null })).toContain(
+      '<a href="docs/shot.png">shot.png</a>',
+    );
+    expect(renderMarkdown("[shot.png](docs/shot.png)")).toContain('<img src="docs/shot.png"');
   });
 
   it("keeps links in list items and quotes", () => {
