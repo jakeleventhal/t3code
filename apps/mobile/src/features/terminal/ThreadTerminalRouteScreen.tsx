@@ -718,19 +718,30 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     [isRunning, selectedThread, terminalId, writeTerminal],
   );
 
-  // The terminal a paste may still land in once the clipboard read resolves.
-  // Cleared when the route moves on, the session ends, or the screen unmounts,
-  // so a slow read never writes into a different pty than the one it started in.
-  const liveWriteTargetRef = useRef<string | null>(null);
+  // The shell a paste may still land in once the clipboard read resolves. A
+  // fresh token is minted whenever the route, the session, or its running state
+  // changes (so an in-place restart counts) and dropped on unmount, so a slow
+  // read never writes into a different shell than the one it started in.
+  const liveWriteTargetRef = useRef<object | null>(null);
   useEffect(() => {
-    liveWriteTargetRef.current = isRunning ? terminalKey : null;
+    liveWriteTargetRef.current = isRunning ? { terminalKey } : null;
     return () => {
       liveWriteTargetRef.current = null;
     };
   }, [isRunning, terminalKey]);
+  // Like the web terminal, a newer paste supersedes one still in flight instead
+  // of both reaching the shell with their chunks interleaved.
+  const pasteRequestRef = useRef(0);
 
   const pasteFromClipboard = useCallback(async () => {
-    const target = terminalKey;
+    const target = liveWriteTargetRef.current;
+    if (target === null) {
+      return;
+    }
+    const request = ++pasteRequestRef.current;
+    const isCurrent = () =>
+      liveWriteTargetRef.current === target && pasteRequestRef.current === request;
+
     let text: string;
     try {
       text = await Clipboard.getStringAsync();
@@ -738,19 +749,16 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       console.error(new TerminalClipboardReadError({ cause }));
       return;
     }
-    if (liveWriteTargetRef.current !== target) {
-      return;
-    }
 
     // Writes run with parallel concurrency, so chunks are awaited one at a time
-    // to keep them in order. Stop at the first rejected chunk or once the target
-    // moves on rather than deliver a paste with a hole in the middle.
+    // to keep them in order. Stop at the first rejected chunk or once this paste
+    // is no longer current rather than deliver one with a hole in the middle.
     for (const chunk of chunkTerminalWrite(encodeTerminalPaste(text))) {
-      if (liveWriteTargetRef.current !== target || !(await writeInput(chunk))) {
+      if (!isCurrent() || !(await writeInput(chunk))) {
         return;
       }
     }
-  }, [terminalKey, writeInput]);
+  }, [writeInput]);
 
   /** Sends a key through the armed toolbar modifier, if any, and disarms it. */
   const writeModifiedInput = useCallback(
