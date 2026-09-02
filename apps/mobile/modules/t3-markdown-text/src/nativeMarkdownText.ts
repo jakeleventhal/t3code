@@ -1,3 +1,4 @@
+import { markdownLinkMediaKind } from "@t3tools/client-runtime/markdown-images";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import type { SelectableMarkdownSkill } from "./SelectableMarkdownText.types";
@@ -347,6 +348,51 @@ export function nativeMarkdownWithPreservedSoftBreaks(node: MarkdownNode): Markd
     ...(node.type === "soft_break" ? { type: "line_break" as const } : {}),
     ...(children ? { children } : {}),
   };
+}
+
+function isLineBoundary(node: MarkdownNode | undefined): boolean {
+  return node === undefined || node.type === "soft_break" || node.type === "line_break";
+}
+
+/**
+ * A link that owns its line in a top-level paragraph and points at an image or video becomes
+ * that image, matching the web renderer. The breaks beside it go too, so the media does not
+ * leave an empty line behind.
+ */
+export function nativeMarkdownWithStandaloneMediaLinks(node: MarkdownNode): MarkdownNode {
+  const children = node.children?.map((block) => {
+    if (block.type !== "paragraph" || !block.children) return block;
+    const siblings = block.children;
+    const embedded = siblings.map(
+      (child, index) =>
+        child.type === "link" &&
+        child.href !== undefined &&
+        isLineBoundary(siblings[index - 1]) &&
+        isLineBoundary(siblings[index + 1]) &&
+        markdownLinkMediaKind(child.href) !== null,
+    );
+    if (!embedded.includes(true)) return block;
+    return {
+      ...block,
+      children: siblings.flatMap((child, index): MarkdownNode[] => {
+        if (embedded[index]) {
+          const text = nodeTextContent(child);
+          return [
+            {
+              type: "image",
+              href: child.href!,
+              ...(child.title !== undefined ? { title: child.title } : {}),
+              // An autolink's text is its URL, which is not worth repeating as alt text.
+              ...(text.length > 0 && text !== child.href ? { alt: text } : {}),
+            },
+          ];
+        }
+        if (isLineBoundary(child) && (embedded[index - 1] || embedded[index + 1])) return [];
+        return [child];
+      }),
+    };
+  });
+  return children ? { ...node, children } : node;
 }
 
 function appendBlockTerminator(
