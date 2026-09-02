@@ -108,7 +108,9 @@ it.effect("returns bounded structural preview snapshot failures", () =>
         );
 
       expect(snapshot.isError).toBe(true);
-      expect(snapshot.content).toEqual([{ type: "text", text: "Preview snapshot failed." }]);
+      expect(snapshot.content).toEqual([
+        { type: "text", text: "Preview snapshot failed: PreviewAutomationExecutionError." },
+      ]);
       expect(snapshot.structuredContent).toEqual({
         error: {
           _tag: "PreviewAutomationExecutionError",
@@ -203,6 +205,9 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
         );
 
       expect(snapshot.isError).toBe(true);
+      expect(snapshot.content).toEqual([
+        { type: "text", text: "Preview snapshot failed: PreviewScreenshotSaveError." },
+      ]);
       expect(snapshot.structuredContent).toEqual({
         error: { _tag: "PreviewScreenshotSaveError", operation: "snapshot", failureCount: 1 },
       });

@@ -166,7 +166,8 @@ const previewSnapshotFailure = <E>(cause: Cause.Cause<E>) => {
         failureCount: failures.length,
       },
     },
-    content: [{ type: "text", text: "Preview snapshot failed." }],
+    // Agents usually see only the text content, so name the tag there too.
+    content: [{ type: "text", text: `Preview snapshot failed: ${errorTag}.` }],
   });
   return Effect.logWarning("preview snapshot failed", {
     operation: "snapshot",
