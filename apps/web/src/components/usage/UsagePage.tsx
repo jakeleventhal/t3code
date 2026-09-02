@@ -17,6 +17,7 @@ import {
   formatLimitReset,
   formatLimitWindowLabel,
   formatObservedAgo,
+  latestObservedAt,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -523,10 +524,7 @@ function UsageLimitsSection({
       <h2 className="text-sm font-medium text-foreground">Subscription limits</h2>
       <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
         {rows.map(({ provider, entry }) => {
-          const observedAt = entry?.windows.reduce(
-            (latest, window) => (window.observedAt > latest ? window.observedAt : latest),
-            "",
-          );
+          const observedAt = entry === undefined ? null : latestObservedAt(entry.windows);
           return (
             <div key={provider} className="flex min-w-0 flex-col gap-3">
               <div className="flex items-baseline justify-between gap-4">

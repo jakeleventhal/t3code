@@ -294,6 +294,24 @@ export function formatLimitReset(
   return `Resets ${label}`;
 }
 
+/**
+ * The most recently observed window's instant, compared as time rather than
+ * text so readings with different offsets or precision still order correctly.
+ */
+export function latestObservedAt(
+  windows: readonly { readonly observedAt: string }[],
+): string | null {
+  let latest: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const window of windows) {
+    const ms = Date.parse(window.observedAt);
+    if (Number.isNaN(ms) || ms <= latestMs) continue;
+    latest = window.observedAt;
+    latestMs = ms;
+  }
+  return latest;
+}
+
 /** How old a reading is: `just now`, `5m ago`, `3h ago`, `2d ago`. */
 export function formatObservedAgo(observedAt: string, now: Date): string {
   const instant = new Date(observedAt);

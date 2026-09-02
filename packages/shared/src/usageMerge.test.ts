@@ -386,6 +386,22 @@ describe("mergeLimits", () => {
     ]);
   });
 
+  it("orders observations as instants, not text", () => {
+    const limits = mergeLimits([
+      environment("env-a", {
+        ...summary([], []),
+        limits: [reading("claude", 1, "2026-08-07T12:00:00.000Z")],
+      }),
+      environment("env-b", {
+        ...summary([], []),
+        // Later instant, but sorts first as a string because of the offset.
+        limits: [reading("claude", 2, "2026-08-07T15:00:00+02:00")],
+      }),
+    ]);
+
+    expect(limits[0]?.windows[0]?.usedPercent).toBe(2);
+  });
+
   it("breaks an observation tie by environment id so the winner is stable", () => {
     const limits = mergeLimits([
       environment("env-b", {

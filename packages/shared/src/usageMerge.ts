@@ -16,6 +16,8 @@ import {
   type UsageSummary,
 } from "@t3tools/contracts";
 
+import { latestObservedAt } from "./usageFormat.ts";
+
 export interface EnvironmentUsage {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -211,15 +213,6 @@ const EMPTY_MERGED: MergedUsage = {
   staleEnvironments: [],
 };
 
-/** The most recent instant any window of a reading was observed. */
-function latestObservation(limits: UsageProviderLimits): string {
-  let latest = "";
-  for (const window of limits.windows) {
-    if (window.observedAt > latest) latest = window.observedAt;
-  }
-  return latest;
-}
-
 /**
  * Picks one reading per provider across environments: the freshest one, with
  * environment id as the tiebreak so the winner is stable between renders.
@@ -231,24 +224,25 @@ export function mergeLimits(
     UsageProviderKind,
     {
       readonly limits: UsageProviderLimits;
-      readonly observedAt: string;
+      readonly observedAtMs: number;
       readonly environmentId: EnvironmentId;
     }
   >();
   for (const environment of environments) {
     for (const limits of environment.summary.limits) {
-      if (limits.windows.length === 0) continue;
-      const observedAt = latestObservation(limits);
+      const latest = latestObservedAt(limits.windows);
+      if (latest === null) continue;
+      const observedAtMs = Date.parse(latest);
       const current = chosen.get(limits.provider);
       if (
         current === undefined ||
-        observedAt > current.observedAt ||
-        (observedAt === current.observedAt &&
+        observedAtMs > current.observedAtMs ||
+        (observedAtMs === current.observedAtMs &&
           environment.environmentId.localeCompare(current.environmentId) < 0)
       ) {
         chosen.set(limits.provider, {
           limits,
-          observedAt,
+          observedAtMs,
           environmentId: environment.environmentId,
         });
       }

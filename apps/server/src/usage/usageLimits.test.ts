@@ -7,6 +7,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EventId,
   ProviderDriverKind,
+  ProviderInstanceId,
   ThreadId,
   type ProviderRuntimeAccountRateLimitsUpdatedEvent,
 } from "@t3tools/contracts";
@@ -22,6 +23,7 @@ import {
   parseClaudeRateLimitEvent,
   parseCodexRateLimits,
   parseCodexRateLimitsRead,
+  resolveCodexRefreshSettings,
 } from "./usageLimits.ts";
 
 const OBSERVED_AT = "2026-08-10T12:00:00.000Z";
@@ -310,6 +312,42 @@ describe("mergeProviderLimits", () => {
     assert.strictEqual(merged.windows[0]?.usedPercent, 50);
     assert.strictEqual(merged.plan, "Pro");
   });
+});
+
+describe("resolveCodexRefreshSettings", () => {
+  it.live("prefers an explicit Codex instance over the legacy provider block", () =>
+    Effect.gen(function* () {
+      const settingsService = yield* ServerSettings.ServerSettingsService.pipe(
+        Effect.provide(
+          ServerSettings.layerTest({
+            providers: { codex: { binaryPath: "legacy-codex" } },
+            providerInstances: {
+              [ProviderInstanceId.make("codex")]: {
+                driver: ProviderDriverKind.make("codex"),
+                config: { binaryPath: "instance-codex" },
+              },
+            },
+          }).pipe(Layer.provideMerge(NodeServices.layer)),
+        ),
+      );
+      const settings = yield* settingsService.getSettings;
+      assert.strictEqual(resolveCodexRefreshSettings(settings).binaryPath, "instance-codex");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("falls back to the legacy provider block without an explicit instance", () =>
+    Effect.gen(function* () {
+      const settingsService = yield* ServerSettings.ServerSettingsService.pipe(
+        Effect.provide(
+          ServerSettings.layerTest({ providers: { codex: { binaryPath: "legacy-codex" } } }).pipe(
+            Layer.provideMerge(NodeServices.layer),
+          ),
+        ),
+      );
+      const settings = yield* settingsService.getSettings;
+      assert.strictEqual(resolveCodexRefreshSettings(settings).binaryPath, "legacy-codex");
+    }).pipe(Effect.scoped),
+  );
 });
 
 describe("UsageLimitsStore", () => {

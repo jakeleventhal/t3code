@@ -11,7 +11,11 @@
  * @module usageLimits
  */
 import {
+  CodexSettings,
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
   type ProviderRuntimeAccountRateLimitsUpdatedEvent,
+  type ServerSettings as ServerSettingsSnapshot,
   type UsageLimitWindow,
   type UsageProviderKind,
   UsageProviderLimits,
@@ -24,6 +28,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
@@ -69,6 +74,25 @@ const decodeCodexRead = Schema.decodeUnknownOption(CodexRateLimitsRead);
 
 /** Codex's default bucket; other ids are separately metered model families. */
 const CODEX_MAIN_LIMIT_ID = "codex";
+
+const CODEX_DRIVER = ProviderDriverKind.make("codex");
+const decodeCodexSettings = Schema.decodeUnknownOption(CodexSettings);
+
+/**
+ * The Codex configuration the runtime actually launches: an explicit
+ * `providerInstances` entry for the default Codex slot wins over the legacy
+ * `providers.codex` mirror, matching `deriveProviderInstanceConfigMap`.
+ */
+export function resolveCodexRefreshSettings(settings: ServerSettingsSnapshot): CodexSettings {
+  const instance = settings.providerInstances[defaultInstanceIdForDriver(CODEX_DRIVER)];
+  if (instance !== undefined && instance.driver === CODEX_DRIVER) {
+    const decoded = decodeCodexSettings(instance.config ?? {});
+    if (decoded._tag === "Some") {
+      return instance.enabled === false ? { ...decoded.value, enabled: false } : decoded.value;
+    }
+  }
+  return settings.providers.codex;
+}
 
 /**
  * The subset of the Claude Agent SDK's `rate_limit_event` the page shows.
@@ -271,6 +295,12 @@ export function limitsFromRuntimeEvent(
   return null;
 }
 
+/** Unparseable instants sort oldest so a well-formed reading always replaces them. */
+function observedAtMs(window: UsageLimitWindow): number {
+  const ms = Date.parse(window.observedAt);
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+}
+
 /**
  * Folds a new observation into what is already known for the provider. Each
  * window is replaced by its newer reading; windows the update did not mention
@@ -284,7 +314,7 @@ export function mergeProviderLimits(
   for (const window of previous?.windows ?? []) byId.set(window.id, window);
   for (const window of next.windows) {
     const existing = byId.get(window.id);
-    if (existing === undefined || existing.observedAt <= window.observedAt) {
+    if (existing === undefined || observedAtMs(existing) <= observedAtMs(window)) {
       byId.set(window.id, window);
     }
   }
@@ -363,6 +393,10 @@ export const make = Effect.gen(function* () {
 
   const filePath = path.join(config.stateDir, "usage-limits.json");
   const byProvider = new Map<UsageProviderKind, UsageProviderLimits>();
+  // The event subscription and a page-load refresh can record at the same
+  // time; one permit keeps each fold and its write in order so the file never
+  // ends up holding an older snapshot than memory.
+  const recordSemaphore = yield* Semaphore.make(1);
 
   const loaded = yield* fileSystem.readFileString(filePath).pipe(
     Effect.flatMap((raw) => decodeLimitsFile(raw)),
@@ -377,22 +411,25 @@ export const make = Effect.gen(function* () {
   );
 
   const record: UsageLimitsStore["Service"]["record"] = (limits) =>
-    Effect.suspend(() => {
-      const previous = byProvider.get(limits.provider);
-      const merged = mergeProviderLimits(previous, limits);
-      // Claude repeats the same reading on every request inside a turn; only
-      // a changed figure is worth a write.
-      if (previous !== undefined && sameLimits(previous, merged)) return Effect.void;
-      byProvider.set(limits.provider, merged);
-      return persist;
-    });
+    recordSemaphore.withPermits(1)(
+      Effect.suspend(() => {
+        const previous = byProvider.get(limits.provider);
+        const merged = mergeProviderLimits(previous, limits);
+        // Claude repeats the same reading on every request inside a turn; only
+        // a changed figure is worth a write.
+        if (previous !== undefined && sameLimits(previous, merged)) return Effect.void;
+        byProvider.set(limits.provider, merged);
+        return persist;
+      }),
+    );
 
   const refresh: UsageLimitsStore["Service"]["refresh"] = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(
       Effect.catchCause(() => Effect.succeed(null)),
     );
-    const codex = settings?.providers.codex;
-    if (!codex || !codex.enabled) return;
+    if (settings === null) return;
+    const codex = resolveCodexRefreshSettings(settings);
+    if (!codex.enabled) return;
     const observedAt = DateTime.formatIso(yield* DateTime.now);
     const response = yield* readCodexRateLimits({
       binaryPath: codex.binaryPath,

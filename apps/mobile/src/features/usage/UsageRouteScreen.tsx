@@ -10,6 +10,7 @@ import {
   formatLimitReset,
   formatLimitWindowLabel,
   formatObservedAgo,
+  latestObservedAt,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -390,10 +391,7 @@ function LimitsSection(props: {
   return (
     <SettingsSection title="Subscription limits" card>
       {rows.map(({ provider, entry }, index) => {
-        const observedAt = entry?.windows.reduce(
-          (latest, window) => (window.observedAt > latest ? window.observedAt : latest),
-          "",
-        );
+        const observedAt = entry === undefined ? null : latestObservedAt(entry.windows);
         return (
           <View
             key={provider}

@@ -30,6 +30,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -78,6 +79,14 @@ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Longest window the UI offers, plus slack. Older entries are pruned. */
 const CACHE_RETENTION_DAYS = 90;
+
+/**
+ * How long a response waits for the live limits read after the scan is
+ * done. A healthy Codex handshake is well inside this; a stalled one keeps
+ * running detached and lands for the next request instead of holding this
+ * one.
+ */
+const LIMITS_REFRESH_GRACE_MS = 3_000;
 
 /** On-disk shape of the rate snapshot. */
 const RatesCacheFile = Schema.Struct({
@@ -455,14 +464,16 @@ export const make = Effect.gen(function* () {
     const windowStartMs =
       (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
 
+    // The live limits read runs detached from the start so it overlaps the
+    // scan; the response waits for it only briefly once the scan is done.
+    const refreshFiber = yield* Effect.forkDetach(limits.refresh);
+
     // Pricing only matters once records are aggregated, so the rate table
     // loads while transcripts stream instead of gating them: a cold rates
     // fetch on a slow network no longer delays the scan by its own timeout.
-    // The live Codex limit read rides alongside for the same reason.
-    const [, scannedDirs] = yield* Effect.all(
-      [ensureRates(false), collectDirs(windowStartMs), limits.refresh],
-      { concurrency: 3 },
-    );
+    const [, scannedDirs] = yield* Effect.all([ensureRates(false), collectDirs(windowStartMs)], {
+      concurrency: 2,
+    });
 
     const aggregator = new UsageAggregator({
       timeZone: input.timeZone,
@@ -535,6 +546,7 @@ export const make = Effect.gen(function* () {
     yield* persistScanCache();
 
     const aggregated = aggregator.finish();
+    yield* Fiber.join(refreshFiber).pipe(Effect.timeoutOption(LIMITS_REFRESH_GRACE_MS));
     const knownLimits = yield* limits.read;
     const readAt = yield* DateTime.now;
     const finishedAtMs = yield* Clock.currentTimeMillis;
