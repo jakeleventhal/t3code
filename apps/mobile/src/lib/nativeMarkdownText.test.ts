@@ -8,7 +8,73 @@ import {
   nativeMarkdownListItemBlocks,
   nativeMarkdownTextRuns,
   nativeMarkdownWithPreservedSoftBreaks,
+  nativeMarkdownWithStandaloneMediaLinks,
 } from "@t3tools/mobile-markdown-text/markdown";
+
+describe("nativeMarkdownWithStandaloneMediaLinks", () => {
+  const link = (href: string, text = href): MarkdownNode => ({
+    type: "link",
+    href,
+    children: [{ type: "text", content: text }],
+  });
+  const document = (...children: MarkdownNode[]): MarkdownNode => ({
+    type: "document",
+    children: [{ type: "paragraph", children }],
+  });
+
+  it("embeds a media link that owns its line and drops the breaks beside it", () => {
+    expect(
+      nativeMarkdownWithStandaloneMediaLinks(
+        document(
+          { type: "text", content: "Here is the result:" },
+          { type: "soft_break" },
+          link("/tmp/shot.png", "shot.png"),
+          { type: "line_break" },
+          { type: "text", content: "See " },
+          link("/tmp/detail.png", "detail.png"),
+          { type: "text", content: " for details." },
+        ),
+      ),
+    ).toEqual(
+      document(
+        { type: "text", content: "Here is the result:" },
+        { type: "image", href: "/tmp/shot.png", alt: "shot.png" },
+        { type: "text", content: "See " },
+        link("/tmp/detail.png", "detail.png"),
+        { type: "text", content: " for details." },
+      ),
+    );
+  });
+
+  it("embeds a bare URL without alt text and keeps a title", () => {
+    expect(
+      nativeMarkdownWithStandaloneMediaLinks(
+        document({ ...link("https://cdn.example.com/clip.mp4"), title: "Clip" }),
+      ),
+    ).toEqual(document({ type: "image", href: "https://cdn.example.com/clip.mp4", title: "Clip" }));
+  });
+
+  it.each([
+    ["a non-media file", link("/tmp/report.pdf", "report.pdf")],
+    ["an editor scheme", link("vscode://file/tmp/shot.png", "shot.png")],
+  ])("keeps %s a link", (_label, node) => {
+    const input = document(node);
+    expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
+  });
+
+  it("keeps links inside list items", () => {
+    const input: MarkdownNode = {
+      type: "document",
+      children: [
+        {
+          type: "list",
+          children: [{ type: "list_item", children: [link("/tmp/shot.png", "shot.png")] }],
+        },
+      ],
+    };
+    expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
+  });
+});
 
 describe("nativeMarkdownTextRuns", () => {
   it("links a path-shaped code span without changing the same path in prose", () => {

@@ -164,6 +164,30 @@ describe("ChatMarkdown workspace images", () => {
     expect(html).not.toContain("Image unavailable");
   });
 
+  it("embeds a media link that owns its line and keeps the rest as chips and links", () => {
+    const html = render(
+      [
+        "[shot.svg](.t3/workspace-image.svg)",
+        "",
+        "[Recording](https://cdn.example.com/clip.mp4)",
+        "",
+        "Compare with [shot.svg](.t3/workspace-image.svg) and [docs](https://example.com/docs).",
+      ].join("\n"),
+    );
+
+    expect(testState.resources).toEqual([
+      {
+        _tag: "media-file",
+        threadId: threadRef.threadId,
+        path: "C:\\Users\\shawn\\project\\.t3\\workspace-image.svg",
+      },
+    ]);
+    expect(html).toContain('<img src="https://signed.test/workspace-image.svg"');
+    expect(html).toContain("<video");
+    expect(html.match(/chat-markdown-file-link/g)).toHaveLength(1);
+    expect(html).toContain('href="https://example.com/docs"');
+  });
+
   it("normalizes a drive-absolute src in raw image HTML", () => {
     const html = render(String.raw`<img src="D:\screens\workspace-image.svg" alt="raw">`);
 
