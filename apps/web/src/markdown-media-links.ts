@@ -1,4 +1,7 @@
-import { markdownLinkMediaKind } from "@t3tools/client-runtime/markdown-images";
+import {
+  classifyMarkdownImageSource,
+  markdownLinkMediaKind,
+} from "@t3tools/client-runtime/markdown-images";
 
 interface MarkdownAstNode {
   type: string;
@@ -32,8 +35,14 @@ function isLineBoundary(node: MarkdownAstNode | undefined, edge: "before" | "aft
  * embedded link become hard breaks so the media keeps the line to itself. Runs after the
  * Codex directives so a cited file is already a link, and after hard breaks so they count
  * as line edges.
+ *
+ * A path or `file:` target only loads through a thread's asset URL, so surfaces without one
+ * pass `embedLocalPaths: false` and keep the chip, which can still open the file.
  */
-export function remarkStandaloneMediaLinks() {
+export function remarkStandaloneMediaLinks(options: { readonly embedLocalPaths: boolean }) {
+  const embeddable = (url: string) =>
+    markdownLinkMediaKind(url) !== null &&
+    (options.embedLocalPaths || classifyMarkdownImageSource(url)._tag === "Direct");
   return (tree: MarkdownAstNode) => {
     for (const block of tree.children ?? []) {
       if (block.type !== "paragraph" || !block.children) continue;
@@ -48,7 +57,7 @@ export function remarkStandaloneMediaLinks() {
         if (
           child.type !== "link" ||
           typeof child.url !== "string" ||
-          markdownLinkMediaKind(child.url) === null ||
+          !embeddable(child.url) ||
           !isLineBoundary(before, "before") ||
           !isLineBoundary(after, "after")
         ) {

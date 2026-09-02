@@ -188,6 +188,21 @@ describe("ChatMarkdown workspace images", () => {
     expect(html).toContain('href="https://example.com/docs"');
   });
 
+  it("keeps a local media link as a chip when no thread can serve it", () => {
+    const html = renderWithoutThread(
+      [
+        "[shot.svg](.t3/workspace-image.svg)",
+        "",
+        "[clip.mp4](https://cdn.example.com/clip.mp4)",
+      ].join("\n"),
+    );
+
+    expect(testState.resources).toEqual([]);
+    expect(html).toContain("chat-markdown-file-link");
+    expect(html).toContain("<video");
+    expect(html).not.toContain("Image unavailable");
+  });
+
   it("normalizes a drive-absolute src in raw image HTML", () => {
     const html = render(String.raw`<img src="D:\screens\workspace-image.svg" alt="raw">`);
 
