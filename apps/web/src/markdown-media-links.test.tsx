@@ -44,6 +44,27 @@ describe("remarkStandaloneMediaLinks", () => {
     expect(html).toContain('<img src="https://cdn.example.com/shot.png" alt=""');
   });
 
+  it("embeds every link in a run of consecutive lines", () => {
+    const html = renderMarkdown(
+      ["[a.png](https://cdn.example.com/a.png)", "[b.png](https://cdn.example.com/b.png)"].join(
+        "\n",
+      ),
+    );
+
+    expect(html).toContain(
+      '<img src="https://cdn.example.com/a.png" alt="a.png"/><br/>\n<img src="https://cdn.example.com/b.png" alt="b.png"/>',
+    );
+    expect(html).not.toContain("<a ");
+  });
+
+  it("keeps the alt text of an image used as the link label", () => {
+    const html = renderMarkdown(
+      "[![Login page](https://cdn.example.com/thumb.png)](https://cdn.example.com/login.png)",
+    );
+
+    expect(html).toContain('<img src="https://cdn.example.com/login.png" alt="Login page"');
+  });
+
   it("uses the link text as the alt text and keeps the title", () => {
     const html = renderMarkdown('[Login page](https://cdn.example.com/login.png "After sign-in")');
 

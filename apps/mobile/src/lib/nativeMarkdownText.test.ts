@@ -46,6 +46,31 @@ describe("nativeMarkdownWithStandaloneMediaLinks", () => {
     );
   });
 
+  it("embeds every link in a run of consecutive lines", () => {
+    expect(
+      nativeMarkdownWithStandaloneMediaLinks(
+        document(link("/tmp/a.png", "a.png"), { type: "soft_break" }, link("/tmp/b.png", "b.png")),
+      ),
+    ).toEqual(
+      document(
+        { type: "image", href: "/tmp/a.png", alt: "a.png" },
+        { type: "image", href: "/tmp/b.png", alt: "b.png" },
+      ),
+    );
+  });
+
+  it("keeps the alt text of an image used as the link label", () => {
+    expect(
+      nativeMarkdownWithStandaloneMediaLinks(
+        document({
+          type: "link",
+          href: "/tmp/login.png",
+          children: [{ type: "image", href: "/tmp/thumb.png", alt: "Login page" }],
+        }),
+      ),
+    ).toEqual(document({ type: "image", href: "/tmp/login.png", alt: "Login page" }));
+  });
+
   it("embeds a bare URL without alt text and keeps a title", () => {
     expect(
       nativeMarkdownWithStandaloneMediaLinks(

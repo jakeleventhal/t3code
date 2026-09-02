@@ -13,6 +13,7 @@ const TRAILING_NEWLINE_PATTERN = /\n[ \t]*$/u;
 const LEADING_NEWLINE_PATTERN = /^[ \t]*\n/u;
 
 function plainText(node: MarkdownAstNode): string {
+  if (node.type === "image" && typeof node.alt === "string") return node.alt;
   if (typeof node.value === "string") return node.value;
   return node.children?.map(plainText).join("") ?? "";
 }
@@ -39,6 +40,9 @@ export function remarkStandaloneMediaLinks() {
       const siblings = block.children;
       const next: MarkdownAstNode[] = [];
       siblings.forEach((child, index) => {
+        // A text sibling that an earlier embed emptied would hide the line edge from the
+        // next link, so it is dropped rather than carried along.
+        if (child.type === "text" && child.value === "") return;
         const before = next.at(-1);
         const after = siblings[index + 1];
         if (

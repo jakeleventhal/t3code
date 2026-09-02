@@ -376,7 +376,9 @@ export function nativeMarkdownWithStandaloneMediaLinks(node: MarkdownNode): Mark
       ...block,
       children: siblings.flatMap((child, index): MarkdownNode[] => {
         if (embedded[index]) {
-          const text = nodeTextContent(child);
+          // A label that is itself an image carries its text in `alt`.
+          const text =
+            nodeTextContent(child) || (child.children?.find((n) => n.type === "image")?.alt ?? "");
           return [
             {
               type: "image",
