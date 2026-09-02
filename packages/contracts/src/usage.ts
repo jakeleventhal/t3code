@@ -12,6 +12,7 @@
  *
  * @module usage
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -21,14 +22,15 @@ import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
  * client renders partial coverage when an environment reports an older version
  * rather than failing the whole page.
  */
-export const USAGE_CONTRACT_VERSION = 5 as const;
+export const USAGE_CONTRACT_VERSION = 6 as const;
 
 /**
  * Oldest {@link UsageSummary} version a current client will still merge.
  *
- * v5 only adds `grok` to {@link UsageProviderKind}; v4 Claude/Codex buckets
- * remain valid, so mixed-version environments keep those totals instead of
- * treating every older server as stale.
+ * v5 only adds `grok` to {@link UsageProviderKind} and v6 only adds the
+ * optional `limits` list; v4 Claude/Codex buckets remain valid, so
+ * mixed-version environments keep those totals instead of treating every
+ * older server as stale.
  */
 export const USAGE_MERGE_COMPATIBLE_SINCE = 4 as const;
 
@@ -169,6 +171,46 @@ export const UsagePricing = Schema.Struct({
 });
 export type UsagePricing = typeof UsagePricing.Type;
 
+/**
+ * One rolling subscription window, as the provider's CLI reported it.
+ *
+ * `id` is the provider's own name for the window (`five_hour`, `seven_day`,
+ * `seven_day_opus`, ...); Codex's unnamed primary/secondary windows are mapped
+ * onto the same ids by duration so both providers label alike. `usedPercent`
+ * runs 0-100 as both CLIs report it.
+ */
+export const UsageLimitWindow = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  /**
+   * The named bucket a window belongs to when a provider meters some models
+   * separately (Codex `limitName`, e.g. a Spark bucket). Null for the plan's
+   * main limit.
+   */
+  scope: Schema.NullOr(TrimmedNonEmptyString),
+  durationMinutes: Schema.NullOr(NonNegativeInt),
+  usedPercent: Schema.Number,
+  /** ISO instant the window resets, when the provider reports one. */
+  resetsAt: Schema.NullOr(Schema.String),
+  /** ISO instant this figure was last observed. */
+  observedAt: Schema.String,
+});
+export type UsageLimitWindow = typeof UsageLimitWindow.Type;
+
+/**
+ * A provider's subscription limits as last seen by this environment.
+ *
+ * Codex answers `account/rateLimits/read` on demand, so its figures are live.
+ * Claude Code only reports limits inside a running turn, and only the window
+ * closest to exhaustion, so its figures are whatever the latest turn carried.
+ */
+export const UsageProviderLimits = Schema.Struct({
+  provider: UsageProviderKind,
+  /** Provider's plan name when it reports one (Codex `planType`). */
+  plan: Schema.NullOr(TrimmedNonEmptyString),
+  windows: Schema.Array(UsageLimitWindow),
+});
+export type UsageProviderLimits = typeof UsageProviderLimits.Type;
+
 export const UsageSummaryInput = Schema.Struct({
   /** Inclusive first day of the window, in `timeZone`. */
   sinceDay: UsageDay,
@@ -199,6 +241,8 @@ export const UsageSummary = Schema.Struct({
   pricing: UsagePricing,
   /** Wall-clock cost of the scan, surfaced in diagnostics. */
   scanDurationMs: NonNegativeInt,
+  /** Absent from pre-v6 environments, which read as "no limits known". */
+  limits: Schema.Array(UsageProviderLimits).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 });
 export type UsageSummary = typeof UsageSummary.Type;
 

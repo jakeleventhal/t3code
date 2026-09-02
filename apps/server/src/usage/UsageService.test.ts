@@ -17,6 +17,7 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as UsageLimits from "./usageLimits.ts";
 import * as UsageService from "./UsageService.ts";
 
 function claudeLine(id: number, outputTokens: number): string {
@@ -69,6 +70,7 @@ const serviceLayers = (input: {
   ServerConfig.layerTest(process.cwd(), { prefix: input.prefix }).pipe(
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),
+    Layer.provideMerge(UsageLimits.layerTest),
     Layer.provideMerge(
       Layer.succeed(
         HttpClient.HttpClient,
