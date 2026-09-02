@@ -698,13 +698,14 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     setHasMeasuredSurface(true);
   }, [routeEnvironmentId, routeThreadId, terminalId]);
 
+  /** Resolves true once the pty accepted the write, false if it was skipped or rejected. */
   const writeInput = useCallback(
-    (data: string) => {
+    async (data: string): Promise<boolean> => {
       if (!selectedThread || !isRunning) {
-        return;
+        return false;
       }
 
-      void writeTerminal({
+      const result = await writeTerminal({
         environmentId: selectedThread.environmentId,
         input: {
           threadId: selectedThread.id,
@@ -712,6 +713,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           data,
         },
       });
+      return result._tag === "Success";
     },
     [isRunning, selectedThread, terminalId, writeTerminal],
   );
@@ -740,8 +742,13 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       return;
     }
 
+    // Writes run with parallel concurrency, so chunks are awaited one at a time
+    // to keep them in order. Stop at the first rejected chunk or once the target
+    // moves on rather than deliver a paste with a hole in the middle.
     for (const chunk of chunkTerminalWrite(encodeTerminalPaste(text))) {
-      writeInput(chunk);
+      if (liveWriteTargetRef.current !== target || !(await writeInput(chunk))) {
+        return;
+      }
     }
   }, [terminalKey, writeInput]);
 
@@ -749,7 +756,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const writeModifiedInput = useCallback(
     (data: string) => {
       if (pendingModifier === null) {
-        writeInput(data);
+        void writeInput(data);
         return;
       }
 
@@ -763,7 +770,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         void pasteFromClipboard();
         return;
       }
-      writeInput(resolved.data);
+      void writeInput(resolved.data);
     },
     [hostPlatform, pasteFromClipboard, pendingModifier, terminalId, writeInput],
   );
