@@ -29,6 +29,7 @@ import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { terminalEnvironment } from "../../state/terminal";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useServerConfigs } from "../../state/entities";
 import { useWorkspaceState } from "../../state/workspace";
 import {
   MAX_TERMINAL_FONT_SIZE,
@@ -68,7 +69,9 @@ import {
   type TerminalMenuSession,
 } from "./terminalMenu";
 import {
+  chunkTerminalWrite,
   encodeTerminalPaste,
+  hostPlatformFromOs,
   resolveModifiedTerminalInput,
   type HostPlatform,
   type PendingModifier,
@@ -455,9 +458,17 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     });
   }, [terminal.buffer, terminal.buffer.length, terminalKey]);
   const cwd = terminal.summary?.cwd ?? selectedThreadProject?.workspaceRoot ?? null;
+  const serverConfigs = useServerConfigs();
+  const hostOs =
+    routeEnvironmentId === null
+      ? null
+      : (serverConfigs.get(routeEnvironmentId)?.environment.platform.os ?? null);
+  // The descriptor is authoritative; the label is only a hint until it arrives.
   const hostPlatform = useMemo(
-    () => inferHostPlatform(selectedEnvironmentConnection?.environmentLabel ?? null),
-    [selectedEnvironmentConnection?.environmentLabel],
+    () =>
+      hostPlatformFromOs(hostOs) ??
+      inferHostPlatform(selectedEnvironmentConnection?.environmentLabel ?? null),
+    [hostOs, selectedEnvironmentConnection?.environmentLabel],
   );
 
   const terminalTheme = getMobileTerminalTheme(themeId, appearanceScheme);
@@ -705,7 +716,19 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     [isRunning, selectedThread, terminalId, writeTerminal],
   );
 
+  // The terminal a paste may still land in once the clipboard read resolves.
+  // Cleared when the route moves on, the session ends, or the screen unmounts,
+  // so a slow read never writes into a different pty than the one it started in.
+  const liveWriteTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    liveWriteTargetRef.current = isRunning ? terminalKey : null;
+    return () => {
+      liveWriteTargetRef.current = null;
+    };
+  }, [isRunning, terminalKey]);
+
   const pasteFromClipboard = useCallback(async () => {
+    const target = terminalKey;
     let text: string;
     try {
       text = await Clipboard.getStringAsync();
@@ -713,12 +736,14 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       console.error(new TerminalClipboardReadError({ cause }));
       return;
     }
-
-    const encoded = encodeTerminalPaste(text);
-    if (encoded.length > 0) {
-      writeInput(encoded);
+    if (liveWriteTargetRef.current !== target) {
+      return;
     }
-  }, [writeInput]);
+
+    for (const chunk of chunkTerminalWrite(encodeTerminalPaste(text))) {
+      writeInput(chunk);
+    }
+  }, [terminalKey, writeInput]);
 
   /** Sends a key through the armed toolbar modifier, if any, and disarms it. */
   const writeModifiedInput = useCallback(

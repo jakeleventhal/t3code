@@ -1,5 +1,10 @@
+import type { ExecutionEnvironmentPlatformOs } from "@t3tools/contracts";
+
 export type PendingModifier = "ctrl" | "meta";
 export type HostPlatform = "mac" | "linux" | "windows" | "unknown";
+
+/** Upper bound of `TerminalWriteInput.data`; longer writes are rejected by the server. */
+export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
 
 export type ModifiedTerminalInput =
   | { readonly kind: "write"; readonly data: string }
@@ -70,4 +75,34 @@ export function resolveModifiedTerminalInput(input: {
  */
 export function encodeTerminalPaste(text: string): string {
   return text.replace(UNSAFE_PASTE_BYTES, " ").replace(/\r\n|\n/g, "\r");
+}
+
+/**
+ * Splits terminal input into writes the wire contract accepts, never cutting
+ * through a surrogate pair so every chunk stays valid UTF-16.
+ */
+export function chunkTerminalWrite(data: string): ReadonlyArray<string> {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < data.length) {
+    let end = Math.min(start + TERMINAL_WRITE_MAX_LENGTH, data.length);
+    const last = data.charCodeAt(end - 1);
+    if (end < data.length && last >= 0xd800 && last <= 0xdbff) {
+      end -= 1;
+    }
+    chunks.push(data.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
+/**
+ * Maps the OS reported by the environment descriptor onto the toolbar's host
+ * layout. Returns null for "unknown" so callers can fall back to a weaker signal.
+ */
+export function hostPlatformFromOs(os: ExecutionEnvironmentPlatformOs | null): HostPlatform | null {
+  if (os === "darwin") return "mac";
+  if (os === "linux") return "linux";
+  if (os === "windows") return "windows";
+  return null;
 }
