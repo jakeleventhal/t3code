@@ -131,6 +131,7 @@ import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCo
 import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { markdownLinkIconSource } from "@t3tools/mobile-markdown-text/link-icons";
+import { nativeMarkdownWithStandaloneMediaLinks } from "@t3tools/mobile-markdown-text/markdown";
 import {
   normalizeNativeMarkdownUrl,
   resolveMarkdownInlineCodePresentation,
@@ -781,6 +782,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
       <Markdown
         key={`markdown:${segment.sourceOffset}`}
         options={{ gfm: true }}
+        astTransform={nativeMarkdownWithStandaloneMediaLinks}
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -1695,6 +1697,7 @@ function UserMessageContent(props: {
     return (
       <Markdown
         options={{ gfm: true }}
+        astTransform={nativeMarkdownWithStandaloneMediaLinks}
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -1736,6 +1739,7 @@ function UserMessageContent(props: {
           <Markdown
             key={segment.id}
             options={{ gfm: true }}
+            astTransform={nativeMarkdownWithStandaloneMediaLinks}
             renderers={props.markdownStyles.renderers}
             styles={props.markdownStyles.styles}
             theme={props.markdownStyles.theme}
