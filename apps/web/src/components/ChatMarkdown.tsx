@@ -397,7 +397,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
-  remarkStandaloneMediaLinks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -408,7 +407,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkBreaks,
-  remarkStandaloneMediaLinks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -2769,13 +2767,16 @@ function ChatMarkdown({
   ]);
   /* eslint-enable react/no-unstable-nested-components */
 
-  const remarkPlugins = useMemo(
-    () => [
+  // Only a thread can serve a path-based image, so thread-less surfaces such as the pull
+  // request body keep the chip for local media links and embed web URLs alone.
+  const embedLocalPaths = threadRef !== undefined;
+  const remarkPlugins = useMemo((): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => {
+    return [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      [remarkStandaloneMediaLinks, { embedLocalPaths }],
       ...extraRemarkPlugins,
-    ],
-    [extraRemarkPlugins, lineBreaks],
-  );
+    ];
+  }, [embedLocalPaths, extraRemarkPlugins, lineBreaks]);
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
   // Keep that behavior explicit because literal mode depends on escaping the
