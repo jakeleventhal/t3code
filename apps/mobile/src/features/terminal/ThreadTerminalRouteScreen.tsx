@@ -85,10 +85,10 @@ const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 
 class TerminalClipboardReadError extends Schema.TaggedErrorClass<TerminalClipboardReadError>()(
   "TerminalClipboardReadError",
-  { cause: Schema.Defect() },
+  { terminalId: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to read the clipboard for a terminal paste.";
+    return `Failed to read the clipboard for a paste into terminal ${this.terminalId}.`;
   }
 }
 
@@ -746,7 +746,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     try {
       text = await Clipboard.getStringAsync();
     } catch (cause) {
-      console.error(new TerminalClipboardReadError({ cause }));
+      console.error(new TerminalClipboardReadError({ terminalId, cause }));
       return;
     }
 
@@ -758,7 +758,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         return;
       }
     }
-  }, [writeInput]);
+  }, [terminalId, writeInput]);
 
   /** Sends a key through the armed toolbar modifier, if any, and disarms it. */
   const writeModifiedInput = useCallback(
