@@ -77,9 +77,9 @@ const handlers = {
     invokeTargeted<PreviewAutomationResizeResult>("resize", input, input.timeoutMs),
   preview_set_appearance: (input) =>
     invokeTargeted<PreviewAutomationSetColorSchemeResult>("setColorScheme", input),
+  // Saving and image output selection are MCP-only options.
   preview_snapshot: (input) => {
-    // Output selection is MCP-only; the browser still produces a complete snapshot.
-    const { includeImage: _includeImage, ...operationInput } = input ?? {};
+    const { save: _save, includeImage: _includeImage, ...operationInput } = input ?? {};
     return invokeTargeted<PreviewAutomationSnapshot>("snapshot", operationInput);
   },
   preview_click: (input) =>

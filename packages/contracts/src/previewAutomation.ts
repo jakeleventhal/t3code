@@ -63,6 +63,22 @@ const PreviewAutomationTabTargetFields = {
 export const PreviewAutomationTabTargetInput = Schema.Struct(PreviewAutomationTabTargetFields);
 export type PreviewAutomationTabTargetInput = typeof PreviewAutomationTabTargetInput.Type;
 
+export const PreviewAutomationSnapshotInput = Schema.Struct({
+  ...PreviewAutomationTabTargetFields,
+  includeImage: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "Include the PNG image in the tool response. Defaults to true. Set false for text-only output.",
+    }),
+  ),
+  save: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Also write the screenshot PNG to the browser artifacts directory and return its path as screenshotPath.",
+    }),
+  ),
+});
+export type PreviewAutomationSnapshotInput = typeof PreviewAutomationSnapshotInput.Type;
+
 export const PreviewAutomationStatus = Schema.Struct({
   available: Schema.Boolean,
   visible: Schema.Boolean,
