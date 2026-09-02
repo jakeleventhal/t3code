@@ -277,6 +277,36 @@ describe("mergeProviderLimits", () => {
     );
   });
 
+  it("lets a complete reading drop a bucket the account no longer reports", () => {
+    const spark = {
+      id: "codex_spark:five_hour",
+      scope: "Spark",
+      durationMinutes: 300,
+      usedPercent: 3,
+      resetsAt: null,
+      observedAt: OBSERVED_AT,
+    };
+    const weekly = {
+      id: "seven_day",
+      scope: null,
+      durationMinutes: 10_080,
+      usedPercent: 16,
+      resetsAt: null,
+      observedAt: LATER,
+    };
+    const previous = { provider: "codex" as const, plan: "Pro", windows: [weekly, spark] };
+    const next = { provider: "codex" as const, plan: "Pro", windows: [weekly] };
+
+    assert.deepStrictEqual(
+      mergeProviderLimits(previous, next).windows.map((window) => window.id),
+      ["seven_day", "codex_spark:five_hour"],
+    );
+    assert.deepStrictEqual(
+      mergeProviderLimits(previous, next, { complete: true }).windows.map((window) => window.id),
+      ["seven_day"],
+    );
+  });
+
   it("never replaces a reading with an older one", () => {
     const merged = mergeProviderLimits(
       {
@@ -310,6 +340,22 @@ describe("mergeProviderLimits", () => {
     );
 
     assert.strictEqual(merged.windows[0]?.usedPercent, 50);
+    assert.strictEqual(merged.plan, "Pro");
+  });
+
+  it("keeps the current plan label when an older observation carries a different one", () => {
+    const window = {
+      id: "five_hour",
+      scope: null,
+      durationMinutes: 300,
+      usedPercent: 50,
+      resetsAt: null,
+    };
+    const merged = mergeProviderLimits(
+      { provider: "codex", plan: "Pro", windows: [{ ...window, observedAt: LATER }] },
+      { provider: "codex", plan: "Plus", windows: [{ ...window, observedAt: OBSERVED_AT }] },
+    );
+
     assert.strictEqual(merged.plan, "Pro");
   });
 });

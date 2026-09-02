@@ -22,6 +22,7 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -301,17 +302,30 @@ function observedAtMs(window: UsageLimitWindow): number {
   return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
 }
 
+/** The newest instant among a reading's windows; oldest possible when it has none. */
+function latestObservedMs(limits: UsageProviderLimits | undefined): number {
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const window of limits?.windows ?? []) latest = Math.max(latest, observedAtMs(window));
+  return latest;
+}
+
 /**
  * Folds a new observation into what is already known for the provider. Each
- * window is replaced by its newer reading; windows the update did not mention
- * are kept, which is what turns Claude's one-window events into a full set.
+ * window is replaced by its newer reading. A partial update keeps the windows
+ * it did not mention, which is what turns Claude's one-window events into a
+ * full set; a complete reading (Codex's on-demand read) replaces the set, so a
+ * bucket the account stopped reporting disappears.
  */
 export function mergeProviderLimits(
   previous: UsageProviderLimits | undefined,
   next: UsageProviderLimits,
+  options: { readonly complete?: boolean } = {},
 ): UsageProviderLimits {
   const byId = new Map<string, UsageLimitWindow>();
-  for (const window of previous?.windows ?? []) byId.set(window.id, window);
+  if (!options.complete) {
+    for (const window of previous?.windows ?? []) byId.set(window.id, window);
+  }
+  const nextIsNewest = latestObservedMs(next) >= latestObservedMs(previous);
   for (const window of next.windows) {
     const existing = byId.get(window.id);
     if (existing === undefined || observedAtMs(existing) <= observedAtMs(window)) {
@@ -326,7 +340,9 @@ export function mergeProviderLimits(
         (right.durationMinutes ?? Number.MAX_SAFE_INTEGER) ||
       left.id.localeCompare(right.id),
   );
-  return { provider: next.provider, plan: next.plan ?? previous?.plan ?? null, windows };
+  // A delayed older observation must not relabel the plan either.
+  const plan = next.plan !== null && nextIsNewest ? next.plan : (previous?.plan ?? null);
+  return { provider: next.provider, plan, windows };
 }
 
 function sameWindow(left: UsageLimitWindow, right: UsageLimitWindow): boolean {
@@ -354,12 +370,19 @@ function sameLimits(left: UsageProviderLimits, right: UsageProviderLimits): bool
 export class UsageLimitsStore extends Context.Service<
   UsageLimitsStore,
   {
-    /** Folds one observation into the store. */
-    readonly record: (limits: UsageProviderLimits) => Effect.Effect<void>;
+    /**
+     * Folds one observation into the store. A `complete` reading replaces the
+     * provider's window set instead of merging into it.
+     */
+    readonly record: (
+      limits: UsageProviderLimits,
+      options?: { readonly complete?: boolean },
+    ) => Effect.Effect<void>;
     /**
      * Asks providers that can answer on demand (Codex) for a live reading.
      * Never fails: a provider that cannot answer leaves its last reading in
-     * place.
+     * place. Concurrent callers share one in-flight read rather than each
+     * launching a CLI.
      */
     readonly refresh: Effect.Effect<void>;
     readonly read: Effect.Effect<readonly UsageProviderLimits[]>;
@@ -410,11 +433,11 @@ export const make = Effect.gen(function* () {
     Effect.catchCause(() => Effect.void),
   );
 
-  const record: UsageLimitsStore["Service"]["record"] = (limits) =>
+  const record: UsageLimitsStore["Service"]["record"] = (limits, options) =>
     recordSemaphore.withPermits(1)(
       Effect.suspend(() => {
         const previous = byProvider.get(limits.provider);
-        const merged = mergeProviderLimits(previous, limits);
+        const merged = mergeProviderLimits(previous, limits, options);
         // Claude repeats the same reading on every request inside a turn; only
         // a changed figure is worth a write.
         if (previous !== undefined && sameLimits(previous, merged)) return Effect.void;
@@ -423,7 +446,7 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const refresh: UsageLimitsStore["Service"]["refresh"] = Effect.gen(function* () {
+  const refreshOnce = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(
       Effect.catchCause(() => Effect.succeed(null)),
     );
@@ -446,7 +469,24 @@ export const make = Effect.gen(function* () {
     );
     if (response === null) return;
     const limits = parseCodexRateLimitsRead(response, observedAt);
-    if (limits !== null) yield* record(limits);
+    if (limits !== null) yield* record(limits, { complete: true });
+  });
+
+  // Single-flight: every usage request asks for a refresh, and each one is a
+  // CLI process. Callers that arrive while one is running wait for it.
+  let inflightRefresh: Deferred.Deferred<void> | null = null;
+  const refresh: UsageLimitsStore["Service"]["refresh"] = Effect.suspend(() => {
+    const existing = inflightRefresh;
+    if (existing !== null) return Deferred.await(existing);
+    const created = Deferred.makeUnsafe<void>();
+    inflightRefresh = created;
+    return refreshOnce.pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          inflightRefresh = null;
+        }).pipe(Effect.andThen(Deferred.succeed(created, undefined))),
+      ),
+    );
   });
 
   const read: UsageLimitsStore["Service"]["read"] = Effect.sync(() => [...byProvider.values()]);
