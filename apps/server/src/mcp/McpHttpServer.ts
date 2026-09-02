@@ -14,7 +14,7 @@ import { McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import packageJson from "../../package.json" with { type: "json" };
-import { ServerConfig } from "../config.ts";
+import * as ServerConfig from "../config.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
@@ -133,7 +133,7 @@ const saveScreenshot = Effect.fn("McpHttpServer.saveScreenshot")(function* (
   pageUrl: string,
   data: Uint8Array,
 ) {
-  const config = yield* ServerConfig;
+  const config = yield* ServerConfig.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const millis = yield* Clock.currentTimeMillis;
@@ -182,7 +182,9 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
   const server = yield* McpServer.McpServer;
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
   // The MCP tool runner only supplies the client, so hand the save path its services here.
-  const saveServices = yield* Effect.context<ServerConfig | FileSystem.FileSystem | Path.Path>();
+  const saveServices = yield* Effect.context<
+    ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path
+  >();
   const built = yield* PreviewSnapshotToolkit;
   const tool = PreviewSnapshotTool;
   yield* server.addTool({
