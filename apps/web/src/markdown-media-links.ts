@@ -37,12 +37,19 @@ function isLineBoundary(node: MarkdownAstNode | undefined, edge: "before" | "aft
  * as line edges.
  *
  * A path or `file:` target only loads through a thread's asset URL, so surfaces without one
- * pass `embedLocalPaths: false` and keep the chip, which can still open the file.
+ * pass `embedLocalPaths: false` and keep the chip, which can still open the file. The
+ * target is classified against the same root the image renderer uses, so a link the
+ * renderer could not load, such as a tilde path, also keeps its chip.
  */
-export function remarkStandaloneMediaLinks(options: { readonly embedLocalPaths: boolean }) {
-  const embeddable = (url: string) =>
-    markdownLinkMediaKind(url) !== null &&
-    (options.embedLocalPaths || classifyMarkdownImageSource(url)._tag === "Direct");
+export function remarkStandaloneMediaLinks(options: {
+  readonly embedLocalPaths: boolean;
+  readonly workspaceRoot?: string | null | undefined;
+}) {
+  const embeddable = (url: string) => {
+    if (markdownLinkMediaKind(url) === null) return false;
+    const source = classifyMarkdownImageSource(url, options.workspaceRoot);
+    return source._tag === "Direct" || (options.embedLocalPaths && source._tag === "WorkspaceFile");
+  };
   return (tree: MarkdownAstNode) => {
     for (const block of tree.children ?? []) {
       if (block.type !== "paragraph" || !block.children) continue;

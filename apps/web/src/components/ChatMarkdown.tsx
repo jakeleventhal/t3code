@@ -2773,10 +2773,10 @@ function ChatMarkdown({
   const remarkPlugins = useMemo((): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => {
     return [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
-      [remarkStandaloneMediaLinks, { embedLocalPaths }],
+      [remarkStandaloneMediaLinks, { embedLocalPaths, workspaceRoot: imageBaseDir ?? cwd }],
       ...extraRemarkPlugins,
     ];
-  }, [embedLocalPaths, extraRemarkPlugins, lineBreaks]);
+  }, [cwd, embedLocalPaths, extraRemarkPlugins, imageBaseDir, lineBreaks]);
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
   // Keep that behavior explicit because literal mode depends on escaping the
