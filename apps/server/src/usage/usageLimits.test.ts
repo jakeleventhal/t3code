@@ -17,7 +17,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
   limitsFromRuntimeEvent,
-  makeStore,
+  make,
   mergeProviderLimits,
   parseClaudeRateLimitEvent,
   parseCodexRateLimits,
@@ -323,7 +323,7 @@ describe("UsageLimitsStore", () => {
     Effect.gen(function* () {
       // Built once: each build of the config layer is a fresh temp directory.
       const services = yield* Layer.build(storeLayers("usage-limits-test"));
-      const first = yield* makeStore.pipe(Effect.provide(services));
+      const first = yield* make.pipe(Effect.provide(services));
       const config = yield* ServerConfig.ServerConfig.pipe(Effect.provide(services));
       yield* Effect.addFinalizer(() =>
         Effect.promise(() => NodeFSP.rm(config.stateDir, { recursive: true, force: true })),
@@ -344,7 +344,7 @@ describe("UsageLimitsStore", () => {
         ],
       });
 
-      const second = yield* makeStore.pipe(Effect.provide(services));
+      const second = yield* make.pipe(Effect.provide(services));
       const limits = yield* second.read;
       assert.strictEqual(limits.length, 1);
       assert.strictEqual(limits[0]?.windows[0]?.usedPercent, 33);
@@ -354,7 +354,7 @@ describe("UsageLimitsStore", () => {
   it.live("refresh leaves the store untouched while Codex is disabled", () =>
     Effect.gen(function* () {
       const services = yield* Layer.build(storeLayers("usage-limits-disabled-test"));
-      const store = yield* makeStore.pipe(Effect.provide(services));
+      const store = yield* make.pipe(Effect.provide(services));
       const config = yield* ServerConfig.ServerConfig.pipe(Effect.provide(services));
       yield* Effect.addFinalizer(() =>
         Effect.promise(() => NodeFSP.rm(config.stateDir, { recursive: true, force: true })),

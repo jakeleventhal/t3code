@@ -354,7 +354,7 @@ const decodeLimitsFile = Schema.decodeUnknownEffect(LimitsFileJson);
 const encodeLimitsFile = Schema.encodeEffect(LimitsFileJson);
 
 /** The in-memory fold and its on-disk mirror; the provider subscription is wired separately. */
-export const makeStore = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const config = yield* ServerConfig;
@@ -421,7 +421,7 @@ export const makeStore = Effect.gen(function* () {
 export const layer = Layer.effect(
   UsageLimitsStore,
   Effect.gen(function* () {
-    const store = yield* makeStore;
+    const store = yield* make;
     const providerService = yield* ProviderService;
     yield* forkParked(
       Stream.runForEach(providerService.streamEvents, (event) => {
