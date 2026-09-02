@@ -44,6 +44,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
+import { UsageLimitsStore } from "./usageLimits.ts";
 import { parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
   listTranscriptFiles,
@@ -126,6 +127,7 @@ export const layerTest = Layer.succeed(
         sources: [],
         pricing: EMPTY_PRICING,
         scanDurationMs: 0,
+        limits: [],
       }),
     refreshRates: Effect.succeed(EMPTY_PRICING),
   }),
@@ -138,6 +140,7 @@ export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
   const hostEnvironment = yield* HostProcessEnvironment;
+  const limits = yield* UsageLimitsStore;
 
   const fileCache: ScanCache = new Map();
   let cacheDirty = false;
@@ -455,9 +458,11 @@ export const make = Effect.gen(function* () {
     // Pricing only matters once records are aggregated, so the rate table
     // loads while transcripts stream instead of gating them: a cold rates
     // fetch on a slow network no longer delays the scan by its own timeout.
-    const [, scannedDirs] = yield* Effect.all([ensureRates(false), collectDirs(windowStartMs)], {
-      concurrency: 2,
-    });
+    // The live Codex limit read rides alongside for the same reason.
+    const [, scannedDirs] = yield* Effect.all(
+      [ensureRates(false), collectDirs(windowStartMs), limits.refresh],
+      { concurrency: 3 },
+    );
 
     const aggregator = new UsageAggregator({
       timeZone: input.timeZone,
@@ -530,6 +535,7 @@ export const make = Effect.gen(function* () {
     yield* persistScanCache();
 
     const aggregated = aggregator.finish();
+    const knownLimits = yield* limits.read;
     const readAt = yield* DateTime.now;
     const finishedAtMs = yield* Clock.currentTimeMillis;
 
@@ -543,6 +549,7 @@ export const make = Effect.gen(function* () {
       sources,
       pricing: pricing(),
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+      limits: knownLimits,
     } satisfies UsageSummary;
   });
 

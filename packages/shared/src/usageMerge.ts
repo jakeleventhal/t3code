@@ -11,6 +11,7 @@ import {
   type EnvironmentId,
   type UsageBucket,
   type UsageProviderKind,
+  type UsageProviderLimits,
   type UsageSourceFingerprint,
   type UsageSummary,
 } from "@t3tools/contracts";
@@ -77,6 +78,13 @@ export interface MergedUsage {
   readonly daily: readonly DailyTotals[];
   readonly hourly: readonly HourlyTotals[];
   readonly costQuality: CostQuality;
+  /**
+   * One entry per provider with a known subscription limit, in provider order
+   * of first appearance. Where several environments report the same provider,
+   * the one with the freshest reading wins outright: limits belong to an
+   * account, not a machine, so two readings of one account must not be mixed.
+   */
+  readonly limits: readonly UsageProviderLimits[];
   /** Environments whose data was dropped as a duplicate of another's. */
   readonly duplicateSources: readonly string[];
   readonly contributingEnvironments: readonly EnvironmentId[];
@@ -197,10 +205,57 @@ const EMPTY_MERGED: MergedUsage = {
     unpricedShare: 0,
     cacheSavingsUsd: 0,
   },
+  limits: [],
   duplicateSources: [],
   contributingEnvironments: [],
   staleEnvironments: [],
 };
+
+/** The most recent instant any window of a reading was observed. */
+function latestObservation(limits: UsageProviderLimits): string {
+  let latest = "";
+  for (const window of limits.windows) {
+    if (window.observedAt > latest) latest = window.observedAt;
+  }
+  return latest;
+}
+
+/**
+ * Picks one reading per provider across environments: the freshest one, with
+ * environment id as the tiebreak so the winner is stable between renders.
+ */
+export function mergeLimits(
+  environments: readonly EnvironmentUsage[],
+): readonly UsageProviderLimits[] {
+  const chosen = new Map<
+    UsageProviderKind,
+    {
+      readonly limits: UsageProviderLimits;
+      readonly observedAt: string;
+      readonly environmentId: EnvironmentId;
+    }
+  >();
+  for (const environment of environments) {
+    for (const limits of environment.summary.limits) {
+      if (limits.windows.length === 0) continue;
+      const observedAt = latestObservation(limits);
+      const current = chosen.get(limits.provider);
+      if (
+        current === undefined ||
+        observedAt > current.observedAt ||
+        (observedAt === current.observedAt &&
+          environment.environmentId.localeCompare(current.environmentId) < 0)
+      ) {
+        chosen.set(limits.provider, {
+          limits,
+          observedAt,
+          environmentId: environment.environmentId,
+        });
+      }
+    }
+  }
+  return [...chosen.values()].map((entry) => entry.limits);
+}
 
 /**
  * Merges every connected environment's summary.
@@ -417,6 +472,7 @@ export function mergeUsage(
         records === 0 ? 0 : (records - providerReportedRecords - unpricedRecords) / records,
       cacheSavingsUsd,
     },
+    limits: mergeLimits(current),
     duplicateSources: duplicates,
     contributingEnvironments,
     staleEnvironments,

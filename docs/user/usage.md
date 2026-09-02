@@ -13,3 +13,12 @@ Use **Past 24h** for an hourly chart covering the exact rolling 24-hour period. 
 headline and chart. Refreshing rescans every connected environment and refetches model pricing on
 each of them, so a newly released model that showed $0.00 gets a price without waiting for the daily
 pricing update.
+
+## Subscription limits
+
+Below the chart, **Subscription limits** shows how much of each provider's rolling windows you have
+used, such as the 5-hour and weekly limits, with the reset time for each. Codex reports its limits
+live whenever the page loads, including any model family it meters separately. Claude Code only reports limits while a turn is running, so its
+figures are as of the most recent Claude Code turn in T3 Code and the row says when it was updated.
+Grok Build does not report limits. When several environments share one account, the freshest
+reading is shown.

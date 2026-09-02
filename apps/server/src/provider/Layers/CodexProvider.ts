@@ -414,13 +414,21 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   } satisfies CodexAppServerProviderSnapshot;
 });
 
-export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(function* (input: {
+export interface CodexAppServerLaunch {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly launchArgs?: string;
   readonly cwd: string;
   readonly environment?: NodeJS.ProcessEnv;
-}) {
+}
+
+/**
+ * Spawns a short-lived `codex app-server`, completes the handshake, and hands
+ * back the client. The process lives for the caller's scope.
+ */
+const connectCodexAppServer = Effect.fn("connectCodexAppServer")(function* (
+  input: CodexAppServerLaunch,
+) {
   const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const environment = {
@@ -457,8 +465,23 @@ export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(functi
   );
   yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
+  return client;
+});
+
+export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(function* (
+  input: CodexAppServerLaunch,
+) {
+  const client = yield* connectCodexAppServer(input);
   const skillsResponse = yield* client.request("skills/list", { cwds: [input.cwd] });
   return parseCodexSkillsListResponse(skillsResponse, input.cwd);
+});
+
+/** Live subscription limits for the account the Codex CLI is signed into. */
+export const readCodexRateLimits = Effect.fn("readCodexRateLimits")(function* (
+  input: CodexAppServerLaunch,
+) {
+  const client = yield* connectCodexAppServer(input);
+  return yield* client.request("account/rateLimits/read", undefined);
 });
 
 const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvider["models"] => {

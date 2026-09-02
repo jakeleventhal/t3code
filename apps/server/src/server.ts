@@ -118,6 +118,7 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinary.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+import * as UsageLimits from "./usage/usageLimits.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import {
@@ -186,12 +187,15 @@ const DesktopAppUpdateLayerLive = DesktopAppUpdate.layer.pipe(
   Layer.provide(DesktopTelemetryReceiverLayerLive),
 );
 
+const UsageLayerLive = UsageService.layer.pipe(
+  Layer.provide(ServerSettingsLayerLive),
+  Layer.provide(UsageLimits.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
+);
+
 const BackgroundLayerLive = BackgroundPolicy.layer.pipe(
   Layer.provide(HostPowerMonitorLayerLive),
   Layer.provideMerge(ServerSettingsLayerLive),
 );
-
-const UsageLayerLive = UsageService.layer.pipe(Layer.provide(ServerSettingsLayerLive));
 
 const ResourceDiagnosticsLayerLive = Layer.mergeAll(
   ResourceTelemetryLayerLive,
@@ -441,8 +445,9 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(AntigravityInstallationRefreshLive),
   Layer.provideMerge(ProviderAuthServiceLive),
-  // Core Services
-  Layer.provideMerge(ServerSettingsLayerLive),
+  // Core Services. Subscription limits listen on the provider event stream,
+  // so usage sits ahead of the provider runtime that satisfies it.
+  Layer.provideMerge(Layer.mergeAll(ServerSettingsLayerLive, UsageLayerLive)),
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(
     Layer.mergeAll(SourceControlProviderRegistryLayerLive, PullRequestServiceLive),
@@ -500,7 +505,6 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
-  Layer.provideMerge(UsageLayerLive),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(AnalyticsService.layer),
   Layer.provideMerge(ExternalLauncher.layer),

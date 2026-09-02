@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import type { UsageProviderKind } from "@t3tools/contracts";
 import type { DailyTotals, MergedUsage } from "@t3tools/shared/usageMerge";
 import {
   enumerateDays,
@@ -6,6 +7,9 @@ import {
   formatCount,
   formatDayShort,
   formatHourShort,
+  formatLimitReset,
+  formatLimitWindowLabel,
+  formatObservedAgo,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -22,7 +26,7 @@ import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
-import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
+import { PROVIDER_LABEL, PROVIDER_ORDER, useProviderColors } from "./usageProviders";
 
 const WINDOW_OPTIONS = [
   { days: 1, label: "Past 24h" },
@@ -68,6 +72,9 @@ export function UsageRouteScreen() {
         : merged.daily,
     [isPast24Hours, merged.daily, merged.hourly],
   );
+
+  // Limits are read relative to when the answers landed, not to every render.
+  const limitsReadAt = useMemo(() => new Date(), [merged]);
 
   // The pull spinner tracks re-scans of environments that have answered
   // before. The initial scan renders its own placeholder, and an unreachable
@@ -139,6 +146,7 @@ export function UsageRouteScreen() {
               timeZone={window.timeZone}
             />
             <ProviderSection merged={merged} metric={metric} />
+            <LimitsSection merged={merged} now={limitsReadAt} timeZone={window.timeZone} />
             <TotalsSection merged={merged} isPast24Hours={isPast24Hours} />
             <ModelsSection merged={merged} />
           </>
@@ -341,6 +349,118 @@ function ProviderSection(props: {
                 ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
                 : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
             </Text>
+          </View>
+        );
+      })}
+    </SettingsSection>
+  );
+}
+
+/** Why a provider has no limit figure to show. */
+const LIMITS_UNAVAILABLE: Record<UsageProviderKind, string> = {
+  codex: "Sign in to the Codex CLI to see its limits here.",
+  claude: "Reported once a Claude Code turn runs through T3 Code.",
+  grok: "Grok Build does not report subscription limits.",
+};
+
+/**
+ * Rolling subscription windows per provider. Every provider with activity in
+ * the window gets a row, so a provider that cannot report says so instead of
+ * silently missing.
+ */
+function LimitsSection(props: {
+  readonly merged: MergedUsage;
+  readonly now: Date;
+  readonly timeZone: string;
+}) {
+  const { merged, now } = props;
+  const colors = useProviderColors();
+  const active = new Set(
+    merged.providers
+      .filter((entry) => entry.totalTokens > 0 || entry.costUsd > 0)
+      .map((entry) => entry.provider),
+  );
+  const rows = PROVIDER_ORDER.flatMap((provider) => {
+    const entry = merged.limits.find((candidate) => candidate.provider === provider);
+    if (entry === undefined && !active.has(provider)) return [];
+    return [{ provider, entry }];
+  });
+  if (rows.length === 0) return null;
+
+  return (
+    <SettingsSection title="Subscription limits" card>
+      {rows.map(({ provider, entry }, index) => {
+        const observedAt = entry?.windows.reduce(
+          (latest, window) => (window.observedAt > latest ? window.observedAt : latest),
+          "",
+        );
+        return (
+          <View
+            key={provider}
+            className={index === 0 ? "gap-3 p-4" : "gap-3 border-t border-border-subtle p-4"}
+          >
+            <View className="flex-row items-baseline justify-between gap-3">
+              <View className="flex-row items-center gap-2">
+                <View
+                  className="size-2.5 rounded-full"
+                  style={{ backgroundColor: colors[provider] }}
+                />
+                <Text className="text-lg text-foreground">{PROVIDER_LABEL[provider]}</Text>
+                {entry?.plan ? (
+                  <Text className="text-sm text-foreground-muted">{entry.plan}</Text>
+                ) : null}
+              </View>
+              {observedAt ? (
+                <Text className="text-xs text-foreground-tertiary">
+                  Updated {formatObservedAgo(observedAt, now)}
+                </Text>
+              ) : null}
+            </View>
+            {entry === undefined || entry.windows.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">{LIMITS_UNAVAILABLE[provider]}</Text>
+            ) : (
+              entry.windows.map((window) => {
+                const used = Math.min(100, Math.max(0, window.usedPercent));
+                const reset = formatLimitReset(window.resetsAt, now, props.timeZone);
+                return (
+                  <View key={window.id} className="gap-1.5">
+                    <View className="flex-row items-baseline justify-between gap-3">
+                      <Text className="text-sm text-foreground-muted">
+                        {formatLimitWindowLabel(window)}
+                      </Text>
+                      <View className="flex-row items-baseline gap-2">
+                        <Text
+                          className={
+                            used >= 90
+                              ? "text-sm font-t3-medium tabular-nums text-danger-foreground"
+                              : "text-sm font-t3-medium tabular-nums text-foreground"
+                          }
+                        >
+                          {Math.round(used)}%
+                        </Text>
+                        {reset ? (
+                          <Text className="text-xs text-foreground-tertiary">{reset}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View className="h-1 flex-row overflow-hidden rounded-full bg-subtle">
+                      <View
+                        className={
+                          used >= 90
+                            ? "h-full rounded-full bg-danger-foreground"
+                            : "h-full rounded-full"
+                        }
+                        style={{
+                          flex: used / 100,
+                          ...(used >= 90 ? {} : { backgroundColor: colors[provider] }),
+                        }}
+                      />
+                      <View style={{ flex: 1 - used / 100 }} />
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
         );
       })}

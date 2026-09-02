@@ -1,4 +1,4 @@
-import type { UsageProviderKind } from "@t3tools/contracts";
+import type { UsageProviderKind, UsageProviderLimits } from "@t3tools/contracts";
 import { CheckIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -14,6 +14,9 @@ import {
   formatDateTimeShort,
   formatDayShort,
   formatHourShort,
+  formatLimitReset,
+  formatLimitWindowLabel,
+  formatObservedAgo,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -85,6 +88,8 @@ export function UsagePage() {
   );
   const activeProviders = useMemo(() => providersWithUsage(merged.providers), [merged.providers]);
   const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
+  // Limits are read relative to when the answers landed, not to every render.
+  const limitsReadAt = useMemo(() => new Date(), [merged]);
 
   const selectWindow = (days: number) => {
     setWindowSelection({
@@ -300,6 +305,13 @@ export function UsagePage() {
                   </div>
                 </section>
 
+                <UsageLimitsSection
+                  limits={merged.limits}
+                  providers={activeProviders}
+                  now={limitsReadAt}
+                  timeZone={window.timeZone}
+                />
+
                 <section className="flex flex-col gap-2">
                   <h2 className="text-sm font-medium text-foreground">Totals</h2>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
@@ -476,6 +488,118 @@ function ProviderMark({
   return <Mark className={cn("shrink-0", className)} aria-hidden />;
 }
 
+/** Why a provider has no limit figure to show. */
+const LIMITS_UNAVAILABLE: Record<UsageProviderKind, string> = {
+  codex: "Sign in to the Codex CLI to see its limits here.",
+  claude: "Reported once a Claude Code turn runs through T3 Code.",
+  grok: "Grok Build does not report subscription limits.",
+};
+
+/**
+ * Rolling subscription windows per provider. Every provider with activity in
+ * the window gets a row, so a provider that cannot report says so instead of
+ * silently missing.
+ */
+function UsageLimitsSection({
+  limits,
+  providers,
+  now,
+  timeZone,
+}: {
+  readonly limits: readonly UsageProviderLimits[];
+  readonly providers: readonly UsageProviderKind[];
+  readonly now: Date;
+  readonly timeZone: string;
+}) {
+  const rows = PROVIDER_ORDER.flatMap((provider) => {
+    const entry = limits.find((candidate) => candidate.provider === provider);
+    if (entry === undefined && !providers.includes(provider)) return [];
+    return [{ provider, entry }];
+  });
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium text-foreground">Subscription limits</h2>
+      <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
+        {rows.map(({ provider, entry }) => {
+          const observedAt = entry?.windows.reduce(
+            (latest, window) => (window.observedAt > latest ? window.observedAt : latest),
+            "",
+          );
+          return (
+            <div key={provider} className="flex min-w-0 flex-col gap-3">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                  <ProviderMark provider={provider} className="size-4" />
+                  <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+                  {entry?.plan ? (
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{entry.plan}</span>
+                  ) : null}
+                </span>
+                {observedAt ? (
+                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    Updated {formatObservedAgo(observedAt, now)}
+                  </span>
+                ) : null}
+              </div>
+              {entry === undefined || entry.windows.length === 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  {LIMITS_UNAVAILABLE[provider]}
+                </span>
+              ) : (
+                entry.windows.map((window) => {
+                  const used = Math.min(100, Math.max(0, window.usedPercent));
+                  const reset = formatLimitReset(window.resetsAt, now, timeZone);
+                  return (
+                    <div key={window.id} className="flex flex-col gap-1.5">
+                      <div className="flex items-baseline justify-between gap-4 text-xs">
+                        <span className="text-muted-foreground">
+                          {formatLimitWindowLabel(window)}
+                        </span>
+                        <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                          <span
+                            className={cn(
+                              "font-medium text-foreground",
+                              used >= 90 && "text-destructive",
+                            )}
+                          >
+                            {Math.round(used)}%
+                          </span>
+                          {reset ? <span className="text-muted-foreground">{reset}</span> : null}
+                        </span>
+                      </div>
+                      <div
+                        role="progressbar"
+                        aria-label={`${PROVIDER_PRESENTATION[provider].label} ${formatLimitWindowLabel(window)}`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(used)}
+                        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                      >
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${used}%`,
+                            backgroundColor:
+                              used >= 90
+                                ? "var(--destructive)"
+                                : PROVIDER_PRESENTATION[provider].color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Metric({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
@@ -618,6 +742,32 @@ function UsageSkeleton() {
             <div className="ml-16 h-56 rounded-sm bg-muted/35" />
             <div className="ml-16 h-4 rounded-sm bg-muted/35" />
           </div>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-foreground">Subscription limits</h2>
+        <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
+          {PROVIDER_ORDER.slice(0, 2).map((provider) => (
+            <div key={provider} className="flex flex-col gap-3">
+              <div className="flex min-h-5 items-center justify-between gap-4">
+                <span className="flex items-center gap-2">
+                  <span className="size-4 shrink-0 rounded-full bg-muted" />
+                  <div className="h-3.5 w-20 rounded-sm bg-muted" />
+                </span>
+                <div className="h-3 w-20 rounded-sm bg-muted" />
+              </div>
+              {[0, 1].map((row) => (
+                <div key={row} className="flex flex-col gap-1.5">
+                  <div className="flex justify-between gap-4">
+                    <div className="h-3 w-20 rounded-sm bg-muted" />
+                    <div className="h-3 w-28 rounded-sm bg-muted" />
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-muted/35" />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </section>
 

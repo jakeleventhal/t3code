@@ -230,3 +230,79 @@ export function makeWindow(
     resolution,
   };
 }
+
+const LIMIT_WINDOW_LABELS: Record<string, string> = {
+  five_hour: "5-hour limit",
+  seven_day: "Weekly limit",
+  seven_day_opus: "Weekly Opus limit",
+  seven_day_sonnet: "Weekly Sonnet limit",
+  seven_day_overage_included: "Weekly limit incl. overage",
+};
+
+/**
+ * `five_hour` to `5-hour limit`; a window with no known name is labelled by
+ * its length, and a separately metered bucket carries its name in front.
+ */
+export function formatLimitWindowLabel(window: {
+  readonly id: string;
+  readonly scope?: string | null;
+  readonly durationMinutes: number | null;
+}): string {
+  const base = window.id.includes(":")
+    ? window.id.slice(window.id.lastIndexOf(":") + 1)
+    : window.id;
+  const label = LIMIT_WINDOW_LABELS[base] ?? labelByDuration(window.durationMinutes);
+  return window.scope ? `${window.scope} · ${label}` : label;
+}
+
+function labelByDuration(minutes: number | null): string {
+  if (minutes === null || minutes <= 0) return "Usage limit";
+  if (minutes % (24 * 60) === 0) {
+    const days = minutes / (24 * 60);
+    return days === 7 ? "Weekly limit" : `${days}-day limit`;
+  }
+  if (minutes % 60 === 0) return `${minutes / 60}-hour limit`;
+  return `${minutes}-minute limit`;
+}
+
+/**
+ * When a window resets, relative to `now` while it is less than a day out and
+ * as a weekday and hour beyond that. Null when the provider gave no reset.
+ */
+export function formatLimitReset(
+  resetsAt: string | null,
+  now: Date,
+  timeZone?: string,
+): string | null {
+  if (resetsAt === null) return null;
+  const instant = new Date(resetsAt);
+  if (Number.isNaN(instant.getTime())) return null;
+  const remainingMs = instant.getTime() - now.getTime();
+  if (remainingMs <= 0) return "Resets now";
+  if (remainingMs < 24 * HOUR_MS) {
+    const totalMinutes = Math.ceil(remainingMs / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `Resets in ${minutes}m`;
+    return minutes === 0 ? `Resets in ${hours}h` : `Resets in ${hours}h ${minutes}m`;
+  }
+  const label = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone === undefined ? {} : { timeZone }),
+    weekday: "short",
+    hour: "numeric",
+  }).format(instant);
+  return `Resets ${label}`;
+}
+
+/** How old a reading is: `just now`, `5m ago`, `3h ago`, `2d ago`. */
+export function formatObservedAgo(observedAt: string, now: Date): string {
+  const instant = new Date(observedAt);
+  if (Number.isNaN(instant.getTime())) return "";
+  const elapsedMs = Math.max(0, now.getTime() - instant.getTime());
+  if (elapsedMs < 60_000) return "just now";
+  const minutes = Math.floor(elapsedMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}

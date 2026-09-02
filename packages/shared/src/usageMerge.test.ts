@@ -1,5 +1,6 @@
 import {
   USAGE_CONTRACT_VERSION,
+  USAGE_MERGE_COMPATIBLE_SINCE,
   type EnvironmentId,
   type UsageBucket,
   type UsageDay,
@@ -8,7 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { mergeUsage, type EnvironmentUsage } from "./usageMerge.ts";
+import { mergeLimits, mergeUsage, type EnvironmentUsage } from "./usageMerge.ts";
 
 function bucket(overrides: Partial<UsageBucket> = {}): UsageBucket {
   return {
@@ -66,6 +67,7 @@ function summary(
     })),
     pricing: { status: "fresh", source: "litellm", fetchedAt: null, knownModels: 10 },
     scanDurationMs: 1,
+    limits: [],
   };
 }
 
@@ -158,7 +160,7 @@ describe("mergeUsage", () => {
           summary(
             [bucket()],
             [{ provider: "claude", hostId: "linux", homePath: "/b" }],
-            USAGE_CONTRACT_VERSION - 2,
+            USAGE_MERGE_COMPATIBLE_SINCE - 1,
           ),
         ),
       ],
@@ -337,5 +339,80 @@ describe("mergeUsage", () => {
     ]);
     expect(merged.daily).toHaveLength(1);
     expect(merged.daily[0]?.costUsd).toBe(10);
+  });
+});
+
+describe("mergeLimits", () => {
+  const reading = (
+    provider: UsageProviderKind,
+    usedPercent: number,
+    observedAt: string,
+    plan: string | null = null,
+  ) => ({
+    provider,
+    plan,
+    windows: [
+      {
+        id: "five_hour",
+        scope: null,
+        durationMinutes: 300,
+        usedPercent,
+        resetsAt: null,
+        observedAt,
+      },
+    ],
+  });
+
+  it("keeps the freshest reading per provider rather than mixing environments", () => {
+    const limits = mergeLimits([
+      environment("env-b", {
+        ...summary([], []),
+        limits: [reading("codex", 40, "2026-08-07T10:00:00.000Z", "Pro")],
+      }),
+      environment("env-a", {
+        ...summary([], []),
+        limits: [
+          reading("codex", 10, "2026-08-07T09:00:00.000Z", "Plus"),
+          reading("claude", 55, "2026-08-07T09:30:00.000Z"),
+        ],
+      }),
+    ]);
+
+    expect(
+      limits.map((entry) => [entry.provider, entry.plan, entry.windows[0]?.usedPercent]),
+    ).toEqual([
+      ["codex", "Pro", 40],
+      ["claude", null, 55],
+    ]);
+  });
+
+  it("breaks an observation tie by environment id so the winner is stable", () => {
+    const limits = mergeLimits([
+      environment("env-b", {
+        ...summary([], []),
+        limits: [reading("claude", 2, "2026-08-07T10:00:00.000Z")],
+      }),
+      environment("env-a", {
+        ...summary([], []),
+        limits: [reading("claude", 1, "2026-08-07T10:00:00.000Z")],
+      }),
+    ]);
+
+    expect(limits[0]?.windows[0]?.usedPercent).toBe(1);
+  });
+
+  it("excludes environments on an incompatible contract from limits too", () => {
+    const merged = mergeUsage(
+      [
+        environment("env-old", {
+          ...summary([], [], 1),
+          limits: [reading("claude", 99, "2026-08-07T10:00:00.000Z")],
+        }),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.limits).toEqual([]);
+    expect(merged.staleEnvironments).toEqual(["env-old"]);
   });
 });
