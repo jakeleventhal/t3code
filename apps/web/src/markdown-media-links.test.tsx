@@ -6,13 +6,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { remarkStandaloneMediaLinks } from "./markdown-media-links";
 
-function renderMarkdown(markdown: string, options?: { lineBreaks?: boolean }): string {
+function renderMarkdown(
+  markdown: string,
+  options?: { lineBreaks?: boolean; embedLocalPaths?: boolean },
+): string {
   return renderToStaticMarkup(
     <ReactMarkdown
       remarkPlugins={[
         remarkGfm,
         ...(options?.lineBreaks ? [remarkBreaks] : []),
-        remarkStandaloneMediaLinks,
+        [remarkStandaloneMediaLinks, { embedLocalPaths: options?.embedLocalPaths ?? true }],
       ]}
     >
       {markdown}
@@ -90,6 +93,16 @@ describe("remarkStandaloneMediaLinks", () => {
       expect(html).toContain('<a href="https://cdn.example.com/detail.png">detail.png</a>');
     },
   );
+
+  it("keeps path links when the surface cannot load local files", () => {
+    const html = renderMarkdown(
+      ["[shot.png](/tmp/shot.png)", "", "[clip.mp4](https://cdn.example.com/clip.mp4)"].join("\n"),
+      { embedLocalPaths: false },
+    );
+
+    expect(html).toContain('<a href="/tmp/shot.png">shot.png</a>');
+    expect(html).toContain('<img src="https://cdn.example.com/clip.mp4"');
+  });
 
   it("keeps links in list items and quotes", () => {
     const html = renderMarkdown(

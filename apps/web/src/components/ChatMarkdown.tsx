@@ -459,7 +459,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
-  remarkStandaloneMediaLinks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -470,7 +469,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkBreaks,
-  remarkStandaloneMediaLinks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -3115,13 +3113,14 @@ function ChatMarkdown({
     localMediaPreview,
     setLocalMediaPreview,
   } = useChatMarkdownState({ text, ...props });
-  const remarkPlugins = useMemo(
-    () => [
+  const embedLocalPaths = componentState.threadRef !== undefined;
+  const remarkPlugins = useMemo((): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => {
+    return [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      [remarkStandaloneMediaLinks, { embedLocalPaths }],
       ...extraRemarkPlugins,
-    ],
-    [extraRemarkPlugins, lineBreaks],
-  );
+    ];
+  }, [embedLocalPaths, extraRemarkPlugins, lineBreaks]);
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
   // Keep that behavior explicit because literal mode depends on escaping the
