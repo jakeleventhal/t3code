@@ -113,7 +113,7 @@ it.effect.each([{}, { includeImage: false }])(
           );
 
         expect(snapshot.isError).toBe(true);
-        expect(snapshot.content).toEqual([{ type: "text", text: "Preview snapshot failed." }]);
+        expect(snapshot.content).toEqual([{ type: "text", text: "Preview snapshot failed: PreviewAutomationExecutionError." }]);
         expect(snapshot.structuredContent).toEqual({
           error: {
             _tag: "PreviewAutomationExecutionError",
@@ -242,7 +242,7 @@ it.effect("rejects non-boolean snapshot image options before selecting a browser
           Effect.provideService(McpSchema.McpServerClient, client),
         );
       expect(result.isError).toBe(true);
-      expect(result.content).toEqual([{ type: "text", text: "Preview snapshot failed." }]);
+      expect(result.content).toEqual([{ type: "text", text: "Preview snapshot failed: AiError." }]);
       expect(result.structuredContent).toEqual({
         error: { _tag: "AiError", operation: "snapshot", failureCount: 1 },
       });
@@ -333,6 +333,9 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
         );
 
       expect(snapshot.isError).toBe(true);
+      expect(snapshot.content).toEqual([
+        { type: "text", text: "Preview snapshot failed: PreviewScreenshotSaveError." },
+      ]);
       expect(snapshot.structuredContent).toEqual({
         error: { _tag: "PreviewScreenshotSaveError", operation: "snapshot", failureCount: 1 },
       });
