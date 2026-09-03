@@ -397,6 +397,7 @@ function overlayModeForCommand(command: string | null): SearchOverlayMode | null
 }
 
 export function CommandPalette({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [state, dispatch] = useReducer(reduceCommandPaletteUiState, {
     open: false,
     mode: "command",
@@ -454,6 +455,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           previewOpen,
         },
       });
+      if (command === "usage.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        void navigate({ to: "/usage" });
+        return;
+      }
       if (command === "themeEditor.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -474,7 +482,17 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, previewOpen, resolvedTheme, terminalOpen, theme, themeHalves, toggleMode]);
+  }, [
+    keybindings,
+    navigate,
+    previewOpen,
+    resolvedTheme,
+    setOpen,
+    terminalOpen,
+    theme,
+    themeHalves,
+    toggleMode,
+  ]);
 
   useEffect(
     () =>
