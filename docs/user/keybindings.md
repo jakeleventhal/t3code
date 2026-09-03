@@ -108,6 +108,9 @@ a shortcut.
 
 ## Commands with special behavior
 
+`usage.open` opens the Usage page and defaults to `mod+u`. It does not run while
+the terminal has focus.
+
 `thread.stop` interrupts the running turn in the focused thread. It has no default
 shortcut; assign one in **Settings → Keybindings**.
 
