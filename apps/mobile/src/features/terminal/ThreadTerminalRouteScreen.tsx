@@ -69,13 +69,12 @@ import {
   type TerminalMenuSession,
 } from "./terminalMenu";
 import {
-  chunkTerminalWrite,
-  encodeTerminalPaste,
   hostPlatformFromOs,
   resolveModifiedTerminalInput,
   type HostPlatform,
   type PendingModifier,
 } from "./terminalInput";
+import { createTerminalPasteSession } from "./terminalPaste";
 import { cacheTerminalGridSize, getCachedTerminalGridSize } from "./terminalUiState";
 
 const DEFAULT_TERMINAL_COLS = 80;
@@ -718,47 +717,29 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     [isRunning, selectedThread, terminalId, writeTerminal],
   );
 
-  // The shell a paste may still land in once the clipboard read resolves. A
-  // fresh token is minted whenever the route, the session, or its running state
-  // changes (so an in-place restart counts) and dropped on unmount, so a slow
-  // read never writes into a different shell than the one it started in.
-  const liveWriteTargetRef = useRef<object | null>(null);
+  const pasteSessionRef = useRef<ReturnType<typeof createTerminalPasteSession> | null>(null);
+  if (pasteSessionRef.current === null) {
+    pasteSessionRef.current = createTerminalPasteSession();
+  }
+  const pasteSession = pasteSessionRef.current;
+
+  // Drop delayed clipboard reads whenever the route or attached pty changes.
   useEffect(() => {
-    liveWriteTargetRef.current = isRunning ? { terminalKey } : null;
+    pasteSession.reset(isRunning);
     return () => {
-      liveWriteTargetRef.current = null;
+      pasteSession.reset(false);
     };
-  }, [isRunning, terminalKey]);
-  // Like the web terminal, a newer paste supersedes one still in flight instead
-  // of both reaching the shell with their chunks interleaved.
-  const pasteRequestRef = useRef(0);
+  }, [isRunning, pasteSession, terminal.lifecycleVersion, terminalKey]);
 
   const pasteFromClipboard = useCallback(async () => {
-    const target = liveWriteTargetRef.current;
-    if (target === null) {
-      return;
-    }
-    const request = ++pasteRequestRef.current;
-    const isCurrent = () =>
-      liveWriteTargetRef.current === target && pasteRequestRef.current === request;
-
-    let text: string;
-    try {
-      text = await Clipboard.getStringAsync();
-    } catch (cause) {
-      console.error(new TerminalClipboardReadError({ terminalId, cause }));
-      return;
-    }
-
-    // Writes run with parallel concurrency, so chunks are awaited one at a time
-    // to keep them in order. Stop at the first rejected chunk or once this paste
-    // is no longer current rather than deliver one with a hole in the middle.
-    for (const chunk of chunkTerminalWrite(encodeTerminalPaste(text))) {
-      if (!isCurrent() || !(await writeInput(chunk))) {
-        return;
-      }
-    }
-  }, [terminalId, writeInput]);
+    await pasteSession.paste({
+      readText: Clipboard.getStringAsync,
+      write: writeInput,
+      onReadError: (cause) => {
+        console.error(new TerminalClipboardReadError({ terminalId, cause }));
+      },
+    });
+  }, [pasteSession, terminalId, writeInput]);
 
   /** Sends a key through the armed toolbar modifier, if any, and disarms it. */
   const writeModifiedInput = useCallback(

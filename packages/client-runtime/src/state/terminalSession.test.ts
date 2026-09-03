@@ -133,6 +133,22 @@ describe("terminal session reducers", () => {
     });
   });
 
+  it("advances the lifecycle when a running terminal restarts in place", () => {
+    const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "snapshot",
+      snapshot: BASE_SNAPSHOT,
+    });
+    const restarted = applyTerminalAttachStreamEvent(snapshot, {
+      type: "restarted",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+      snapshot: { ...BASE_SNAPSHOT, pid: 456 },
+    });
+
+    expect(snapshot).toMatchObject({ status: "running", lifecycleVersion: 1 });
+    expect(restarted).toMatchObject({ status: "running", lifecycleVersion: 2 });
+  });
+
   it("reduces terminal metadata snapshots, upserts, and removals", () => {
     const initial = applyTerminalMetadataStreamEvent([], {
       type: "snapshot",
