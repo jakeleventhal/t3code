@@ -69,6 +69,7 @@ import {
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -1355,10 +1356,19 @@ const makeWsRpcLayer = (
                     ),
                 });
                 if (!worktreeStillInUse) {
-                  yield* terminalManager.close({ threadId: archiveCommand.threadId }).pipe(
+                  const terminalOwnerThreadId = Option.match(threadShellBeforeCommand, {
+                    onNone: () => archiveCommand.threadId,
+                    onSome: (archivedThread) =>
+                      worktreeResourceThreadId(
+                        archivedThread.projectId,
+                        normalizeWorktreePathForArchive(archivedThread.worktreePath),
+                      ),
+                  });
+                  yield* terminalManager.close({ threadId: terminalOwnerThreadId }).pipe(
                     Effect.catch((error) =>
                       Effect.logWarning("failed to close thread terminals after archive", {
                         threadId: archiveCommand.threadId,
+                        terminalOwnerThreadId,
                         error: error.message,
                       }),
                     ),
