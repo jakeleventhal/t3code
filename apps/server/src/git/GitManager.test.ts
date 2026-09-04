@@ -34,6 +34,7 @@ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitHubSourceControlProvider from "../sourceControl/GitHubSourceControlProvider.ts";
+import * as SourceControlProvider from "../sourceControl/SourceControlProvider.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
@@ -664,6 +665,7 @@ function makeManager(input?: {
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
   gitConfigReads?: string[];
+  sourceControlProvider?: SourceControlProvider.SourceControlProvider["Service"];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -699,7 +701,12 @@ function makeManager(input?: {
       );
   const sourceControlRegistryLayer = Layer.effect(
     SourceControlProviderRegistry.SourceControlProviderRegistry,
-    GitHubSourceControlProvider.make.pipe(
+    (input?.sourceControlProvider
+      ? Effect.succeed(input.sourceControlProvider)
+      : GitHubSourceControlProvider.make.pipe(
+          Effect.provide(Layer.succeed(GitHubCli.GitHubCli, gitHubCli)),
+        )
+    ).pipe(
       Effect.map((provider) =>
         SourceControlProviderRegistry.SourceControlProviderRegistry.of({
           get: () => Effect.succeed(provider),
@@ -708,7 +715,6 @@ function makeManager(input?: {
           discover: Effect.succeed([]),
         }),
       ),
-      Effect.provide(Layer.succeed(GitHubCli.GitHubCli, gitHubCli)),
     ),
   );
 
@@ -1348,7 +1354,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         updatedAt: "2026-04-05T15:00:00.000Z",
       });
       expect(
-        ghCalls.some((call) => call.startsWith("pr view contributor:feature/deleted-fork-branch ")),
+        ghCalls.some((call) =>
+          call.startsWith("pr list --head feature/deleted-fork-branch --state all --limit 100 "),
+        ),
       ).toBe(true);
     }),
   );
@@ -1667,7 +1675,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
       expect(status.pr?.number).toBe(215);
       expect(
-        ghCalls.some((call) => call.startsWith("pr view octocat:feature/pushed-no-tracking ")),
+        ghCalls.some((call) =>
+          call.startsWith("pr list --head feature/pushed-no-tracking --state all --limit 100 "),
+        ),
       ).toBe(true);
     }),
   );
@@ -1853,7 +1863,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           updatedAt: "2026-03-10T07:00:00.000Z",
         });
         expect(ghCalls).toContain(
-          "pr list --head contributor:main --state all --limit 20 --json number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "pr list --head main --state all --limit 100 --json number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         );
       }),
     20_000,
@@ -1871,6 +1881,8 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         yield* runGit(repoDir, ["remote", "add", "upstream", upstreamDir]);
         yield* runGit(repoDir, ["checkout", "-b", "feature/upstream-pr"]);
         yield* runGit(repoDir, ["push", "-u", "origin", "feature/upstream-pr"]);
+        yield* runGit(repoDir, ["update-ref", "refs/remotes/upstream/feature/upstream-pr", "HEAD"]);
+        yield* runGit(repoDir, ["branch", "--set-upstream-to", "upstream/feature/upstream-pr"]);
         yield* configureVisibleRemoteUrlWithLocalRewrite(
           repoDir,
           "origin",
@@ -1918,7 +1930,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           updatedAt: "2026-07-11T12:00:00.000Z",
         });
         expect(ghCalls).toContain(
-          "pr view contributor:feature/upstream-pr --json number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "pr list --head feature/upstream-pr --state all --limit 100 --json number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         );
       }),
     20_000,
@@ -2241,9 +2253,11 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
         const status = yield* manager.status({ cwd: repoDir });
         expect(status.pr?.number).toBe(89);
-        expect(ghCalls.some((call) => call.includes("--head contributor:feature/fork-plain"))).toBe(
-          true,
-        );
+        expect(
+          ghCalls.some((call) =>
+            call.includes("--head feature/fork-plain --state all --limit 100"),
+          ),
+        ).toBe(true);
         expect(ghCalls.some((call) => call.includes("--head main"))).toBe(false);
       }),
   );
@@ -3485,7 +3499,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
         expect(result.pr.status).toBe("opened_existing");
         expect(result.pr.number).toBe(142);
-        expect(ghCalls.some((call) => call.startsWith("pr view octocat:statemachine "))).toBe(true);
+        expect(
+          ghCalls.some((call) => call.startsWith("pr list --head statemachine --state open ")),
+        ).toBe(true);
         expect(ghCalls.some((call) => call.startsWith("pr create "))).toBe(false);
       }),
     12_000,
@@ -3658,7 +3674,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(result.pr.number).toBe(142);
 
         const ownerSelectorCallIndex = ghCalls.findIndex((call) =>
-          call.startsWith("pr view octocat:statemachine "),
+          call.startsWith("pr list --head statemachine --state open --limit 100 "),
         );
         expect(ownerSelectorCallIndex).toBeGreaterThanOrEqual(0);
         expect(ghCalls.some((call) => call.startsWith("pr create "))).toBe(false);
@@ -3725,10 +3741,10 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(result.pr.number).toBe(142);
 
         const openLookupCalls = ghCalls.filter((call) =>
-          call.startsWith("pr view octocat:statemachine "),
+          call.startsWith("pr list --head statemachine --state open --limit 100 "),
         );
         expect(openLookupCalls).toHaveLength(1);
-        expect(openLookupCalls[0]).toContain("pr view octocat:statemachine");
+        expect(openLookupCalls[0]).toContain("pr list --head statemachine");
       }),
     12_000,
   );
@@ -4123,6 +4139,76 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           call.includes("pr create --base statemachine --head octocat:statemachine"),
         ),
       ).toBe(false);
+    }),
+  );
+
+  it.effect("omits GitHub-shaped source repositories for non-GitHub PR creation", () =>
+    Effect.gen(function* () {
+      for (const scenario of [
+        { kind: "gitlab" as const, remoteUrl: "git@gitlab.com:group/project.git" },
+        { kind: "bitbucket" as const, remoteUrl: "git@bitbucket.org:workspace/project.git" },
+      ]) {
+        const repoDir = yield* makeTempDir(`t3code-git-manager-${scenario.kind}-`);
+        yield* initRepo(repoDir);
+        const remoteDir = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+        yield* runGit(repoDir, ["checkout", "-b", `feature/${scenario.kind}-source`]);
+        yield* runGit(repoDir, ["push", "-u", "origin", `feature/${scenario.kind}-source`]);
+        yield* configureVisibleRemoteUrlWithLocalRewrite(
+          repoDir,
+          "origin",
+          scenario.remoteUrl,
+          remoteDir,
+        );
+
+        let listCalls = 0;
+        let createInput:
+          | Parameters<
+              SourceControlProvider.SourceControlProvider["Service"]["createChangeRequest"]
+            >[0]
+          | null = null;
+        const sourceControlProvider = SourceControlProvider.SourceControlProvider.of({
+          kind: scenario.kind,
+          listChangeRequests: () => {
+            listCalls++;
+            return Effect.succeed(
+              listCalls === 1
+                ? []
+                : [
+                    {
+                      provider: scenario.kind,
+                      number: 42,
+                      title: "Provider PR",
+                      url: `https://example.test/pull/42`,
+                      baseRefName: "main",
+                      headRefName: `feature/${scenario.kind}-source`,
+                      state: "open" as const,
+                      updatedAt: Option.none(),
+                    },
+                  ],
+            );
+          },
+          getChangeRequest: () => Effect.die("unexpected getChangeRequest"),
+          createChangeRequest: (request) =>
+            Effect.sync(() => {
+              createInput = request;
+            }),
+          getRepositoryCloneUrls: () => Effect.die("unexpected getRepositoryCloneUrls"),
+          createRepository: () => Effect.die("unexpected createRepository"),
+          getDefaultBranch: () => Effect.succeed("main"),
+          checkoutChangeRequest: () => Effect.die("unexpected checkoutChangeRequest"),
+        });
+        const { manager } = yield* makeManager({ sourceControlProvider });
+
+        const result = yield* runStackedAction(manager, {
+          cwd: repoDir,
+          action: "create_pr",
+        });
+
+        expect(result.pr.status).toBe("created");
+        expect(createInput).not.toBeNull();
+        expect(createInput).not.toHaveProperty("source");
+      }
     }),
   );
 

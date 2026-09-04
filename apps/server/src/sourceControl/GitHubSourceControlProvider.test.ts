@@ -276,6 +276,35 @@ it.effect("preserves a custom GitHub Enterprise port in upstream repository coor
   }),
 );
 
+it.effect("drops SSH ports from GitHub Enterprise repository coordinates", () =>
+  Effect.gen(function* () {
+    let repository: string | undefined;
+    const provider = yield* makeProvider({
+      listOpenPullRequests: (input) => {
+        repository = input.repository;
+        return Effect.succeed([]);
+      },
+    });
+
+    yield* provider.listChangeRequests({
+      cwd: "/repo",
+      context: {
+        provider: {
+          kind: "github",
+          name: "github.example.com",
+          baseUrl: "https://github.example.com",
+        },
+        remoteName: "upstream",
+        remoteUrl: "ssh://git@github.example.com:2222/platform/t3code.git",
+      },
+      headSelector: "contributor:feature/fork-pr",
+      state: "open",
+    });
+
+    assert.strictEqual(repository, "github.example.com/platform/t3code");
+  }),
+);
+
 it.effect("treats empty non-open change request listing output as no results", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({
@@ -293,7 +322,7 @@ it.effect("treats empty non-open change request listing output as no results", (
   }),
 );
 
-it.effect("looks up qualified fork heads directly for non-open listings", () =>
+it.effect("lists every matching qualified fork head for non-open states", () =>
   Effect.gen(function* () {
     let args: ReadonlyArray<string> = [];
     const provider = yield* makeProvider({
@@ -301,16 +330,39 @@ it.effect("looks up qualified fork heads directly for non-open listings", () =>
         args = input.args;
         return Effect.succeed(
           processResult(
-            JSON.stringify({
-              number: 52,
-              title: "Requested owner",
-              url: "https://github.com/pingdotgg/t3code/pull/52",
-              baseRefName: "main",
-              headRefName: "feature/shared",
-              state: "CLOSED",
-              updatedAt: "2026-01-02T00:00:00.000Z",
-              headRepositoryOwner: { login: "octocat" },
-            }),
+            JSON.stringify([
+              {
+                number: 51,
+                title: "Different owner",
+                url: "https://github.com/pingdotgg/t3code/pull/51",
+                baseRefName: "main",
+                headRefName: "feature/shared",
+                state: "CLOSED",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+                headRepositoryOwner: { login: "someone-else" },
+              },
+              {
+                number: 52,
+                title: "Requested owner main",
+                url: "https://github.com/pingdotgg/t3code/pull/52",
+                baseRefName: "main",
+                headRefName: "feature/shared",
+                state: "CLOSED",
+                updatedAt: "2026-01-02T00:00:00.000Z",
+                headRepositoryOwner: { login: "octocat" },
+              },
+              {
+                number: 53,
+                title: "Requested owner release",
+                url: "https://github.com/pingdotgg/t3code/pull/53",
+                baseRefName: "release",
+                headRefName: "feature/shared",
+                state: "MERGED",
+                mergedAt: "2026-01-03T00:00:00.000Z",
+                updatedAt: "2026-01-03T00:00:00.000Z",
+                headRepositoryOwner: { login: "octocat" },
+              },
+            ]),
           ),
         );
       },
@@ -320,15 +372,14 @@ it.effect("looks up qualified fork heads directly for non-open listings", () =>
       cwd: "/repo",
       headSelector: "octocat:feature/shared",
       state: "all",
-      limit: 1,
+      limit: 2,
     });
 
     assert.deepStrictEqual(
       changeRequests.map((changeRequest) => changeRequest.number),
-      [52],
+      [52, 53],
     );
-    assert.include(args.join(" "), "pr view octocat:feature/shared");
-    assert.notInclude(args.join(" "), "--limit");
+    assert.include(args.join(" "), "pr list --head feature/shared --state all --limit 100");
   }),
 );
 
