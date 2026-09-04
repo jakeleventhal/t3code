@@ -102,7 +102,7 @@ export function terminalBufferStateFromSnapshot(
     error: null,
     updatedAt: snapshot.updatedAt,
     version: 1,
-    lifecycleVersion: 1,
+    lifecycleVersion: 0,
   };
 }
 
@@ -135,6 +135,11 @@ export function applyTerminalAttachStreamEvent(
 ): TerminalBufferState {
   switch (event.type) {
     case "snapshot":
+      return {
+        ...terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes),
+        lifecycleVersion:
+          current.version === 0 ? current.lifecycleVersion : current.lifecycleVersion + 1,
+      };
     case "restarted":
       return {
         ...terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes),

@@ -133,6 +133,28 @@ describe("terminal session reducers", () => {
     });
   });
 
+  it("does not advance the lifecycle for the initial attach snapshot", () => {
+    const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "snapshot",
+      snapshot: BASE_SNAPSHOT,
+    });
+
+    expect(snapshot).toMatchObject({ status: "running", lifecycleVersion: 0 });
+  });
+
+  it("advances the lifecycle for a live started snapshot", () => {
+    const initial = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "snapshot",
+      snapshot: BASE_SNAPSHOT,
+    });
+    const started = applyTerminalAttachStreamEvent(initial, {
+      type: "snapshot",
+      snapshot: { ...BASE_SNAPSHOT, pid: 456 },
+    });
+
+    expect(started).toMatchObject({ status: "running", lifecycleVersion: 1 });
+  });
+
   it("advances the lifecycle when a running terminal restarts in place", () => {
     const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
       type: "snapshot",
@@ -145,8 +167,8 @@ describe("terminal session reducers", () => {
       snapshot: { ...BASE_SNAPSHOT, pid: 456 },
     });
 
-    expect(snapshot).toMatchObject({ status: "running", lifecycleVersion: 1 });
-    expect(restarted).toMatchObject({ status: "running", lifecycleVersion: 2 });
+    expect(snapshot).toMatchObject({ status: "running", lifecycleVersion: 0 });
+    expect(restarted).toMatchObject({ status: "running", lifecycleVersion: 1 });
   });
 
   it("reduces terminal metadata snapshots, upserts, and removals", () => {
