@@ -562,6 +562,10 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
       return;
     }
     const props = localWorkStartingWidgetProps(input);
+    // This local seed is newer than any relay snapshot already being read.
+    // Invalidate those reads before publishing so they cannot repaint the
+    // widget with stale idle or aggregate state when they eventually finish.
+    widgetRefreshGeneration++;
     publishAgentActivityWidget(props);
     const activity = AgentActivity.start(props);
     logRegistrationDebug("live activity card armed for local work", {

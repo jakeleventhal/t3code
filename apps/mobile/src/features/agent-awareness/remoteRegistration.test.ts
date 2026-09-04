@@ -1252,6 +1252,60 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("does not overwrite a local work seed with an in-flight widget snapshot", () =>
+    Effect.gen(function* () {
+      const readStarted = yield* Deferred.make<void>();
+      const finishRead = yield* Deferred.make<void>();
+      const layer = snapshotRelayLayer(() =>
+        Deferred.succeed(readStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(finishRead)),
+          Effect.as({ aggregate: null }),
+        ),
+      );
+      const activity = {
+        getPushToken: vi.fn(() => Promise.resolve("activity-token")),
+        addPushTokenListener: vi.fn(),
+      };
+      widgetMocks.getInstances
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([])
+        .mockReturnValue([activity] as never);
+      widgetMocks.start.mockReturnValueOnce(activity);
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      environmentConfigsMock.configs.set("env-1", {
+        environment: { capabilities: { agentActivityPublishing: true } },
+      });
+      vi.mocked(loadPreferences).mockResolvedValue({
+        liveActivitiesEnabled: true,
+      } as Preferences);
+
+      const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+        Effect.provide(layer),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(readStarted);
+
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: "env-1" as EnvironmentId,
+        threadTitle: "Fix the flaky test",
+        projectTitle: "t3code",
+      });
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+      yield* Deferred.succeed(finishRead, undefined);
+      yield* Fiber.join(refresh);
+
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(1);
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
+          subtitle: "Agent work in progress",
+          activities: [expect.objectContaining({ status: "Connecting" })],
+        }),
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("does not restore an in-flight widget snapshot after cloud sign-out", () =>
     Effect.gen(function* () {
       const readStarted = yield* Deferred.make<void>();
