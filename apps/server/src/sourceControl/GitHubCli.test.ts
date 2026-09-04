@@ -347,8 +347,8 @@ describe("GitHubCli.layer", () => {
         cwd: "/repo",
         baseBranch: "main",
         headSelector: "acme:feature/fork-pr",
-        repository: "pingdotgg/t3code",
-        headRepository: "acme/t3code",
+        repository: "github.com/pingdotgg/t3code",
+        headRepository: "github.com/acme/t3code",
         title: "Target upstream",
         bodyFile: "/tmp/pr-body.md",
       });
@@ -377,8 +377,8 @@ describe("GitHubCli.layer", () => {
         cwd: "/repo",
         baseBranch: "main",
         headSelector: "feature/local-pr",
-        repository: "pingdotgg/t3code",
-        headRepository: "pingdotgg/t3code",
+        repository: "github.com/pingdotgg/t3code",
+        headRepository: "github.com/pingdotgg/t3code",
         title: "Local pull request",
         bodyFile: "/tmp/pr-body.md",
       });
@@ -403,6 +403,63 @@ describe("GitHubCli.layer", () => {
         cwd: "/repo",
         timeoutMs: 30_000,
       });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("inherits a GitHub Enterprise host for a host-less fork", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.createPullRequest({
+        cwd: "/repo",
+        baseBranch: "main",
+        headSelector: "feature/fork-pr",
+        repository: "github.example.com/pingdotgg/t3code",
+        headRepository: "octocat/t3code",
+        title: "Target Enterprise upstream",
+        bodyFile: "/tmp/pr-body.md",
+      });
+
+      expect(mockRun).toHaveBeenCalledTimes(1);
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "--hostname",
+            "github.example.com",
+            "repos/pingdotgg/t3code/pulls",
+            "head=octocat:feature/fork-pr",
+          ]),
+        }),
+      );
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("omits a GitHub Enterprise HTTPS port from the API hostname", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.createPullRequest({
+        cwd: "/repo",
+        baseBranch: "main",
+        headSelector: "feature/fork-pr",
+        repository: "github.example.com:8443/pingdotgg/t3code",
+        headRepository: "github.example.com:8443/octocat/t3code",
+        title: "Target ported Enterprise upstream",
+        bodyFile: "/tmp/pr-body.md",
+      });
+
+      expect(mockRun).toHaveBeenCalledTimes(1);
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "--hostname",
+            "github.example.com",
+            "repos/pingdotgg/t3code/pulls",
+          ]),
+        }),
+      );
     }).pipe(Effect.provide(layer)),
   );
 

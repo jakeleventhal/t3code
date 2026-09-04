@@ -27,19 +27,23 @@ interface PullRequestRepositoryContext {
   readonly headRepository: string;
 }
 
-interface GitHubRepositoryCoordinate {
-  readonly host: string;
+interface ParsedGitHubRepositoryCoordinate {
+  readonly host?: string;
   readonly owner: string;
   readonly name: string;
 }
 
+interface GitHubRepositoryCoordinate extends ParsedGitHubRepositoryCoordinate {
+  readonly host: string;
+}
+
 function parseGitHubRepositoryCoordinate(
   repository: string,
-): GitHubRepositoryCoordinate | undefined {
+): ParsedGitHubRepositoryCoordinate | undefined {
   const parts = repository.split("/").filter((part) => part.length > 0);
   if (parts.length === 2) {
     const [owner, name] = parts;
-    return owner && name ? { host: "github.com", owner, name } : undefined;
+    return owner && name ? { owner, name } : undefined;
   }
   if (parts.length === 3) {
     const [host, owner, name] = parts;
@@ -48,8 +52,24 @@ function parseGitHubRepositoryCoordinate(
   return undefined;
 }
 
+function resolveGitHubRepositoryCoordinate(
+  coordinate: ParsedGitHubRepositoryCoordinate | undefined,
+  fallbackHost: string | undefined,
+): GitHubRepositoryCoordinate | undefined {
+  const host = coordinate?.host ?? fallbackHost;
+  return coordinate && host ? { ...coordinate, host } : undefined;
+}
+
 function formatGitHubRepositoryCoordinate(coordinate: GitHubRepositoryCoordinate): string {
   return `${coordinate.host}/${coordinate.owner}/${coordinate.name}`;
+}
+
+function gitHubApiHostname(host: string): string {
+  try {
+    return new URL(`https://${host}`).hostname;
+  } catch {
+    return host;
+  }
 }
 
 function qualifyPullRequestHead(
@@ -434,10 +454,18 @@ export const make = Effect.gen(function* () {
       ? parseGitHubRepositoryCoordinate(input.headRepository)
       : undefined;
 
-    if (explicitBase && explicitHead) {
+    const explicitBaseWithHost = resolveGitHubRepositoryCoordinate(
+      explicitBase,
+      explicitHead?.host,
+    );
+    const explicitHeadWithHost = resolveGitHubRepositoryCoordinate(
+      explicitHead,
+      explicitBase?.host,
+    );
+    if (explicitBaseWithHost && explicitHeadWithHost) {
       return {
-        baseRepository: formatGitHubRepositoryCoordinate(explicitBase),
-        headRepository: formatGitHubRepositoryCoordinate(explicitHead),
+        baseRepository: formatGitHubRepositoryCoordinate(explicitBaseWithHost),
+        headRepository: formatGitHubRepositoryCoordinate(explicitHeadWithHost),
       };
     }
 
@@ -454,14 +482,22 @@ export const make = Effect.gen(function* () {
       ],
     });
     const [resolvedBaseValue, resolvedHeadValue] = result.stdout.trim().split("\t");
-    const resolvedBase = resolvedBaseValue
-      ? parseGitHubRepositoryCoordinate(resolvedBaseValue)
-      : undefined;
-    const resolvedHead = resolvedHeadValue
-      ? parseGitHubRepositoryCoordinate(resolvedHeadValue)
-      : undefined;
-    const base = explicitBase ?? resolvedBase;
-    const head = explicitHead ?? resolvedHead;
+    const resolvedBase = resolveGitHubRepositoryCoordinate(
+      resolvedBaseValue ? parseGitHubRepositoryCoordinate(resolvedBaseValue) : undefined,
+      undefined,
+    );
+    const resolvedHead = resolveGitHubRepositoryCoordinate(
+      resolvedHeadValue ? parseGitHubRepositoryCoordinate(resolvedHeadValue) : undefined,
+      undefined,
+    );
+    const base = resolveGitHubRepositoryCoordinate(
+      explicitBase ?? resolvedBase,
+      explicitBase?.host ?? resolvedBase?.host ?? resolvedHead?.host,
+    );
+    const head = resolveGitHubRepositoryCoordinate(
+      explicitHead ?? resolvedHead,
+      explicitHead?.host ?? resolvedHead?.host ?? base?.host,
+    );
 
     if (!base || !head) {
       return yield* new GitHubRepositoryContextDecodeError({
@@ -622,8 +658,14 @@ export const make = Effect.gen(function* () {
     createPullRequest: (input) =>
       resolvePullRequestRepositoryContext(input).pipe(
         Effect.flatMap((context) => {
-          const base = parseGitHubRepositoryCoordinate(context.baseRepository);
-          const head = parseGitHubRepositoryCoordinate(context.headRepository);
+          const base = resolveGitHubRepositoryCoordinate(
+            parseGitHubRepositoryCoordinate(context.baseRepository),
+            undefined,
+          );
+          const head = resolveGitHubRepositoryCoordinate(
+            parseGitHubRepositoryCoordinate(context.headRepository),
+            undefined,
+          );
           if (
             base &&
             head &&
@@ -638,7 +680,7 @@ export const make = Effect.gen(function* () {
               args: [
                 "api",
                 "--hostname",
-                base.host,
+                gitHubApiHostname(base.host),
                 `repos/${base.owner}/${base.name}/pulls`,
                 "--method",
                 "POST",
