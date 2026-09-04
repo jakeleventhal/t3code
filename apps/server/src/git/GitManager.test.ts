@@ -2010,6 +2010,59 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
   );
 
   it.effect(
+    "does not treat repositories on different GitHub Enterprise hosts as forks",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        const originDir = yield* createBareRemote();
+        const upstreamDir = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", originDir]);
+        yield* runGit(repoDir, ["remote", "add", "upstream", upstreamDir]);
+        yield* runGit(repoDir, ["checkout", "-b", "feature/host-isolation"]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "feature/host-isolation"]);
+        yield* configureVisibleRemoteUrlWithLocalRewrite(
+          repoDir,
+          "origin",
+          "git@github.one.test:contributor/t3code.git",
+          originDir,
+        );
+        yield* configureVisibleRemoteUrlWithLocalRewrite(
+          repoDir,
+          "upstream",
+          "git@github.two.test:T3Tools/t3code.git",
+          upstreamDir,
+        );
+
+        const { manager, ghCalls } = yield* makeManager({
+          ghScenario: {
+            prListByHeadSelector: {
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              "feature/host-isolation": JSON.stringify([
+                {
+                  number: 1705,
+                  title: "Host-isolated PR",
+                  url: "https://github.one.test/contributor/t3code/pull/1705",
+                  baseRefName: "main",
+                  headRefName: "feature/host-isolation",
+                  state: "OPEN",
+                  updatedAt: "2026-08-02T12:00:00Z",
+                  isCrossRepository: false,
+                },
+              ]),
+            },
+          },
+        });
+
+        const status = yield* manager.status({ cwd: repoDir });
+
+        expect(status.pr?.number).toBe(1705);
+        expect(ghCalls.some((call) => call.includes("--head contributor:"))).toBe(false);
+      }),
+    20_000,
+  );
+
+  it.effect(
     "status ignores synthetic local branch aliases when the upstream remote name contains slashes",
     () =>
       Effect.gen(function* () {
