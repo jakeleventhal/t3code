@@ -1343,6 +1343,48 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("does not prime from a snapshot that became idle while preferences loaded", () =>
+    Effect.gen(function* () {
+      let preferencesStarted!: () => void;
+      let finishPreferences!: (preferences: Preferences) => void;
+      const started = new Promise<void>((resolve) => {
+        preferencesStarted = resolve;
+      });
+      const preferences = new Promise<Preferences>((resolve) => {
+        finishPreferences = resolve;
+      });
+      vi.mocked(loadPreferences).mockImplementationOnce(() => {
+        preferencesStarted();
+        return preferences;
+      });
+      let readCount = 0;
+      const layer = snapshotRelayLayer(() => {
+        readCount++;
+        return Effect.succeed(readCount === 1 ? activeAgentActivitySnapshot : { aggregate: null });
+      });
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+
+      const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+        Effect.provide(layer),
+        Effect.forkChild,
+      );
+      yield* Effect.promise(() => started);
+
+      finishPreferences({ liveActivitiesEnabled: true } as Preferences);
+      yield* Fiber.join(refresh);
+
+      expect(readCount).toBe(2);
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          subtitle: "No active agents",
+          activeCount: 0,
+          activities: [],
+        }),
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("does not restore an in-flight widget snapshot after cloud sign-out", () =>
     Effect.gen(function* () {
       const readStarted = yield* Deferred.make<void>();

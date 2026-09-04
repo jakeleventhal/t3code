@@ -1132,7 +1132,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     // the latest aggregate even when a Live Activity already exists or the
     // user has turned Live Activities off; otherwise the widget stays on the
     // "Connecting" snapshot from local arming.
-    const snapshot = yield* refreshAgentActivityWidget();
+    yield* refreshAgentActivityWidget();
 
     // Activities are only ever created here, in the foreground, where the
     // update token can be observed and registered immediately — the relay
@@ -1164,8 +1164,12 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
         }).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<LiveActivity<AgentActivityProps>>));
         if (armedMeanwhile.length > 0) {
           activities = [...armedMeanwhile];
-        } else if (snapshot?.aggregate && snapshot.aggregate.activeCount > 0) {
-          const aggregate = snapshot.aggregate;
+        } else {
+          const latestSnapshot = yield* refreshAgentActivityWidget();
+          if (!latestSnapshot?.aggregate || latestSnapshot.aggregate.activeCount <= 0) {
+            return;
+          }
+          const aggregate = latestSnapshot.aggregate;
           const primed = yield* Effect.try({
             try: () => AgentActivity.start(widgetPropsFromAggregate(aggregate)),
             catch: (cause) =>
