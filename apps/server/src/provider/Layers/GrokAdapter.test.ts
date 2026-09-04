@@ -26,11 +26,13 @@ import {
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../../config.ts";
+import { ProviderDriverError } from "../Errors.ts";
 import {
   grokPromptSettlementBelongsToContext,
   isGrokEnterPlanModeToolCall,
   makeGrokAdapter,
   nextGrokPlanModeActive,
+  rewriteGrokSkillReferences,
   selectGrokPermissionOptionId,
 } from "./GrokAdapter.ts";
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
@@ -212,66 +214,273 @@ it("requires a settlement to match the live Grok turn", () => {
   );
 });
 
+it("rewrites only exact enabled Grok skill references", () => {
+  const skills = [
+    {
+      name: "review",
+      description: "Review the work",
+      path: "/skills/review/SKILL.md",
+      scope: "project",
+      enabled: true,
+    },
+    {
+      name: "local:verify",
+      path: "/skills/local-verify/SKILL.md",
+      scope: "plugin:local",
+      enabled: true,
+    },
+    {
+      name: "disabled",
+      path: "/skills/disabled/SKILL.md",
+      scope: "project",
+      enabled: false,
+    },
+  ];
+
+  assert.equal(
+    rewriteGrokSkillReferences(
+      "Use $review and keep $PATH plus $NODE_ENV and $disabled then run $local:verify",
+      skills,
+    ),
+    "Use /review and keep $PATH plus $NODE_ENV and $disabled then run /local:verify",
+  );
+});
+
+it("rewrites an exact all-uppercase skill once skills have been discovered", () => {
+  assert.equal(
+    rewriteGrokSkillReferences("Use $review with $PATH", [
+      {
+        name: "review",
+        path: "/skills/review/SKILL.md",
+        scope: "project",
+        enabled: true,
+      },
+      {
+        name: "PATH",
+        path: "/skills/path/SKILL.md",
+        scope: "project",
+        enabled: true,
+      },
+    ]),
+    "Use /review with /PATH",
+  );
+});
+
 it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
-  it.effect("sends runtime context with the current model without changing saved prompts", () =>
+  it.effect("rewrites discovered skill references only in the ACP prompt", () =>
     Effect.gen(function* () {
-      const threadId = ThreadId.make("grok-runtime-context");
+      const threadId = ThreadId.make("grok-skill-rewrite");
       const tempDir = yield* Effect.promise(() =>
-        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-runtime-context-")),
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-acp-skill-rewrite-")),
       );
       const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockGrokWrapper({ T3_ACP_REQUEST_LOG_PATH: requestLogPath }),
       );
-      const adapter = yield* makeTestAdapter(wrapperPath);
+      const originalInput = "Please $review this and preserve $PATH";
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        listSkills: () =>
+          Effect.succeed([
+            {
+              name: "review",
+              path: "/skills/review/SKILL.md",
+              scope: "project",
+              enabled: true,
+            },
+          ]),
+      });
+
       yield* adapter.startSession({
         threadId,
+        provider: ProviderDriverKind.make("grok"),
         cwd: process.cwd(),
         runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
       });
-      yield* adapter.sendTurn({ threadId, input: "First prompt" });
+      yield* adapter.sendTurn({ threadId, input: originalInput, attachments: [] });
+
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      const promptRequest = requests.find((entry) => entry.method === "session/prompt");
+      assert.isDefined(promptRequest);
+      const params = promptRequest?.params;
+      assert.isTrue(typeof params === "object" && params !== null && "prompt" in params);
+      if (typeof params === "object" && params !== null && "prompt" in params) {
+        assert.deepStrictEqual(params.prompt, [
+          { type: "text", text: "Please /review this and preserve $PATH" },
+        ]);
+      }
+      assert.equal(originalInput, "Please $review this and preserve $PATH");
+
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("bypasses discovery when a prompt has no skill token", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-skill-discovery-bypass");
+      const wrapperPath = yield* Effect.promise(() => makeMockGrokWrapper());
+      const discoveryCalls = yield* Ref.make(0);
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        listSkills: () => Ref.update(discoveryCalls, (count) => count + 1).pipe(Effect.as([])),
+      });
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId, input: "ordinary prompt", attachments: [] });
+
+      assert.equal(yield* Ref.get(discoveryCalls), 0);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("bypasses discovery for shell-style environment variables", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-env-var-discovery-bypass");
+      const wrapperPath = yield* Effect.promise(() => makeMockGrokWrapper());
+      const discoveryCalls = yield* Ref.make(0);
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        listSkills: () =>
+          Ref.update(discoveryCalls, (count) => count + 1).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new ProviderDriverError({
+                  driver: "grok",
+                  instanceId: "grok",
+                  detail: "inspect failed",
+                }),
+              ),
+            ),
+          ),
+      });
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
       yield* adapter.sendTurn({
         threadId,
-        input: "Second prompt",
-        modelSelection: {
-          instanceId: ProviderInstanceId.make("grok"),
-          model: "grok-4.6",
-          options: [{ id: "reasoningEffort", value: "low" }],
-        },
+        input: "Print $PATH and $NODE_ENV",
+        attachments: [],
       });
-      const snapshot = yield* adapter.readThread(threadId);
-      assert.deepEqual(
-        snapshot.turns.map((turn) => turn.items),
-        [
-          [
-            {
-              prompt: [{ type: "text", text: "First prompt" }],
-              result: { stopReason: "end_turn" },
-            },
-          ],
-          [
-            {
-              prompt: [{ type: "text", text: "Second prompt" }],
-              result: { stopReason: "end_turn" },
-            },
-          ],
-        ],
-      );
+
+      assert.equal(yield* Ref.get(discoveryCalls), 0);
       yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("surfaces skill discovery failures as typed adapter errors", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-skill-discovery-failure");
+      const wrapperPath = yield* Effect.promise(() => makeMockGrokWrapper());
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        listSkills: () =>
+          Effect.fail(
+            new ProviderDriverError({
+              driver: "grok",
+              instanceId: "grok",
+              detail: "inspect failed",
+            }),
+          ),
+      });
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
+      const error = yield* Effect.flip(
+        adapter.sendTurn({ threadId, input: "$review the change", attachments: [] }),
+      );
+
+      assert.equal(error._tag, "ProviderAdapterRequestError");
+      if (error._tag === "ProviderAdapterRequestError") {
+        assert.equal(error.method, "skills/list");
+        assert.instanceOf(error.cause, ProviderDriverError);
+      }
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("retains a successful model switch when later skill discovery fails", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-model-switch-before-skill-failure");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-model-skill-failure-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({ T3_ACP_REQUEST_LOG_PATH: requestLogPath }),
+      );
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        listSkills: () =>
+          Effect.fail(
+            new ProviderDriverError({
+              driver: "grok",
+              instanceId: "grok",
+              detail: "inspect failed",
+            }),
+          ),
+      });
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-build" },
+      });
+      const error = yield* Effect.flip(
+        adapter.sendTurn({
+          threadId,
+          input: "$review the change",
+          attachments: [],
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("grok"),
+            model: "grok-mock-alt",
+          },
+        }),
+      );
+
+      assert.equal(error._tag, "ProviderAdapterRequestError");
+      const sessionsAfterFailure = yield* adapter.listSessions();
+      assert.equal(
+        sessionsAfterFailure.find((session) => session.threadId === threadId)?.model,
+        "grok-mock-alt",
+      );
+
+      yield* adapter.sendTurn({
+        threadId,
+        input: "continue without another model selection",
+        attachments: [],
+      });
+      const sessionsAfterFollowUp = yield* adapter.listSessions();
+      assert.equal(
+        sessionsAfterFollowUp.find((session) => session.threadId === threadId)?.model,
+        "grok-mock-alt",
+      );
       const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
-      const prompts = requests
-        .filter((request) => request.method === "session/prompt")
-        .map(
-          (request) => (request.params as { prompt: Array<{ type: string; text: string }> }).prompt,
-        );
-      assert.equal(prompts.length, 2);
-      assert.deepEqual(prompts[0]?.[0], { type: "text", text: "First prompt" });
-      assert.include(prompts[0]?.[1]?.text, "Grok harness, as grok-mock-alt");
-      assert.deepEqual(prompts[1]?.[0], { type: "text", text: "Second prompt" });
-      assert.include(prompts[1]?.[1]?.text, "Grok harness, as grok-4.6");
-      assert.include(prompts[1]?.[1]?.text, "with low reasoning effort");
-      assert.include(prompts[1]?.[1]?.text, "embed images and videos");
+      const selectedModelIds = requests
+        .filter((entry) => entry.method === "session/set_model")
+        .flatMap((entry) => {
+          const params = entry.params;
+          return typeof params === "object" &&
+            params !== null &&
+            "modelId" in params &&
+            typeof params.modelId === "string"
+            ? [params.modelId]
+            : [];
+        });
+      // The failed turn committed exactly one switch. The model-less follow-up
+      // must neither repeat that switch nor revert to the session's old model.
+      assert.deepStrictEqual(selectedModelIds, ["grok-mock-alt"]);
+
+      yield* adapter.stopSession(threadId);
     }),
   );
 
