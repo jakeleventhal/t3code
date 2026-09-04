@@ -358,11 +358,7 @@ export function AgentActivity(
             >
               {heroRow.threadTitle}
             </Text>
-          ) : (
-            <Text modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground)]}>
-              {outcomeLabel}
-            </Text>
-          )}
+          ) : null}
           {heroRow ? (
             <HStack spacing={5} alignment="center">
               {renderHomeStatusIcon(heroRow, 11)}
@@ -443,18 +439,7 @@ export function AgentActivity(
           </Text>
           {renderGlyph("arrow.up.right", 10, secondaryForeground)}
         </HStack>
-        {row0 ? (
-          renderHomeRow(row0)
-        ) : (
-          <Text
-            modifiers={[
-              font({ weight: "semibold", size: 14 }),
-              foregroundStyle(secondaryForeground),
-            ]}
-          >
-            {outcomeLabel}
-          </Text>
-        )}
+        {row0 ? renderHomeRow(row0) : null}
         {row1 ? <Divider modifiers={[padding({ vertical: 7, leading: 26 })]} /> : null}
         {row1 ? renderHomeRow(row1) : null}
         <Spacer minLength={0} />
