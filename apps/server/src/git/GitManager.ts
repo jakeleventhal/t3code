@@ -1501,26 +1501,25 @@ export const make = Effect.gen(function* () {
       headContext.headBranch === details.defaultBranch ||
       (details.defaultBranch === null &&
         (headContext.headBranch === "main" || headContext.headBranch === "master"));
-    if (
-      !headContext.trackingRefIsBase &&
-      (headContext.headBranch === details.branch ||
-        !upstreamHeadIsDefault ||
-        headContext.isCrossRepository)
-    ) {
+    if (headContext.headBranch === details.branch) {
       return { headContext, lookup: true };
     }
     const remoteName = yield* findRemoteTrackingRemote(cwd, details.branch, headContext.remoteName);
-    if (remoteName === null) {
-      return { headContext, lookup: false };
+    if (remoteName !== null) {
+      const ownNameContext = yield* resolveBranchHeadContext(cwd, {
+        branch: details.branch,
+        upstreamRef: null,
+        remoteName,
+      });
+      return {
+        headContext: { ...ownNameContext, trackingRefIsBase: true },
+        lookup: true,
+      };
     }
-    const ownNameContext = yield* resolveBranchHeadContext(cwd, {
-      branch: details.branch,
-      upstreamRef: null,
-      remoteName,
-    });
     return {
-      headContext: { ...ownNameContext, trackingRefIsBase: headContext.trackingRefIsBase },
-      lookup: true,
+      headContext,
+      lookup:
+        !headContext.trackingRefIsBase && (!upstreamHeadIsDefault || headContext.isCrossRepository),
     };
   });
 
@@ -1737,20 +1736,19 @@ export const make = Effect.gen(function* () {
     cwd: string,
     branch: string,
     upstreamRef: string | null,
-    headContext: Pick<BranchHeadContext, "headBranch" | "remoteName" | "trackingRefIsBase">,
+    headContext: Pick<
+      BranchHeadContext,
+      "headBranch" | "isCrossRepository" | "remoteName" | "trackingRefIsBase"
+    >,
   ) {
     const configured = yield* gitCore.readConfigValue(cwd, `branch.${branch}.gh-merge-base`);
     if (configured) return configured;
 
-    if (upstreamRef && headContext.trackingRefIsBase) {
+    if (upstreamRef && (headContext.trackingRefIsBase || !headContext.isCrossRepository)) {
       const upstreamBranch = extractBranchNameFromRemoteRef(upstreamRef, {
         remoteName: headContext.remoteName,
       });
-      if (
-        upstreamBranch.length > 0 &&
-        upstreamBranch !== branch &&
-        upstreamBranch !== headContext.headBranch
-      ) {
+      if (upstreamBranch.length > 0 && upstreamBranch !== branch) {
         return upstreamBranch;
       }
     }

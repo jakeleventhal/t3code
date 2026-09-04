@@ -4197,6 +4197,63 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       }),
   );
 
+  it.effect("creates a same-repository PR against its non-default tracked base", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "origin", "main:release"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/same-repo-base"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "same-repo.txt"), "change\n");
+      yield* runGit(repoDir, ["add", "same-repo.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "Same-repository feature"]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:feature/same-repo-base"]);
+      yield* runGit(repoDir, ["branch", "--set-upstream-to", "origin/release"]);
+      yield* configureVisibleRemoteUrlWithLocalRewrite(
+        repoDir,
+        "origin",
+        "git@github.com:T3Tools/t3code.git",
+        remoteDir,
+      );
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          prListSequenceByHeadSelector: {
+            "feature/same-repo-base": [
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([]),
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([
+                {
+                  number: 1706,
+                  title: "Same-repository feature",
+                  url: "https://github.com/T3Tools/t3code/pull/1706",
+                  baseRefName: "release",
+                  headRefName: "feature/same-repo-base",
+                  state: "OPEN",
+                  isCrossRepository: false,
+                },
+              ]),
+            ],
+          },
+        },
+      });
+
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "create_pr",
+      });
+
+      expect(result.pr.number).toBe(1706);
+      expect(
+        ghCalls.some((call) =>
+          call.includes("pr create --base release --head feature/same-repo-base"),
+        ),
+      ).toBe(true);
+    }),
+  );
+
   it.effect("creates an enterprise fork PR from the local branch against its tracked base", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
