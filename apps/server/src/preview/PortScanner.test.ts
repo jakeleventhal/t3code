@@ -719,6 +719,23 @@ effectIt.effect("keeps a full configured URL when the discovered server root fai
   }).pipe(Effect.provide(layer));
 });
 
+effectIt.effect("does not duplicate configured paths across loopback aliases", () => {
+  const configuredUrl = `http://127.0.0.1:${LSOF_TEST_PORT}/docs`;
+  const fetchFn = ((input: Parameters<typeof globalThis.fetch>[0]) =>
+    Promise.resolve(
+      new Response(String(input), { headers: { "content-type": "text/html" } }),
+    )) as typeof globalThis.fetch;
+  const layer = makeLsofScannerLayer({ pid: () => 1234, fetch: fetchFn });
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    const servers = yield* scanner.scan([configuredUrl]);
+
+    expect(servers).toHaveLength(1);
+    expect(servers[0]?.url).toBe(configuredUrl);
+  }).pipe(Effect.provide(layer));
+});
+
 effectIt.effect("probes configured custom ports through a canonical loopback host", () => {
   const customPort = 43_124;
   const configuredUrl = `http://0.0.0.0:${customPort}/docs`;
