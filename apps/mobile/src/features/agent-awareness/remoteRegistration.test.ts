@@ -1078,6 +1078,38 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.provide(snapshotRelayLayer()));
   });
 
+  it.effect("refreshes the home-screen widget when local Live Activity arming fails", () => {
+    widgetMocks.start.mockImplementationOnce(() => {
+      throw new Error("start failed");
+    });
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    backgroundRuntime.pending.length = 0;
+    environmentConfigsMock.configs.set("env-1", {
+      environment: { capabilities: { agentActivityPublishing: true } },
+    });
+    vi.mocked(loadPreferences).mockResolvedValueOnce({
+      liveActivitiesEnabled: true,
+    } as Preferences);
+
+    armAgentAwarenessLiveActivityForLocalWork({
+      environmentId: "env-1" as EnvironmentId,
+      threadTitle: "Fix the flaky test",
+      projectTitle: "t3code",
+    });
+
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
+          subtitle: "Agent work in progress",
+          activities: [expect.objectContaining({ status: "Working" })],
+        }),
+      );
+    }).pipe(Effect.provide(snapshotRelayLayer()));
+  });
+
   it.effect("discards an older widget snapshot when a newer refresh finishes first", () =>
     Effect.gen(function* () {
       const firstReadStarted = yield* Deferred.make<void>();

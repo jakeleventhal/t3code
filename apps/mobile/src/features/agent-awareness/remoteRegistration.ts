@@ -561,6 +561,10 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     );
   } catch (error) {
     logRegistrationError("live activity arming failed", error);
+    runRegistrationInBackground(
+      refreshAgentActivityWidget(),
+      "widget refresh after live activity arming failed",
+    );
   }
 }
 
