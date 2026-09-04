@@ -1527,6 +1527,19 @@ function ChatMarkdownVideo(props: {
   );
 }
 
+function AuthoredImageTitleTooltip(props: {
+  readonly title?: string | undefined;
+  readonly children: React.ReactElement;
+}) {
+  if (!props.title) return props.children;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={props.children} />
+      <TooltipPopup side="top">{props.title}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** Environment-hosted media loads through an exact-file signed asset URL. */
 export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props: {
   readonly environmentId: EnvironmentId;
@@ -1536,6 +1549,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   >;
   readonly kind?: "image" | "video";
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
   /** Reserve a slot while loading; off for images that share a line with text. */
