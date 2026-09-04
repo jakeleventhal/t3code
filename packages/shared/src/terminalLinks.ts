@@ -17,12 +17,16 @@ function trimClosingDelimiters(value: string): string {
   if (output.length === 0) return output;
 
   const trimUnbalanced = (open: string, close: string) => {
-    while (output.endsWith(close)) {
-      const opens = output.split(open).length - 1;
-      const closes = output.split(close).length - 1;
-      if (opens >= closes) return;
-      output = output.slice(0, -1);
+    const opens = output.split(open).length - 1;
+    const closes = output.split(close).length - 1;
+    const excess = Math.max(0, closes - opens);
+    if (excess === 0) return;
+
+    let trailing = 0;
+    while (trailing < output.length && output[output.length - 1 - trailing] === close) {
+      trailing += 1;
     }
+    output = output.slice(0, output.length - Math.min(excess, trailing));
   };
 
   trimUnbalanced("(", ")");
@@ -170,6 +174,6 @@ export function resolvePathLinkTarget(rawPath: string, cwd: string): string {
     resolvedPath = joinPath(cwd, path, separator);
   }
 
-  if (!line) return resolvedPath;
-  return `${resolvedPath}:${line}${column ? `:${column}` : ""}`;
+  if (!line || line === "0") return resolvedPath;
+  return `${resolvedPath}:${line}${column && column !== "0" ? `:${column}` : ""}`;
 }
