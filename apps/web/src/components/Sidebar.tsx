@@ -148,6 +148,10 @@ import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
+import {
   animatePinnedLayoutChanges,
   buildBulkTitleRegenerationContextMenuItem,
   filterSidebarProjectScopeItems,
@@ -830,6 +834,14 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
     environmentId: thread.environmentId,
     threadId: thread.id,
   });
+  const discoveredPorts = useThreadDiscoveredPorts({
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+  });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
+  const openPreview = useAtomCommand(previewEnvironment.open, {
+    reportFailure: false,
+  });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
   const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isActive;
@@ -1078,6 +1090,32 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
     },
     [onThreadActivate, openPrLink, openPullRequestsInRightPanel, pr, props.isActive, threadRef],
   );
+  const handleOpenDiscoveredPort = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!preferredDiscoveredPort) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onThreadActivate(threadRef);
+      void (async () => {
+        const result = await openDiscoveredPort({
+          threadRef,
+          port: preferredDiscoveredPort,
+          openPreview,
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open preview",
+            description:
+              error instanceof Error ? error.message : "The preview could not be opened.",
+          }),
+        );
+      })();
+    },
+    [onThreadActivate, openPreview, preferredDiscoveredPort, threadRef],
+  );
 
   // All sidebar rows share one surface model. Live threads used to look
   // like elevated cards while settled threads were plain rows, leaving neither
@@ -1180,6 +1218,25 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const discoveredPortButton = preferredDiscoveredPort ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
+            onClick={handleOpenDiscoveredPort}
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-emerald-600 outline-none hover:text-emerald-700 focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-400 dark:hover:text-emerald-300"
+          />
+        }
+      >
+        <Globe2Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
+      </TooltipPopup>
+    </Tooltip>
+  ) : null;
   const pinIndicator = props.isPinned ? (
     props.pinningSupported ? (
       <Tooltip>
@@ -1248,6 +1305,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
           </span>
           {draftIndicator}
           {title}
+          {discoveredPortButton}
           {terminalStatusIcon}
           {pinIndicator}
           {isRegeneratingTitle ? (
@@ -1776,13 +1834,13 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
     environmentId,
     threadId: canonicalThreadRef?.threadId ?? null,
   });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
   const handleOpenDiscoveredPort = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const port = discoveredPorts[0];
-      if (!port) return;
+      if (!preferredDiscoveredPort) return;
       event.preventDefault();
       event.stopPropagation();
       const targetRef =
@@ -1793,7 +1851,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
       void (async () => {
         const result = await openDiscoveredPort({
           threadRef: targetRef,
-          port,
+          port: preferredDiscoveredPort,
           openPreview,
         });
         if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
@@ -1810,7 +1868,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
         );
       })();
     },
-    [activeMember, discoveredPorts, newestRef, onThreadActivate, openPreview],
+    [activeMember, newestRef, onThreadActivate, openPreview, preferredDiscoveredPort],
   );
 
   const anySelected = useThreadSelectionStore((state) =>
@@ -2110,13 +2168,13 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                 <TooltipPopup side="top">Terminal process running</TooltipPopup>
               </Tooltip>
             ) : null}
-            {discoveredPorts.length > 0 ? (
+            {preferredDiscoveredPort ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <button
                       type="button"
-                      aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
+                      aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
                       data-testid="sidebar-v2-worktree-devserver-indicator"
                       className="inline-flex shrink-0 cursor-pointer items-center justify-center text-emerald-600 outline-hidden focus-visible:ring-1 focus-visible:ring-ring dark:text-emerald-400"
                       onClick={handleOpenDiscoveredPort}
@@ -2126,7 +2184,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   <Globe2Icon className="size-3" />
                 </TooltipTrigger>
                 <TooltipPopup side="top">
-                  Open localhost:{discoveredPorts[0]?.port}
+                  Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
                   {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
                 </TooltipPopup>
               </Tooltip>
