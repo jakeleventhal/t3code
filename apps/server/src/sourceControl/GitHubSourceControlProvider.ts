@@ -11,10 +11,7 @@ import {
 
 import * as GitHubCli from "./GitHubCli.ts";
 import { findAuthenticatedGitHubAccount, parseGitHubAuthStatus } from "./gitHubAuthStatus.ts";
-import {
-  decodeGitHubPullRequestJson,
-  decodeGitHubPullRequestListJson,
-} from "./gitHubPullRequests.ts";
+import { decodeGitHubPullRequestListJson } from "./gitHubPullRequests.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
 import {
   combinedAuthOutput,
@@ -132,9 +129,10 @@ export const make = Effect.gen(function* () {
         .split("/")
         .filter((part) => part.length > 0);
       if (!owner || !name || rest.length > 0) return undefined;
-      return parsed.host.toLowerCase() === "github.com"
+      const repositoryHost = parsed.protocol === "ssh:" ? parsed.hostname : parsed.host;
+      return parsed.hostname.toLowerCase() === "github.com"
         ? `${owner}/${name}`
-        : `${parsed.host}/${owner}/${name}`;
+        : `${repositoryHost}/${owner}/${name}`;
     } catch {
       return undefined;
     }
@@ -180,78 +178,6 @@ export const make = Effect.gen(function* () {
       const stateArg: ChangeRequestState | "all" = input.state;
       const qualifiedHead = /^([^:/\s]+):(.+)$/u.exec(input.headSelector);
       const requestedLimit = input.limit ?? 20;
-      if (qualifiedHead) {
-        return github
-          .execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "view",
-              input.headSelector,
-              ...(repository ? ["--repo", repository] : []),
-              "--json",
-              "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
-            ],
-          })
-          .pipe(
-            Effect.flatMap((result) => {
-              const raw = result.stdout.trim();
-              if (raw.length === 0) return Effect.succeed([]);
-              return Effect.sync(() => decodeGitHubPullRequestJson(raw)).pipe(
-                Effect.flatMap((decoded) =>
-                  Result.isSuccess(decoded)
-                    ? Effect.succeed(
-                        (() => {
-                          const item = decoded.success;
-                          if (
-                            item.headRefName !== qualifiedHead[2] ||
-                            item.headRepositoryOwnerLogin?.toLowerCase() !==
-                              qualifiedHead[1]?.toLowerCase() ||
-                            (stateArg !== "all" && item.state !== stateArg)
-                          ) {
-                            return [];
-                          }
-                          const { updatedAt, ...summary } = item;
-                          return [
-                            {
-                              ...toChangeRequest({
-                                ...summary,
-                                ...(Option.isSome(updatedAt)
-                                  ? { updatedAt: DateTime.formatIso(updatedAt.value) }
-                                  : {}),
-                              }),
-                              updatedAt,
-                            },
-                          ];
-                        })(),
-                      )
-                    : Effect.fail(
-                        new GitHubCli.GitHubChangeRequestListDecodeError({
-                          command: "gh",
-                          cwd: input.cwd,
-                          cause: decoded.failure,
-                        }),
-                      ),
-                ),
-              );
-            }),
-            Effect.catchTags({ GitHubPullRequestNotFoundError: () => Effect.succeed([]) }),
-            Effect.mapError(
-              (error) =>
-                new SourceControlProviderError({
-                  provider: "github",
-                  operation: "listChangeRequests",
-                  command: error.command,
-                  cwd: input.cwd,
-                  reference: SourceControlProvider.transportSafeSourceControlErrorValue(
-                    input.headSelector,
-                  ),
-                  detail: error.detail,
-                  cause: error,
-                }),
-            ),
-          );
-      }
       return github
         .execute({
           cwd: input.cwd,
@@ -259,11 +185,11 @@ export const make = Effect.gen(function* () {
             "pr",
             "list",
             "--head",
-            input.headSelector,
+            qualifiedHead?.[2] ?? input.headSelector,
             "--state",
             stateArg,
             "--limit",
-            String(requestedLimit),
+            String(qualifiedHead ? Math.max(requestedLimit, 100) : requestedLimit),
             ...(repository ? ["--repo", repository] : []),
             "--json",
             "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
@@ -279,18 +205,27 @@ export const make = Effect.gen(function* () {
               Effect.flatMap((decoded) =>
                 Result.isSuccess(decoded)
                   ? Effect.succeed(
-                      decoded.success.slice(0, requestedLimit).map((item) => {
-                        const { updatedAt, ...summary } = item;
-                        return {
-                          ...toChangeRequest({
-                            ...summary,
-                            ...(Option.isSome(updatedAt)
-                              ? { updatedAt: DateTime.formatIso(updatedAt.value) }
-                              : {}),
-                          }),
-                          updatedAt,
-                        };
-                      }),
+                      decoded.success
+                        .filter(
+                          (item) =>
+                            !qualifiedHead ||
+                            (item.headRefName === qualifiedHead[2] &&
+                              item.headRepositoryOwnerLogin?.toLowerCase() ===
+                                qualifiedHead[1]?.toLowerCase()),
+                        )
+                        .slice(0, requestedLimit)
+                        .map((item) => {
+                          const { updatedAt, ...summary } = item;
+                          return {
+                            ...toChangeRequest({
+                              ...summary,
+                              ...(Option.isSome(updatedAt)
+                                ? { updatedAt: DateTime.formatIso(updatedAt.value) }
+                                : {}),
+                            }),
+                            updatedAt,
+                          };
+                        }),
                     )
                   : Effect.fail(
                       new GitHubCli.GitHubChangeRequestListDecodeError({
