@@ -304,6 +304,8 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     vi.mocked(loadAgentAwarenessRegistrationRecord).mockClear();
     vi.mocked(clearAgentAwarenessRegistrationRecord).mockClear();
     vi.mocked(loadOrCreateAgentAwarenessDeviceId).mockResolvedValue("device-1");
+    vi.mocked(loadPreferences).mockReset();
+    vi.mocked(loadPreferences).mockResolvedValue({ liveActivitiesEnabled: false } as Preferences);
     widgetMocks.getInstances.mockReset();
     widgetMocks.getInstances.mockReturnValue([]);
     widgetMocks.start.mockReset();
@@ -1066,12 +1068,74 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     });
 
     return Effect.gen(function* () {
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
       yield* runBackgroundOperations();
 
       expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
         expect.objectContaining({
           activeCount: 1,
           subtitle: "Agent work in progress",
+          activities: [expect.objectContaining({ status: "Working" })],
+        }),
+      );
+    }).pipe(Effect.provide(snapshotRelayLayer()));
+  });
+
+  it.effect("refreshes the home-screen widget when local Live Activities are disabled", () => {
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    backgroundRuntime.pending.length = 0;
+    environmentConfigsMock.configs.set("env-1", {
+      environment: { capabilities: { agentActivityPublishing: true } },
+    });
+    vi.mocked(loadPreferences).mockResolvedValueOnce({
+      liveActivitiesEnabled: false,
+    } as Preferences);
+
+    armAgentAwarenessLiveActivityForLocalWork({
+      environmentId: "env-1" as EnvironmentId,
+      threadTitle: "Fix the flaky test",
+      projectTitle: "t3code",
+    });
+
+    return Effect.gen(function* () {
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      yield* runBackgroundOperations();
+
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
+          activities: [expect.objectContaining({ status: "Working" })],
+        }),
+      );
+    }).pipe(Effect.provide(snapshotRelayLayer()));
+  });
+
+  it.effect("refreshes the home-screen widget when a local Live Activity is already armed", () => {
+    widgetMocks.getInstances.mockReturnValueOnce([{}] as never);
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    backgroundRuntime.pending.length = 0;
+    environmentConfigsMock.configs.set("env-1", {
+      environment: { capabilities: { agentActivityPublishing: true } },
+    });
+    vi.mocked(loadPreferences).mockResolvedValueOnce({
+      liveActivitiesEnabled: true,
+    } as Preferences);
+
+    armAgentAwarenessLiveActivityForLocalWork({
+      environmentId: "env-1" as EnvironmentId,
+      threadTitle: "Fix the flaky test",
+      projectTitle: "t3code",
+    });
+
+    return Effect.gen(function* () {
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      yield* runBackgroundOperations();
+
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
           activities: [expect.objectContaining({ status: "Working" })],
         }),
       );
