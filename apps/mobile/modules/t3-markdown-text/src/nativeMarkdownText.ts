@@ -1,4 +1,7 @@
-import { markdownLinkMediaKind } from "@t3tools/client-runtime/markdown-images";
+import {
+  classifyMarkdownImageSource,
+  markdownLinkMediaKind,
+} from "@t3tools/client-runtime/markdown-images";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import type { SelectableMarkdownSkill } from "./SelectableMarkdownText.types";
@@ -354,12 +357,25 @@ function isLineBoundary(node: MarkdownNode | undefined): boolean {
   return node === undefined || node.type === "soft_break" || node.type === "line_break";
 }
 
+function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean): boolean {
+  if (markdownLinkMediaKind(target) === null) return false;
+  const source = classifyMarkdownImageSource(
+    target,
+    embedLocalPaths ? "/__t3_workspace__" : undefined,
+  );
+  return source._tag === "Direct" || (embedLocalPaths && source._tag === "WorkspaceFile");
+}
+
 /**
  * A link that owns its line in a top-level paragraph and points at an image or video becomes
  * that image, matching the web renderer. The breaks beside it go too, so the media does not
  * leave an empty line behind.
  */
-export function nativeMarkdownWithStandaloneMediaLinks(node: MarkdownNode): MarkdownNode {
+export function nativeMarkdownWithStandaloneMediaLinks(
+  node: MarkdownNode,
+  options: { readonly embedLocalPaths?: boolean } = {},
+): MarkdownNode {
+  const embedLocalPaths = options.embedLocalPaths ?? true;
   const children = node.children?.map((block) => {
     if (block.type !== "paragraph" || !block.children) return block;
     const siblings = block.children;
@@ -369,7 +385,7 @@ export function nativeMarkdownWithStandaloneMediaLinks(node: MarkdownNode): Mark
         child.href !== undefined &&
         isLineBoundary(siblings[index - 1]) &&
         isLineBoundary(siblings[index + 1]) &&
-        markdownLinkMediaKind(child.href) !== null,
+        canEmbedStandaloneMediaLink(child.href, embedLocalPaths),
     );
     if (!embedded.includes(true)) return block;
     return {

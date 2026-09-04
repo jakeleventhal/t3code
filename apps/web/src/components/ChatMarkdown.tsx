@@ -1301,6 +1301,19 @@ function ChatMarkdownVideo(props: {
   );
 }
 
+function AuthoredImageTitleTooltip(props: {
+  readonly title?: string | undefined;
+  readonly children: React.ReactElement;
+}) {
+  if (!props.title) return props.children;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={props.children} />
+      <TooltipPopup side="top">{props.title}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** Environment-hosted media loads through an exact-file signed asset URL. */
 export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props: {
   readonly environmentId: EnvironmentId;
@@ -1310,6 +1323,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   >;
   readonly kind?: "image" | "video";
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
   readonly style?: CSSProperties | undefined;
@@ -1392,26 +1406,28 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   }
   return (
     <MediaActions source={actionsSource}>
-      <img
-        src={src ?? undefined}
-        alt={props.alt}
-        data-markdown-copy={props.copyMarkdown}
-        loading="lazy"
-        draggable={false}
-        className={cn(
-          CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME,
-          props.onImageExpand && "cursor-zoom-in",
-        )}
-        style={props.style}
-        {...expandableMarkdownImageProps(
-          props.onImageExpand,
-          src ?? assetUrl.url,
-          props.alt,
-          undefined,
-          actionsSource,
-        )}
-        onError={() => setFailedUrl(assetUrl.url)}
-      />
+      <AuthoredImageTitleTooltip title={props.title}>
+        <img
+          src={src ?? undefined}
+          alt={props.alt}
+          data-markdown-copy={props.copyMarkdown}
+          loading="lazy"
+          draggable={false}
+          className={cn(
+            CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME,
+            props.onImageExpand && "cursor-zoom-in",
+          )}
+          style={props.style}
+          {...expandableMarkdownImageProps(
+            props.onImageExpand,
+            src ?? assetUrl.url,
+            props.alt,
+            undefined,
+            actionsSource,
+          )}
+          onError={() => setFailedUrl(assetUrl.url)}
+        />
+      </AuthoredImageTitleTooltip>
     </MediaActions>
   );
 });
@@ -2657,25 +2673,27 @@ function ChatMarkdown({
           }
           return (
             <MediaActions source={actionsSource}>
-              <img
-                {...props}
-                src={mediaSrc}
-                alt={altText}
-                loading="lazy"
-                className={cn(
-                  props.className,
-                  CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
-                  imageExpand && "cursor-zoom-in",
-                )}
-                style={authoredSizeStyle}
-                {...expandableMarkdownImageProps(
-                  imageExpand,
-                  mediaSrc,
-                  altText,
-                  originalUrl,
-                  actionsSource,
-                )}
-              />
+              <AuthoredImageTitleTooltip title={authoredTitle}>
+                <img
+                  {...props}
+                  src={mediaSrc}
+                  alt={altText}
+                  loading="lazy"
+                  className={cn(
+                    props.className,
+                    CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
+                    imageExpand && "cursor-zoom-in",
+                  )}
+                  style={authoredSizeStyle}
+                  {...expandableMarkdownImageProps(
+                    imageExpand,
+                    mediaSrc,
+                    altText,
+                    originalUrl,
+                    actionsSource,
+                  )}
+                />
+              </AuthoredImageTitleTooltip>
             </MediaActions>
           );
         }
@@ -2689,6 +2707,7 @@ function ChatMarkdown({
                 path: imageSource.path,
               }}
               alt={altText}
+              title={authoredTitle}
               kind={kind}
               copyMarkdown={copyMarkdown}
               srcFragment={markdownImageSourceFragment(classifiedSrc)}
