@@ -300,7 +300,9 @@ const applyNamedRoutes = (
 const hasNamedRoute = (server: DiscoveredLocalServer): boolean => {
   if (server.urlKind !== undefined) return true;
   try {
-    return new URL(server.url).hostname !== server.host;
+    const urlHost = new URL(server.url).hostname;
+    if (isLoopbackHost(urlHost) && isLoopbackHost(server.host)) return false;
+    return urlHost !== server.host;
   } catch {
     return false;
   }
