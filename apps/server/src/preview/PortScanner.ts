@@ -129,6 +129,7 @@ const decodeTailscaleServeStatus = Schema.decodeUnknownOption(
       TCP: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
       Web: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
       Services: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+      Foreground: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
     }),
   ),
 );
@@ -236,6 +237,9 @@ const parseTailscaleServeStatus = (raw: string): ReadonlyMap<number, NamedRoute>
   const configs: Array<typeof TailscaleServeConfig.Type> = [decoded.value];
   for (const service of Object.values(decoded.value.Services ?? {})) {
     if (isTailscaleServeConfig(service)) configs.push(service);
+  }
+  for (const foreground of Object.values(decoded.value.Foreground ?? {})) {
+    if (isTailscaleServeConfig(foreground)) configs.push(foreground);
   }
 
   const routesByTargetPort = new Map<number, NamedRoute>();
