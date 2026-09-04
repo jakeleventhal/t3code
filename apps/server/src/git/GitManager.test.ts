@@ -1937,6 +1937,79 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
   );
 
   it.effect(
+    "status uses the local branch when a fork checkout still tracks origin main",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        const forkDir = yield* createBareRemote();
+        const upstreamDir = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", forkDir]);
+        yield* runGit(repoDir, ["remote", "add", "upstream", upstreamDir]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+        yield* runGit(repoDir, ["push", "upstream", "main"]);
+        yield* runGit(repoDir, ["checkout", "-b", "feature/from-main"]);
+        yield* runGit(repoDir, ["push", "origin", "HEAD:feature/from-main"]);
+        yield* runGit(repoDir, ["branch", "--set-upstream-to", "origin/main"]);
+        yield* configureVisibleRemoteUrlWithLocalRewrite(
+          repoDir,
+          "origin",
+          "git@github.com:contributor/t3code.git",
+          forkDir,
+        );
+        yield* configureVisibleRemoteUrlWithLocalRewrite(
+          repoDir,
+          "upstream",
+          "git@github.com:T3Tools/t3code.git",
+          upstreamDir,
+        );
+
+        const { manager, ghCalls } = yield* makeManager({
+          ghScenario: {
+            prListByHeadSelector: {
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              "contributor:main": JSON.stringify([
+                {
+                  number: 1702,
+                  title: "Unrelated default-branch PR",
+                  url: "https://github.com/T3Tools/t3code/pull/1702",
+                  baseRefName: "feature/elsewhere",
+                  headRefName: "main",
+                  state: "OPEN",
+                  isCrossRepository: true,
+                  headRepository: { nameWithOwner: "contributor/t3code" },
+                  headRepositoryOwner: { login: "contributor" },
+                },
+              ]),
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              "contributor:feature/from-main": JSON.stringify([
+                {
+                  number: 1703,
+                  title: "Feature PR",
+                  url: "https://github.com/T3Tools/t3code/pull/1703",
+                  baseRefName: "main",
+                  headRefName: "feature/from-main",
+                  state: "OPEN",
+                  updatedAt: "2026-08-01T12:00:00Z",
+                  isCrossRepository: true,
+                  headRepository: { nameWithOwner: "contributor/t3code" },
+                  headRepositoryOwner: { login: "contributor" },
+                },
+              ]),
+            },
+          },
+        });
+
+        const status = yield* manager.status({ cwd: repoDir });
+
+        expect(status.pr?.number).toBe(1703);
+        expect(ghCalls.some((call) => call.includes("--head contributor:main "))).toBe(false);
+        expect(ghCalls.some((call) => call.includes("--head feature/from-main "))).toBe(true);
+      }),
+    20_000,
+  );
+
+  it.effect(
     "status ignores synthetic local branch aliases when the upstream remote name contains slashes",
     () =>
       Effect.gen(function* () {
@@ -4069,6 +4142,76 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           ),
         ).toBe(true);
       }),
+  );
+
+  it.effect("creates an enterprise fork PR from the local branch against its tracked base", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const forkDir = yield* createBareRemote();
+      const upstreamDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", forkDir]);
+      yield* runGit(repoDir, ["remote", "add", "upstream", upstreamDir]);
+      yield* runGit(repoDir, ["push", "origin", "main:release"]);
+      yield* runGit(repoDir, ["push", "upstream", "main:release"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/enterprise"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "enterprise.txt"), "change\n");
+      yield* runGit(repoDir, ["add", "enterprise.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "Enterprise feature"]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:feature/enterprise"]);
+      yield* runGit(repoDir, ["branch", "--set-upstream-to", "origin/release"]);
+      yield* configureVisibleRemoteUrlWithLocalRewrite(
+        repoDir,
+        "origin",
+        "git@github.enterprise.test:contributor/t3code.git",
+        forkDir,
+      );
+      yield* configureVisibleRemoteUrlWithLocalRewrite(
+        repoDir,
+        "upstream",
+        "git@github.enterprise.test:T3Tools/t3code.git",
+        upstreamDir,
+      );
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          prListSequenceByHeadSelector: {
+            "contributor:feature/enterprise": [
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([]),
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([
+                {
+                  number: 1704,
+                  title: "Enterprise feature",
+                  url: "https://github.enterprise.test/T3Tools/t3code/pull/1704",
+                  baseRefName: "release",
+                  headRefName: "feature/enterprise",
+                  state: "OPEN",
+                  isCrossRepository: true,
+                  headRepository: { nameWithOwner: "contributor/t3code" },
+                  headRepositoryOwner: { login: "contributor" },
+                },
+              ]),
+            ],
+          },
+        },
+      });
+
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "create_pr",
+      });
+
+      expect(result.pr.status).toBe("created");
+      expect(result.pr.number).toBe(1704);
+      expect(
+        ghCalls.some((call) =>
+          call.includes("pr create --base release --head contributor:feature/enterprise"),
+        ),
+      ).toBe(true);
+      expect(ghCalls.some((call) => call.includes("--head contributor:release "))).toBe(false);
+    }),
   );
 
   it.effect("creates cross-repo PRs with the fork owner selector and default base branch", () =>
