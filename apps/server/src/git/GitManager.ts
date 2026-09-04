@@ -277,19 +277,38 @@ function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string |
   if (trimmed.length === 0) {
     return null;
   }
+
+  const match =
+    /^(?:[^@/\s]+@[^:/\s]+:|(?:ssh|https?|git):\/\/[^/]+\/)((?:[^/\s]+\/)+[^/\s]+?)(?:\.git)?\/?$/iu.exec(
+      trimmed,
+    );
+  const repositoryNameWithOwner = match?.[1]?.trim() ?? "";
+  return repositoryNameWithOwner.length > 0 ? repositoryNameWithOwner : null;
+}
+
+function parseGitHubRepositoryCoordinatesFromRemoteUrl(
+  url: string | null,
+): { readonly host: string; readonly nameWithOwner: string } | null {
+  const trimmed = url?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return null;
+  }
   if (detectSourceControlProviderFromGitRemoteUrl(trimmed)?.kind !== "github") return null;
 
   const [host, owner, name, ...rest] = normalizeGitRemoteUrl(trimmed).split("/");
   if (!host || !owner || !name || rest.length > 0) return null;
-  return `${owner}/${name}`;
+  return { host, nameWithOwner: `${owner}/${name}` };
 }
 
-function repositoryCoordinatesMatchAsForks(left: string | null, right: string | null): boolean {
-  const parse = (value: string | null) => {
-    const parts = value?.split("/") ?? [];
-    if (parts.length === 2) return { host: "github.com", owner: parts[0], name: parts[1] };
-    if (parts.length === 3) return { host: parts[0], owner: parts[1], name: parts[2] };
-    return null;
+function repositoryCoordinatesMatchAsForks(
+  left: { readonly host: string | null; readonly nameWithOwner: string | null },
+  right: { readonly host: string | null; readonly nameWithOwner: string | null },
+): boolean {
+  const parse = (value: typeof left) => {
+    const [owner, name, ...rest] = value.nameWithOwner?.split("/") ?? [];
+    return value.host && owner && name && rest.length === 0
+      ? { host: value.host, owner, name }
+      : null;
   };
   const leftCoordinate = parse(left);
   const rightCoordinate = parse(right);
@@ -307,8 +326,8 @@ function parseRepositoryOwnerLogin(nameWithOwner: string | null): string | null 
   if (trimmed.length === 0) {
     return null;
   }
-  const parts = trimmed.split("/");
-  const ownerLogin = parts.length === 3 ? parts[1] : parts[0];
+  // GitLab reports the top-level group as owner.
+  const [ownerLogin] = trimmed.split("/");
   const normalizedOwnerLogin = ownerLogin?.trim() ?? "";
   return normalizedOwnerLogin.length > 0 ? normalizedOwnerLogin : null;
 }
@@ -1291,15 +1310,18 @@ export const make = Effect.gen(function* () {
       return {
         remoteUrlKey: null,
         repositoryNameWithOwner: null,
+        repositoryHost: null,
         ownerLogin: null,
       };
     }
 
     const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
+    const repositoryCoordinates = parseGitHubRepositoryCoordinatesFromRemoteUrl(remoteUrl);
     const repositoryNameWithOwner = parseRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
     return {
       remoteUrlKey: remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null,
       repositoryNameWithOwner,
+      repositoryHost: repositoryCoordinates?.host ?? null,
       ownerLogin: parseRepositoryOwnerLogin(repositoryNameWithOwner),
     };
   });
@@ -1357,8 +1379,14 @@ export const make = Effect.gen(function* () {
       (remoteRepository.remoteUrlKey !== null &&
         remoteRepository.remoteUrlKey === upstreamRepository.remoteUrlKey);
     const originIsUpstreamFork = repositoryCoordinatesMatchAsForks(
-      originRepository.repositoryNameWithOwner,
-      upstreamRepository.repositoryNameWithOwner,
+      {
+        host: originRepository.repositoryHost,
+        nameWithOwner: originRepository.repositoryNameWithOwner,
+      },
+      {
+        host: upstreamRepository.repositoryHost,
+        nameWithOwner: upstreamRepository.repositoryNameWithOwner,
+      },
     );
     const useOriginFork = remoteMatchesUpstream && originIsUpstreamFork;
     const trackingRefIsBase =
@@ -1371,8 +1399,14 @@ export const make = Effect.gen(function* () {
     const forkRepository =
       headRemoteRepository.repositoryNameWithOwner ?? originRepository.repositoryNameWithOwner;
     const upstreamIsRelated = repositoryCoordinatesMatchAsForks(
-      forkRepository,
-      upstreamRepository.repositoryNameWithOwner,
+      {
+        host: headRemoteRepository.repositoryHost ?? originRepository.repositoryHost,
+        nameWithOwner: forkRepository,
+      },
+      {
+        host: upstreamRepository.repositoryHost,
+        nameWithOwner: upstreamRepository.repositoryNameWithOwner,
+      },
     );
     const targetRepository = upstreamIsRelated ? upstreamRepository : originRepository;
     const targetRemoteName = upstreamIsRelated ? "upstream" : null;
