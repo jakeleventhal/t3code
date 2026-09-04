@@ -590,10 +590,10 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       ? ({
           kind: "file",
           path: attachmentPath,
-          ...(claims.download ? { download: true } : {}),
+          download: claims.download ?? false,
           ...(claims.fileName !== undefined ? { fileName: claims.fileName } : {}),
           ...(claims.mimeType !== undefined ? { mimeType: claims.mimeType } : {}),
-        } satisfies ResolvedAsset)
+        } as ResolvedAsset)
       : null;
   }
 
@@ -603,7 +603,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       workspaceRoot: claims.workspaceRoot,
       relativePath: claims.relativePath,
     });
-    return faviconPath ? ({ kind: "file", path: faviconPath } satisfies ResolvedAsset) : null;
+    return faviconPath ? ({ kind: "file", path: faviconPath } as ResolvedAsset) : null;
   }
 
   if (claims.kind === "project-favicon-external") {
@@ -617,7 +617,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       Effect.orElseSucceed(() => null),
     );
     return faviconPath === claims.filePath
-      ? ({ kind: "file", path: faviconPath } satisfies ResolvedAsset)
+      ? ({ kind: "file", path: faviconPath } as ResolvedAsset)
       : null;
   }
 
@@ -661,7 +661,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       relativePath: claims.relativePath,
     });
     return exactWorkspaceFile
-      ? ({ kind: "file", path: exactWorkspaceFile } satisfies ResolvedAsset)
+      ? ({ kind: "file", path: exactWorkspaceFile } as ResolvedAsset)
       : null;
   }
   const segments = decodedPath.split(/[\\/]/);
@@ -679,5 +679,5 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     workspaceRoot: claims.workspaceRoot,
     relativePath: joinedRelativePath,
   });
-  return workspaceFile ? ({ kind: "file", path: workspaceFile } satisfies ResolvedAsset) : null;
+  return workspaceFile ? ({ kind: "file", path: workspaceFile } as ResolvedAsset) : null;
 });
