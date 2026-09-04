@@ -8,6 +8,7 @@
 - [Interaction sounds](./user/interaction-sounds.md)
 - [Organizing threads](./user/thread-sidebar.md)
 - [Review usage](./user/usage.md)
+- [Threads in the same checkout](./user/worktree-scoped-threads.md)
 - [Customize a project icon](./user/project-settings.md)
 - [Mobile appearance](./user/mobile-appearance.md)
 - [Environment themes](./user/environment-theme.md)

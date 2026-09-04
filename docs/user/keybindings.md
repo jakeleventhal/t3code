@@ -36,6 +36,7 @@ Examples: `mod+j`, `mod+shift+d`, `ctrl+l`, `cmd+k`.
 
 Commands are IDs like `terminal.toggle`, `commandPalette.toggle`, `preview.refresh`, and
 `chat.new`. Project scripts are addressable as `script.{id}.run`, for example `script.test.run`.
+`chat.newInWorktree` creates another conversation in the current checkout.
 
 `thread.stop` interrupts the active turn when the current thread is running. It is unassigned by
 default, so add your preferred shortcut in Settings or `keybindings.json`.

@@ -221,8 +221,9 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(clickTool?.tool.annotations?.openWorldHint).toBe(true);
       expect(clickTool?.tool.outputSchema).toEqual({
         type: "object",
+        properties: { ok: { type: "boolean", enum: [true] } },
+        required: ["ok"],
         additionalProperties: false,
-        description: "The preview action completed successfully.",
       });
 
       const navigateTool = server.tools.find(({ tool }) => tool.name === "preview_navigate");
@@ -280,9 +281,11 @@ it.effect("registers annotated tools and preserves authenticated request context
             Effect.provideService(McpSchema.McpServerClient, client),
           );
         expect(result.isError).toBe(false);
-        expect(result.structuredContent).toEqual({});
-        expect(result.content).toEqual([{ type: "text", text: "{}" }]);
+        expect(result.structuredContent).toEqual({ ok: true });
+        expect(result.content).toEqual([{ type: "text", text: '{"ok":true}' }]);
       }
+      // Void operations acknowledge with a record: a null structuredContent
+      // fails MCP clients that validate it as an object when present.
     }),
   ).pipe(Effect.provide(TestLayer)),
 );

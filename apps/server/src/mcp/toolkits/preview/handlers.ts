@@ -79,14 +79,19 @@ const handlers = {
     invokeTargeted<PreviewAutomationSetColorSchemeResult>("setColorScheme", input),
   preview_snapshot: (input) => invokeTargeted<PreviewAutomationSnapshot>("snapshot", input ?? {}),
   preview_click: (input) =>
-    invokeTargeted<void>("click", input, input.timeoutMs).pipe(Effect.as({})),
-  preview_type: (input) => invokeTargeted<void>("type", input, input.timeoutMs).pipe(Effect.as({})),
-  preview_press: (input) => invokeTargeted<void>("press", input).pipe(Effect.as({})),
-  preview_scroll: (input) => invokeTargeted<void>("scroll", input).pipe(Effect.as({})),
+    invokeTargeted<void>("click", input, input.timeoutMs).pipe(Effect.as({ ok: true } as const)),
+  preview_type: (input) =>
+    invokeTargeted<void>("type", input, input.timeoutMs).pipe(Effect.as({ ok: true } as const)),
+  preview_press: (input) =>
+    invokeTargeted<void>("press", input).pipe(Effect.as({ ok: true } as const)),
+  preview_scroll: (input) =>
+    invokeTargeted<void>("scroll", input).pipe(Effect.as({ ok: true } as const)),
   preview_evaluate: (input) =>
-    invokeTargeted<unknown>("evaluate", input).pipe(Effect.map((result) => result ?? null)),
+    invokeTargeted<unknown>("evaluate", input).pipe(
+      Effect.map((result) => ({ result: result ?? null })),
+    ),
   preview_wait_for: (input) =>
-    invokeTargeted<void>("waitFor", input, input.timeoutMs).pipe(Effect.as({})),
+    invokeTargeted<void>("waitFor", input, input.timeoutMs).pipe(Effect.as({ ok: true } as const)),
   preview_recording_start: (input) =>
     invokeTargeted<PreviewAutomationRecordingStatus>("recordingStart", input ?? {}),
   preview_recording_stop: (input) =>
