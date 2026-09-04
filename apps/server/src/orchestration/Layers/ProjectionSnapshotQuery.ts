@@ -24,6 +24,7 @@ import {
   type OrchestrationSession,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
+  type ProjectKind,
   ModelSelection,
   ProjectId,
   ThreadLinkedPullRequest,
@@ -61,6 +62,8 @@ import {
 } from "../threadDetailCursor.ts";
 import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
+import { resolveProjectKind } from "../../project/ProjectKind.ts";
+import { ServerConfig } from "../../config.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import {
   ProjectionSnapshotQuery,
@@ -345,11 +348,13 @@ function mapSessionRow(
 function mapProjectShellRow(
   row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
+  kind: ProjectKind,
 ): OrchestrationProjectShell {
   return {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    kind,
     repositoryIdentity,
     defaultModelSelection: row.defaultModelSelection,
     defaultThreadEnvMode: row.defaultThreadEnvMode,
@@ -403,6 +408,22 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const sql = yield* SqlClient.SqlClient;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+  // Optional so test layer stacks without ServerConfig keep working; without a
+  // configured chats dir every project resolves to "standard".
+  const chatsDir = Option.map(
+    yield* Effect.serviceOption(ServerConfig),
+    (config) => config.chatsDir,
+  ).pipe(Option.getOrUndefined);
+  const projectKindForWorkspaceRoot = (workspaceRoot: string) =>
+    resolveProjectKind(workspaceRoot, chatsDir);
+  const resolveRepositoryIdentityForWorkspaceRoot = Effect.fn(
+    "ProjectionSnapshotQuery.resolveRepositoryIdentityForWorkspaceRoot",
+  )(function* (workspaceRoot: string) {
+    if (projectKindForWorkspaceRoot(workspaceRoot) === "chats") {
+      return null;
+    }
+    return yield* repositoryIdentityResolver.resolve(workspaceRoot);
+  });
   const repositoryIdentityResolutionConcurrency = 4;
   const resolveRepositoryIdentitiesForProjects = Effect.fn(
     "ProjectionSnapshotQuery.resolveRepositoryIdentitiesForProjects",
@@ -421,9 +442,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       yield* Effect.forEach(
         uniqueWorkspaceRoots,
         (workspaceRoot) =>
-          repositoryIdentityResolver
-            .resolve(workspaceRoot)
-            .pipe(Effect.map((identity) => [workspaceRoot, identity] as const)),
+          resolveRepositoryIdentityForWorkspaceRoot(workspaceRoot).pipe(
+            Effect.map((identity) => [workspaceRoot, identity] as const),
+          ),
         { concurrency: repositoryIdentityResolutionConcurrency },
       ),
     );
@@ -1928,6 +1949,7 @@ pending_approval_requests AS (
                 id: row.projectId,
                 title: row.title,
                 workspaceRoot: row.workspaceRoot,
+                kind: projectKindForWorkspaceRoot(row.workspaceRoot),
                 repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
                 defaultModelSelection: row.defaultModelSelection,
                 defaultThreadEnvMode: row.defaultThreadEnvMode,
@@ -2287,7 +2309,11 @@ pending_approval_requests AS (
               projects: Arr.filterMap(projectRows, (row) =>
                 row.deletedAt === null
                   ? Result.succeed(
-                      mapProjectShellRow(row, repositoryIdentities.get(row.projectId) ?? null),
+                      mapProjectShellRow(
+                        row,
+                        repositoryIdentities.get(row.projectId) ?? null,
+                        projectKindForWorkspaceRoot(row.workspaceRoot),
+                      ),
                     )
                   : Result.failVoid,
               ),
@@ -2437,7 +2463,11 @@ pending_approval_requests AS (
               projects: Arr.filterMap(projectRows, (row) =>
                 row.deletedAt === null && activeProjectIds.has(row.projectId)
                   ? Result.succeed(
-                      mapProjectShellRow(row, repositoryIdentities.get(row.projectId) ?? null),
+                      mapProjectShellRow(
+                        row,
+                        repositoryIdentities.get(row.projectId) ?? null,
+                        projectKindForWorkspaceRoot(row.workspaceRoot),
+                      ),
                     )
                   : Result.failVoid,
               ),
@@ -2576,12 +2606,13 @@ pending_approval_requests AS (
         Effect.flatMap((option) =>
           Option.isNone(option)
             ? Effect.succeed(Option.none<OrchestrationProject>())
-            : repositoryIdentityResolver.resolve(option.value.workspaceRoot).pipe(
+            : resolveRepositoryIdentityForWorkspaceRoot(option.value.workspaceRoot).pipe(
                 Effect.map((repositoryIdentity) =>
                   Option.some({
                     id: option.value.projectId,
                     title: option.value.title,
                     workspaceRoot: option.value.workspaceRoot,
+                    kind: projectKindForWorkspaceRoot(option.value.workspaceRoot),
                     repositoryIdentity,
                     defaultModelSelection: option.value.defaultModelSelection,
                     defaultThreadEnvMode: option.value.defaultThreadEnvMode,
@@ -2609,13 +2640,17 @@ pending_approval_requests AS (
       Effect.flatMap((option) =>
         Option.isNone(option)
           ? Effect.succeed(Option.none<OrchestrationProjectShell>())
-          : repositoryIdentityResolver
-              .resolve(option.value.workspaceRoot)
-              .pipe(
-                Effect.map((repositoryIdentity) =>
-                  Option.some(mapProjectShellRow(option.value, repositoryIdentity)),
+          : resolveRepositoryIdentityForWorkspaceRoot(option.value.workspaceRoot).pipe(
+              Effect.map((repositoryIdentity) =>
+                Option.some(
+                  mapProjectShellRow(
+                    option.value,
+                    repositoryIdentity,
+                    projectKindForWorkspaceRoot(option.value.workspaceRoot),
+                  ),
                 ),
               ),
+            ),
       ),
     );
 

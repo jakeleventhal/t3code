@@ -12,6 +12,7 @@ import { sortThreads } from "../lib/threadSort";
 import { normalizeSearchText } from "../lib/utils";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
+import { isChatsProject, projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 
 export { normalizeSearchText } from "../lib/utils";
 
@@ -117,7 +118,8 @@ export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
 
 export interface CommandPaletteGroup {
   readonly value: string;
-  readonly label: string;
+  /** Omitted for single-item groups that read as standalone actions. */
+  readonly label?: string;
   readonly items: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
 }
 
@@ -125,6 +127,24 @@ export interface CommandPaletteView {
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
   readonly initialQuery?: string;
+}
+
+export function findChatsProjectForEnvironment<T extends Pick<Project, "environmentId" | "kind">>(
+  projects: ReadonlyArray<T>,
+  environmentId: Project["environmentId"] | null,
+): T | null {
+  if (environmentId === null) return null;
+  return (
+    projects.find(
+      (project) => project.environmentId === environmentId && isChatsProject(project),
+    ) ?? null
+  );
+}
+
+export function selectPreferredProjectEntry<T extends { readonly isPreferred: boolean }>(
+  entries: ReadonlyArray<T>,
+): T | null {
+  return entries.find((entry) => entry.isPreferred) ?? entries[0] ?? null;
 }
 
 export function enumerateCommandPaletteItems(
@@ -154,8 +174,12 @@ export function buildProjectActionItems(input: {
     kind: "action",
     value: `${input.valuePrefix}:${project.environmentId}:${project.id}`,
     searchTerms: [project.title, project.workspaceRoot, ...(input.searchTerms?.(project) ?? [])],
-    title: project.title,
-    description: input.renderDescription?.(project) ?? project.workspaceRoot,
+    title: projectDisplayTitle(project),
+    // The Chat pseudo-project's directory is an implementation detail, so it
+    // stays hidden even though it is still searchable above.
+    ...(isChatsProject(project)
+      ? {}
+      : { description: input.renderDescription?.(project) ?? project.workspaceRoot }),
     icon: input.icon(project),
     ...(input.shortcutCommand !== undefined ? { shortcutCommand: input.shortcutCommand } : {}),
     run: async () => {
@@ -370,7 +394,9 @@ export function filterCommandPaletteGroups(input: {
       return [];
     }
 
-    return [{ value: group.value, label: group.label, items }];
+    return [
+      { value: group.value, ...(group.label === undefined ? {} : { label: group.label }), items },
+    ];
   });
 }
 
