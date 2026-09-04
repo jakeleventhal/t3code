@@ -247,11 +247,21 @@ export function resolveDiscoveredServerUrl(
           normalizedUrl,
         ).resolvedUrl;
       }
+      return normalizedUrl;
     }
-    return resolveBrowserNavigationTarget(environmentId, {
-      kind: "url",
-      url: normalizedUrl,
-    }).resolvedUrl;
+    if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
+    return resolveEnvironmentPortTarget(
+      environmentId,
+      {
+        kind: "environment-port",
+        port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
+        protocol: parsed.protocol === "https:" ? "https" : "http",
+        path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+      },
+      readEnvironmentUrl(environmentId),
+      rawUrl,
+      parsed,
+    ).resolvedUrl;
   } catch {
     return rawUrl;
   }
