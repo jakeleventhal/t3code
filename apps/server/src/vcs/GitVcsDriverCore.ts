@@ -2300,22 +2300,35 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     });
     yield* fileSystem.copyFile(indexPath, tempIndexPath);
     const env = { GIT_INDEX_FILE: tempIndexPath } satisfies NodeJS.ProcessEnv;
+    const tempIndexConfig = [
+      "-c",
+      "core.splitIndex=false",
+      "-c",
+      "splitIndex.sharedIndexExpire=never",
+    ];
     yield* executeGit(
       "GitVcsDriver.readUnifiedWorkingTreeReviewDiff.expandSplitIndex",
       cwd,
-      ["-c", "splitIndex.sharedIndexExpire=never", "update-index", "--no-split-index"],
+      [...tempIndexConfig, "update-index", "--no-split-index"],
       { env },
     );
     yield* executeGit(
       "GitVcsDriver.readUnifiedWorkingTreeReviewDiff.addUntracked",
       cwd,
-      ["add", "--intent-to-add", "--pathspec-from-file=-", "--pathspec-file-nul"],
+      [
+        ...tempIndexConfig,
+        "add",
+        "--intent-to-add",
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+      ],
       { env, stdin: `${pathsToAdd.join("\0")}\0` },
     );
     const result = yield* executeGit(
       "GitVcsDriver.readUnifiedWorkingTreeReviewDiff.diff",
       cwd,
       [
+        ...tempIndexConfig,
         "diff",
         "--patch",
         "--no-color",
