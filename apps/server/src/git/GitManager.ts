@@ -249,7 +249,9 @@ function resolvePullRequestWorktreeLocalBranchName(
   return `t3code/pr-${pullRequest.number}/${suffix}`;
 }
 
-function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string | null {
+function parseGitHubRepositoryCoordinatesFromRemoteUrl(
+  url: string | null,
+): { readonly host: string; readonly nameWithOwner: string } | null {
   const trimmed = url?.trim() ?? "";
   if (trimmed.length === 0) {
     return null;
@@ -258,15 +260,18 @@ function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | null): st
 
   const [host, owner, name, ...rest] = normalizeGitRemoteUrl(trimmed).split("/");
   if (!host || !owner || !name || rest.length > 0) return null;
-  return `${owner}/${name}`;
+  return { host, nameWithOwner: `${owner}/${name}` };
 }
 
-function repositoryCoordinatesMatchAsForks(left: string | null, right: string | null): boolean {
-  const parse = (value: string | null) => {
-    const parts = value?.split("/") ?? [];
-    if (parts.length === 2) return { host: "github.com", owner: parts[0], name: parts[1] };
-    if (parts.length === 3) return { host: parts[0], owner: parts[1], name: parts[2] };
-    return null;
+function repositoryCoordinatesMatchAsForks(
+  left: { readonly host: string | null; readonly nameWithOwner: string | null },
+  right: { readonly host: string | null; readonly nameWithOwner: string | null },
+): boolean {
+  const parse = (value: typeof left) => {
+    const [owner, name, ...rest] = value.nameWithOwner?.split("/") ?? [];
+    return value.host && owner && name && rest.length === 0
+      ? { host: value.host, owner, name }
+      : null;
   };
   const leftCoordinate = parse(left);
   const rightCoordinate = parse(right);
@@ -1266,15 +1271,18 @@ export const make = Effect.gen(function* () {
       return {
         remoteUrlKey: null,
         repositoryNameWithOwner: null,
+        repositoryHost: null,
         ownerLogin: null,
       };
     }
 
     const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
-    const repositoryNameWithOwner = parseGitHubRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
+    const repositoryCoordinates = parseGitHubRepositoryCoordinatesFromRemoteUrl(remoteUrl);
+    const repositoryNameWithOwner = repositoryCoordinates?.nameWithOwner ?? null;
     return {
       remoteUrlKey: remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null,
       repositoryNameWithOwner,
+      repositoryHost: repositoryCoordinates?.host ?? null,
       ownerLogin: parseRepositoryOwnerLogin(repositoryNameWithOwner),
     };
   });
@@ -1332,8 +1340,14 @@ export const make = Effect.gen(function* () {
       (remoteRepository.remoteUrlKey !== null &&
         remoteRepository.remoteUrlKey === upstreamRepository.remoteUrlKey);
     const originIsUpstreamFork = repositoryCoordinatesMatchAsForks(
-      originRepository.repositoryNameWithOwner,
-      upstreamRepository.repositoryNameWithOwner,
+      {
+        host: originRepository.repositoryHost,
+        nameWithOwner: originRepository.repositoryNameWithOwner,
+      },
+      {
+        host: upstreamRepository.repositoryHost,
+        nameWithOwner: upstreamRepository.repositoryNameWithOwner,
+      },
     );
     const useOriginFork = remoteMatchesUpstream && originIsUpstreamFork;
     const trackingRefIsBase =
@@ -1346,8 +1360,14 @@ export const make = Effect.gen(function* () {
     const forkRepository =
       headRemoteRepository.repositoryNameWithOwner ?? originRepository.repositoryNameWithOwner;
     const upstreamIsRelated = repositoryCoordinatesMatchAsForks(
-      forkRepository,
-      upstreamRepository.repositoryNameWithOwner,
+      {
+        host: headRemoteRepository.repositoryHost ?? originRepository.repositoryHost,
+        nameWithOwner: forkRepository,
+      },
+      {
+        host: upstreamRepository.repositoryHost,
+        nameWithOwner: upstreamRepository.repositoryNameWithOwner,
+      },
     );
     const targetRepository = upstreamIsRelated ? upstreamRepository : originRepository;
     const targetRemoteName = upstreamIsRelated ? "upstream" : null;
