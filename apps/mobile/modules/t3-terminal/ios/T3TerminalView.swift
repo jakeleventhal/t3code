@@ -471,6 +471,10 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: x, y: y)
   }
 
+  private func screenBoundaryPoint(_ coordinate: ghostty_point_coord_e) -> ghostty_point_s {
+    ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: coordinate, x: 0, y: 0)
+  }
+
   private func readText(from topLeft: ghostty_point_s, to bottomRight: ghostty_point_s) -> String? {
     guard let surface else { return nil }
 
@@ -491,7 +495,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   /// onLinkTap so JS can run the shared link detection. Ghostty's text dump
   /// joins soft-wrapped rows, so a URL spanning several rows arrives intact.
   private func emitLinkTap(at location: CGPoint) {
-    guard let surface, let cell = viewportCell(at: location) else { return }
+    guard surface != nil, let cell = viewportCell(at: location) else { return }
 
     // Ghostty drops trailing blank cells when dumping text, so without this
     // check a tap on empty space would resolve onto the last printed character.
@@ -500,20 +504,19 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
           !tappedCell.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
 
-    let size = ghostty_surface_size(surface)
-    let origin = viewportPoint(x: 0, y: 0)
-    guard let prefix = readText(from: origin, to: tappedPoint),
+    let screenOrigin = screenBoundaryPoint(GHOSTTY_POINT_COORD_TOP_LEFT)
+    let screenEnd = screenBoundaryPoint(GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
+    guard let prefix = readText(from: screenOrigin, to: tappedPoint),
           !prefix.isEmpty,
-          let viewportText = readText(
-            from: origin,
-            to: viewportPoint(x: UInt32(size.columns) - 1, y: UInt32(size.rows) - 1)
-          ),
-          !viewportText.isEmpty
+          let screenText = readText(from: screenOrigin, to: screenEnd),
+          !screenText.isEmpty
     else { return }
 
     // The prefix dump ends at the tapped cell inclusive, so its last UTF-16
-    // unit is the tapped character's offset within the full viewport dump.
-    let fullText = viewportText as NSString
+    // unit is the tapped character's offset within the full screen dump. The
+    // screen range includes scrollback, so a logical line that starts above
+    // the viewport still reaches JS with its URL scheme intact.
+    let fullText = screenText as NSString
     let tapOffset = (prefix as NSString).length - 1
     guard tapOffset >= 0, tapOffset < fullText.length else { return }
 
