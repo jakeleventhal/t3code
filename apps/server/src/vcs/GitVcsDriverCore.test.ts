@@ -857,6 +857,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         yield* writeTextFile(cwd, "before.ts", "one\ntwo\nthree\nfour\nfive\n");
         yield* git(cwd, ["add", "before.ts"]);
         yield* git(cwd, ["commit", "-m", "add source file"]);
+        yield* git(cwd, ["config", "core.splitIndex", "true"]);
         yield* git(cwd, ["config", "splitIndex.sharedIndexExpire", "now"]);
         yield* git(cwd, ["update-index", "--split-index"]);
         const indexPath = yield* git(cwd, ["rev-parse", "--git-path", "index"]);
