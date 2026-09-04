@@ -82,9 +82,29 @@ describe("nativeMarkdownWithStandaloneMediaLinks", () => {
   it.each([
     ["a non-media file", link("/tmp/report.pdf", "report.pdf")],
     ["an editor scheme", link("vscode://file/tmp/shot.png", "shot.png")],
+    ["an unresolved home-relative path", link("~/Downloads/shot.png", "shot.png")],
   ])("keeps %s a link", (_label, node) => {
     const input = document(node);
     expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
+  });
+
+  it("keeps local media links when the renderer cannot load workspace files", () => {
+    const input = document(
+      link("/tmp/shot.png", "absolute"),
+      { type: "soft_break" },
+      link("images/shot.png", "relative"),
+      { type: "soft_break" },
+      link("https://cdn.example.com/shot.png", "remote"),
+    );
+
+    expect(nativeMarkdownWithStandaloneMediaLinks(input, { embedLocalPaths: false })).toEqual(
+      document(
+        link("/tmp/shot.png", "absolute"),
+        { type: "soft_break" },
+        link("images/shot.png", "relative"),
+        { type: "image", href: "https://cdn.example.com/shot.png", alt: "remote" },
+      ),
+    );
   });
 
   it("keeps links inside list items", () => {

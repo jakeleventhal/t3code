@@ -52,6 +52,7 @@ export function SelectableMarkdownText({
   const chunks = useMemo(() => {
     const parsedDocument = nativeMarkdownWithStandaloneMediaLinks(
       parseMarkdownWithOptions(markdown, { gfm: true, html: true, math: false }),
+      { embedLocalPaths: renderImage != null },
     );
     const document = preserveSoftBreaks
       ? nativeMarkdownWithPreservedSoftBreaks(parsedDocument)
@@ -64,7 +65,7 @@ export function SelectableMarkdownText({
           }
         : chunk,
     );
-  }, [markdown, preserveSoftBreaks, skills]);
+  }, [markdown, preserveSoftBreaks, renderImage, skills]);
 
   const fileContextMenuHandlers = useMemo<MarkdownFileContextMenuHandlers | null>(
     () =>
