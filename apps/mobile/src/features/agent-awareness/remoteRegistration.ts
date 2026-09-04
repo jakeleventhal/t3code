@@ -1099,6 +1099,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     if (!canRegisterRemoteLiveActivities() || !relayTokenProvider) {
       return;
     }
+    const expectedDeviceGeneration = deviceRegistrationGeneration;
 
     let activities = yield* Effect.try({
       try: () => AgentActivity.getInstances(),
@@ -1149,6 +1150,9 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
             cause,
           }),
       }).pipe(Effect.orElseSucceed(() => null));
+      if (expectedDeviceGeneration !== deviceRegistrationGeneration || !relayTokenProvider) {
+        return;
+      }
       // The toggle defaults to on: an unset preference (fresh install) must
       // prime, so only an explicit false blocks it.
       if (preferences?.liveActivitiesEnabled !== false) {
