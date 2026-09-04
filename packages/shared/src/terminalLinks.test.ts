@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { extractTerminalLinks, terminalLinkAtIndex } from "./terminalLinks.ts";
+import {
+  extractTerminalLinks,
+  resolvePathLinkTarget,
+  terminalLinkAtIndex,
+} from "./terminalLinks.ts";
 
 describe("terminalLinkAtIndex", () => {
   const line = "Listening on https://example.com/app?tab=1 (press q to quit)";
@@ -31,6 +35,23 @@ describe("terminalLinkAtIndex", () => {
     // spanned two terminal rows arrives as one line.
     const joined = "https://example.com/very/long/path/that/wrapped/around?query=value";
     expect(terminalLinkAtIndex(joined, joined.length - 1)?.text).toBe(joined);
+  });
+
+  it("trims a long run of unmatched closing delimiters", () => {
+    const suffix = ")".repeat(10_000);
+    expect(terminalLinkAtIndex(`https://example.com/path${suffix}`, 10)?.text).toBe(
+      "https://example.com/path",
+    );
+  });
+});
+
+describe("resolvePathLinkTarget", () => {
+  it.each([
+    ["src/main.ts:0", "/workspace/src/main.ts"],
+    ["src/main.ts:12:0", "/workspace/src/main.ts:12"],
+    ["src/main.ts:0:4", "/workspace/src/main.ts"],
+  ])("drops unusable zero positions from %s", (target, expected) => {
+    expect(resolvePathLinkTarget(target, "/workspace")).toBe(expected);
   });
 });
 
