@@ -1812,6 +1812,7 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThreadEnvironmentId, activeThreadId],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
   // Terminals, previews, and the right panel are WORKTREE-scoped: their wire
   // calls go through the worktree's canonical thread id so every sibling
   // thread in the checkout shares one set of server sessions (one terminal,
