@@ -512,42 +512,60 @@ export function armAgentAwarenessLiveActivityForLocalWork(input: {
   void loadPreferences()
     .catch(() => null)
     .then((preferences) => {
+      const widgetProps = localWorkStartingWidgetProps(input);
+      publishAgentActivityWidget(widgetProps);
       if (preferences?.liveActivitiesEnabled === false) {
+        runRegistrationInBackground(
+          refreshAgentActivityWidget(),
+          "widget refresh after local task start failed",
+        );
         return;
       }
-      armAgentAwarenessLiveActivityForLocalWorkNow(input);
+      armAgentAwarenessLiveActivityForLocalWorkNow(input, widgetProps);
     });
 }
 
-function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
+function localWorkStartingWidgetProps(input: {
   readonly threadTitle: string;
   readonly projectTitle: string;
-}): void {
+}): AgentActivityProps {
+  const nowIso = new Date(Date.now()).toISOString();
+  return {
+    title: "T3 Code",
+    subtitle: "Agent work in progress",
+    activeCount: 1,
+    updatedAt: nowIso,
+    activities: [
+      {
+        environmentId: "",
+        threadId: "",
+        projectTitle: input.projectTitle,
+        threadTitle: input.threadTitle,
+        modelTitle: "",
+        phase: "starting",
+        status: "Connecting",
+        updatedAt: nowIso,
+        deepLink: "/",
+      },
+    ],
+  };
+}
+
+function armAgentAwarenessLiveActivityForLocalWorkNow(
+  input: {
+    readonly threadTitle: string;
+    readonly projectTitle: string;
+  },
+  props: AgentActivityProps,
+): void {
   try {
     if (AgentActivity.getInstances().length > 0) {
+      runRegistrationInBackground(
+        refreshAgentActivityWidget(),
+        "widget refresh after local task start failed",
+      );
       return;
     }
-    const nowIso = new Date(Date.now()).toISOString();
-    const props: AgentActivityProps = {
-      title: "T3 Code",
-      subtitle: "Agent work in progress",
-      activeCount: 1,
-      updatedAt: nowIso,
-      activities: [
-        {
-          environmentId: "",
-          threadId: "",
-          projectTitle: input.projectTitle,
-          threadTitle: input.threadTitle,
-          modelTitle: "",
-          phase: "starting",
-          status: "Connecting",
-          updatedAt: nowIso,
-          deepLink: "/",
-        },
-      ],
-    };
-    publishAgentActivityWidget(props);
     const activity = AgentActivity.start(props);
     logRegistrationDebug("live activity card armed for local work", {
       threadTitle: input.threadTitle,
