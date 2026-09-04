@@ -279,9 +279,7 @@ function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string |
 
   const scpStyle = /^git@([^:/\s]+):([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(trimmed);
   if (scpStyle?.[1] && scpStyle[2] && scpStyle[3]) {
-    return scpStyle[1].toLowerCase() === "github.com"
-      ? `${scpStyle[2]}/${scpStyle[3]}`
-      : `${scpStyle[1]}/${scpStyle[2]}/${scpStyle[3]}`;
+    return scpStyle[1].toLowerCase() === "github.com" ? `${scpStyle[2]}/${scpStyle[3]}` : null;
   }
   try {
     const parsed = new URL(trimmed);
@@ -291,9 +289,7 @@ function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string |
       .split("/")
       .filter((part) => part.length > 0);
     if (!owner || !name || rest.length > 0) return null;
-    return parsed.hostname.toLowerCase() === "github.com"
-      ? `${owner}/${name}`
-      : `${parsed.hostname}/${owner}/${name}`;
+    return parsed.hostname.toLowerCase() === "github.com" ? `${owner}/${name}` : null;
   } catch {
     return null;
   }
@@ -1320,13 +1316,18 @@ export const make = Effect.gen(function* () {
   });
 
   const resolvePrLookupRepositoryIdentity = Effect.fn("resolvePrLookupRepositoryIdentity")(
-    function* (cwd: string, branch: string, remoteNameOverride?: string) {
+    function* (
+      cwd: string,
+      branch: string,
+      remoteNameOverride?: string,
+      targetRemoteNameOverride?: string,
+    ) {
       const remoteName =
         remoteNameOverride ?? (yield* readConfigValueNullable(cwd, `branch.${branch}.remote`));
       const [headRemote, targetRemote] = yield* Effect.all(
         [
           resolveRemoteRepositoryContext(cwd, remoteName),
-          resolveRemoteRepositoryContext(cwd, "origin"),
+          resolveRemoteRepositoryContext(cwd, targetRemoteNameOverride ?? "origin"),
         ],
         { concurrency: "unbounded" },
       );
@@ -1362,8 +1363,19 @@ export const make = Effect.gen(function* () {
       { concurrency: "unbounded" },
     );
 
+    const remoteMatchesUpstream =
+      remoteName === "upstream" ||
+      (remoteRepository.remoteUrlKey !== null &&
+        remoteRepository.remoteUrlKey === upstreamRepository.remoteUrlKey);
+    const originIsUpstreamFork = repositoryCoordinatesMatchAsForks(
+      originRepository.repositoryNameWithOwner,
+      upstreamRepository.repositoryNameWithOwner,
+    );
+    const useOriginFork = remoteMatchesUpstream && originIsUpstreamFork;
+    const headRemoteName = useOriginFork ? "origin" : remoteName;
+    const headRemoteRepository = useOriginFork ? originRepository : remoteRepository;
     const forkRepository =
-      remoteRepository.repositoryNameWithOwner ?? originRepository.repositoryNameWithOwner;
+      headRemoteRepository.repositoryNameWithOwner ?? originRepository.repositoryNameWithOwner;
     const upstreamIsRelated = repositoryCoordinatesMatchAsForks(
       forkRepository,
       upstreamRepository.repositoryNameWithOwner,
@@ -1371,24 +1383,24 @@ export const make = Effect.gen(function* () {
     const targetRepository = upstreamIsRelated ? upstreamRepository : originRepository;
     const targetRemoteName = upstreamIsRelated ? "upstream" : null;
     const headRepository =
-      remoteRepository.repositoryNameWithOwner ??
+      headRemoteRepository.repositoryNameWithOwner ??
       (remoteName === null ? originRepository.repositoryNameWithOwner : null);
     const headRepositoryOwnerLogin = parseRepositoryOwnerLogin(headRepository);
     const isCrossRepository =
       headRepository !== null && targetRepository.repositoryNameWithOwner !== null
         ? headRepository.toLowerCase() !== targetRepository.repositoryNameWithOwner.toLowerCase()
-        : remoteName !== null &&
-          remoteName !== "origin" &&
-          remoteRepository.repositoryNameWithOwner !== null;
+        : headRemoteName !== null &&
+          headRemoteName !== "origin" &&
+          headRemoteRepository.repositoryNameWithOwner !== null;
 
     const ownerHeadSelector =
       headRepositoryOwnerLogin && headBranch.length > 0
         ? `${headRepositoryOwnerLogin}:${headBranch}`
         : null;
     const remoteAliasHeadSelector =
-      remoteName && headBranch.length > 0 ? `${remoteName}:${headBranch}` : null;
+      headRemoteName && headBranch.length > 0 ? `${headRemoteName}:${headBranch}` : null;
     const shouldProbeRemoteOwnedSelectors =
-      isCrossRepository || (remoteName !== null && remoteName !== "origin");
+      isCrossRepository || (headRemoteName !== null && headRemoteName !== "origin");
 
     const headSelectors: string[] = [];
     if (isCrossRepository && shouldProbeRemoteOwnedSelectors) {
@@ -1416,10 +1428,10 @@ export const make = Effect.gen(function* () {
       headSelectors,
       preferredHeadSelector:
         ownerHeadSelector && isCrossRepository ? ownerHeadSelector : headBranch,
-      remoteName,
+      remoteName: headRemoteName,
       targetRemoteName,
       headRemoteUrlKey:
-        remoteRepository.remoteUrlKey ??
+        headRemoteRepository.remoteUrlKey ??
         (remoteName === null ? originRepository.remoteUrlKey : null),
       targetRemoteUrlKey: targetRepository.remoteUrlKey,
       headRepositoryNameWithOwner: headRepository,
@@ -2046,7 +2058,7 @@ export const make = Effect.gen(function* () {
         cwd,
         baseRefName: baseBranch,
         headSelector: headContext.preferredHeadSelector,
-        ...(headContext.headRepositoryNameWithOwner
+        ...(provider.kind === "github" && headContext.headRepositoryNameWithOwner
           ? {
               source: {
                 refName: headContext.headBranch,
@@ -2203,6 +2215,7 @@ export const make = Effect.gen(function* () {
       cacheCwd,
       branch,
       identityRemoteName(cached.headContext),
+      cached.headContext.targetRemoteName ?? undefined,
     );
     const canVerifyIdentity = (headContext: BranchHeadContext, identity: typeof currentIdentity) =>
       !(
@@ -2226,6 +2239,7 @@ export const make = Effect.gen(function* () {
         cacheCwd,
         branch,
         identityRemoteName(cached.headContext),
+        cached.headContext.targetRemoteName ?? undefined,
       );
       if (
         !canVerifyIdentity(cached.headContext, refreshedIdentity) ||
