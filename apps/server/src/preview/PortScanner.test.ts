@@ -348,6 +348,32 @@ describe("Tailscale Serve route enrichment", () => {
     ]);
   });
 
+  it("maps foreground Serve routes", () => {
+    const routes = PortScanner.__testing.parseTailscaleServeStatus(
+      JSON.stringify({
+        Foreground: {
+          "session-1": {
+            TCP: { 443: { HTTPS: true } },
+            Web: {
+              "desktop.example-tailnet.ts.net:443": {
+                Handlers: { "/": { Proxy: "http://127.0.0.1:5173" } },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect([...routes]).toEqual([
+      [
+        5173,
+        {
+          url: "https://desktop.example-tailnet.ts.net/",
+        },
+      ],
+    ]);
+  });
+
   it("ignores malformed, credentialed, non-tailnet, and non-loopback routes", () => {
     const routes = PortScanner.__testing.parseTailscaleServeStatus(
       JSON.stringify({
