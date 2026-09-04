@@ -49,6 +49,8 @@ import {
   ProjectWriteFileError,
   ProviderUploadFeedbackError,
   ProviderSetupError,
+  ServerProviderSkillsError,
+  ServerProviderSkillsUnsupportedError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   ServerSelfUpdateError,
@@ -1738,6 +1740,31 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "provider" },
           ),
+        [WS_METHODS.serverListProviderSkills]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProviderSkills,
+            Effect.gen(function* () {
+              const skills = yield* providerRegistry.listSkills(input);
+              if (!skills) {
+                return yield* new ServerProviderSkillsUnsupportedError({
+                  instanceId: input.instanceId,
+                  cwd: input.cwd,
+                });
+              }
+              return { skills };
+            }).pipe(
+              Effect.mapError((cause) =>
+                cause._tag === "ServerProviderSkillsUnsupportedError"
+                  ? cause
+                  : new ServerProviderSkillsError({
+                      instanceId: input.instanceId,
+                      cwd: input.cwd,
+                      cause,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
+          ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
@@ -2096,12 +2123,6 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.pullRequestsInvalidate, pullRequests.invalidate(input), {
             "rpc.aggregate": "pull-requests",
           }),
-        [WS_METHODS.pullRequestsSubscribeRefreshes]: () =>
-          observeRpcStream(
-            WS_METHODS.pullRequestsSubscribeRefreshes,
-            pullRequests.subscribeRefreshes,
-            { "rpc.aggregate": "pull-requests" },
-          ),
         [WS_METHODS.pullRequestsReviewerCandidates]: (input) =>
           observeRpcEffect(
             WS_METHODS.pullRequestsReviewerCandidates,

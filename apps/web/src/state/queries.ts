@@ -9,17 +9,20 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
-import type {
-  EnvironmentId,
-  OrchestrationThread,
-  ProjectContentMatch,
-  ProjectEntryKind,
-  ThreadId,
-  VcsListRefsResult,
-  VcsRef,
+import {
+  type EnvironmentId,
+  type OrchestrationThread,
+  type ProjectContentMatch,
+  type ProjectEntryKind,
+  type ProviderInstanceId,
+  ServerProviderSkillsUnsupportedError,
+  type ThreadId,
+  type VcsListRefsResult,
+  type VcsRef,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -54,6 +57,7 @@ const threadSearchResultsAtom = createThreadSearchResultsAtomFamily({
     }),
   labelPrefix: "web:thread-search",
 });
+const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -343,6 +347,29 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
     hasQuery,
     truncated: result.data?.truncated ?? false,
     invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
+  };
+}
+
+export function useProviderSkills(target: {
+  readonly environmentId: EnvironmentId | null;
+  readonly instanceId: ProviderInstanceId | null;
+  readonly cwd: string | null;
+  readonly enabled: boolean;
+}) {
+  const result = useEnvironmentQuery(
+    target.enabled &&
+      target.environmentId !== null &&
+      target.instanceId !== null &&
+      target.cwd !== null
+      ? projectEnvironment.listProviderSkills({
+          environmentId: target.environmentId,
+          input: { instanceId: target.instanceId, cwd: target.cwd },
+        })
+      : null,
+  );
+  return {
+    ...result,
+    isUnsupported: result.failure !== null && isProviderSkillsUnsupportedError(result.failure),
   };
 }
 

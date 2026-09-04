@@ -5,6 +5,7 @@ import {
   type ProviderApprovalDecision,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type ServerProviderSkill,
   type ProviderUserInputAnswers,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -12,6 +13,7 @@ import {
   type ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { stableStringify } from "@t3tools/shared/relaySigning";
@@ -40,13 +42,13 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
-import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderDriverError,
 } from "../Errors.ts";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
@@ -110,6 +112,44 @@ export interface GrokAdapterLiveOptions {
   readonly turnInactivityTimeoutMs?: number;
   /** Override the longer active-tool liveness timeout in focused tests. */
   readonly activeToolInactivityTimeoutMs?: number;
+  readonly listSkills?: (
+    cwd: string,
+  ) => Effect.Effect<ReadonlyArray<ServerProviderSkill>, ProviderDriverError>;
+}
+
+const ENVIRONMENT_VARIABLE_STYLE_TOKEN = /^[A-Z][A-Z0-9_]*$/;
+
+function submittedSkillTokens(input: string) {
+  return collectComposerInlineTokens(input, { includeTrailingSkillToken: true }).filter(
+    (token) => token.type === "skill",
+  );
+}
+
+function potentialGrokSkillTokens(input: string) {
+  return submittedSkillTokens(input).filter(
+    (token) => !ENVIRONMENT_VARIABLE_STYLE_TOKEN.test(token.value),
+  );
+}
+
+export function rewriteGrokSkillReferences(
+  input: string,
+  skills: ReadonlyArray<ServerProviderSkill>,
+): string {
+  const enabledSkillNames = new Set(
+    skills.filter((skill) => skill.enabled).map((skill) => skill.name),
+  );
+  const replacements = submittedSkillTokens(input).filter((token) =>
+    enabledSkillNames.has(token.value),
+  );
+  if (replacements.length === 0) {
+    return input;
+  }
+
+  let rewritten = input;
+  for (const token of replacements.toReversed()) {
+    rewritten = `${rewritten.slice(0, token.start)}/${token.value}${rewritten.slice(token.end)}`;
+  }
+  return rewritten;
 }
 
 interface PendingApproval {
@@ -1517,7 +1557,48 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 "reasoningEffort",
               );
 
-              const text = input.input?.trim();
+              // A successful ACP model switch is session state, even if later
+              // prompt preparation (skill discovery, attachments, validation)
+              // fails. Commit it before those fallible steps so a follow-up
+              // without an explicit selection keeps the model Grok accepted.
+              const currentModelId = yield* applyGrokAcpModelSelection({
+                runtime: ctx.acp,
+                currentModelId: ctx.currentModelId,
+                currentReasoningEffort: ctx.currentReasoningEffort,
+                requestedModelId: requestedTurnModelId,
+                requestedReasoningEffort: requestedTurnReasoningEffort,
+                mapError: (cause) =>
+                  mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_model", cause),
+              });
+              ctx.currentModelId = currentModelId;
+              if (requestedTurnReasoningEffort !== undefined) {
+                ctx.currentReasoningEffort = normalizeGrokReasoningEffort(
+                  requestedTurnReasoningEffort,
+                );
+              }
+              const displayModel = currentModelId
+                ? resolveGrokAcpBaseModelId(currentModelId)
+                : undefined;
+              if (displayModel) {
+                ctx.session = { ...ctx.session, model: displayModel };
+              }
+
+              const rawText = input.input?.trim();
+              const text =
+                rawText && options?.listSkills && potentialGrokSkillTokens(rawText).length > 0
+                  ? yield* options.listSkills(ctx.session.cwd ?? "").pipe(
+                      Effect.map((skills) => rewriteGrokSkillReferences(rawText, skills)),
+                      Effect.mapError(
+                        (cause) =>
+                          new ProviderAdapterRequestError({
+                            provider: PROVIDER,
+                            method: "skills/list",
+                            detail: "Failed to resolve Grok skill references for this prompt.",
+                            cause,
+                          }),
+                      ),
+                    )
+                  : rawText;
               // Grok ingests images only. Generic files reach the agent
               // through the path line ProviderService puts in the prompt.
               const imagePromptParts = yield* Effect.forEach(
@@ -1566,29 +1647,6 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 });
               }
 
-              const currentModelId = yield* applyGrokAcpModelSelection({
-                runtime: ctx.acp,
-                currentModelId: ctx.currentModelId,
-                currentReasoningEffort: ctx.currentReasoningEffort,
-                requestedModelId: requestedTurnModelId,
-                requestedReasoningEffort: requestedTurnReasoningEffort,
-                mapError: (cause) =>
-                  mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_model", cause),
-              });
-              ctx.currentModelId = currentModelId;
-              if (requestedTurnReasoningEffort !== undefined) {
-                ctx.currentReasoningEffort = normalizeGrokReasoningEffort(
-                  requestedTurnReasoningEffort,
-                );
-              }
-              const displayModel = currentModelId
-                ? resolveGrokAcpBaseModelId(currentModelId)
-                : undefined;
-              const runtimeInstructions = buildRuntimeInstructions({
-                harness: "Grok",
-                model: displayModel,
-                reasoningEffort: normalizeGrokReasoningEffort(requestedTurnReasoningEffort),
-              });
               for (let yieldAttempt = 0; yieldAttempt < 8; yieldAttempt += 1) {
                 yield* Effect.yieldNow;
               }
@@ -1644,7 +1702,6 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 acpSessionId: ctx.acpSessionId,
                 displayModel,
                 promptParts,
-                runtimeInstructions,
                 turnId,
                 promptEpoch,
                 promptLifecycle: ctx.promptLifecycle,
@@ -1701,15 +1758,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               }
               const dispatched = yield* Deferred.make<void>();
               const fiber = yield* liveCtx.acp
-                .prompt(
-                  {
-                    prompt: [
-                      ...prepared.promptParts,
-                      { type: "text", text: prepared.runtimeInstructions },
-                    ],
-                  },
-                  { dispatched },
-                )
+                .prompt({ prompt: prepared.promptParts }, { dispatched })
                 .pipe(Effect.forkChild({ startImmediately: true }));
               // Hold the lifecycle permit until the runtime has registered this
               // prompt's RPC fiber, so a later steer's session/cancel targets

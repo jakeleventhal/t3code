@@ -123,6 +123,42 @@ export const ServerProviderWorkspaceSnapshot = Schema.Struct({
 });
 export type ServerProviderWorkspaceSnapshot = typeof ServerProviderWorkspaceSnapshot.Type;
 
+export const ServerProviderSkillsInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  cwd: TrimmedNonEmptyString,
+});
+export type ServerProviderSkillsInput = typeof ServerProviderSkillsInput.Type;
+
+export const ServerProviderSkillsResult = Schema.Struct({
+  skills: Schema.Array(ServerProviderSkill),
+});
+export type ServerProviderSkillsResult = typeof ServerProviderSkillsResult.Type;
+
+export class ServerProviderSkillsUnsupportedError extends Schema.TaggedErrorClass<ServerProviderSkillsUnsupportedError>()(
+  "ServerProviderSkillsUnsupportedError",
+  {
+    instanceId: ProviderInstanceId,
+    cwd: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    return `Provider instance '${this.instanceId}' does not support project skill discovery`;
+  }
+}
+
+export class ServerProviderSkillsError extends Schema.TaggedErrorClass<ServerProviderSkillsError>()(
+  "ServerProviderSkillsError",
+  {
+    instanceId: ProviderInstanceId,
+    cwd: TrimmedNonEmptyString,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to list provider skills for instance '${this.instanceId}'`;
+  }
+}
+
 /**
  * Availability of a configured provider instance from the runtime's POV.
  *
