@@ -512,8 +512,6 @@ export function armAgentAwarenessLiveActivityForLocalWork(input: {
   void loadPreferences()
     .catch(() => null)
     .then((preferences) => {
-      const widgetProps = localWorkStartingWidgetProps(input);
-      publishAgentActivityWidget(widgetProps);
       if (preferences?.liveActivitiesEnabled === false) {
         runRegistrationInBackground(
           refreshAgentActivityWidget(),
@@ -521,7 +519,7 @@ export function armAgentAwarenessLiveActivityForLocalWork(input: {
         );
         return;
       }
-      armAgentAwarenessLiveActivityForLocalWorkNow(input, widgetProps);
+      armAgentAwarenessLiveActivityForLocalWorkNow(input);
     });
 }
 
@@ -551,13 +549,10 @@ function localWorkStartingWidgetProps(input: {
   };
 }
 
-function armAgentAwarenessLiveActivityForLocalWorkNow(
-  input: {
-    readonly threadTitle: string;
-    readonly projectTitle: string;
-  },
-  props: AgentActivityProps,
-): void {
+function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
+  readonly threadTitle: string;
+  readonly projectTitle: string;
+}): void {
   try {
     if (AgentActivity.getInstances().length > 0) {
       runRegistrationInBackground(
@@ -566,6 +561,8 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(
       );
       return;
     }
+    const props = localWorkStartingWidgetProps(input);
+    publishAgentActivityWidget(props);
     const activity = AgentActivity.start(props);
     logRegistrationDebug("live activity card armed for local work", {
       threadTitle: input.threadTitle,
