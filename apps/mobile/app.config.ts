@@ -13,6 +13,10 @@ const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
+const iosPersonalTeamPushNotifications =
+  isIosPersonalTeamBuild && repoEnv.T3CODE_IOS_PERSONAL_TEAM_PUSH_NOTIFICATIONS === "1";
+const iosPersonalTeamLiveActivities =
+  iosPersonalTeamPushNotifications && repoEnv.T3CODE_IOS_PERSONAL_TEAM_LIVE_ACTIVITIES === "1";
 
 const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
@@ -192,14 +196,12 @@ const config: ExpoConfig = {
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
-    // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    // Pin standard builds to the T3 Tools team. Explicit personal-team builds
+    // use the locally selected Apple Developer team instead.
+    appleTeamId: isIosPersonalTeamBuild ? undefined : "ARK85ZXQ4Z",
+    associatedDomains: isIosPersonalTeamBuild
+      ? undefined
+      : [`applinks:${variant.relyingParty}`, `webcredentials:${variant.relyingParty}`],
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -348,7 +350,9 @@ const config: ExpoConfig = {
     // expo-widgets' — its dangerous mod wipes ios/ExpoWidgetsTarget/ (which
     // would delete the asset catalog) and its xcodeproj mod creates the widget
     // target (which must exist before the compile phase can be attached).
-    ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
+    ...(!isIosPersonalTeamBuild || iosPersonalTeamLiveActivities
+      ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin]
+      : []),
     "./plugins/withIosSceneLifecycle.cjs",
     "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
@@ -356,11 +360,15 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
+    ...(isIosPersonalTeamBuild && !iosPersonalTeamPushNotifications
+      ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"]
+      : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    iosPersonalTeamPushNotifications,
+    iosPersonalTeamLiveActivities,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
     },

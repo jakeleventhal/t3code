@@ -1,13 +1,19 @@
 import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
 
 import type { Preferences } from "../../persistence/mobile-preferences";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import {
+  supportsAgentAwarenessLiveActivities,
+  supportsAgentAwarenessNotifications,
+} from "./capabilities";
 
 // Development builds are Xcode-signed and receive sandbox APNs tokens;
 // preview and production builds are distribution-signed and use production
 // APNs. The relay routes each device's pushes accordingly.
-export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
-  return appVariant === "development" ? "sandbox" : "production";
+export function resolveApsEnvironment(
+  appVariant: unknown,
+  iosPersonalTeamBuild = false,
+): "sandbox" | "production" {
+  return appVariant === "development" || iosPersonalTeamBuild ? "sandbox" : "production";
 }
 
 export function makeRelayDeviceRegistrationRequest(input: {
@@ -22,8 +28,10 @@ export function makeRelayDeviceRegistrationRequest(input: {
   readonly notificationsEnabled: boolean;
   readonly preferences: Preferences;
 }): RelayDeviceRegistrationRequest {
-  const pushAvailable = supportsAgentAwarenessPush();
-  const liveActivitiesEnabled = pushAvailable && input.preferences.liveActivitiesEnabled !== false;
+  const notificationsAvailable = supportsAgentAwarenessNotifications();
+  const liveActivitiesAvailable = supportsAgentAwarenessLiveActivities();
+  const liveActivitiesEnabled =
+    liveActivitiesAvailable && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,
     label: input.label,
@@ -32,11 +40,13 @@ export function makeRelayDeviceRegistrationRequest(input: {
     appVersion: input.appVersion,
     ...(input.bundleId ? { bundleId: input.bundleId } : {}),
     ...(input.apsEnvironment ? { apsEnvironment: input.apsEnvironment } : {}),
-    ...(input.pushToken ? { pushToken: input.pushToken } : {}),
-    ...(input.pushToStartToken ? { pushToStartToken: input.pushToStartToken } : {}),
+    ...(notificationsAvailable && input.pushToken ? { pushToken: input.pushToken } : {}),
+    ...(liveActivitiesAvailable && input.pushToStartToken
+      ? { pushToStartToken: input.pushToStartToken }
+      : {}),
     preferences: {
       liveActivitiesEnabled,
-      notificationsEnabled: pushAvailable && input.notificationsEnabled,
+      notificationsEnabled: notificationsAvailable && input.notificationsEnabled,
       notifyOnApproval: true,
       notifyOnInput: true,
       notifyOnCompletion: true,

@@ -20,7 +20,10 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
-import { supportsAgentAwarenessPush } from "../agent-awareness/capabilities";
+import {
+  supportsAgentAwarenessLiveActivities,
+  supportsAgentAwarenessNotifications,
+} from "../agent-awareness/capabilities";
 import { setLiveActivityUpdatesEnabled } from "../agent-awareness/liveActivityPreferences";
 import { requestAgentNotificationPermission } from "../agent-awareness/notificationPermissions";
 import {
@@ -157,8 +160,9 @@ function LocalSettingsRouteScreen() {
 function ConfiguredSettingsRouteScreen() {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
-  const agentAwarenessPushAvailable = supportsAgentAwarenessPush();
   const agentAwarenessPlatform = resolveAgentAwarenessPlatformPresentation(Platform.OS);
+  const agentAwarenessNotificationsAvailable = supportsAgentAwarenessNotifications();
+  const agentAwarenessLiveActivitiesAvailable = supportsAgentAwarenessLiveActivities();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { getToken, isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
@@ -489,7 +493,7 @@ function ConfiguredSettingsRouteScreen() {
             label="Device Notifications"
             disabled={
               !agentAwarenessPlatform.supported ||
-              !agentAwarenessPushAvailable ||
+              !agentAwarenessNotificationsAvailable ||
               notificationStatus === "checking" ||
               notificationStatus === "unsupported"
             }
@@ -498,14 +502,16 @@ function ConfiguredSettingsRouteScreen() {
             // relay; otherwise notifications cannot be delivered regardless of
             // the local iOS permission.
             value={
-              agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
+              agentAwarenessNotificationsAvailable &&
+              notificationStatus === "enabled" &&
+              deviceRegistered
             }
             onValueChange={handleDeviceNotificationsChange}
           />
           <SettingsSwitchRow
             disabled={
               !agentAwarenessPlatform.supported ||
-              !agentAwarenessPushAvailable ||
+              !agentAwarenessLiveActivitiesAvailable ||
               !isLoaded ||
               liveActivityStatus === "checking" ||
               liveActivityStatus === "linking"
@@ -516,7 +522,7 @@ function ConfiguredSettingsRouteScreen() {
             // Same gate: a saved preference is meaningless until the device
             // registration the relay needs to push updates has succeeded.
             value={
-              agentAwarenessPushAvailable &&
+              agentAwarenessLiveActivitiesAvailable &&
               (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
               deviceRegistered
             }
