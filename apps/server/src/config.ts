@@ -39,6 +39,8 @@ export interface ServerDerivedPaths {
   readonly worktreesDir: string;
   readonly chatsDir: string;
   readonly attachmentsDir: string;
+  /** Screenshots and recordings the collaborative browser saves for the user. */
+  readonly browserArtifactsDir: string;
   readonly logsDir: string;
   readonly serverLogPath: string;
   readonly serverTracePath: string;
@@ -127,6 +129,7 @@ export const deriveServerPaths = Effect.fn(function* (
     worktreesDir: join(baseDir, "worktrees"),
     chatsDir: join(baseDir, "chats"),
     attachmentsDir,
+    browserArtifactsDir: join(stateDir, "browser-artifacts"),
     logsDir,
     serverLogPath: join(logsDir, "server.log"),
     serverTracePath: join(logsDir, "server.trace.ndjson"),
