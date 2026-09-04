@@ -1301,15 +1301,18 @@ function ChatMarkdownVideo(props: {
   );
 }
 
-function AuthoredImageTitleTooltip(props: {
-  readonly title?: string | undefined;
-  readonly children: React.ReactElement;
-}) {
-  if (!props.title) return props.children;
+function AuthoredImageTitleTooltip(
+  props: {
+    readonly title?: string | undefined;
+    readonly children: React.ReactElement;
+  } & Omit<React.ComponentProps<typeof TooltipTrigger>, "render">,
+) {
+  const { title, children, ...triggerProps } = props;
+  if (!title) return React.cloneElement(children, triggerProps);
   return (
     <Tooltip>
-      <TooltipTrigger render={props.children} />
-      <TooltipPopup side="top">{props.title}</TooltipPopup>
+      <TooltipTrigger render={children} {...triggerProps} />
+      <TooltipPopup side="top">{title}</TooltipPopup>
     </Tooltip>
   );
 }

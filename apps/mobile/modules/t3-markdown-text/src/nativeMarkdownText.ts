@@ -358,7 +358,7 @@ function isLineBoundary(node: MarkdownNode | undefined): boolean {
 }
 
 function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean): boolean {
-  if (markdownLinkMediaKind(target) === null) return false;
+  if (markdownLinkMediaKind(target) !== "image") return false;
   const source = classifyMarkdownImageSource(
     target,
     embedLocalPaths ? "/__t3_workspace__" : undefined,
@@ -367,9 +367,9 @@ function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean): 
 }
 
 /**
- * A link that owns its line in a top-level paragraph and points at an image or video becomes
- * that image, matching the web renderer. The breaks beside it go too, so the media does not
- * leave an empty line behind.
+ * A link that owns its line in a top-level paragraph and points at an image becomes that image.
+ * The breaks beside it go too, so the media does not leave an empty line behind. Video links stay
+ * links because the native markdown image view cannot render them.
  */
 export function nativeMarkdownWithStandaloneMediaLinks(
   node: MarkdownNode,
