@@ -66,6 +66,11 @@ interface ChatHeaderProps {
   gitCwd: string | null;
   readonly onOpenPullRequest?: ((number: number) => void) | undefined;
   onNewThreadInProject: () => void;
+  /**
+   * True for the reserved Chats pseudo-project: scripts, open-in and git
+   * actions are hidden because there is no real codebase behind the thread.
+   */
+  isChatsProject: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -137,6 +142,7 @@ export const ChatHeader = memo(function ChatHeader({
   gitCwd,
   onOpenPullRequest,
   onNewThreadInProject,
+  isChatsProject,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -160,15 +166,17 @@ export const ChatHeader = memo(function ChatHeader({
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const fileScripts = useT3ProjectFileScripts(
     activeThreadEnvironmentId,
-    activeProjectScripts ? activeProjectCwd : null,
+    activeProjectScripts && !isChatsProject ? activeProjectCwd : null,
   );
   const remoteOpenState = useRemoteOpenState(activeThreadEnvironmentId);
-  const showOpenInPicker = shouldShowOpenInPicker({
-    activeProjectName,
-    activeThreadEnvironmentId,
-    primaryEnvironmentId,
-    remoteOpenMode: remoteOpenState.mode,
-  });
+  const showOpenInPicker =
+    !isChatsProject &&
+    shouldShowOpenInPicker({
+      activeProjectName,
+      activeThreadEnvironmentId,
+      primaryEnvironmentId,
+      remoteOpenMode: remoteOpenState.mode,
+    });
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
@@ -370,6 +378,12 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
+                <ProjectFavicon
+                  environmentId={activeThreadEnvironmentId}
+                  cwd={activeProjectCwd ?? ""}
+                  kind={isChatsProject ? "chats" : undefined}
+                  className="size-3.5"
+                />
                 <h2 className="min-w-0 truncate">{activeThreadTitle}</h2>
                 <ChevronDownIcon
                   aria-hidden
@@ -402,7 +416,7 @@ export const ChatHeader = memo(function ChatHeader({
           "[[data-panel-animations=true]_&]:motion-safe:transition-[padding-right] [[data-panel-animations=true]_&]:motion-safe:[transition-duration:var(--panel-animation-duration)] [[data-panel-animations=true]_&]:motion-safe:ease-out",
         )}
       >
-        {activeProjectScripts && (
+        {activeProjectScripts && !isChatsProject && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
             fileScripts={fileScripts}
@@ -422,7 +436,7 @@ export const ChatHeader = memo(function ChatHeader({
             openInCwd={openInCwd}
           />
         )}
-        {activeProjectName && (
+        {activeProjectName && !isChatsProject && (
           <GitActionsControl
             gitCwd={gitCwd}
             activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}

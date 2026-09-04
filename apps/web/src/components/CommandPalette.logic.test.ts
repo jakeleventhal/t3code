@@ -1,15 +1,18 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
-import type { Thread } from "../types";
+import type { Project, Thread } from "../types";
 import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
+  buildProjectActionItems,
   buildThreadActionItems,
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   normalizeSearchText,
   reduceCommandPaletteUiState,
+  findChatsProjectForEnvironment,
+  selectPreferredProjectEntry,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
@@ -476,5 +479,74 @@ describe("filterPinnedBrowseEntries", () => {
       visibleEntries: windowsEntries,
       exactEntry: windowsEntries[0],
     });
+  });
+});
+
+describe("buildProjectActionItems", () => {
+  const makeProject = (overrides: Partial<Project> = {}): Project =>
+    ({
+      id: ProjectId.make("project-1"),
+      environmentId: EnvironmentId.make("env-1"),
+      title: "Chats",
+      workspaceRoot: "/home/user/.t3/chats",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      ...overrides,
+    }) as Project;
+
+  it("labels the chats pseudo-project and hides its workspace path", () => {
+    const [item] = buildProjectActionItems({
+      projects: [makeProject({ kind: "chats" })],
+      valuePrefix: "project",
+      icon: () => null,
+      runProject: async () => undefined,
+    });
+
+    expect(item?.title).toBe("Chat");
+    expect(item?.description).toBeUndefined();
+    // The directory stays searchable even though it is not displayed.
+    expect(item?.searchTerms).toContain("/home/user/.t3/chats");
+  });
+
+  it("keeps the title and path for standard projects", () => {
+    const [item] = buildProjectActionItems({
+      projects: [makeProject({ title: "t3code", workspaceRoot: "/dev/t3code" })],
+      valuePrefix: "project",
+      icon: () => null,
+      runProject: async () => undefined,
+    });
+
+    expect(item?.title).toBe("t3code");
+    expect(item?.description).toBe("/dev/t3code");
+  });
+
+  it("selects the Chat project from the contextual environment", () => {
+    const localChats = makeProject({
+      id: ProjectId.make("chat-local"),
+      environmentId: EnvironmentId.make("env-local"),
+      kind: "chats",
+    });
+    const remoteChats = makeProject({
+      id: ProjectId.make("chat-remote"),
+      environmentId: EnvironmentId.make("env-remote"),
+      kind: "chats",
+    });
+
+    expect(
+      findChatsProjectForEnvironment([localChats, remoteChats], EnvironmentId.make("env-remote"))
+        ?.id,
+    ).toBe(ProjectId.make("chat-remote"));
+    expect(findChatsProjectForEnvironment([localChats], null)).toBeNull();
+  });
+
+  it("selects the preferred codebase entry and otherwise falls back to the first", () => {
+    const first = { id: "first", isPreferred: false };
+    const preferred = { id: "preferred", isPreferred: true };
+
+    expect(selectPreferredProjectEntry([first, preferred])).toBe(preferred);
+    expect(selectPreferredProjectEntry([first])).toBe(first);
+    expect(selectPreferredProjectEntry([])).toBeNull();
   });
 });

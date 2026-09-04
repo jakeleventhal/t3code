@@ -968,7 +968,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     linkedPullRequestStatus,
   });
   const prStatus = prStatusIndicator(pr, prProvider);
-  const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state, pr.isDraft) : undefined;
+  const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state) : undefined;
   useEffect(() => {
     const nextSnapshot = nextThreadChangeRequestSnapshot({
       threadBranch: thread.branch,
@@ -1136,8 +1136,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     [onSnooze, threadRef],
   );
   // While the snooze popover is open the pointer leaves the row, which
-  // would fade the hover actions out from under the open menu. Pin them and
-  // suppress the row tooltip so its portal cannot overlap the popover.
+  // would fade the hover actions out from under the open menu; pin them.
   const [snoozeMenuOpenRaw, setSnoozeMenuOpen] = useState(false);
   // Snooze is offered only where it can succeed: capability-gated and never
   // on blocked-on-you work or queued turns (the server rejects both).
@@ -1482,7 +1481,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         sortable?.isDragging && "z-20 opacity-80",
       )}
     >
-      <Tooltip disabled={snoozeMenuOpen}>
+      <Tooltip>
         <TooltipTrigger
           render={
             <div
@@ -1662,9 +1661,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/40">
-                    {thread.branch}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
                 </>
               ) : (
                 <span className="flex-1" />
@@ -2196,6 +2193,7 @@ export default function Sidebar() {
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
+      if (projectGroup.kind === "chats") return;
       if (isMobile) {
         setOpenMobile(false);
       }
@@ -2210,6 +2208,7 @@ export default function Sidebar() {
     (event: ReactMouseEvent<HTMLButtonElement>, projectGroup: SidebarProjectSnapshot) => {
       event.preventDefault();
       event.stopPropagation();
+      if (projectGroup.kind === "chats") return;
       dispatchProjectScopeMenu({ type: "project-settings-opened" });
       openProjectSettings(projectGroup);
     },
@@ -3708,6 +3707,7 @@ export default function Sidebar() {
                           projectName={scopedProjectGroup.title}
                           faviconPath={scopedProjectGroup.faviconPath}
                           projectIcon={scopedProjectGroup.projectIcon}
+                          kind={scopedProjectGroup.kind}
                           className="size-4"
                         />
                       </span>
@@ -3766,13 +3766,14 @@ export default function Sidebar() {
                                 projectName={project.title}
                                 faviconPath={project.faviconPath}
                                 projectIcon={project.projectIcon}
+                                kind={project.kind}
                                 className="size-4 shrink-0"
                               />
                             ) : (
                               <FolderIcon className="size-4 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                            {project ? (
+                            {project && project.kind !== "chats" ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"

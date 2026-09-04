@@ -3,6 +3,7 @@ import {
   derivePhysicalProjectKey,
   deriveProjectGroupLabel,
 } from "@t3tools/client-runtime/state/project-grouping";
+import { isChatsProject, projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -65,7 +66,11 @@ export function buildHomeProjectScopes(input: {
   }).map((group) => {
     return {
       key: group.key,
-      title: group.label,
+      // Only Chat overrides the grouping label; codebase groups keep the
+      // repository-aware label computed by buildProjectGroups.
+      title: isChatsProject(group.representative)
+        ? projectDisplayTitle(group.representative)
+        : group.label,
       representative: group.representative,
       projects: group.members.map((member) => member.project),
       projectRefs: group.memberProjectRefs,

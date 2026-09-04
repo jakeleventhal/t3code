@@ -1,4 +1,9 @@
-import type { EnvironmentId, ProjectIconColor, ProjectIconOverride } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProjectIconColor,
+  ProjectIconOverride,
+  ProjectKind,
+} from "@t3tools/contracts";
 import {
   getProjectFaviconCacheKey,
   isProjectFaviconFallbackUrl,
@@ -19,6 +24,7 @@ import {
   Layers3Icon,
   MonitorIcon,
   MusicIcon,
+  MessageCircleIcon,
   PackageIcon,
   ServerIcon,
   ShieldCheckIcon,
@@ -102,9 +108,13 @@ export function ProjectFavicon(input: {
   projectIcon?: ProjectIconOverride | null | undefined;
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
+  kind?: ProjectKind | undefined;
 }) {
   const state = useProjectFaviconAsset(input);
   const src = state._tag === "Success" ? state.url : null;
+  if (input.kind === "chats") {
+    return <ProjectFaviconFallback className={input.className} icon={MessageCircleIcon} />;
+  }
   if (input.projectIcon?.kind === "emoji") {
     return <ProjectFaviconFallback className={input.className} emoji={input.projectIcon.emoji} />;
   }

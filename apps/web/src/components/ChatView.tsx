@@ -35,6 +35,7 @@ import {
   submitCodexFeedback,
   type CodexFeedbackSubmission,
 } from "@t3tools/client-runtime/state/threads";
+import { isChatsProject, projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 import {
   parseScopedThreadKey,
   scopedThreadKey,
@@ -365,6 +366,7 @@ import {
   isBranchMismatchDismissedForSession,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
+  isWorkspaceShortcutBlockedForChats,
   shouldShowBranchMismatchBanner,
   shouldShowPlanFollowUpPrompt,
   shouldOpenProactivePullRequest,
@@ -1639,6 +1641,25 @@ function ChatViewContent(props: ChatViewProps) {
   const feedbackUploadsInFlightRef = useRef(new Set<string>());
   const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
 
+  useLayoutEffect(() => {
+    if (!composerOverlayElement) return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(composerOverlayElement.getBoundingClientRect().height);
+      if (nextHeight <= 0) return;
+      setComposerOverlayHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+
+    updateHeight();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(composerOverlayElement);
+    return () => observer.disconnect();
+  }, [composerOverlayElement]);
+
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
   );
@@ -1957,6 +1978,10 @@ function ChatViewContent(props: ChatViewProps) {
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
+  // The reserved Chats pseudo-project has no real codebase, so project-scoped
+  // surfaces (diff, files, terminal, branches/worktrees, git actions) are
+  // hidden for it.
+  const activeProjectIsChats = isChatsProject(activeProject);
   const activeEnvironmentShell = useEnvironmentQuery(
     activeThread ? environmentShell.stateAtom(activeThread.environmentId) : null,
   );
@@ -1997,8 +2022,22 @@ function ChatViewContent(props: ChatViewProps) {
 
   useEffect(() => {
     if (!activeThreadRef || !activeEnvironmentBootstrapComplete) return;
-    useRightPanelStore.getState().reconcileFileSurfaces(activeThreadRef, activeProject !== null);
-  }, [activeEnvironmentBootstrapComplete, activeProject, activeThreadRef]);
+    useRightPanelStore
+      .getState()
+      .reconcileFileSurfaces(activeThreadRef, activeProject !== null && !activeProjectIsChats);
+    useRightPanelStore
+      .getState()
+      .reconcileWorkspaceSurfaces(activeThreadRef, !activeProjectIsChats);
+    if (activeProjectIsChats) {
+      storeSetTerminalOpen(activeThreadRef, false);
+    }
+  }, [
+    activeEnvironmentBootstrapComplete,
+    activeProject,
+    activeProjectIsChats,
+    activeThreadRef,
+    storeSetTerminalOpen,
+  ]);
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
@@ -3059,7 +3098,7 @@ function ChatViewContent(props: ChatViewProps) {
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
-  const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  const isGitRepo = (gitStatusQuery.data?.isRepo ?? true) && !activeProjectIsChats;
   // Keep a hidden, off-flow strip mounted for existing threads so the composer
   // can measure whether its relocated controls fit. The visible chrome remains
   // content-driven: Git/environment context or controls that actually fit.
@@ -3105,7 +3144,7 @@ function ChatViewContent(props: ChatViewProps) {
     [keybindings, terminalShortcutLabelOptions],
   );
   const onToggleDiff = useCallback(() => {
-    if (!isServerThread) {
+    if (!isServerThread || !isGitRepo) {
       return;
     }
     if (!diffOpen) {
@@ -3114,7 +3153,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (activeThreadRef) {
       useRightPanelStore.getState().toggle(activeThreadRef, "diff");
     }
-  }, [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen]);
+  }, [activeThreadRef, diffOpen, isGitRepo, isServerThread, onDiffPanelOpen]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -3248,7 +3287,7 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThreadRef, storeSetTerminalOpen],
   );
   const toggleTerminalVisibility = useCallback(() => {
-    if (!activeThreadRef) return;
+    if (!activeThreadRef || activeProjectIsChats) return;
     const nextOpen = !terminalUiState.terminalOpen;
     if (nextOpen && terminalUiState.terminalIds.length === 0) {
       if (!activeThreadId || !activeProject) {
@@ -3278,6 +3317,7 @@ function ChatViewContent(props: ChatViewProps) {
     setTerminalOpen(nextOpen);
   }, [
     activeProject,
+    activeProjectIsChats,
     activeThreadId,
     activeThreadRef,
     activeThreadWorktreePath,
@@ -3292,7 +3332,13 @@ function ChatViewContent(props: ChatViewProps) {
   ]);
   const splitTerminal = useCallback(
     (direction: "horizontal" | "vertical" = "horizontal") => {
-      if (!activeThreadRef || hasReachedSplitLimit || !activeThreadId || !activeProject) {
+      if (
+        !activeThreadRef ||
+        hasReachedSplitLimit ||
+        !activeThreadId ||
+        !activeProject ||
+        activeProjectIsChats
+      ) {
         return;
       }
       const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
@@ -3322,6 +3368,8 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [
       activeProject,
+      activeProjectIsChats,
+      activeKnownTerminalIds,
       activeThreadId,
       allocatableActiveTerminalIds,
       activeThreadRef,
@@ -3335,7 +3383,7 @@ function ChatViewContent(props: ChatViewProps) {
     ],
   );
   const createNewTerminal = useCallback(() => {
-    if (!activeThreadRef || !activeThreadId || !activeProject) {
+    if (!activeThreadRef || !activeThreadId || !activeProject || activeProjectIsChats) {
       return;
     }
     const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
@@ -3360,6 +3408,8 @@ function ChatViewContent(props: ChatViewProps) {
     });
   }, [
     activeProject,
+    activeProjectIsChats,
+    activeKnownTerminalIds,
     activeThreadId,
     allocatableActiveTerminalIds,
     activeThreadRef,
@@ -3732,19 +3782,19 @@ function ChatViewContent(props: ChatViewProps) {
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
-    if (!activeThreadRef || !activeProject) return;
+    if (!activeThreadRef || !activeProject || activeProjectIsChats) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
-  }, [activeProject, activeThreadRef]);
+  }, [activeProject, activeProjectIsChats, activeThreadRef]);
   const addAgentsSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
   const openFileSurface = useCallback(
     (relativePath: string) => {
-      if (!activeThreadRef || !activeProject) return;
+      if (!activeThreadRef || !activeProject || activeProjectIsChats) return;
       useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
     },
-    [activeProject, activeThreadRef],
+    [activeProject, activeProjectIsChats, activeThreadRef],
   );
   // The thread's own change request, placed against the project it belongs to. Without a
   // project there is nothing to resolve it against, so the caller falls back to the browser.
@@ -4028,7 +4078,7 @@ function ChatViewContent(props: ChatViewProps) {
     }
   }, [activeThreadRef]);
   const addTerminalSurface = useCallback(() => {
-    if (!activeThreadRef || !activeThreadId || !activeProject) return;
+    if (!activeThreadRef || !activeThreadId || !activeProject || activeProjectIsChats) return;
     const cwd = gitCwd ?? activeProject.workspaceRoot;
     const terminalId = nextTerminalId(allocatableActiveTerminalIds);
     useRightPanelStore.getState().openTerminal(activeThreadRef, terminalId);
@@ -4048,6 +4098,7 @@ function ChatViewContent(props: ChatViewProps) {
     });
   }, [
     activeProject,
+    activeProjectIsChats,
     activeThreadId,
     activeThreadRef,
     activeThreadWorktreePath,
@@ -4061,6 +4112,7 @@ function ChatViewContent(props: ChatViewProps) {
         !activeThreadRef ||
         !activeThreadId ||
         !activeProject ||
+        activeProjectIsChats ||
         activeRightPanelSurface?.kind !== "terminal" ||
         activeRightPanelSurface.terminalIds.length >= MAX_TERMINALS_PER_GROUP
       ) {
@@ -4088,6 +4140,7 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [
       activeProject,
+      activeProjectIsChats,
       activeRightPanelSurface,
       activeThreadId,
       activeThreadRef,
@@ -5805,6 +5858,12 @@ function ChatViewContent(props: ChatViewProps) {
         return;
       }
 
+      if (isWorkspaceShortcutBlockedForChats(command, activeProjectIsChats)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       if (command === "terminal.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -5916,6 +5975,11 @@ function ChatViewContent(props: ChatViewProps) {
 
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
+      if (activeProjectIsChats) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
       if (!script) return;
       event.preventDefault();
@@ -5926,6 +5990,7 @@ function ChatViewContent(props: ChatViewProps) {
     return () => window.removeEventListener("keydown", handler, true);
   }, [
     activeProject,
+    activeProjectIsChats,
     activeRightPanelSurface,
     addTerminalSurface,
     activeThreadRef,
@@ -7473,7 +7538,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const panelToggleControls = (
     <PanelLayoutControls
-      terminalAvailable={activeProject !== null}
+      terminalAvailable={activeProject !== null && !activeProjectIsChats}
       terminalOpen={terminalUiState.terminalOpen}
       terminalShortcutLabel={shortcutLabelForCommand(keybindings, "terminal.toggle")}
       rightPanelAvailable={activeProject !== null}
@@ -7696,7 +7761,7 @@ function ChatViewContent(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
-            activeProjectName={activeProject?.title}
+            activeProjectName={activeProject ? projectDisplayTitle(activeProject) : undefined}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}
             activeProjectFaviconPath={activeProject?.faviconPath ?? null}
             activeProjectIcon={activeProject?.projectIcon ?? null}
@@ -7710,6 +7775,7 @@ function ChatViewContent(props: ChatViewProps) {
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
+            isChatsProject={activeProjectIsChats}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
@@ -7811,7 +7877,7 @@ function ChatViewContent(props: ChatViewProps) {
               {showScrollToBottom && (
                 <div
                   className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5"
-                  style={{ bottom: scrollToEndClearance + 4 }}
+                  style={{ bottom: composerOverlayHeight + 4 }}
                 >
                   <Button
                     aria-label="Scroll to end"
@@ -7845,7 +7911,7 @@ function ChatViewContent(props: ChatViewProps) {
                 ref={attachDraftHeroTransitionGroupRef}
                 className="w-full ps-[calc(env(safe-area-inset-left)+0.75rem)] pe-[calc(env(safe-area-inset-right)+0.75rem)] sm:ps-[calc(env(safe-area-inset-left)+1.25rem)] sm:pe-[calc(env(safe-area-inset-right)+1.25rem)]"
               >
-                <div className="group/composer-stack pointer-events-auto relative z-10">
+                <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div
@@ -7861,7 +7927,10 @@ function ChatViewContent(props: ChatViewProps) {
                         <DraftHeroHeadline
                           draftId={draftId}
                           activeProjectRef={activeProjectRef}
-                          activeProjectTitle={activeProject?.title ?? null}
+                          activeProjectTitle={
+                            activeProject ? projectDisplayTitle(activeProject) : null
+                          }
+                          isChatsProject={activeProjectIsChats}
                         />
                       </div>
                     </div>
@@ -8139,9 +8208,9 @@ function ChatViewContent(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
+          terminalAvailable={activeProject !== null && !activeProjectIsChats}
           diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
+          filesAvailable={activeProject !== null && !activeProjectIsChats}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           agentsAvailable
           liveAgentCount={agentPanelModel.liveCount}
@@ -8189,9 +8258,9 @@ function ChatViewContent(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
+            terminalAvailable={activeProject !== null && !activeProjectIsChats}
             diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
+            filesAvailable={activeProject !== null && !activeProjectIsChats}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             agentsAvailable
             liveAgentCount={agentPanelModel.liveCount}

@@ -115,6 +115,11 @@ interface RightPanelStoreState {
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
   reconcileBrowserSurfaces: (ref: ScopedThreadRef, tabIds: readonly string[]) => void;
   reconcileFileSurfaces: (ref: ScopedThreadRef, workspaceAvailable: boolean) => void;
+  /**
+   * Drops persisted diff and terminal tabs when the thread's project cannot
+   * host them (e.g. the reserved Chats pseudo-project).
+   */
+  reconcileWorkspaceSurfaces: (ref: ScopedThreadRef, workspaceSurfacesAvailable: boolean) => void;
   show: (ref: ScopedThreadRef) => void;
   close: (ref: ScopedThreadRef) => void;
   toggleVisibility: (ref: ScopedThreadRef) => void;
@@ -605,6 +610,27 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (surface) =>
                 surface.kind !== "files" &&
                 (surface.kind !== "file" || surface.attachment !== undefined),
+            );
+            if (surfaces.length === current.surfaces.length) return current;
+            const activeStillExists = surfaces.some(
+              (surface) => surface.id === current.activeSurfaceId,
+            );
+            return {
+              ...current,
+              isOpen: surfaces.length > 0 ? current.isOpen : false,
+              surfaces,
+              activeSurfaceId: activeStillExists
+                ? current.activeSurfaceId
+                : (surfaces.at(-1)?.id ?? null),
+            };
+          }),
+        })),
+      reconcileWorkspaceSurfaces: (ref, workspaceSurfacesAvailable) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            if (workspaceSurfacesAvailable) return current;
+            const surfaces = current.surfaces.filter(
+              (surface) => surface.kind !== "diff" && surface.kind !== "terminal",
             );
             if (surfaces.length === current.surfaces.length) return current;
             const activeStillExists = surfaces.some(

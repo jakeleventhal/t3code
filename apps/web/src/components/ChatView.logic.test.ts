@@ -36,6 +36,7 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  isWorkspaceShortcutBlockedForChats,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
@@ -448,6 +449,16 @@ describe("shouldReleaseTimelineAnchorForToolActivity", () => {
     expect(shouldReleaseTimelineAnchorForToolActivity({ ...input, runningTurnId: null })).toBe(
       false,
     );
+  });
+});
+
+describe("isWorkspaceShortcutBlockedForChats", () => {
+  it("blocks terminal and diff shortcuts only for Chat projects", () => {
+    expect(isWorkspaceShortcutBlockedForChats("terminal.new", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("terminal.split", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("diff.toggle", true)).toBe(true);
+    expect(isWorkspaceShortcutBlockedForChats("rightPanel.toggle", true)).toBe(false);
+    expect(isWorkspaceShortcutBlockedForChats("terminal.new", false)).toBe(false);
   });
 });
 
