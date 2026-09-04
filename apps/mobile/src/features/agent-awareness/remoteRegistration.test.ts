@@ -1094,6 +1094,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       yield* runBackgroundOperations();
 
       expect(widgetMocks.start).not.toHaveBeenCalled();
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(1);
       expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
         expect.objectContaining({
           activeCount: 1,
@@ -1125,6 +1126,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       yield* runBackgroundOperations();
 
       expect(widgetMocks.start).not.toHaveBeenCalled();
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(1);
       expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
         expect.objectContaining({
           activeCount: 1,
