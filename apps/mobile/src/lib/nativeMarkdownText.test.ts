@@ -71,12 +71,10 @@ describe("nativeMarkdownWithStandaloneMediaLinks", () => {
     ).toEqual(document({ type: "image", href: "/tmp/login.png", alt: "Login page" }));
   });
 
-  it("embeds a bare URL without alt text and keeps a title", () => {
-    expect(
-      nativeMarkdownWithStandaloneMediaLinks(
-        document({ ...link("https://cdn.example.com/clip.mp4"), title: "Clip" }),
-      ),
-    ).toEqual(document({ type: "image", href: "https://cdn.example.com/clip.mp4", title: "Clip" }));
+  it("keeps video links because the native image view cannot render them", () => {
+    const input = document({ ...link("https://cdn.example.com/clip.mp4"), title: "Clip" });
+
+    expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
   });
 
   it.each([
