@@ -604,6 +604,20 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("removes terminal surfaces without discarding other checkout panels", () => {
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().openTerminal(refA, "term-1");
+
+    const stateKey = Object.keys(useRightPanelStore.getState().byThreadKey)[0]!;
+    useRightPanelStore.getState().removeTerminalSurfacesForKey(stateKey);
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "diff",
+      surfaces: [{ id: "diff", kind: "diff" }],
+    });
+  });
+
   it("tracks vertical layout for a terminal surface", () => {
     useRightPanelStore.getState().openTerminal(refA, "term-1");
     useRightPanelStore.getState().splitTerminal(refA, "terminal:term-1", "term-2", "vertical");

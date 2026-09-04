@@ -32,6 +32,7 @@ import {
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
+  type OrchestrationThreadShell,
   type OrchestrationShellStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
@@ -70,6 +71,7 @@ import {
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -1267,6 +1269,13 @@ const makeWsRpcLayer = (
         };
       });
 
+      // Mirrors the client's worktree identity rule (worktreeCleanup.ts):
+      // blank and null both mean "the project's local checkout".
+      const normalizeWorktreePathForArchive = (worktreePath: string | null): string | null => {
+        const trimmed = worktreePath?.trim();
+        return trimmed !== undefined && trimmed.length > 0 ? trimmed : null;
+      };
+
       const refreshGitStatus = (cwd: string) =>
         vcsStatusBroadcaster
           .refreshStatus(cwd)
@@ -1287,23 +1296,22 @@ const makeWsRpcLayer = (
               // Best-effort on purpose: the user's archive must not
               // fail because this cleanup read blipped, so a failed read
               // logs and skips the stop instead of propagating.
-              const shouldStopSessionAfterCommand = archiveCommand
-                ? yield* projectionSnapshotQuery.getThreadShellById(archiveCommand.threadId).pipe(
-                    Effect.map(
-                      Option.match({
-                        onNone: () => false,
-                        onSome: (thread) =>
-                          thread.session !== null && thread.session.status !== "stopped",
-                      }),
-                    ),
-                    Effect.catchCause((cause) =>
-                      Effect.logWarning(
-                        "failed to read thread session state before session-stop check",
-                        { threadId: archiveCommand.threadId, cause },
-                      ).pipe(Effect.as(false)),
-                    ),
-                  )
-                : false;
+              const threadShellBeforeCommand = archiveCommand
+                ? yield* projectionSnapshotQuery
+                    .getThreadShellById(archiveCommand.threadId)
+                    .pipe(
+                      Effect.catchCause((cause) =>
+                        Effect.logWarning(
+                          "failed to read thread session state before session-stop check",
+                          { threadId: archiveCommand.threadId, cause },
+                        ).pipe(Effect.as(Option.none())),
+                      ),
+                    )
+                : Option.none();
+              const shouldStopSessionAfterCommand = Option.match(threadShellBeforeCommand, {
+                onNone: () => false,
+                onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
+              });
               const result = yield* dispatchNormalizedCommand(normalizedCommand).pipe(
                 Effect.tapError(() => cleanupFailedUploadedAttachments(command, normalizedCommand)),
               );
@@ -1331,16 +1339,43 @@ const makeWsRpcLayer = (
                   );
                 }
 
-                // Archive removes the thread from view, so its user-opened
-                // terminal panes close with it.
-                yield* terminalManager.close({ threadId: archiveCommand.threadId }).pipe(
-                  Effect.catch((error) =>
-                    Effect.logWarning("failed to close thread terminals after archive", {
-                      threadId: archiveCommand.threadId,
-                      error: error.message,
-                    }),
-                  ),
-                );
+                // Terminals are worktree-scoped on the client, so archiving one
+                // thread must not kill sessions that sibling threads still use.
+                const worktreeStillInUse = yield* Option.match(threadShellBeforeCommand, {
+                  onNone: () => Effect.succeed(false),
+                  onSome: (archivedThread) =>
+                    projectionSnapshotQuery.getShellSnapshot().pipe(
+                      Effect.map((snapshot) =>
+                        snapshot.threads.some(
+                          (thread) =>
+                            thread.id !== archivedThread.id &&
+                            thread.projectId === archivedThread.projectId &&
+                            normalizeWorktreePathForArchive(thread.worktreePath) ===
+                              normalizeWorktreePathForArchive(archivedThread.worktreePath),
+                        ),
+                      ),
+                      Effect.orElseSucceed(() => false),
+                    ),
+                });
+                if (!worktreeStillInUse) {
+                  const terminalOwnerThreadId = Option.match(threadShellBeforeCommand, {
+                    onNone: () => archiveCommand.threadId,
+                    onSome: (archivedThread) =>
+                      worktreeResourceThreadId(
+                        archivedThread.projectId,
+                        normalizeWorktreePathForArchive(archivedThread.worktreePath),
+                      ),
+                  });
+                  yield* terminalManager.close({ threadId: terminalOwnerThreadId }).pipe(
+                    Effect.catch((error) =>
+                      Effect.logWarning("failed to close thread terminals after archive", {
+                        threadId: archiveCommand.threadId,
+                        terminalOwnerThreadId,
+                        error: error.message,
+                      }),
+                    ),
+                  );
+                }
               }
               return result;
             }).pipe(

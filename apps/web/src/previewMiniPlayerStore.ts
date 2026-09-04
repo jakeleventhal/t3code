@@ -2,6 +2,17 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
+import { resolveWorktreeCanonicalThreadRef } from "./worktreeScope";
+
+// Mini players present the worktree's shared preview session, so entries are
+// keyed by the worktree's canonical thread. Callers may hold any sibling
+// thread's ref (automation canonicalizes, ChatView passes the viewed thread);
+// without a shared key the player opened by one never mounts for the other,
+// leaving the browser surface unpresented and capture-based automation
+// (snapshot/recording) failing on frameless offscreen webviews.
+const miniPlayerThreadKey = (ref: ScopedThreadRef): string =>
+  scopedThreadKey(resolveWorktreeCanonicalThreadRef(ref));
+
 export interface PreviewMiniPlayerPosition {
   readonly x: number;
   readonly y: number;
@@ -31,7 +42,7 @@ export const usePreviewMiniPlayerStore = create<PreviewMiniPlayerStoreState>()((
   byThreadKey: {},
   open: (ref, tabId) =>
     set((state) => {
-      const threadKey = scopedThreadKey(ref);
+      const threadKey = miniPlayerThreadKey(ref);
       const current = state.byThreadKey[threadKey];
       if (current?.tabId === tabId) return state;
       return {
@@ -47,14 +58,14 @@ export const usePreviewMiniPlayerStore = create<PreviewMiniPlayerStoreState>()((
     }),
   close: (ref) =>
     set((state) => {
-      const threadKey = scopedThreadKey(ref);
+      const threadKey = miniPlayerThreadKey(ref);
       if (!(threadKey in state.byThreadKey)) return state;
       const { [threadKey]: _closed, ...byThreadKey } = state.byThreadKey;
       return { byThreadKey };
     }),
   move: (ref, tabId, position) =>
     set((state) => {
-      const threadKey = scopedThreadKey(ref);
+      const threadKey = miniPlayerThreadKey(ref);
       const current = state.byThreadKey[threadKey];
       if (!current || current.tabId !== tabId) return state;
       if (current.position?.x === position.x && current.position.y === position.y) return state;
@@ -67,7 +78,7 @@ export const usePreviewMiniPlayerStore = create<PreviewMiniPlayerStoreState>()((
     }),
   resize: (ref, tabId, size) =>
     set((state) => {
-      const threadKey = scopedThreadKey(ref);
+      const threadKey = miniPlayerThreadKey(ref);
       const current = state.byThreadKey[threadKey];
       if (!current || current.tabId !== tabId) return state;
       if (current.size?.width === size.width && current.size.height === size.height) return state;
@@ -80,7 +91,7 @@ export const usePreviewMiniPlayerStore = create<PreviewMiniPlayerStoreState>()((
     }),
   removeThread: (ref) =>
     set((state) => {
-      const threadKey = scopedThreadKey(ref);
+      const threadKey = miniPlayerThreadKey(ref);
       if (!(threadKey in state.byThreadKey)) return state;
       const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
       return { byThreadKey };
@@ -92,5 +103,5 @@ export function selectThreadPreviewMiniPlayer(
   ref: ScopedThreadRef | null | undefined,
 ): PreviewMiniPlayerState | null {
   if (!ref) return null;
-  return byThreadKey[scopedThreadKey(ref)] ?? null;
+  return byThreadKey[miniPlayerThreadKey(ref)] ?? null;
 }
