@@ -382,11 +382,13 @@ describe("AgentActivity widget layout", () => {
   });
 
   it("renders an idle home-screen widget when props are missing", () => {
-    const view = AgentActivity({} as AgentActivityProps, widgetEnvironment("systemMedium"));
-    const json = JSON.stringify(view);
-    expect(json).toContain("No active agents");
-    expect(json).toContain('"containerBackground":{"color":"clear","container":"widget"}');
-    expect(json).not.toContain("0 active");
+    for (const family of ["systemSmall", "systemMedium"] as const) {
+      const view = AgentActivity({} as AgentActivityProps, widgetEnvironment(family));
+      const json = JSON.stringify(view);
+      expect(json.match(/No active agents/g)).toHaveLength(1);
+      expect(json).toContain('"containerBackground":{"color":"clear","container":"widget"}');
+      expect(json).not.toContain("0 active");
+    }
   });
 
   it("renders up to five rows in the banner", () => {
