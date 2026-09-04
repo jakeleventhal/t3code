@@ -302,15 +302,26 @@ describe("GitHubCli.layer", () => {
         Effect.succeed(
           processOutput(
             // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
-              number: 45,
-              title: "Requested fork",
-              url: "https://github.com/pingdotgg/t3code/pull/45",
-              baseRefName: "main",
-              headRefName: "feature/shared",
-              state: "OPEN",
-              headRepositoryOwner: { login: "octocat" },
-            }),
+            JSON.stringify([
+              {
+                number: 44,
+                title: "Same branch from another fork",
+                url: "https://github.com/pingdotgg/t3code/pull/44",
+                baseRefName: "main",
+                headRefName: "feature/shared",
+                state: "OPEN",
+                headRepositoryOwner: { login: "hubot" },
+              },
+              {
+                number: 45,
+                title: "Requested fork",
+                url: "https://github.com/pingdotgg/t3code/pull/45",
+                baseRefName: "main",
+                headRefName: "feature/shared",
+                state: "OPEN",
+                headRepositoryOwner: { login: "octocat" },
+              },
+            ]),
           ),
         ),
       );
@@ -329,11 +340,17 @@ describe("GitHubCli.layer", () => {
       );
       expect(mockRun).toHaveBeenCalledWith(
         expect.objectContaining({
-          args: expect.arrayContaining(["pr", "view", "octocat:feature/shared"]),
+          args: expect.arrayContaining([
+            "pr",
+            "list",
+            "--head",
+            "feature/shared",
+            "--state",
+            "open",
+            "--limit",
+            "100",
+          ]),
         }),
-      );
-      expect(mockRun).not.toHaveBeenCalledWith(
-        expect.objectContaining({ args: expect.arrayContaining(["--limit"]) }),
       );
     }).pipe(Effect.provide(layer)),
   );

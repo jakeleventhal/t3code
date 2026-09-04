@@ -517,55 +517,17 @@ export const make = Effect.gen(function* () {
     listOpenPullRequests: (input) => {
       const qualifiedHead = /^([^:/\s]+):(.+)$/u.exec(input.headSelector);
       const requestedLimit = input.limit ?? 1;
-      if (qualifiedHead) {
-        return execute({
-          cwd: input.cwd,
-          args: [
-            "pr",
-            "view",
-            input.headSelector,
-            ...(input.repository ? ["--repo", input.repository] : []),
-            "--json",
-            "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
-          ],
-        }).pipe(
-          Effect.map((result) => result.stdout.trim()),
-          Effect.flatMap((raw) =>
-            Effect.sync(() => decodeGitHubPullRequestJson(raw)).pipe(
-              Effect.flatMap((decoded) =>
-                Result.isSuccess(decoded)
-                  ? Effect.succeed(decoded.success)
-                  : Effect.fail(
-                      new GitHubPullRequestDecodeError({
-                        command: "gh",
-                        cwd: input.cwd,
-                        cause: decoded.failure,
-                      }),
-                    ),
-              ),
-            ),
-          ),
-          Effect.map((pullRequest) =>
-            pullRequest.state === "open" &&
-            pullRequest.headRefName === qualifiedHead[2] &&
-            pullRequest.headRepositoryOwnerLogin?.toLowerCase() === qualifiedHead[1]?.toLowerCase()
-              ? [pullRequestSummary(pullRequest)]
-              : [],
-          ),
-          Effect.catchTags({ GitHubPullRequestNotFoundError: () => Effect.succeed([]) }),
-        );
-      }
       return execute({
         cwd: input.cwd,
         args: [
           "pr",
           "list",
           "--head",
-          input.headSelector,
+          qualifiedHead?.[2] ?? input.headSelector,
           "--state",
           "open",
           "--limit",
-          String(requestedLimit),
+          String(qualifiedHead ? 100 : requestedLimit),
           ...(input.repository ? ["--repo", input.repository] : []),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
@@ -586,10 +548,16 @@ export const make = Effect.gen(function* () {
                       }),
                     );
                   }
-
-                  return Effect.succeed(
-                    decoded.success.slice(0, requestedLimit).map(pullRequestSummary),
-                  );
+                  const matching = qualifiedHead
+                    ? decoded.success.filter(
+                        (pullRequest) =>
+                          pullRequest.state === "open" &&
+                          pullRequest.headRefName === qualifiedHead[2] &&
+                          pullRequest.headRepositoryOwnerLogin?.toLowerCase() ===
+                            qualifiedHead[1]?.toLowerCase(),
+                      )
+                    : decoded.success;
+                  return Effect.succeed(matching.slice(0, requestedLimit).map(pullRequestSummary));
                 }),
               ),
         ),
