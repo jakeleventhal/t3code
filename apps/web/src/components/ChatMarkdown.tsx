@@ -1378,6 +1378,7 @@ function ChatMarkdownImage(props: {
   readonly src: string | null;
   readonly sourceFailed?: boolean | undefined;
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown: string | undefined;
   readonly standalone: boolean;
   readonly className?: string | undefined;
@@ -1413,7 +1414,7 @@ function ChatMarkdownImage(props: {
 
   if (settled) {
     return (
-      <MediaActions source={props.actionsSource}>
+      <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
         <img
           {...props.imageProps}
           ref={markLoadedIfComplete}
@@ -1458,7 +1459,7 @@ function ChatMarkdownImage(props: {
     );
   }
   return (
-    <MediaActions source={props.actionsSource}>
+    <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
       <span
         id={props.imageProps?.id}
         data-markdown-copy={props.copyMarkdown}
@@ -1524,22 +1525,6 @@ function ChatMarkdownVideo(props: {
       onRetry={props.onRetry}
       actionsSource={props.actionsSource}
     />
-  );
-}
-
-function AuthoredImageTitleTooltip(
-  props: {
-    readonly title?: string | undefined;
-    readonly children: React.ReactElement;
-  } & Omit<React.ComponentProps<typeof TooltipTrigger>, "render">,
-) {
-  const { title, children, ...triggerProps } = props;
-  if (!title) return React.cloneElement(children, triggerProps);
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} {...triggerProps} />
-      <TooltipPopup side="top">{title}</TooltipPopup>
-    </Tooltip>
   );
 }
 
@@ -1626,6 +1611,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
       key={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
       src={src}
       sourceFailed={assetUrl._tag === "Failure"}
+      title={props.title}
       alt={props.alt}
       copyMarkdown={props.copyMarkdown}
       standalone={props.standalone ?? true}
@@ -3040,6 +3026,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return (
         <ChatMarkdownImage
           key={mediaSrc}
+          title={authoredTitle}
           src={mediaSrc}
           alt={altText}
           copyMarkdown={copyMarkdown}
@@ -3065,6 +3052,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           srcFragment={markdownImageSourceFragment(classifiedSrc)}
           standalone={standalone}
           style={authoredSizeStyle}
@@ -3130,7 +3118,8 @@ function ChatMarkdown({
     localMediaPreview,
     setLocalMediaPreview,
   } = useChatMarkdownState({ text, ...props });
-  const embedLocalPaths = componentState.threadRef !== undefined;
+  const { cwd, imageBaseDir, threadRef } = componentState;
+  const embedLocalPaths = threadRef !== undefined;
   const remarkPlugins = useMemo((): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => {
     return [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
