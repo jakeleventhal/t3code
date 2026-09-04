@@ -456,6 +456,33 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.provide(relayTestLayer));
   });
 
+  it.effect("refreshes the widget after a delayed Live Activity push token registers", () => {
+    let onPushToken: ((event: { pushToken: string }) => void) | undefined;
+    const activity = {
+      getPushToken: vi.fn(() => Promise.resolve(null)),
+      addPushTokenListener: vi.fn((listener: (event: { pushToken: string }) => void) => {
+        onPushToken = listener;
+        return { remove: vi.fn() };
+      }),
+    };
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+
+    return Effect.gen(function* () {
+      expect(yield* registerLiveActivityPushToken({ activity: activity as never })).toBe(false);
+      expect(onPushToken).toBeDefined();
+
+      onPushToken?.({ pushToken: "delayed-activity-token" });
+      yield* runBackgroundOperations();
+
+      expect(publishAgentActivityWidget).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activeCount: 1,
+          subtitle: "Agent work in progress",
+        }),
+      );
+    }).pipe(Effect.provide(snapshotRelayLayer()));
+  });
+
   it.effect("preserves Live Activity push-token lookup failures", () => {
     const cause = new Error("native token lookup failed");
     const activity = {

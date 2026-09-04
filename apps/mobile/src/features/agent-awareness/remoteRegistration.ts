@@ -1025,7 +1025,7 @@ export function registerLiveActivityPushToken(input: {
           runRegistrationInBackground(
             registerLiveActivityPushTokenValue({
               activityPushToken: event.pushToken,
-            }),
+            }).pipe(Effect.ensuring(refreshAgentActivityWidget())),
             "live activity token listener registration failed",
           );
         }
