@@ -11,7 +11,6 @@
  * WORKTREE: every thread sharing a checkout sees the same panel layout, so
  * switching between sibling threads never swaps the open surfaces.
  */
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ChatFileAttachment, ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -437,7 +436,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         })),
       openAttachment: (ref, attachment) =>
         set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+          byThreadKey: updateThread(state.byThreadKey, ref, (current) => {
             const withoutStandaloneExplorer = current.surfaces.filter(
               (surface) => surface.kind !== "files",
             );
