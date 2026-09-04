@@ -1301,22 +1301,6 @@ function ChatMarkdownVideo(props: {
   );
 }
 
-function AuthoredImageTitleTooltip(
-  props: {
-    readonly title?: string | undefined;
-    readonly children: React.ReactElement;
-  } & Omit<React.ComponentProps<typeof TooltipTrigger>, "render">,
-) {
-  const { title, children, ...triggerProps } = props;
-  if (!title) return React.cloneElement(children, triggerProps);
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} {...triggerProps} />
-      <TooltipPopup side="top">{title}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
 /** Environment-hosted media loads through an exact-file signed asset URL. */
 export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props: {
   readonly environmentId: EnvironmentId;
@@ -1408,29 +1392,27 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     );
   }
   return (
-    <MediaActions source={actionsSource}>
-      <AuthoredImageTitleTooltip title={props.title}>
-        <img
-          src={src ?? undefined}
-          alt={props.alt}
-          data-markdown-copy={props.copyMarkdown}
-          loading="lazy"
-          draggable={false}
-          className={cn(
-            CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME,
-            props.onImageExpand && "cursor-zoom-in",
-          )}
-          style={props.style}
-          {...expandableMarkdownImageProps(
-            props.onImageExpand,
-            src ?? assetUrl.url,
-            props.alt,
-            undefined,
-            actionsSource,
-          )}
-          onError={() => setFailedUrl(assetUrl.url)}
-        />
-      </AuthoredImageTitleTooltip>
+    <MediaActions source={actionsSource} tooltipContent={props.title || undefined}>
+      <img
+        src={src ?? undefined}
+        alt={props.alt}
+        data-markdown-copy={props.copyMarkdown}
+        loading="lazy"
+        draggable={false}
+        className={cn(
+          CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME,
+          props.onImageExpand && "cursor-zoom-in",
+        )}
+        style={props.style}
+        {...expandableMarkdownImageProps(
+          props.onImageExpand,
+          src ?? assetUrl.url,
+          props.alt,
+          undefined,
+          actionsSource,
+        )}
+        onError={() => setFailedUrl(assetUrl.url)}
+      />
     </MediaActions>
   );
 });
@@ -2675,28 +2657,26 @@ function ChatMarkdown({
             );
           }
           return (
-            <MediaActions source={actionsSource}>
-              <AuthoredImageTitleTooltip title={authoredTitle}>
-                <img
-                  {...props}
-                  src={mediaSrc}
-                  alt={altText}
-                  loading="lazy"
-                  className={cn(
-                    props.className,
-                    CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
-                    imageExpand && "cursor-zoom-in",
-                  )}
-                  style={authoredSizeStyle}
-                  {...expandableMarkdownImageProps(
-                    imageExpand,
-                    mediaSrc,
-                    altText,
-                    originalUrl,
-                    actionsSource,
-                  )}
-                />
-              </AuthoredImageTitleTooltip>
+            <MediaActions source={actionsSource} tooltipContent={authoredTitle || undefined}>
+              <img
+                {...props}
+                src={mediaSrc}
+                alt={altText}
+                loading="lazy"
+                className={cn(
+                  props.className,
+                  CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
+                  imageExpand && "cursor-zoom-in",
+                )}
+                style={authoredSizeStyle}
+                {...expandableMarkdownImageProps(
+                  imageExpand,
+                  mediaSrc,
+                  altText,
+                  originalUrl,
+                  actionsSource,
+                )}
+              />
             </MediaActions>
           );
         }
