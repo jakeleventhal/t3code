@@ -212,6 +212,7 @@ interface BranchHeadContext {
   headRepositoryNameWithOwner: string | null;
   headRepositoryOwnerLogin: string | null;
   isCrossRepository: boolean;
+  trackingRefIsBase: boolean;
 }
 
 export function pullRequestRepositoryKey(value: string): string | null {
@@ -276,23 +277,11 @@ function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string |
   if (trimmed.length === 0) {
     return null;
   }
+  if (detectSourceControlProviderFromGitRemoteUrl(trimmed)?.kind !== "github") return null;
 
-  const scpStyle = /^git@([^:/\s]+):([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(trimmed);
-  if (scpStyle?.[1] && scpStyle[2] && scpStyle[3]) {
-    return scpStyle[1].toLowerCase() === "github.com" ? `${scpStyle[2]}/${scpStyle[3]}` : null;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    const [owner, name, ...rest] = parsed.pathname
-      .replace(/\/+$/, "")
-      .replace(/\.git$/i, "")
-      .split("/")
-      .filter((part) => part.length > 0);
-    if (!owner || !name || rest.length > 0) return null;
-    return parsed.hostname.toLowerCase() === "github.com" ? `${owner}/${name}` : null;
-  } catch {
-    return null;
-  }
+  const [host, owner, name, ...rest] = normalizeGitRemoteUrl(trimmed).split("/");
+  if (!host || !owner || !name || rest.length > 0) return null;
+  return `${owner}/${name}`;
 }
 
 function repositoryCoordinatesMatchAsForks(left: string | null, right: string | null): boolean {
@@ -1372,6 +1361,11 @@ export const make = Effect.gen(function* () {
       upstreamRepository.repositoryNameWithOwner,
     );
     const useOriginFork = remoteMatchesUpstream && originIsUpstreamFork;
+    const trackingRefIsBase =
+      headBranchFromUpstream.length > 0 &&
+      headBranch !== details.branch &&
+      originIsUpstreamFork &&
+      (remoteName === "origin" || remoteMatchesUpstream);
     const headRemoteName = useOriginFork ? "origin" : remoteName;
     const headRemoteRepository = useOriginFork ? originRepository : remoteRepository;
     const forkRepository =
@@ -1437,6 +1431,7 @@ export const make = Effect.gen(function* () {
       headRepositoryNameWithOwner: headRepository,
       headRepositoryOwnerLogin,
       isCrossRepository,
+      trackingRefIsBase,
     } satisfies BranchHeadContext;
   });
 
@@ -1512,9 +1507,10 @@ export const make = Effect.gen(function* () {
       (details.defaultBranch === null &&
         (headContext.headBranch === "main" || headContext.headBranch === "master"));
     if (
-      headContext.headBranch === details.branch ||
-      !upstreamHeadIsDefault ||
-      headContext.isCrossRepository
+      !headContext.trackingRefIsBase &&
+      (headContext.headBranch === details.branch ||
+        !upstreamHeadIsDefault ||
+        headContext.isCrossRepository)
     ) {
       return { headContext, lookup: true };
     }
@@ -1527,7 +1523,10 @@ export const make = Effect.gen(function* () {
       upstreamRef: null,
       remoteName,
     });
-    return { headContext: ownNameContext, lookup: true };
+    return {
+      headContext: { ...ownNameContext, trackingRefIsBase: headContext.trackingRefIsBase },
+      lookup: true,
+    };
   });
 
   /**
@@ -1743,16 +1742,20 @@ export const make = Effect.gen(function* () {
     cwd: string,
     branch: string,
     upstreamRef: string | null,
-    headContext: Pick<BranchHeadContext, "isCrossRepository" | "remoteName">,
+    headContext: Pick<BranchHeadContext, "headBranch" | "remoteName" | "trackingRefIsBase">,
   ) {
     const configured = yield* gitCore.readConfigValue(cwd, `branch.${branch}.gh-merge-base`);
     if (configured) return configured;
 
-    if (upstreamRef && !headContext.isCrossRepository) {
+    if (upstreamRef && headContext.trackingRefIsBase) {
       const upstreamBranch = extractBranchNameFromRemoteRef(upstreamRef, {
         remoteName: headContext.remoteName,
       });
-      if (upstreamBranch.length > 0 && upstreamBranch !== branch) {
+      if (
+        upstreamBranch.length > 0 &&
+        upstreamBranch !== branch &&
+        upstreamBranch !== headContext.headBranch
+      ) {
         return upstreamBranch;
       }
     }
@@ -1990,10 +1993,18 @@ export const make = Effect.gen(function* () {
       });
     }
 
-    const headContext = yield* resolveBranchHeadContext(cwd, {
+    const { headContext, lookup } = yield* resolveLookupHeadContext(cwd, {
       branch,
       upstreamRef: details.upstreamRef,
+      defaultBranch: null,
     });
+    if (!lookup) {
+      return yield* new GitManagerError({
+        operation: "runPrStep",
+        cwd,
+        detail: "Current branch has not been pushed. Push before creating a PR.",
+      });
+    }
 
     const existing = yield* findOpenPr(cwd, headContext);
     if (existing) {
