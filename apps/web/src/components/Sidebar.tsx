@@ -78,7 +78,7 @@ import {
   useState,
 } from "react";
 import { cn, isMacPlatform } from "~/lib/utils";
-import { openCommandPalette } from "../commandPaletteBus";
+import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import {
   type ComposerThreadDraftState,
   composerDraftHasUserContent,
@@ -992,12 +992,6 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state) : undefined;
   // Report the PR state under every member key. The worktree's PR state
   // applies to every member thread of the group.
-  const isWoke =
-    wokeAtDate !== null &&
-    (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
-    thread.settledOverride !== "settled";
-  const shouldRecede =
-    (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
   const { changeRequestThreadKeys } = props;
   useEffect(() => {
     const nextSnapshot = nextThreadChangeRequestSnapshot({
@@ -1226,27 +1220,14 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
-        variant === "card"
-          ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-secondary-label"
-                : isUnread || isWoke
-                  ? "text-foreground"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
-          : cn(
-              "truncate group-hover/sidebar-row:text-foreground",
-              shouldRecede
-                ? "text-secondary-label/70"
-                : props.isActive || isWoke
-                  ? "text-foreground"
-                  : isUnread
-                    ? "text-muted-foreground"
-                    : "text-secondary-label/70",
-            ),
+        "truncate group-hover/sidebar-row:text-foreground",
+        shouldRecede
+          ? "text-secondary-label/70"
+          : props.isActive || isWoke
+            ? "text-foreground"
+            : isUnread
+              ? "text-muted-foreground"
+              : "text-secondary-label/70",
         isRegeneratingTitle && "opacity-[0.55]",
       )}
     >
