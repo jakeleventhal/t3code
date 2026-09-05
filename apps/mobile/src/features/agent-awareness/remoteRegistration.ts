@@ -509,9 +509,13 @@ export function armAgentAwarenessLiveActivityForLocalWork(input: {
     });
     return;
   }
+  const expectedDeviceGeneration = deviceRegistrationGeneration;
   void loadPreferences()
     .catch(() => null)
     .then((preferences) => {
+      if (deviceRegistrationGeneration !== expectedDeviceGeneration || !relayTokenProvider) {
+        return;
+      }
       if (preferences?.liveActivitiesEnabled === false) {
         runRegistrationInBackground(
           refreshAgentActivityWidget(),

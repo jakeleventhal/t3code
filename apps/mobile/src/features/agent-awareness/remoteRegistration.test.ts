@@ -314,6 +314,77 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     vi.mocked(publishAgentActivityWidget).mockClear();
   });
 
+  it.each(["sign-out", "account switch"])(
+    "does not restore local-work widget data after %s during preference loading",
+    async (transition) => {
+      let finishPreferences!: (preferences: Preferences) => void;
+      const preferences = new Promise<Preferences>((resolve) => {
+        finishPreferences = resolve;
+      });
+      vi.mocked(loadPreferences).mockReturnValueOnce(preferences);
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+      environmentConfigsMock.configs.set("env-1", {
+        environment: { capabilities: { agentActivityPublishing: true } },
+      });
+
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: "env-1" as EnvironmentId,
+        threadTitle: "Previous account thread",
+        projectTitle: "Previous account project",
+      });
+      expect(loadPreferences).toHaveBeenCalledTimes(1);
+      // Register the same catch/then depth after the production continuation.
+      // Its receipt settles after the already-registered preference callback,
+      // without a timer, polling, or executing queued relay operations.
+      const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
+
+      setAgentAwarenessRelayTokenProvider(null);
+      if (transition === "account switch") {
+        setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-b"), "user-b");
+      }
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activeCount: 0, activities: [] }),
+      );
+      finishPreferences({ liveActivitiesEnabled: true } as Preferences);
+      await preferenceCallbackDrained;
+
+      expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activeCount: 0, activities: [] }),
+      );
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still arms local work after a same-account token refresh during preference loading", async () => {
+    let finishPreferences!: (preferences: Preferences) => void;
+    const preferences = new Promise<Preferences>((resolve) => {
+      finishPreferences = resolve;
+    });
+    vi.mocked(loadPreferences).mockReturnValueOnce(preferences);
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+    environmentConfigsMock.configs.set("env-1", {
+      environment: { capabilities: { agentActivityPublishing: true } },
+    });
+
+    armAgentAwarenessLiveActivityForLocalWork({
+      environmentId: "env-1" as EnvironmentId,
+      threadTitle: "Current account thread",
+      projectTitle: "Current account project",
+    });
+    const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("refreshed-token-user-a"), "user-a");
+    finishPreferences({ liveActivitiesEnabled: true } as Preferences);
+    await preferenceCallbackDrained;
+
+    expect(widgetMocks.start).toHaveBeenCalledTimes(1);
+    expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        activeCount: 1,
+        activities: [expect.objectContaining({ threadTitle: "Current account thread" })],
+      }),
+    );
+  });
+
   it("preserves disabled Live Activity preferences in relay registrations", () => {
     expect(
       makeRelayDeviceRegistrationRequest({
