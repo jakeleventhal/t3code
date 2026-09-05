@@ -4,21 +4,17 @@ import type {
   EnvironmentId,
   PreviewUrlResolution,
 } from "@t3tools/contracts";
-import {
-  isLocalLoopbackHost,
-  isLoopbackHost,
-  isPrivateNetworkHost,
-  normalizePreviewUrl,
-} from "@t3tools/shared/preview";
+import { isLoopbackHost, normalizePreviewUrl } from "@t3tools/shared/preview";
+import { isLocalLoopbackHost, isPrivateNetworkHost } from "@t3tools/shared/hostClassification";
 
 import { readPreparedConnection } from "~/state/session";
 
 export {
+  normalizeHostname,
   isLocalLoopbackHost,
   isPrivateNetworkHost,
   isPublicFaviconHost,
-  normalizeHostname,
-} from "@t3tools/shared/preview";
+} from "@t3tools/shared/hostClassification";
 
 const readEnvironmentUrl = (environmentId: EnvironmentId): URL => {
   const connection = readPreparedConnection(environmentId);
