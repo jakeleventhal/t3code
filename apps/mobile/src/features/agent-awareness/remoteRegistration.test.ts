@@ -1147,18 +1147,20 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     environmentConfigsMock.configs.set("env-1", {
       environment: { capabilities: { agentActivityPublishing: true } },
     });
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
+    const preferences = Promise.resolve({
       liveActivitiesEnabled: true,
     } as Preferences);
+    vi.mocked(loadPreferences).mockReturnValueOnce(preferences);
 
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: "env-1" as EnvironmentId,
       threadTitle: "Fix the flaky test",
       projectTitle: "t3code",
     });
+    const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
 
     return Effect.gen(function* () {
-      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      yield* Effect.promise(() => preferenceCallbackDrained);
       yield* runBackgroundOperations();
 
       expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
@@ -1177,18 +1179,20 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     environmentConfigsMock.configs.set("env-1", {
       environment: { capabilities: { agentActivityPublishing: true } },
     });
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
+    const preferences = Promise.resolve({
       liveActivitiesEnabled: false,
     } as Preferences);
+    vi.mocked(loadPreferences).mockReturnValueOnce(preferences);
 
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: "env-1" as EnvironmentId,
       threadTitle: "Fix the flaky test",
       projectTitle: "t3code",
     });
+    const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
 
     return Effect.gen(function* () {
-      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      yield* Effect.promise(() => preferenceCallbackDrained);
       yield* runBackgroundOperations();
 
       expect(widgetMocks.start).not.toHaveBeenCalled();
@@ -1209,18 +1213,20 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     environmentConfigsMock.configs.set("env-1", {
       environment: { capabilities: { agentActivityPublishing: true } },
     });
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
+    const preferences = Promise.resolve({
       liveActivitiesEnabled: true,
     } as Preferences);
+    vi.mocked(loadPreferences).mockReturnValueOnce(preferences);
 
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: "env-1" as EnvironmentId,
       threadTitle: "Fix the flaky test",
       projectTitle: "t3code",
     });
+    const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
 
     return Effect.gen(function* () {
-      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      yield* Effect.promise(() => preferenceCallbackDrained);
       yield* runBackgroundOperations();
 
       expect(widgetMocks.start).not.toHaveBeenCalled();
@@ -1338,9 +1344,10 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       environmentConfigsMock.configs.set("env-1", {
         environment: { capabilities: { agentActivityPublishing: true } },
       });
-      vi.mocked(loadPreferences).mockResolvedValue({
+      const preferences = Promise.resolve({
         liveActivitiesEnabled: true,
       } as Preferences);
+      vi.mocked(loadPreferences).mockReturnValue(preferences);
 
       const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
         Effect.provide(layer),
@@ -1353,7 +1360,8 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         threadTitle: "Fix the flaky test",
         projectTitle: "t3code",
       });
-      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      const preferenceCallbackDrained = preferences.catch(() => null).then(() => undefined);
+      yield* Effect.promise(() => preferenceCallbackDrained);
 
       yield* Deferred.succeed(finishRead, undefined);
       yield* Fiber.join(refresh);
