@@ -15,7 +15,11 @@ import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AgentActivityRowProps } from "../../widgets/AgentActivity";
-import { createLiveWidgetActivitiesAtom, reconcileWidgetActivity } from "./liveWidgetActivity";
+import {
+  createLiveWidgetActivitiesAtom,
+  reconcileWidgetActivity,
+  retainUnconfirmedWidgetActivities,
+} from "./liveWidgetActivity";
 
 const ENVIRONMENT = EnvironmentId.make("local");
 const REMOTE = EnvironmentId.make("remote");
@@ -263,5 +267,60 @@ describe("live widget activity", () => {
     const live = new Map([[ENVIRONMENT, [row(ENVIRONMENT)]]]);
     expect(reconcileWidgetActivity(live, null).activeCount).toBeNull();
     expect(reconcileWidgetActivity(live, { aggregate: null }).activeCount).toBe(1);
+  });
+
+  it("uses an acknowledged matching exclusion scope even when remote activity is capped", () => {
+    const live = new Map([[ENVIRONMENT, [row(ENVIRONMENT)]]]);
+    const filtered = { ...snapshot([row()], 12), excludedEnvironmentIds: [ENVIRONMENT] };
+    expect(reconcileWidgetActivity(live, filtered).activeCount).toBe(13);
+    expect(reconcileWidgetActivity(new Map(), filtered).activeCount).toBeNull();
+    expect(reconcileWidgetActivity(new Map([[REMOTE, []]]), filtered).activeCount).toBeNull();
+  });
+
+  it("does not validate retained work with omission or equal-timestamp conflicting phases", () => {
+    const observed = new Map([
+      [ENVIRONMENT, [row(ENVIRONMENT, ThreadId.make("task"), "completed")]],
+    ]);
+    const stale = snapshot([row(ENVIRONMENT, ThreadId.make("task"))]);
+    expect(retainUnconfirmedWidgetActivities(observed, new Map(), observed, stale)).toEqual(
+      observed,
+    );
+    expect(
+      retainUnconfirmedWidgetActivities(observed, new Map(), observed, { aggregate: null }),
+    ).toEqual(observed);
+    const matching = snapshot(observed.get(ENVIRONMENT)!);
+    expect(retainUnconfirmedWidgetActivities(observed, new Map(), observed, matching).size).toBe(0);
+    expect(retainUnconfirmedWidgetActivities(observed, observed, observed, matching)).toEqual(
+      observed,
+    );
+  });
+
+  it("accepts a newer relay observation but cannot retire local changes made during the read", () => {
+    const observed = new Map([[ENVIRONMENT, [row(ENVIRONMENT)]]]);
+    const newer = snapshot([
+      {
+        ...row(ENVIRONMENT, ThreadId.make("remote-thread"), "completed"),
+        updatedAt: "2026-09-05T12:00:01.000Z",
+      },
+    ]);
+    expect(retainUnconfirmedWidgetActivities(observed, new Map(), observed, newer).size).toBe(0);
+    const changed = new Map([[ENVIRONMENT, [row(ENVIRONMENT)]]]);
+    expect(retainUnconfirmedWidgetActivities(changed, new Map(), observed, newer)).toEqual(changed);
+  });
+
+  it("only validates empty observations when no active rows can be hidden by the cap", () => {
+    const observed = new Map([[ENVIRONMENT, []]]);
+    expect(
+      retainUnconfirmedWidgetActivities(observed, new Map(), observed, snapshot([row()], 12)),
+    ).toEqual(observed);
+    expect(
+      retainUnconfirmedWidgetActivities(observed, new Map(), observed, snapshot([row()])).size,
+    ).toBe(0);
+    expect(
+      retainUnconfirmedWidgetActivities(observed, new Map(), observed, {
+        aggregate: null,
+        excludedEnvironmentIds: [ENVIRONMENT],
+      }),
+    ).toEqual(observed);
   });
 });
