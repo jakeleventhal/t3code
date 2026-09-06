@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import type * as HttpApiEndpoint from "effect/unstable/httpapi/HttpApiEndpoint";
 import * as OpenApi from "effect/unstable/httpapi/OpenApi";
 import * as Schema from "effect/Schema";
 
@@ -18,7 +19,11 @@ describe("RelayApi security", () => {
     });
   });
   it("decodes absent, single and repeated exclusion query values", () => {
-    const decode = Schema.decodeUnknownSync(RelayAgentActivitySnapshotEndpoint.query!);
+    const decode = Schema.decodeUnknownSync(
+      RelayAgentActivitySnapshotEndpoint.query as HttpApiEndpoint.Query<
+        typeof RelayAgentActivitySnapshotEndpoint
+      >,
+    );
     expect(decode({})).toEqual({});
     expect(decode({ excludedEnvironmentIds: "local" })).toEqual({
       excludedEnvironmentIds: ["local"],
