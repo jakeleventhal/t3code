@@ -77,6 +77,45 @@ function rowPriority(row: AgentActivityRowProps): number {
   return isActive(row) ? 2 : 3;
 }
 
+export function sameWidgetEnvironmentScope(
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && [...leftSet].every((id) => rightSet.has(id));
+}
+
+/** A disconnect is not a newer observation. Omitted capped rows cannot confirm completion. */
+export function retainUnconfirmedWidgetActivities(
+  observed: LiveWidgetActivities,
+  live: LiveWidgetActivities,
+  readStartedWith: LiveWidgetActivities,
+  snapshot: RelayAgentActivitySnapshotResponse,
+): LiveWidgetActivities {
+  if ((snapshot.excludedEnvironmentIds?.length ?? 0) > 0) return observed;
+  const relayRows = snapshot.aggregate?.activities ?? [];
+  const complete = (snapshot.aggregate?.activeCount ?? 0) === relayRows.filter(isActive).length;
+  const retained = new Map(observed);
+  for (const [environmentId, rows] of observed) {
+    if (live.has(environmentId) || readStartedWith.get(environmentId) !== rows) continue;
+    const environmentRows = relayRows.filter((row) => row.environmentId === environmentId);
+    const confirmed =
+      rows.length === 0
+        ? complete && environmentRows.every((row) => !isActive(row))
+        : rows.every((row) =>
+            environmentRows.some(
+              (remote) =>
+                remote.threadId === row.threadId &&
+                (remote.updatedAt > row.updatedAt ||
+                  (remote.updatedAt === row.updatedAt && remote.phase === row.phase)),
+            ),
+          );
+    if (confirmed) retained.delete(environmentId);
+  }
+  return retained;
+}
+
 /** Null means the capped legacy response cannot establish the combined total. */
 export function reconcileWidgetActivity(
   live: LiveWidgetActivities,
@@ -93,14 +132,23 @@ export function reconcileWidgetActivity(
     (aggregate === null ||
       aggregate === undefined ||
       aggregate.activeCount === visibleRelayActiveCount);
+  const acknowledgedScope = snapshot?.excludedEnvironmentIds;
+  const exactScope =
+    acknowledgedScope !== undefined &&
+    sameWidgetEnvironmentScope(acknowledgedScope, [...live.keys()]);
+  const globalScope = (acknowledgedScope?.length ?? 0) === 0;
   const activeCount =
     snapshot === null
       ? null
-      : live.size === 0
-        ? (aggregate?.activeCount ?? 0)
-        : relayCountIsComplete
-          ? localActiveCount + remoteRows.filter(isActive).length
-          : null;
+      : exactScope
+        ? localActiveCount + (aggregate?.activeCount ?? 0)
+        : !globalScope
+          ? null
+          : live.size === 0
+            ? (aggregate?.activeCount ?? 0)
+            : relayCountIsComplete
+              ? localActiveCount + remoteRows.filter(isActive).length
+              : null;
   const activities = [...localRows, ...remoteRows]
     .sort(
       (left, right) =>

@@ -391,6 +391,45 @@ describe("AgentActivity widget layout", () => {
     }
   });
 
+  it.each(["systemSmall", "systemMedium", "accessoryRectangular"] as const)(
+    "distinguishes unavailable counts from idle in the serialized %s widget layout",
+    (family) => {
+      const view = AgentActivity(
+        { ...props, activeCount: null, activities: [makeRow({})] },
+        widgetEnvironment(family),
+      );
+      const json = JSON.stringify(view);
+      expect(json).toContain(
+        family === "accessoryRectangular" ? "Count unavailable" : "Activity count unavailable",
+      );
+      expect(json).toContain("Working");
+      expect(json).not.toContain("No active agents");
+      expect(json).not.toContain("null active");
+    },
+  );
+
+  it.each(["systemSmall", "systemMedium", "accessoryRectangular"] as const)(
+    "labels retained observations in the serialized %s widget layout",
+    (family) => {
+      const view = AgentActivity(
+        { ...props, isStale: true, activities: [makeRow({})] },
+        widgetEnvironment(family),
+      );
+      expect(JSON.stringify(view)).toContain("Last observed: 1 active");
+      const done = AgentActivity(
+        {
+          ...props,
+          isStale: true,
+          activeCount: 0,
+          activities: [makeRow({ phase: "completed", status: "Done" })],
+        },
+        widgetEnvironment(family),
+      );
+      expect(JSON.stringify(done)).toContain("Last observed:");
+      expect(JSON.stringify(done)).toContain("Done");
+    },
+  );
+
   it("renders up to five rows in the banner", () => {
     const layout = AgentActivity(
       {

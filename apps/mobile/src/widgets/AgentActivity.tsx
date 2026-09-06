@@ -44,7 +44,8 @@ export interface AgentActivityRowProps {
 export interface AgentActivityProps {
   readonly title: string;
   readonly subtitle: string;
-  readonly activeCount: number;
+  readonly activeCount: number | null;
+  readonly isStale?: boolean;
   readonly updatedAt: string;
   readonly activities: ReadonlyArray<AgentActivityRowProps>;
 }
@@ -69,7 +70,12 @@ export function AgentActivity(
   // Placeholder / first-paint entries arrive with empty props. Treat missing
   // fields as idle rather than throwing inside the widget JS runtime.
   const activities = Array.isArray(props.activities) ? props.activities : [];
-  const activeCount = typeof props.activeCount === "number" ? props.activeCount : 0;
+  const activeCount =
+    props.activeCount === null
+      ? null
+      : typeof props.activeCount === "number"
+        ? props.activeCount
+        : 0;
   const widgetFamily = "widgetFamily" in environment ? environment.widgetFamily : undefined;
 
   // Use SwiftUI's semantic label colors rather than fixed hex keyed off the
@@ -157,12 +163,20 @@ export function AgentActivity(
   // the two parts in-line so the attention half can carry the accent color;
   // `summary` is the short form for tight spots (expanded center, watch card).
   const agentWord = activeCount === 1 ? "agent" : "agents";
-  const agentsLabel = allDone ? outcomeLabel : `${activeCount} active ${agentWord}`;
+  const countLabel =
+    activeCount === null
+      ? "Activity count unavailable"
+      : allDone
+        ? outcomeLabel
+        : `${activeCount} active ${agentWord}`;
+  const agentsLabel = props.isStale ? `Last observed: ${countLabel}` : countLabel;
   const attentionSuffix =
     attentionRows.length > 0
       ? `${attentionRows.length} need${attentionRows.length === 1 ? "s" : ""} attention`
       : "";
-  const activeLabel = allDone ? doneLabel : `${activeCount} active`;
+  const currentLabel =
+    activeCount === null ? "Count unavailable" : allDone ? doneLabel : `${activeCount} active`;
+  const activeLabel = props.isStale ? `Last observed: ${currentLabel}` : currentLabel;
   const summary = attentionSuffix || activeLabel;
 
   // Any registered scheme variant routes back to this app; taps are delivered
@@ -279,7 +293,11 @@ export function AgentActivity(
             lineLimit(1),
           ]}
         >
-          {attentionRows.length > 0 ? summary : activeLabel}
+          {props.isStale || activeCount === null
+            ? activeLabel
+            : attentionRows.length > 0
+              ? summary
+              : activeLabel}
         </Text>
         <Spacer minLength={6} />
       </HStack>
@@ -319,7 +337,8 @@ export function AgentActivity(
       containerBackground("clear", "widget"),
     ];
     const homeSummaryTint = allDone && !hasRows ? secondaryForeground : headerTint;
-    const homeSummary = attentionSuffix || agentsLabel;
+    const homeSummary =
+      props.isStale || activeCount === null ? agentsLabel : attentionSuffix || agentsLabel;
     const renderHomeStatusIcon = (row: AgentActivityRowProps, size: number) =>
       renderGlyph(phaseSymbol(row.phase), size, phaseTint(row.phase));
 
@@ -343,7 +362,7 @@ export function AgentActivity(
             modifiers={[
               font({ weight: "bold", size: 15 }),
               foregroundStyle(homeSummaryTint),
-              lineLimit(1),
+              lineLimit(props.isStale || activeCount === null ? 2 : 1),
             ]}
           >
             {homeSummary}
@@ -431,7 +450,7 @@ export function AgentActivity(
             modifiers={[
               font({ weight: "semibold", size: 12 }),
               foregroundStyle(homeSummaryTint),
-              lineLimit(1),
+              lineLimit(props.isStale || activeCount === null ? 2 : 1),
               layoutPriority(1),
             ]}
           >
@@ -523,7 +542,7 @@ export function AgentActivity(
       <HStack spacing={5} alignment="center" modifiers={[padding({ leading: 4, vertical: 4 })]}>
         {renderLogo(15, tint)}
         <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(tint)]}>
-          {allDone ? doneLabel : `${activeCount}`}
+          {activeCount === null ? "?" : allDone ? doneLabel : `${activeCount}`}
         </Text>
       </HStack>
     ),

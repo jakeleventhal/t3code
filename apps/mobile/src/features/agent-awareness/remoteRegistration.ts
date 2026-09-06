@@ -43,6 +43,8 @@ import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./reg
 import {
   createLiveWidgetActivitiesAtom,
   reconcileWidgetActivity,
+  retainUnconfirmedWidgetActivities,
+  sameWidgetEnvironmentScope,
   type LiveWidgetActivities,
 } from "./liveWidgetActivity";
 
@@ -133,6 +135,7 @@ const liveWidgetActivitiesAtom = createLiveWidgetActivitiesAtom({
 });
 let liveWidgetSubscription: (() => void) | null = null;
 let liveWidgetActivities: LiveWidgetActivities = new Map();
+let observedWidgetActivities: LiveWidgetActivities = new Map();
 let relayWidgetSnapshot: RelayAgentActivitySnapshotResponse | null = null;
 let publishedWidgetContent: string | null = null;
 let activeDeviceRegistration: {
@@ -503,6 +506,7 @@ function publishRegularWidget(props: AgentActivityProps): void {
   // Streaming text changes shell timestamps without changing widget content.
   const content = JSON.stringify({
     activeCount: props.activeCount,
+    isStale: props.isStale,
     activities: props.activities.map(({ updatedAt: _updatedAt, ...row }) => row),
   });
   if (content === publishedWidgetContent) return;
@@ -512,22 +516,28 @@ function publishRegularWidget(props: AgentActivityProps): void {
 
 function publishReconciledWidget(): void {
   if (!relayTokenProvider) return;
-  const result = reconcileWidgetActivity(liveWidgetActivities, relayWidgetSnapshot);
-  // Only established totals can use the existing numeric widget contract.
-  if (result.activeCount === null) return;
+  if (relayWidgetSnapshot === null && observedWidgetActivities.size === 0) return;
+  const result = reconcileWidgetActivity(observedWidgetActivities, relayWidgetSnapshot);
   publishRegularWidget({
     title: "T3 Code",
-    subtitle: result.activeCount > 0 ? "Agent work in progress" : "No active agents",
+    subtitle:
+      result.activeCount === null
+        ? "Activity count unavailable"
+        : result.activeCount > 0
+          ? "Agent work in progress"
+          : "No active agents",
     activeCount: result.activeCount,
+    isStale: [...observedWidgetActivities.keys()].some((id) => !liveWidgetActivities.has(id)),
     updatedAt: new Date().toISOString(),
     activities: result.activities,
   });
 }
 
-function stopLiveWidgetObserver(): void {
+function stopLiveWidgetObserver(clearObservations = true): void {
   liveWidgetSubscription?.();
   liveWidgetSubscription = null;
   liveWidgetActivities = new Map();
+  if (clearObservations) observedWidgetActivities = new Map();
   widgetRefreshGeneration++;
 }
 
@@ -542,8 +552,22 @@ function startLiveWidgetObserver(): void {
   liveWidgetSubscription = appAtomRegistry.subscribe(
     liveWidgetActivitiesAtom,
     (activities) => {
+      const previousScope = [...observedWidgetActivities.keys()];
       liveWidgetActivities = activities;
+      const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
+      const observed = new Map(observedWidgetActivities);
+      for (const environmentId of observed.keys()) {
+        if (!catalog.entries.has(environmentId)) observed.delete(environmentId);
+      }
+      for (const [environmentId, rows] of activities) observed.set(environmentId, rows);
+      observedWidgetActivities = observed;
       publishReconciledWidget();
+      if (
+        relayWidgetSnapshot !== null &&
+        !sameWidgetEnvironmentScope(previousScope, [...observed.keys()])
+      ) {
+        runRegistrationInBackground(refreshAgentActivityWidget(), "widget scope refresh failed");
+      }
     },
     { immediate: true },
   );
@@ -649,7 +673,9 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
   }
 }
 
-function readAgentActivitySnapshot(): Effect.Effect<
+function readAgentActivitySnapshot(
+  excludedEnvironmentIds?: ReadonlyArray<EnvironmentId>,
+): Effect.Effect<
   RelayAgentActivitySnapshotResponse | null,
   never,
   ManagedRelay.ManagedRelayClient
@@ -661,7 +687,7 @@ function readAgentActivitySnapshot(): Effect.Effect<
       return null;
     }
     const client = yield* ManagedRelay.ManagedRelayClient;
-    return yield* client.getAgentActivitySnapshot({ clerkToken: token });
+    return yield* client.getAgentActivitySnapshot({ clerkToken: token, excludedEnvironmentIds });
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
@@ -680,6 +706,7 @@ function refreshAgentActivityWidget(): Effect.Effect<
   return Effect.gen(function* () {
     const expectedDeviceGeneration = deviceRegistrationGeneration;
     const expectedRefreshGeneration = ++widgetRefreshGeneration;
+    const readStartedWith = observedWidgetActivities;
     const snapshot = yield* readAgentActivitySnapshot();
     if (
       expectedDeviceGeneration !== deviceRegistrationGeneration ||
@@ -688,7 +715,30 @@ function refreshAgentActivityWidget(): Effect.Effect<
       return null;
     }
     if (snapshot) {
-      relayWidgetSnapshot = snapshot;
+      observedWidgetActivities = retainUnconfirmedWidgetActivities(
+        observedWidgetActivities,
+        liveWidgetActivities,
+        readStartedWith,
+        snapshot,
+      );
+      let widgetSnapshot = snapshot;
+      while (observedWidgetActivities.size > 0) {
+        const excludedEnvironmentIds = [...observedWidgetActivities.keys()];
+        const scoped = yield* readAgentActivitySnapshot(excludedEnvironmentIds);
+        if (
+          expectedDeviceGeneration !== deviceRegistrationGeneration ||
+          expectedRefreshGeneration !== widgetRefreshGeneration ||
+          !relayTokenProvider
+        )
+          return null;
+        if (
+          !sameWidgetEnvironmentScope(excludedEnvironmentIds, [...observedWidgetActivities.keys()])
+        )
+          continue;
+        if (scoped) widgetSnapshot = scoped;
+        break;
+      }
+      relayWidgetSnapshot = widgetSnapshot;
       publishReconciledWidget();
     }
     return snapshot;
@@ -921,7 +971,8 @@ function ensureAppStateListener(): void {
 
   appStateSubscription = AppState.addEventListener("change", (state) => {
     if (state !== "active") {
-      stopLiveWidgetObserver();
+      stopLiveWidgetObserver(false);
+      publishReconciledWidget();
       return;
     }
     startLiveWidgetObserver();
