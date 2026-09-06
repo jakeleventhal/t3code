@@ -1247,6 +1247,10 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     // "Connecting" snapshot from local arming.
     yield* refreshAgentActivityWidget();
 
+    if (expectedDeviceGeneration !== deviceRegistrationGeneration || !relayTokenProvider) {
+      return;
+    }
+
     // Activities are only ever created here, in the foreground, where the
     // update token can be observed and registered immediately — the relay
     // never remote-starts one (background push-to-start wakes proved too
