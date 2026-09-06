@@ -450,6 +450,141 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     vi.mocked(publishAgentActivityWidget).mockClear();
   });
 
+  it.effect.each(
+    (["global", "scoped"] as const).flatMap((blockedRead) =>
+      (["scope change", "sign-out", "account switch", "background"] as const).map((transition) => ({
+        blockedRead,
+        transition,
+      })),
+    ),
+  )(
+    "keeps final relay priming independent of $transition during $blockedRead without crossing account ownership",
+    ({ blockedRead, transition }) =>
+      Effect.gen(function* () {
+        if (blockedRead === "scoped") addLiveEnvironment();
+        vi.mocked(loadPreferences).mockResolvedValue({
+          liveActivitiesEnabled: true,
+        } as Preferences);
+        const readStarted = yield* Deferred.make<void>();
+        const finishRead = yield* Deferred.make<void>();
+        const activity = {
+          getPushToken: vi.fn(() => Promise.resolve("activity-token")),
+          addPushTokenListener: vi.fn(),
+        };
+        widgetMocks.start.mockReturnValue(activity);
+        const remoteSnapshot: RelayAgentActivitySnapshotResponse = {
+          aggregate: {
+            ...activeAgentActivitySnapshot.aggregate,
+            activities: activeAgentActivitySnapshot.aggregate.activities.map((row) => ({
+              ...row,
+              environmentId: EnvironmentId.make("remote-environment"),
+            })),
+          },
+        };
+        let globalReads = 0;
+        let scopedReads = 0;
+        const layer = snapshotRelayLayer(({ excludedEnvironmentIds }) => {
+          const kind = excludedEnvironmentIds ? "scoped" : "global";
+          const ordinal = excludedEnvironmentIds ? ++scopedReads : ++globalReads;
+          const snapshot = excludedEnvironmentIds
+            ? { ...remoteSnapshot, excludedEnvironmentIds }
+            : remoteSnapshot;
+          return ordinal === 2 && kind === blockedRead
+            ? Deferred.succeed(readStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(finishRead)),
+                Effect.as(snapshot),
+              )
+            : Effect.succeed(snapshot);
+        });
+        setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+        backgroundRuntime.pending.length = 0;
+        const prime = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+          Effect.provide(layer),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(readStarted);
+        if (transition === "scope change") {
+          if (blockedRead === "global") addLiveEnvironment();
+          else
+            setTestAtom(environmentCatalog.catalogValueAtom, {
+              isReady: true,
+              entries: new Map(),
+            });
+          expect(backgroundRuntime.pending).toHaveLength(1);
+          const refresh = backgroundRuntime.pending.shift();
+          if (!refresh) throw new Error("Expected scope-only widget refresh");
+          const exit = yield* Effect.exit(
+            refresh.operation as Effect.Effect<unknown, unknown, ManagedRelay.ManagedRelayClient>,
+          ).pipe(Effect.provide(layer));
+          refresh.resolve(exit);
+          expect(Exit.isSuccess(exit)).toBe(true);
+          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              activeCount: 1,
+              activities: remoteSnapshot.aggregate!.activities,
+            }),
+          );
+        } else if (transition === "background") {
+          appStateMock.currentState = "background";
+          for (const listener of appStateMock.listeners) listener("background");
+        } else {
+          setAgentAwarenessRelayTokenProvider(null);
+          if (transition === "account switch")
+            setAgentAwarenessRelayTokenProvider(
+              () => Promise.resolve("clerk-token-user-b"),
+              "user-b",
+            );
+        }
+        const widgetBeforeRelease = vi.mocked(publishAgentActivityWidget).mock.lastCall?.[0];
+        yield* Deferred.succeed(finishRead, undefined);
+        yield* Fiber.join(prime);
+        if (transition === "scope change") {
+          expect({ globalReads, scopedReads }).toEqual({
+            globalReads: 3,
+            scopedReads: blockedRead === "global" ? 1 : 2,
+          });
+          expect(backgroundRuntime.pending).toHaveLength(0);
+          expect(widgetMocks.start).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              activeCount: 1,
+              activities: remoteSnapshot.aggregate!.activities,
+            }),
+          );
+        } else if (transition === "background") {
+          expect(widgetMocks.start).not.toHaveBeenCalled();
+          expect(activity.getPushToken).not.toHaveBeenCalled();
+          appStateMock.currentState = "active";
+          for (const listener of appStateMock.listeners) listener("active");
+          expect(backgroundRuntime.pending).toHaveLength(1);
+          const foreground = backgroundRuntime.pending.shift();
+          if (!foreground) throw new Error("Expected foreground Live Activity reconciliation");
+          const exit = yield* Effect.exit(
+            foreground.operation as Effect.Effect<
+              unknown,
+              unknown,
+              ManagedRelay.ManagedRelayClient
+            >,
+          ).pipe(Effect.provide(layer));
+          foreground.resolve(exit);
+          expect(Exit.isSuccess(exit)).toBe(true);
+          expect(widgetMocks.start).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              activeCount: 1,
+              activities: remoteSnapshot.aggregate!.activities,
+            }),
+          );
+          expect(activity.getPushToken).toHaveBeenCalledTimes(1);
+          expect(backgroundRuntime.pending).toHaveLength(0);
+        } else {
+          expect(globalReads).toBe(2);
+          expect(widgetMocks.start).not.toHaveBeenCalled();
+          expect(activity.getPushToken).not.toHaveBeenCalled();
+          expect(widgetBeforeRelease?.activities).toEqual([]);
+          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(widgetBeforeRelease);
+        }
+      }).pipe(Effect.scoped),
+  );
+
   it.each(["sign-out", "account switch"])(
     "does not restore local-work widget data after %s during preference loading",
     async (transition) => {

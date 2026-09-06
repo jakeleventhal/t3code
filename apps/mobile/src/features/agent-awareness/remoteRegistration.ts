@@ -708,12 +708,11 @@ function refreshAgentActivityWidget(): Effect.Effect<
     const expectedRefreshGeneration = ++widgetRefreshGeneration;
     const readStartedWith = observedWidgetActivities;
     const snapshot = yield* readAgentActivitySnapshot();
-    if (
-      expectedDeviceGeneration !== deviceRegistrationGeneration ||
-      expectedRefreshGeneration !== widgetRefreshGeneration
-    ) {
+    if (expectedDeviceGeneration !== deviceRegistrationGeneration || !relayTokenProvider) {
       return null;
     }
+    // Superseding widget publication does not invalidate this account's priming snapshot.
+    if (expectedRefreshGeneration !== widgetRefreshGeneration) return snapshot;
     if (snapshot) {
       observedWidgetActivities = retainUnconfirmedWidgetActivities(
         observedWidgetActivities,
@@ -725,12 +724,9 @@ function refreshAgentActivityWidget(): Effect.Effect<
       while (observedWidgetActivities.size > 0) {
         const excludedEnvironmentIds = [...observedWidgetActivities.keys()];
         const scoped = yield* readAgentActivitySnapshot(excludedEnvironmentIds);
-        if (
-          expectedDeviceGeneration !== deviceRegistrationGeneration ||
-          expectedRefreshGeneration !== widgetRefreshGeneration ||
-          !relayTokenProvider
-        )
+        if (expectedDeviceGeneration !== deviceRegistrationGeneration || !relayTokenProvider)
           return null;
+        if (expectedRefreshGeneration !== widgetRefreshGeneration) return snapshot;
         if (
           !sameWidgetEnvironmentScope(excludedEnvironmentIds, [...observedWidgetActivities.keys()])
         )
@@ -1283,6 +1279,13 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
           activities = [...armedMeanwhile];
         } else {
           const latestSnapshot = yield* refreshAgentActivityWidget();
+          if (
+            expectedDeviceGeneration !== deviceRegistrationGeneration ||
+            !relayTokenProvider ||
+            AppState.currentState !== "active"
+          ) {
+            return;
+          }
           if (!latestSnapshot?.aggregate || latestSnapshot.aggregate.activeCount <= 0) {
             return;
           }
