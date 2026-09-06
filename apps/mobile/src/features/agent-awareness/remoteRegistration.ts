@@ -1286,27 +1286,38 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
           if (!latestSnapshot?.aggregate || latestSnapshot.aggregate.activeCount <= 0) {
             return;
           }
-          const aggregate = latestSnapshot.aggregate;
-          const primed = yield* Effect.try({
-            try: () => AgentActivity.start(widgetPropsFromAggregate(aggregate)),
-            catch: (cause) =>
-              new AgentAwarenessOperationError({
-                operation: "prime-live-activity",
-                cause,
-              }),
+          // Local arming may finish while either snapshot request is pending.
+          const armedDuringRead = yield* Effect.try({
+            try: () => AgentActivity.getInstances(),
+            catch: () => [] as ReadonlyArray<LiveActivity<AgentActivityProps>>,
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                logRegistrationError("live activity priming failed", error);
-                return null;
-              }),
-            ),
+            Effect.orElseSucceed(() => [] as ReadonlyArray<LiveActivity<AgentActivityProps>>),
           );
-          if (primed) {
-            logRegistrationDebug("live activity card primed", {
-              activeCount: aggregate.activeCount,
-            });
-            activities = [primed];
+          if (armedDuringRead.length > 0) {
+            activities = [...armedDuringRead];
+          } else {
+            const aggregate = latestSnapshot.aggregate;
+            const primed = yield* Effect.try({
+              try: () => AgentActivity.start(widgetPropsFromAggregate(aggregate)),
+              catch: (cause) =>
+                new AgentAwarenessOperationError({
+                  operation: "prime-live-activity",
+                  cause,
+                }),
+            }).pipe(
+              Effect.catch((error) =>
+                Effect.sync(() => {
+                  logRegistrationError("live activity priming failed", error);
+                  return null;
+                }),
+              ),
+            );
+            if (primed) {
+              logRegistrationDebug("live activity card primed", {
+                activeCount: aggregate.activeCount,
+              });
+              activities = [primed];
+            }
           }
         }
       }

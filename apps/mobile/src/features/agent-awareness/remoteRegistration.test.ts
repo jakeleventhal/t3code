@@ -1520,6 +1520,89 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect.each(["global", "scoped"] as const)(
+    "adopts a local arm made during the final %s snapshot read instead of priming twice",
+    (blockedRead) =>
+      Effect.gen(function* () {
+        addLiveEnvironment();
+        const preferences = Promise.resolve({ liveActivitiesEnabled: true } as Preferences);
+        vi.mocked(loadPreferences).mockReturnValue(preferences);
+        environmentConfigsMock.configs.set("env-1", {
+          environment: { capabilities: { agentActivityPublishing: true } },
+        });
+        const readStarted = yield* Deferred.make<void>();
+        const finishRead = yield* Deferred.make<void>();
+        let finishToken!: (token: string) => void;
+        let tokenReadStarted!: () => void;
+        const pendingToken = new Promise<string>((resolve) => {
+          finishToken = resolve;
+        });
+        const tokenRead = new Promise<void>((resolve) => {
+          tokenReadStarted = resolve;
+        });
+        const makeActivity = () => ({
+          getPushToken: vi.fn(() => Promise.resolve("activity-token")),
+          addPushTokenListener: vi.fn(),
+        });
+        const activities: Array<ReturnType<typeof makeActivity>> = [];
+        widgetMocks.getInstances.mockImplementation(() => activities as never);
+        widgetMocks.start.mockImplementation(() => {
+          const activity = makeActivity();
+          if (activities.length === 0)
+            activity.getPushToken.mockImplementationOnce(() => {
+              tokenReadStarted();
+              return pendingToken;
+            });
+          activities.push(activity);
+          return activity;
+        });
+        let globalReads = 0;
+        let scopedReads = 0;
+        const layer = snapshotRelayLayer(({ excludedEnvironmentIds }) => {
+          const kind = excludedEnvironmentIds ? "scoped" : "global";
+          const ordinal = excludedEnvironmentIds ? ++scopedReads : ++globalReads;
+          const snapshot = excludedEnvironmentIds
+            ? { aggregate: null, excludedEnvironmentIds }
+            : activeAgentActivitySnapshot;
+          return ordinal === 2 && kind === blockedRead
+            ? Deferred.succeed(readStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(finishRead)),
+                Effect.as(snapshot),
+              )
+            : Effect.succeed(snapshot);
+        });
+        setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+        backgroundRuntime.pending.length = 0;
+        const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+          Effect.provide(layer),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(readStarted);
+        armAgentAwarenessLiveActivityForLocalWork({
+          environmentId: liveEnvironmentId,
+          projectTitle: "Live project",
+          threadTitle: "Local task",
+        });
+        yield* Effect.promise(() => preferences.catch(() => null).then(() => undefined));
+        expect(widgetMocks.start).toHaveBeenCalledTimes(1);
+        const pending = backgroundRuntime.pending.shift();
+        if (!pending) throw new Error("Expected local token registration");
+        const localRegistration = yield* Effect.exit(
+          pending.operation as Effect.Effect<unknown, unknown, ManagedRelay.ManagedRelayClient>,
+        ).pipe(Effect.provide(layer), Effect.forkChild);
+        yield* Effect.promise(() => tokenRead);
+        yield* Deferred.succeed(finishRead, undefined);
+        yield* Fiber.join(refresh);
+        const startsBeforeTokenResolved = widgetMocks.start.mock.calls.length;
+        const readsBeforeTokenResolved = { global: globalReads, scoped: scopedReads };
+        finishToken("activity-token");
+        pending.resolve(yield* Fiber.join(localRegistration));
+        expect(readsBeforeTokenResolved).toEqual({ global: 2, scoped: 2 });
+        expect(startsBeforeTokenResolved).toBe(1);
+        expect(activities).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("does not prime a Live Activity after cloud sign-out", () =>
     Effect.gen(function* () {
       let preferencesStarted!: () => void;
