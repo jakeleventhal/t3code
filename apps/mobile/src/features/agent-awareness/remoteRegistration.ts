@@ -21,6 +21,8 @@ import {
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { runtime } from "../../lib/runtime";
 import { appAtomRegistry } from "../../state/atom-registry";
+import { environmentCatalog } from "../../connection/catalog";
+import { environmentShell } from "../../state/shell";
 import { environmentServerConfigsAtom } from "../../state/server";
 import type { Preferences } from "../../persistence/mobile-preferences";
 import {
@@ -38,6 +40,11 @@ import AgentActivity, {
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
 import { supportsAgentAwarenessPush } from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
+import {
+  createLiveWidgetActivitiesAtom,
+  reconcileWidgetActivity,
+  type LiveWidgetActivities,
+} from "./liveWidgetActivity";
 
 const REMOTE_ACTIVITY_REGISTRATION_RETRY_MS = 15_000;
 
@@ -119,6 +126,15 @@ let relayTokenProvider: (() => Promise<string | null>) | null = null;
 let relayTokenProviderIdentity: string | null = null;
 let deviceRegistrationGeneration = 0;
 let widgetRefreshGeneration = 0;
+const liveWidgetActivitiesAtom = createLiveWidgetActivitiesAtom({
+  catalogValueAtom: environmentCatalog.catalogValueAtom,
+  shellStateValueAtom: environmentShell.stateValueAtom,
+  now: Date.now,
+});
+let liveWidgetSubscription: (() => void) | null = null;
+let liveWidgetActivities: LiveWidgetActivities = new Map();
+let relayWidgetSnapshot: RelayAgentActivitySnapshotResponse | null = null;
+let publishedWidgetContent: string | null = null;
 let activeDeviceRegistration: {
   readonly input: DeviceRegistrationInput;
   operation: Promise<void>;
@@ -172,6 +188,8 @@ export function setAgentAwarenessRelayTokenProvider(
     provider !== null &&
     !shouldRegisterAgentAwarenessDeviceForProvider(relayTokenProviderIdentity, identity);
   if (!isExistingIdentity) {
+    stopLiveWidgetObserver();
+    relayWidgetSnapshot = null;
     deviceRegistrationGeneration++;
     activeDeviceRegistration = null;
     pendingDeviceRegistration = null;
@@ -191,7 +209,7 @@ export function setAgentAwarenessRelayTokenProvider(
     // Without a signed-in user the relay can no longer update or end these
     // activities, so they would sit orphaned on the lock screen.
     endLocalLiveActivities("live activity cleanup after cloud sign-out failed");
-    publishAgentActivityWidget(idleWidgetProps());
+    publishRegularWidget(idleWidgetProps());
     setRegistrationStatus("unknown");
     // Sign-out is the only thing that invalidates a stored registration, so the
     // next sign-in re-registers.
@@ -202,6 +220,7 @@ export function setAgentAwarenessRelayTokenProvider(
   }
   ensurePushTokenListener();
   ensureAppStateListener();
+  startLiveWidgetObserver();
   runRegistrationInBackground(
     refreshActiveLiveActivityRemoteRegistration(),
     "active live activity registration after cloud sign-in failed",
@@ -224,6 +243,8 @@ export function setAgentAwarenessRelayTokenProvider(
 // the persisted registration would be wrong — the relay still holds a valid
 // registration and the next mount reuses it.
 export function releaseAgentAwarenessRelayTokenProvider(): void {
+  stopLiveWidgetObserver();
+  relayWidgetSnapshot = null;
   relayTokenProvider = null;
   relayTokenProviderIdentity = null;
   pushTokenSubscription?.remove();
@@ -478,6 +499,56 @@ function idleWidgetProps(): AgentActivityProps {
   };
 }
 
+function publishRegularWidget(props: AgentActivityProps): void {
+  // Streaming text changes shell timestamps without changing widget content.
+  const content = JSON.stringify({
+    activeCount: props.activeCount,
+    activities: props.activities.map(({ updatedAt: _updatedAt, ...row }) => row),
+  });
+  if (content === publishedWidgetContent) return;
+  publishedWidgetContent = content;
+  publishAgentActivityWidget(props);
+}
+
+function publishReconciledWidget(): void {
+  if (!relayTokenProvider) return;
+  const result = reconcileWidgetActivity(liveWidgetActivities, relayWidgetSnapshot);
+  // Only established totals can use the existing numeric widget contract.
+  if (result.activeCount === null) return;
+  publishRegularWidget({
+    title: "T3 Code",
+    subtitle: result.activeCount > 0 ? "Agent work in progress" : "No active agents",
+    activeCount: result.activeCount,
+    updatedAt: new Date().toISOString(),
+    activities: result.activities,
+  });
+}
+
+function stopLiveWidgetObserver(): void {
+  liveWidgetSubscription?.();
+  liveWidgetSubscription = null;
+  liveWidgetActivities = new Map();
+  widgetRefreshGeneration++;
+}
+
+function startLiveWidgetObserver(): void {
+  if (
+    liveWidgetSubscription ||
+    !canRegisterRemoteLiveActivities() ||
+    !relayTokenProvider ||
+    AppState.currentState !== "active"
+  )
+    return;
+  liveWidgetSubscription = appAtomRegistry.subscribe(
+    liveWidgetActivitiesAtom,
+    (activities) => {
+      liveWidgetActivities = activities;
+      publishReconciledWidget();
+    },
+    { immediate: true },
+  );
+}
+
 // Arms the lock-screen card the moment the user starts agent work from this
 // phone, while the app is still foregrounded and the fresh activity's token
 // can be registered immediately. The seeded row is a best-effort placeholder;
@@ -556,11 +627,8 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
       return;
     }
     const props = localWorkStartingWidgetProps(input);
-    // This local seed is newer than any relay snapshot already being read.
-    // Invalidate those reads before publishing so they cannot repaint the
-    // widget with stale idle or aggregate state when they eventually finish.
-    widgetRefreshGeneration++;
-    publishAgentActivityWidget(props);
+    // Only the foreground-only Live Activity needs this optimistic seed.
+    // Regular widgets keep observed state until real work arrives.
     const activity = AgentActivity.start(props);
     logRegistrationDebug("live activity card armed for local work", {
       threadTitle: input.threadTitle,
@@ -620,9 +688,8 @@ function refreshAgentActivityWidget(): Effect.Effect<
       return null;
     }
     if (snapshot) {
-      publishAgentActivityWidget(
-        snapshot.aggregate ? widgetPropsFromAggregate(snapshot.aggregate) : idleWidgetProps(),
-      );
+      relayWidgetSnapshot = snapshot;
+      publishReconciledWidget();
     }
     return snapshot;
   });
@@ -854,8 +921,10 @@ function ensureAppStateListener(): void {
 
   appStateSubscription = AppState.addEventListener("change", (state) => {
     if (state !== "active") {
+      stopLiveWidgetObserver();
       return;
     }
+    startLiveWidgetObserver();
     runRegistrationInBackground(
       refreshActiveLiveActivityRemoteRegistration(),
       "active live activity reconciliation after app foreground failed",
@@ -936,6 +1005,9 @@ export function updateAgentAwarenessRegistrationPreferences(
 }
 
 export function __resetAgentAwarenessRemoteRegistrationForTest(): void {
+  stopLiveWidgetObserver();
+  relayWidgetSnapshot = null;
+  publishedWidgetContent = null;
   environmentConnections.clear();
   pushTokenSubscription?.remove();
   pushTokenSubscription = null;
