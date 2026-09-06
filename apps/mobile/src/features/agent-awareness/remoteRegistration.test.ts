@@ -5,6 +5,7 @@ import * as NodeCrypto from "node:crypto";
 import { beforeEach, vi } from "vite-plus/test";
 import { describe, expect, it } from "@effect/vitest";
 import Constants from "expo-constants";
+import type { LiveActivity } from "expo-widgets";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -55,7 +56,7 @@ import {
   shouldRegisterAgentAwarenessDeviceForProvider,
   unregisterAgentAwarenessConnection,
 } from "./remoteRegistration";
-import { publishAgentActivityWidget } from "../../widgets/AgentActivity";
+import { publishAgentActivityWidget, type AgentActivityProps } from "../../widgets/AgentActivity";
 import * as Notifications from "expo-notifications";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentCatalog } from "../../connection/catalog";
@@ -63,7 +64,7 @@ import { environmentShell } from "../../state/shell";
 
 const secureStore = vi.hoisted(() => new Map<string, string>());
 const widgetMocks = vi.hoisted(() => ({
-  getInstances: vi.fn(() => []),
+  getInstances: vi.fn<() => ReadonlyArray<Partial<LiveActivity<AgentActivityProps>>>>(() => []),
   start: vi.fn(() => ({})),
 }));
 const environmentConfigsMock = vi.hoisted(() => ({
@@ -449,6 +450,59 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     environmentConfigsMock.configs.clear();
     vi.mocked(publishAgentActivityWidget).mockClear();
   });
+
+  it.effect.each(["unchanged", "sign-out", "account switch"] as const)(
+    "keeps existing Live Activity tokens with their owner across %s during widget refresh",
+    (transition) =>
+      Effect.gen(function* () {
+        const readStarted = yield* Deferred.make<void>();
+        const finishRead = yield* Deferred.make<void>();
+        const activity = {
+          getPushToken: vi.fn(() => Promise.resolve("old-account-activity-token")),
+          addPushTokenListener: vi.fn(),
+          end: vi.fn(() => Promise.resolve()),
+        };
+        widgetMocks.getInstances.mockReturnValue([activity]);
+        const register = vi.fn<ManagedRelay.ManagedRelayClient["Service"]["registerLiveActivity"]>(
+          () => Effect.succeed({ ok: true }),
+        );
+        const client = yield* ManagedRelay.ManagedRelayClient;
+        setAgentAwarenessRelayTokenProvider(() => Promise.resolve("user-a-token"), "user-a");
+        backgroundRuntime.pending.length = 0;
+        const refresh = yield* refreshActiveLiveActivityRemoteRegistration().pipe(
+          Effect.provideService(ManagedRelay.ManagedRelayClient, {
+            ...client,
+            registerLiveActivity: register,
+            getAgentActivitySnapshot: () =>
+              Deferred.succeed(readStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(finishRead)),
+                Effect.as(activeAgentActivitySnapshot),
+              ),
+          }),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(readStarted);
+        if (transition !== "unchanged") {
+          setAgentAwarenessRelayTokenProvider(null);
+          expect(activity.end).toHaveBeenCalledExactlyOnceWith("immediate");
+          widgetMocks.getInstances.mockReturnValue([]);
+          if (transition === "account switch") {
+            setAgentAwarenessRelayTokenProvider(() => Promise.resolve("user-b-token"), "user-b");
+          }
+        }
+        yield* Deferred.succeed(finishRead, undefined);
+        yield* Fiber.join(refresh);
+        if (transition === "unchanged") {
+          expect(register).toHaveBeenCalledExactlyOnceWith({
+            clerkToken: "user-a-token",
+            payload: { deviceId: "device-1", activityPushToken: "old-account-activity-token" },
+          });
+        } else {
+          expect(register).not.toHaveBeenCalled();
+          expect(activity.getPushToken).not.toHaveBeenCalled();
+        }
+      }).pipe(Effect.provide(snapshotRelayLayer()), Effect.scoped),
+  );
 
   it.effect.each(
     (["global", "scoped"] as const).flatMap((blockedRead) =>
