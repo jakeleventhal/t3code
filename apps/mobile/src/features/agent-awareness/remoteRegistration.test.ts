@@ -109,7 +109,7 @@ vi.mock("../../widgets/AgentActivity", () => ({
     getInstances: widgetMocks.getInstances,
     start: widgetMocks.start,
   },
-  publishAgentActivityWidget: vi.fn(),
+  publishAgentActivityWidget: vi.fn(() => true),
 }));
 
 // Keep the native connection boundary synthetic while exercising the real atom
@@ -448,7 +448,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     widgetMocks.start.mockReset();
     widgetMocks.start.mockReturnValue({});
     environmentConfigsMock.configs.clear();
-    vi.mocked(publishAgentActivityWidget).mockClear();
+    vi.mocked(publishAgentActivityWidget).mockReset().mockReturnValue(true);
   });
 
   it.effect.each(["unchanged", "sign-out", "account switch"] as const)(
@@ -2433,6 +2433,22 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       setLiveShell("running");
       expect(publishAgentActivityWidget).toHaveBeenCalledTimes(count);
       setLiveShell("ready");
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(count + 1);
+    }).pipe(Effect.provide(snapshotRelayLayer(() => Effect.succeed({ aggregate: null }))));
+  });
+
+  it.effect("retries identical widget content after a failed native publish", () => {
+    addLiveEnvironment();
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+    backgroundRuntime.pending.length = 0;
+    return Effect.gen(function* () {
+      yield* refreshActiveLiveActivityRemoteRegistration();
+      vi.mocked(publishAgentActivityWidget).mockReturnValueOnce(false);
+      setLiveShell("running");
+      const count = vi.mocked(publishAgentActivityWidget).mock.calls.length;
+      setLiveShell("running");
+      expect(publishAgentActivityWidget).toHaveBeenCalledTimes(count + 1);
+      setLiveShell("running");
       expect(publishAgentActivityWidget).toHaveBeenCalledTimes(count + 1);
     }).pipe(Effect.provide(snapshotRelayLayer(() => Effect.succeed({ aggregate: null }))));
   });

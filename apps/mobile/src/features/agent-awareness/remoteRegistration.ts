@@ -510,8 +510,7 @@ function publishRegularWidget(props: AgentActivityProps): void {
     activities: props.activities.map(({ updatedAt: _updatedAt, ...row }) => row),
   });
   if (content === publishedWidgetContent) return;
-  publishedWidgetContent = content;
-  publishAgentActivityWidget(props);
+  if (publishAgentActivityWidget(props)) publishedWidgetContent = content;
 }
 
 function publishReconciledWidget(): void {

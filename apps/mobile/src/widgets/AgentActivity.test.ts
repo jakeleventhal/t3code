@@ -37,6 +37,8 @@ vi.mock("expo-widgets", () => ({
 
 import {
   AgentActivity,
+  AgentActivityWidget,
+  publishAgentActivityWidget,
   type AgentActivityProps,
   type AgentActivityRowProps,
 } from "./AgentActivity";
@@ -447,4 +449,12 @@ describe("AgentActivity widget layout", () => {
     }
     expect(banner).not.toContain("Thread 6");
   });
+});
+
+it("reports a failed native widget snapshot so the caller can retry", () => {
+  vi.mocked(AgentActivityWidget.updateSnapshot).mockImplementationOnce(() => {
+    throw new Error("native update failed");
+  });
+  expect(publishAgentActivityWidget(props)).toBe(false);
+  expect(publishAgentActivityWidget(props)).toBe(true);
 });

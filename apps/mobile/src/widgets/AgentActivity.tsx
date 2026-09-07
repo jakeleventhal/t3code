@@ -578,11 +578,13 @@ export function AgentActivity(
 
 export const AgentActivityWidget = createWidget<AgentActivityProps>("AgentActivity", AgentActivity);
 
-export function publishAgentActivityWidget(props: AgentActivityProps): void {
+export function publishAgentActivityWidget(props: AgentActivityProps): boolean {
   try {
     AgentActivityWidget.updateSnapshot(props);
+    return true;
   } catch {
     // Personal-team and Android builds have no widget extension.
+    return false;
   }
 }
 
