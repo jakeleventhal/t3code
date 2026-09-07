@@ -154,7 +154,12 @@ describe("live widget activity", () => {
     const h = harness(shell([thread({ session: session("ready") })]), Date.now);
     const stop = h.registry.mount(h.atom);
     try {
-      expect(h.registry.get(h.atom).get(ENVIRONMENT)?.map((row) => row.phase)).toEqual(["completed"]);
+      expect(
+        h.registry
+          .get(h.atom)
+          .get(ENVIRONMENT)
+          ?.map((row) => row.phase),
+      ).toEqual(["completed"]);
       await vi.advanceTimersByTimeAsync(16 * 60_000);
       expect(h.registry.get(h.atom).get(ENVIRONMENT)).toEqual([]);
     } finally {
