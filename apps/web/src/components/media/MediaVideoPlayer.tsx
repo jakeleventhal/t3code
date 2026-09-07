@@ -185,5 +185,11 @@ export function MediaVideoPlayer({
       )}
     </span>
   );
-  return actionsSource ? <MediaActions source={actionsSource} tooltipContent={title}>{player}</MediaActions> : player;
+  return actionsSource ? (
+    <MediaActions source={actionsSource} tooltipContent={title}>
+      {player}
+    </MediaActions>
+  ) : (
+    player
+  );
 }
