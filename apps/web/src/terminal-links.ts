@@ -4,7 +4,6 @@ import {
   isAbsolutePath,
   isTerminalUrl,
   resolvePathLinkTarget,
-  splitPathAndPosition,
   type TerminalLinkKind,
 } from "@t3tools/shared/terminalLinks";
 
@@ -15,7 +14,6 @@ export {
   isAbsolutePath,
   isTerminalUrl,
   resolvePathLinkTarget,
-  splitPathAndPosition,
   type TerminalLinkKind,
   type TerminalLinkMatch,
 };
