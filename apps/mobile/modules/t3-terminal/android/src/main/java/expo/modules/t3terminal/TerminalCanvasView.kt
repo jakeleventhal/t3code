@@ -355,10 +355,8 @@ internal class TerminalCanvasView(context: Context) : View(context) {
   }
 
   /**
-   * Reports the tapped cell for link detection. Blank cells are skipped: they
-   * can't carry a link, and the terminal's text dump drops trailing blanks, so
-   * a tap on empty space would otherwise resolve onto the last printed
-   * character of the line.
+   * Reports occupied cells for link detection, including spaces inside OSC 8
+   * hyperlinks. The native untrimmed prefix keeps plain-text tap indexes aligned.
    */
   private fun tapCellAt(px: Float, py: Float) {
     frame?.let { currentFrame ->
@@ -369,7 +367,7 @@ internal class TerminalCanvasView(context: Context) : View(context) {
       val col = columnAt(px)
       val row = rowAt(py)
       val index = row * currentFrame.cols + col
-      if (index in currentFrame.cellText.indices && currentFrame.cellText[index].isNotBlank()) {
+      if (index in currentFrame.cellText.indices && currentFrame.cellText[index].isNotEmpty()) {
         onTapCell?.invoke(col, row)
       }
     }
