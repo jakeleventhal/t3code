@@ -358,11 +358,11 @@ function isLineBoundary(node: MarkdownNode | undefined): boolean {
   return node === undefined || node.type === "soft_break" || node.type === "line_break";
 }
 
-function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean): boolean {
+function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean, workspaceRoot?: string | null): boolean {
   if (markdownLinkMediaKind(target) !== "image") return false;
   const source = classifyMarkdownImageSource(
     target,
-    embedLocalPaths ? "/__t3_workspace__" : undefined,
+    workspaceRoot,
   );
   return source._tag === "Direct" || (embedLocalPaths && source._tag === "WorkspaceFile");
 }
@@ -374,7 +374,7 @@ function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean): 
  */
 export function nativeMarkdownWithStandaloneMediaLinks(
   node: MarkdownNode,
-  options: { readonly embedLocalPaths?: boolean } = {},
+  options: { readonly embedLocalPaths?: boolean; readonly workspaceRoot?: string | null } = {},
 ): MarkdownNode {
   const embedLocalPaths = options.embedLocalPaths ?? true;
   const children = node.children?.map((block) => {
@@ -386,7 +386,7 @@ export function nativeMarkdownWithStandaloneMediaLinks(
         child.href !== undefined &&
         isLineBoundary(siblings[index - 1]) &&
         isLineBoundary(siblings[index + 1]) &&
-        canEmbedStandaloneMediaLink(child.href, embedLocalPaths),
+        canEmbedStandaloneMediaLink(child.href, embedLocalPaths, options.workspaceRoot),
     );
     if (!embedded.includes(true)) return block;
     return {

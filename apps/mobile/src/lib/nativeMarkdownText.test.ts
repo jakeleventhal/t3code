@@ -86,6 +86,15 @@ describe("nativeMarkdownWithStandaloneMediaLinks", () => {
     expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
   });
 
+  it("only embeds relative media when its workspace root resolves it", () => {
+    const input = document(link("images/shot.png", "relative"));
+    expect(nativeMarkdownWithStandaloneMediaLinks(input)).toEqual(input);
+    expect(nativeMarkdownWithStandaloneMediaLinks(input, { workspaceRoot: null })).toEqual(input);
+    expect(nativeMarkdownWithStandaloneMediaLinks(input, { workspaceRoot: "/repo" })).toEqual(
+      document({ type: "image", href: "images/shot.png", alt: "relative" }),
+    );
+  });
+
   it("keeps local media links when the renderer cannot load workspace files", () => {
     const input = document(
       link("/tmp/shot.png", "absolute"),
