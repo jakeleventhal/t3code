@@ -50,9 +50,10 @@ export function InteractionSoundCoordinator() {
       key={scopedThreadKey(threadRef)}
       threadRef={threadRef}
       environmentLive={liveEnvironmentIds.has(threadRef.environmentId)}
-      environmentPreviouslyLive={previouslyLiveEnvironmentIdsRef.current.has(
-        threadRef.environmentId,
-      )}
+      environmentPreviouslyLive={
+        liveEnvironmentIds.has(threadRef.environmentId) ||
+        previouslyLiveEnvironmentIdsRef.current.has(threadRef.environmentId)
+      }
       completionSoundEnabled={completionSoundEnabled}
       settingsHydrated={settingsHydrated}
       players={players}
