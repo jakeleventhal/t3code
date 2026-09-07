@@ -784,7 +784,9 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
       <Markdown
         key={`markdown:${segment.sourceOffset}`}
         options={{ gfm: true }}
-        astTransform={(node) => nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })}
+        astTransform={(node) =>
+          nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+        }
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -1606,7 +1608,7 @@ function renderFeedEntry(
               markdown={renderedText}
               markdownStyles={styles}
               linkHandlers={props.markdownLinkHandlers}
-                  workspaceRoot={props.workspaceRoot}
+              workspaceRoot={props.workspaceRoot}
               onUseArtifactTemplate={props.onUseArtifactTemplate}
               renderImage={props.renderMarkdownImage}
               skills={props.skills}
@@ -1696,7 +1698,7 @@ function UserMessageContent(props: {
           textStyle={props.markdownStyles.nativeTextStyle}
           preserveSoftBreaks
           {...props.linkHandlers}
-        workspaceRoot={props.workspaceRoot}
+          workspaceRoot={props.workspaceRoot}
           renderImage={props.renderImage}
         />
       );
@@ -1704,7 +1706,9 @@ function UserMessageContent(props: {
     return (
       <Markdown
         options={{ gfm: true }}
-        astTransform={(node) => nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })}
+        astTransform={(node) =>
+          nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+        }
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -1740,14 +1744,16 @@ function UserMessageContent(props: {
             textStyle={props.markdownStyles.nativeTextStyle}
             preserveSoftBreaks
             {...props.linkHandlers}
-        workspaceRoot={props.workspaceRoot}
+            workspaceRoot={props.workspaceRoot}
             renderImage={props.renderImage}
           />
         ) : (
           <Markdown
             key={segment.id}
             options={{ gfm: true }}
-            astTransform={(node) => nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })}
+            astTransform={(node) =>
+              nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+            }
             renderers={props.markdownStyles.renderers}
             styles={props.markdownStyles.styles}
             theme={props.markdownStyles.theme}

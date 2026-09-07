@@ -358,12 +358,13 @@ function isLineBoundary(node: MarkdownNode | undefined): boolean {
   return node === undefined || node.type === "soft_break" || node.type === "line_break";
 }
 
-function canEmbedStandaloneMediaLink(target: string, embedLocalPaths: boolean, workspaceRoot?: string | null): boolean {
+function canEmbedStandaloneMediaLink(
+  target: string,
+  embedLocalPaths: boolean,
+  workspaceRoot?: string | null,
+): boolean {
   if (markdownLinkMediaKind(target) !== "image") return false;
-  const source = classifyMarkdownImageSource(
-    target,
-    workspaceRoot,
-  );
+  const source = classifyMarkdownImageSource(target, workspaceRoot);
   return source._tag === "Direct" || (embedLocalPaths && source._tag === "WorkspaceFile");
 }
 
