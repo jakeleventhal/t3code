@@ -65,7 +65,9 @@ export const ThreadDevServerIndicator = memo(function ThreadDevServerIndicator(p
   return (
     <Pressable
       accessibilityLabel={
-        extraCount > 0
+        !target.reachable
+          ? `${devServerLabel(target.server)} is not reachable over this connection`
+          : extraCount > 0
           ? `Open ${devServerLabel(target.server)} (+${extraCount} more)`
           : `Open ${devServerLabel(target.server)}`
       }
