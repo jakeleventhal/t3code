@@ -8,7 +8,7 @@ the server to that thread. Linked servers follow the thread wherever you work:
   in a browser tab next to the conversation.
 - On mobile, a globe button appears in the thread header while the thread has a linked dev
   server. On iOS it opens a menu listing each server by port and process; pick one to open it in
-  your browser. On Android it opens the first available server directly.
+  your browser. On Android it opens the first reachable server directly.
 
 Your phone is not the machine running the server, so T3 Code rewrites `localhost` addresses to
 the address you are connected to the environment through before opening them. This works when you
