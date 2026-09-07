@@ -1,9 +1,6 @@
 import { isLocalLoopbackHost, isPrivateNetworkHost } from "@t3tools/shared/hostClassification";
 import type { DiscoveredLocalServer } from "@t3tools/contracts";
-import {
-  isLoopbackHost,
-  normalizePreviewUrl,
-} from "@t3tools/shared/preview";
+import { isLoopbackHost, normalizePreviewUrl } from "@t3tools/shared/preview";
 
 export interface ResolvedDevServer {
   readonly server: DiscoveredLocalServer;
