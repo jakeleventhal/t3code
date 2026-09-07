@@ -11,6 +11,7 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import type { RelayAgentActivitySnapshotResponse } from "@t3tools/contracts/relay";
+import { vi } from "vitest";
 import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
@@ -83,7 +84,7 @@ function shell(
   };
 }
 
-function harness(initial: EnvironmentShellState) {
+function harness(initial: EnvironmentShellState, now = () => NOW_MS) {
   const registry = AtomRegistry.make();
   const shellAtoms = Atom.family((_id: EnvironmentId) => Atom.make(initial));
   const catalog = Atom.make<EnvironmentCatalogState>({
@@ -106,7 +107,7 @@ function harness(initial: EnvironmentShellState) {
   const atom = createLiveWidgetActivitiesAtom({
     catalogValueAtom: catalog,
     shellStateValueAtom: shellAtoms,
-    now: () => NOW_MS,
+    now,
   });
   return { registry, atom, catalog, shellAtoms };
 }
@@ -147,6 +148,22 @@ function snapshot(
 }
 
 describe("live widget activity", () => {
+  it("expires terminal rows without a catalog or shell update", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const h = harness(shell([thread({ session: session("ready") })]), Date.now);
+    const stop = h.registry.mount(h.atom);
+    try {
+      expect(h.registry.get(h.atom).get(ENVIRONMENT)?.map((row) => row.phase)).toEqual(["completed"]);
+      await vi.advanceTimersByTimeAsync(16 * 60_000);
+      expect(h.registry.get(h.atom).get(ENVIRONMENT)).toEqual([]);
+    } finally {
+      stop();
+      h.registry.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("observes local starts, completion, and deletion without a relay refresh", () => {
     const h = harness(shell([]));
     const seen: string[][] = [];

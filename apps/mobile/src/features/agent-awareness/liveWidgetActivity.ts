@@ -68,7 +68,10 @@ export function createLiveWidgetActivitiesAtom(input: {
       environments.set(environmentId, rows);
     }
     return environments;
-  }).pipe(Atom.withLabel("mobile:agent-awareness:live-widget-activities"));
+  }).pipe(
+    Atom.withRefresh("1 minute"),
+    Atom.withLabel("mobile:agent-awareness:live-widget-activities"),
+  );
 }
 
 function rowPriority(row: AgentActivityRowProps): number {
