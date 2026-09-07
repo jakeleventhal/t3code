@@ -246,7 +246,9 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                 structuredContent: metadata,
                 content: [
                   { type: "text", text: encodeJsonText(metadata) },
-                  ...(payload?.includeImage === false ? [] : [{ type: "image" as const, data: png, mimeType: screenshot.mimeType }]),
+                  ...(payload?.includeImage === false
+                    ? []
+                    : [{ type: "image" as const, data: png, mimeType: screenshot.mimeType }]),
                 ],
               });
             }),

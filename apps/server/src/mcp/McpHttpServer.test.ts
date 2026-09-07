@@ -113,7 +113,9 @@ it.effect.each([{}, { includeImage: false }])(
           );
 
         expect(snapshot.isError).toBe(true);
-        expect(snapshot.content).toEqual([{ type: "text", text: "Preview snapshot failed: PreviewAutomationExecutionError." }]);
+        expect(snapshot.content).toEqual([
+          { type: "text", text: "Preview snapshot failed: PreviewAutomationExecutionError." },
+        ]);
         expect(snapshot.structuredContent).toEqual({
           error: {
             _tag: "PreviewAutomationExecutionError",

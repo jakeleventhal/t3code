@@ -67,7 +67,8 @@ export const PreviewAutomationSnapshotInput = Schema.Struct({
   ...PreviewAutomationTabTargetFields,
   includeImage: Schema.optional(
     Schema.Boolean.annotate({
-      description: "Include the PNG image in the tool response. Defaults to true. Set false for text-only output.",
+      description:
+        "Include the PNG image in the tool response. Defaults to true. Set false for text-only output.",
     }),
   ),
   save: Schema.optional(
