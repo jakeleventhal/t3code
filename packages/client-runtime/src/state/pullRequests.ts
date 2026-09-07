@@ -1,4 +1,10 @@
-import { WS_METHODS, type PullRequestDiffInput } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  type PullRequestDetail,
+  type PullRequestDiffInput,
+  type PullRequestSummary,
+  type VcsStatusResult,
+} from "@t3tools/contracts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -9,36 +15,94 @@ import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentRpcSubscriptionAtomFamily,
   createEnvironmentQueryAtomFamily,
 } from "./runtime.ts";
 import { PullRequestDiffLoader } from "./pullRequestDiffHttp.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 
-export { PullRequestDiffLoader, pullRequestDiffLoaderLayer } from "./pullRequestDiffHttp.ts";
+export {
+  type PullRequestDiffLoadError,
+  PullRequestDiffCredentialRejectedError,
+  PullRequestDiffLoader,
+  pullRequestDiffLoaderLayer,
+} from "./pullRequestDiffHttp.ts";
 
+/** @public Required to name the error in consumers' inferred pull request results. */
 export class EnvironmentHttpConnectionNotReadyError extends Data.TaggedError(
   "EnvironmentHttpConnectionNotReadyError",
 )<{ readonly message: string }> {}
 
+const LINKED_PULL_REQUEST_IDLE_TTL_MS = 5_000;
+
+function createPullRequestRefreshAtomFamily<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:pull-requests:turn-refreshes",
+    tag: WS_METHODS.pullRequestsSubscribeRefreshes,
+  });
+}
+
+/** Refresh only the live fields a linked thread renders. */
+export function createLinkedPullRequestSummaryAtomFamily<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+  refreshes = createPullRequestRefreshAtomFamily(runtime),
+) {
+  return createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:pull-requests:linked-summary",
+    tag: WS_METHODS.pullRequestsSummary,
+    staleTimeMs: 60_000,
+    refreshIntervalMs: 60_000,
+    idleTtlMs: LINKED_PULL_REQUEST_IDLE_TTL_MS,
+    refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+  });
+}
+
+export function pullRequestDetailToVcsStatus(
+  detail: PullRequestDetail | PullRequestSummary,
+): NonNullable<VcsStatusResult["pr"]> {
+  return {
+    number: detail.number,
+    title: detail.title,
+    url: detail.url,
+    baseRef: detail.baseBranch,
+    headRef: detail.headBranch,
+    state: detail.state,
+    ...(detail.isDraft === true ? { isDraft: true } : {}),
+    updatedAt: detail.updatedAt,
+  };
+}
+
 /**
- * Every read shells out to the GitHub CLI, so results are reused for a short while and
- * refreshed explicitly. Mutations run serially per environment: `gh` actions on the same
+ * Reopening a PR within a minute reuses detail and activity. Explicit refreshes and
+ * turn notifications still revalidate. Mutations run serially per environment: actions on the same
  * pull request are order-sensitive, and the detail view refetches after each one.
  */
 export function createPullRequestEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | PullRequestDiffLoader | R, E>,
 ) {
+  const refreshes = createPullRequestRefreshAtomFamily(runtime);
   const commandScheduler = createAtomCommandScheduler();
   const serialPerEnvironment = {
     mode: "serial",
     key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
   } as const;
+  const activity = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:pull-requests:activity",
+    tag: WS_METHODS.pullRequestsActivity,
+    staleTimeMs: 60_000,
+    refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+  });
   return {
+    refreshes,
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:list",
       tag: WS_METHODS.pullRequestsList,
       staleTimeMs: 30_000,
+      refreshTrigger: ({ environmentId, input }) =>
+        input.cursors === undefined ? refreshes({ environmentId, input: {} }) : undefined,
     }),
     /**
      * The line counts for rows the listing has already handed over. Its own query because the
@@ -50,16 +114,24 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       label: "environment-data:pull-requests:list-stats",
       tag: WS_METHODS.pullRequestsListStats,
       staleTimeMs: 60_000,
+      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
     }),
     detail: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:detail",
       tag: WS_METHODS.pullRequestsDetail,
-      staleTimeMs: 15_000,
+      staleTimeMs: 60_000,
+      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
     }),
-    activity: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:activity",
-      tag: WS_METHODS.pullRequestsActivity,
-      staleTimeMs: 15_000,
+    activity,
+    threadComments: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:thread-comments",
+      tag: WS_METHODS.pullRequestsThreadComments,
+      scheduler: commandScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.threadId, input.cursor]),
+      },
     }),
     diff: createEnvironmentQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:diff",
@@ -102,11 +174,27 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
     }),
+    update: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:update",
+      tag: WS_METHODS.pullRequestsUpdate,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
     comment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:comment",
       tag: WS_METHODS.pullRequestsComment,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
+    }),
+    updateComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:update-comment",
+      tag: WS_METHODS.pullRequestsUpdateComment,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+      onSuccess: ({ environmentId, input: { projectId, repository, number } }, registry) =>
+        Effect.sync(() =>
+          registry.refresh(activity({ environmentId, input: { projectId, repository, number } })),
+        ),
     }),
     submitReview: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:submit-review",
@@ -137,9 +225,27 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
     }),
+    /** Read when the label menu opens, and kept for a minute, like the reviewer candidates. */
+    labelCandidates: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:label-candidates",
+      tag: WS_METHODS.pullRequestsLabelCandidates,
+      staleTimeMs: 60_000,
+    }),
+    setLabels: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:set-labels",
+      tag: WS_METHODS.pullRequestsSetLabels,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
     setThreadResolution: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-thread-resolution",
       tag: WS_METHODS.pullRequestsSetThreadResolution,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    setReaction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:set-reaction",
+      tag: WS_METHODS.pullRequestsSetReaction,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
     }),

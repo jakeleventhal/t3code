@@ -144,7 +144,7 @@ function DisabledCommandPaletteResultRow(props: {
             <ThreadContentMatch match={props.item.threadContentMatch} />
           ) : null}
           {props.item.description ? (
-            <span className="truncate text-muted-foreground/70 text-xs">
+            <span className="min-w-0 text-muted-foreground/70 text-xs">
               {props.item.description}
             </span>
           ) : null}
@@ -195,7 +195,7 @@ function CommandPaletteResultRow(props: {
             <ThreadContentMatch match={props.item.threadContentMatch} />
           ) : null}
           {props.item.description ? (
-            <span className="truncate text-muted-foreground/70 text-xs">
+            <span className="min-w-0 text-muted-foreground/70 text-xs">
               {props.item.description}
             </span>
           ) : null}
