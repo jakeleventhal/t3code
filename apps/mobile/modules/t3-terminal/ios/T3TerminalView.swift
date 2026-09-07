@@ -460,10 +460,13 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     let padding = Self.ghosttyWindowPaddingPoints * scale
     let px = location.x * scale - padding
     let py = location.y * scale - padding
-    guard px >= 0, py >= 0 else { return nil }
+    guard px >= 0, py >= 0,
+      px < CGFloat(size.columns) * CGFloat(size.cell_width_px),
+      py < CGFloat(size.rows) * CGFloat(size.cell_height_px)
+    else { return nil }
 
-    let col = min(UInt32(px / CGFloat(size.cell_width_px)), UInt32(size.columns) - 1)
-    let row = min(UInt32(py / CGFloat(size.cell_height_px)), UInt32(size.rows) - 1)
+    let col = UInt32(px / CGFloat(size.cell_width_px))
+    let row = UInt32(py / CGFloat(size.cell_height_px))
     return (col, row)
   }
 
