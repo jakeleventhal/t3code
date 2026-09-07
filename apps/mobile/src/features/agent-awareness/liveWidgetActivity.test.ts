@@ -11,7 +11,7 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import type { RelayAgentActivitySnapshotResponse } from "@t3tools/contracts/relay";
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
