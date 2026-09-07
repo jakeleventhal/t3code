@@ -536,7 +536,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
           "--state",
           "open",
           "--limit",
-          String(qualifiedHead ? Math.max(requestedLimit, 100) : requestedLimit),
+          String(qualifiedHead ? 100 : requestedLimit),
           ...(input.repository ? ["--repo", input.repository] : []),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",

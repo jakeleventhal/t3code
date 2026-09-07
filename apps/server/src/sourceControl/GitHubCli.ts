@@ -64,14 +64,6 @@ function formatGitHubRepositoryCoordinate(coordinate: GitHubRepositoryCoordinate
   return `${coordinate.host}/${coordinate.owner}/${coordinate.name}`;
 }
 
-function gitHubApiHostname(host: string): string {
-  try {
-    return new URL(`https://${host}`).hostname;
-  } catch {
-    return host;
-  }
-}
-
 function qualifyPullRequestHead(
   context: PullRequestRepositoryContext,
   headSelector: string,
@@ -650,7 +642,7 @@ export const make = Effect.gen(function* () {
               args: [
                 "api",
                 "--hostname",
-                gitHubApiHostname(base.host),
+                base.host,
                 `repos/${base.owner}/${base.name}/pulls`,
                 "--method",
                 "POST",

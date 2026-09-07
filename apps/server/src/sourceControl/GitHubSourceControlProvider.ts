@@ -191,7 +191,7 @@ export const make = Effect.gen(function* () {
             "--state",
             stateArg,
             "--limit",
-            String(qualifiedHead ? Math.max(requestedLimit, 100) : requestedLimit),
+            String(qualifiedHead ? 100 : requestedLimit),
             ...(repository ? ["--repo", repository] : []),
             "--json",
             "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",

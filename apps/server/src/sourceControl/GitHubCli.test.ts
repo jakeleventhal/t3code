@@ -458,7 +458,7 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("omits a GitHub Enterprise HTTPS port from the API hostname", () =>
+  it.effect("preserves a GitHub Enterprise HTTPS port in the API hostname", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(Effect.succeed(processOutput("")));
 
@@ -478,7 +478,7 @@ describe("GitHubCli.layer", () => {
         expect.objectContaining({
           args: expect.arrayContaining([
             "--hostname",
-            "github.example.com",
+            "github.example.com:8443",
             "repos/pingdotgg/t3code/pulls",
           ]),
         }),
