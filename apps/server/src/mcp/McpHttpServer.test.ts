@@ -22,6 +22,9 @@ const environmentId = EnvironmentId.make("environment-mcp-test");
 const threadId = ThreadId.make("thread-mcp-test");
 const tabId = PreviewTabId.make("tab-mcp-test");
 const alternateTabId = PreviewTabId.make("tab-mcp-alternate");
+const decodeScreenshotPath = Schema.decodeUnknownSync(
+  Schema.Struct({ screenshotPath: Schema.String }),
+);
 const encodeJsonText = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const invocation = {
   environmentId,
@@ -393,9 +396,7 @@ it.effect("retains concurrent same-host screenshots at a fixed clock time", () =
       );
       const paths = snapshots.map((snapshot) => {
         expect(snapshot.isError).toBe(false);
-        return Schema.decodeUnknownSync(Schema.Struct({ screenshotPath: Schema.String }))(
-          snapshot.structuredContent,
-        ).screenshotPath;
+        return decodeScreenshotPath(snapshot.structuredContent).screenshotPath;
       });
       expect(new Set(paths).size).toBe(2);
       const contents = yield* Effect.forEach(paths, (path) => fileSystem.readFileString(path));
