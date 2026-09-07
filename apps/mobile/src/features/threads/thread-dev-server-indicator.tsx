@@ -73,7 +73,10 @@ export const ThreadDevServerIndicator = memo(function ThreadDevServerIndicator(p
       }
       accessibilityRole="button"
       hitSlop={10}
-      onPress={() => void handlePress()}
+      onPress={(event) => {
+        event.stopPropagation();
+        void handlePress();
+      }}
       style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
     >
       <SymbolView
