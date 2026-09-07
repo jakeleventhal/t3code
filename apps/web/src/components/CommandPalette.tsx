@@ -515,6 +515,28 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   }, [state.mode, state.open, toggleMode]);
 
   useEffect(() => {
+    // Claim navigation before the composer's underline shortcut consumes mod+u.
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+          terminalOpen,
+          previewFocus: isPreviewFocused(),
+          previewOpen,
+        },
+      });
+      if (command !== "usage.open") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      void navigate({ to: "/usage" });
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [keybindings, navigate, previewOpen, setOpen, terminalOpen]);
+
+  useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // Resolve with the complete shortcut context so customized bindings
@@ -552,13 +574,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         dispatch({ _tag: "OpenChangeTheme" });
         return;
       }
-      if (command === "usage.open") {
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen(false);
-        void navigate({ to: "/usage" });
-        return;
-      }
       if (command === "themeEditor.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -582,11 +597,9 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   }, [
     appearanceMode,
     keybindings,
-    navigate,
     previewOpen,
     resolvedTheme,
     setAppearanceMode,
-    setOpen,
     terminalOpen,
     theme,
     themeHalves,
