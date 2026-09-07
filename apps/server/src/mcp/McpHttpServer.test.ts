@@ -378,13 +378,17 @@ it.effect("retains concurrent same-host screenshots at a fixed clock time", () =
       }).pipe(Effect.forkScoped);
       yield* Deferred.await(connected);
       const snapshots = yield* Effect.all(
-        [1, 2].map(() => server.callTool({
-          name: "preview_snapshot",
-          arguments: { save: true },
-        }).pipe(
-          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
-          Effect.provideService(McpSchema.McpServerClient, client),
-        )),
+        [1, 2].map(() =>
+          server
+            .callTool({
+              name: "preview_snapshot",
+              arguments: { save: true },
+            })
+            .pipe(
+              Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+              Effect.provideService(McpSchema.McpServerClient, client),
+            ),
+        ),
         { concurrency: 2 },
       );
       const paths = snapshots.map((snapshot) => {
