@@ -109,7 +109,7 @@ export const PreviewSetAppearanceTool = safeBrowserTool(
     .annotate(Tool.Idempotent, true),
 );
 
-export const PreviewSnapshotTool = readonlyBrowserTool(
+export const PreviewSnapshotTool = safeBrowserTool(
   Tool.make("preview_snapshot", {
     description:
       "Inspect a page before interacting. Pass tabId to inspect a specific tab; omit it to use this agent session's current tab. Returns page state, semantic elements, diagnostics, action history, and a PNG screenshot. Set includeImage=false for text-only output with the same page metadata. Set save=true to also write the PNG to disk and get screenshotPath back; embed that path in your reply with markdown image syntax, ![screenshot](path), so the user sees it.",
@@ -117,7 +117,10 @@ export const PreviewSnapshotTool = readonlyBrowserTool(
     success: PreviewAutomationSnapshot,
     failure: PreviewAutomationError,
     dependencies,
-  }).annotate(Tool.Title, "Inspect browser page"),
+  })
+    .annotate(Tool.Title, "Inspect browser page")
+    .annotate(Tool.Readonly, false)
+    .annotate(Tool.Idempotent, false),
 );
 
 export const PreviewClickTool = browserTool(
