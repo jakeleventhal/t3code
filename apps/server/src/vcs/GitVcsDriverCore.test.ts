@@ -898,6 +898,24 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("keeps untracked filenames with pathspec magic in the review", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, ":(exclude)after.ts", "literal pathspec contents\n");
+        yield* writeTextFile(cwd, "ordinary.ts", "ordinary contents\n");
+        const indexBefore = yield* git(cwd, ["ls-files", "--stage"]);
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "+literal pathspec contents");
+        assert.include(diff, "+ordinary contents");
+        assert.strictEqual(yield* git(cwd, ["ls-files", "--stage"]), indexBefore);
+      }),
+    );
+
     it.effect("detects an unstaged rename with edits without mutating a split index", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

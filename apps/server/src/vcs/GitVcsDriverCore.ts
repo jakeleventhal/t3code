@@ -2353,6 +2353,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       cwd,
       [
         ...tempIndexConfig,
+        "--literal-pathspecs",
         "add",
         "--intent-to-add",
         "--pathspec-from-file=-",
