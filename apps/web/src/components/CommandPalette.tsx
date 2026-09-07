@@ -497,15 +497,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    keybindings,
-    previewOpen,
-    resolvedTheme,
-    terminalOpen,
-    theme,
-    themeHalves,
-    toggleMode,
-  ]);
+  }, [keybindings, previewOpen, resolvedTheme, terminalOpen, theme, themeHalves, toggleMode]);
 
   useEffect(
     () =>
