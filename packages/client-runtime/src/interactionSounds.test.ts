@@ -417,17 +417,17 @@ describe("interaction sounds", () => {
     expect(reconnected.cues).toEqual(["bloom"]);
   });
 
-  it("compares a thread first discovered after reconnect with an idle baseline", () => {
+  it("does not replay pending input when a historical thread reappears", () => {
     const discovered = observeThreadSoundState(null, makeThread({ hasPendingUserInput: true }), {
       environmentLive: true,
       environmentPreviouslyLive: true,
       settingsHydrated: true,
     });
 
-    expect(discovered.cues).toEqual(["bloom"]);
+    expect(discovered.cues).toEqual([]);
   });
 
-  it("plays completion for a thread first discovered after reconnect", () => {
+  it("does not replay completion when a historical thread reappears", () => {
     const discovered = observeThreadSoundState(
       null,
       makeThread({
@@ -448,7 +448,7 @@ describe("interaction sounds", () => {
       },
     );
 
-    expect(discovered.cues).toEqual(["success"]);
+    expect(discovered.cues).toEqual([]);
   });
 
   it("seeds a thread from the first live hydration without playing a cue", () => {

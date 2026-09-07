@@ -134,29 +134,16 @@ export function observeThreadSoundState(
   },
 ): ThreadSoundObservation {
   const current = [thread];
-  if (!options.environmentPreviouslyLive) {
+  if (previous === null || !options.environmentPreviouslyLive) {
     return { state: captureThreadSoundState(current), cues: [] };
   }
-  const baseline =
-    previous ??
-    new Map([
-      [
-        threadKey(thread),
-        {
-          completedTurn: null,
-          userInitiatedTurn: null,
-          hasPendingUserInput: false,
-          hasPendingApprovals: false,
-        },
-      ],
-    ]);
 
   if (!options.environmentLive || !options.settingsHydrated) {
-    return { state: baseline, cues: [] };
+    return { state: previous, cues: [] };
   }
 
   return {
     state: captureThreadSoundState(current),
-    cues: deriveInteractionSoundCues(baseline, current),
+    cues: deriveInteractionSoundCues(previous, current),
   };
 }
