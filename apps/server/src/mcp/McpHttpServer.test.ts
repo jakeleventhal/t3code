@@ -250,7 +250,7 @@ it.effect("rejects non-boolean snapshot image options before selecting a browser
   }).pipe(Effect.provide(TestLayer)),
 );
 
-it.effect("saves the snapshot screenshot to the browser artifacts directory on request", () =>
+it.effect.each([true, false])("saves the snapshot with includeImage=%s", (includeImage) =>
   Effect.scoped(
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;
@@ -259,12 +259,13 @@ it.effect("saves the snapshot screenshot to the browser artifacts directory on r
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const routedInputs: Array<unknown> = [];
+      const connected = yield* Deferred.make<void>();
       const events = yield* broker.connect({
         clientId: "mcp-save-client",
         environmentId,
       });
       yield* Stream.runForEach(events, (event) => {
-        if (event.type === "connected") return Effect.void;
+        if (event.type === "connected") return Deferred.succeed(connected, undefined);
         routedInputs.push(event.request.input);
         return broker.respond({
           clientId: "mcp-save-client",
@@ -274,16 +275,19 @@ it.effect("saves the snapshot screenshot to the browser artifacts directory on r
           result: snapshotResult,
         });
       }).pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
+      yield* Deferred.await(connected);
 
       const snapshot = yield* server
-        .callTool({ name: "preview_snapshot", arguments: { save: true } })
+        .callTool({ name: "preview_snapshot", arguments: { save: true, includeImage } })
         .pipe(
           Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
           Effect.provideService(McpSchema.McpServerClient, client),
         );
 
       expect(snapshot.isError).toBe(false);
+      expect(snapshot.content.map((content) => content.type)).toEqual(
+        includeImage ? ["text", "image"] : ["text"],
+      );
       // The browser never receives the server-only `save` flag.
       expect(routedInputs).toEqual([{}]);
       const structured = snapshot.structuredContent as { readonly screenshotPath?: string };
@@ -308,13 +312,14 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
       const fileSystem = yield* FileSystem.FileSystem;
       // A regular file where the artifacts directory should be makes every write fail.
       yield* fileSystem.writeFileString(config.browserArtifactsDir, "");
+      const connected = yield* Deferred.make<void>();
       const events = yield* broker.connect({
         clientId: "mcp-save-failure-client",
         environmentId,
       });
       yield* Stream.runForEach(events, (event) =>
         event.type === "connected"
-          ? Effect.void
+          ? Deferred.succeed(connected, undefined)
           : broker.respond({
               clientId: "mcp-save-failure-client",
               connectionId: event.connectionId,
@@ -323,7 +328,7 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
               result: snapshotResult,
             }),
       ).pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
+      yield* Deferred.await(connected);
 
       const snapshot = yield* server
         .callTool({ name: "preview_snapshot", arguments: { save: true } })
