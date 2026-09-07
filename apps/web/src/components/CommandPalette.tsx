@@ -524,6 +524,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           terminalOpen,
           previewFocus: isPreviewFocused(),
           previewOpen,
+          modelPickerOpen: composerHandleRef.current?.isModelPickerOpen() ?? false,
         },
       });
       if (command !== "usage.open") return;
