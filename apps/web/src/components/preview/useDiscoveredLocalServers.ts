@@ -1,4 +1,5 @@
 import type { DiscoveredLocalServer } from "@t3tools/contracts";
+import { normalizeHostname } from "@t3tools/shared/hostClassification";
 import { isLoopbackHost } from "@t3tools/shared/preview";
 import { useMemo } from "react";
 
@@ -122,7 +123,7 @@ export function selectPreferredDiscoveredServer(
 
   const legacyNamedServer = servers.find((server) => {
     try {
-      return new URL(server.url).hostname !== server.host;
+      return normalizeHostname(new URL(server.url).hostname) !== normalizeHostname(server.host);
     } catch {
       return false;
     }

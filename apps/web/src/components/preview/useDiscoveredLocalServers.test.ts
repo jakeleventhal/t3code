@@ -223,6 +223,12 @@ describe("selectPreferredDiscoveredServer", () => {
     expect(selectPreferredDiscoveredServer([tailscale, portless, ngrok, localhost])).toBe(ngrok);
   });
 
+  it("does not prioritize a listener because of hostname casing", () => {
+    const first = scannerServer({ port: 3000, url: "http://localhost:3000" });
+    const second = scannerServer({ host: "LOCALHOST", port: 5173 });
+    expect(selectPreferredDiscoveredServer([first, second])).toBe(first);
+  });
+
   it("falls back to the first listener when none has a named URL", () => {
     const first = scannerServer({ port: 3000, url: "http://localhost:3000" });
     expect(selectPreferredDiscoveredServer([first, scannerServer({ port: 5173 })])).toBe(first);
