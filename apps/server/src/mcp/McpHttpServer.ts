@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -113,7 +114,7 @@ const encodeJsonText = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const MAX_SCREENSHOT_SITE_SLUG_LENGTH = 40;
 
-/** Hostname reduced to a filename-safe slug, mirroring the desktop's own screenshot names. */
+/** Hostname reduced to a filename-safe slug, used in screenshot artifact names. */
 const screenshotSiteSlug = (rawUrl: string): string => {
   try {
     const slug = new URL(rawUrl).hostname
@@ -137,7 +138,7 @@ const saveScreenshot = Effect.fn("McpHttpServer.saveScreenshot")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const millis = yield* Clock.currentTimeMillis;
-  const fileName = `browser-screenshot-${screenshotSiteSlug(pageUrl)}-${millis.toString(36)}.png`;
+  const fileName = `browser-screenshot-${screenshotSiteSlug(pageUrl)}-${millis.toString(36)}-${randomUUID()}.png`;
   const screenshotPath = path.join(config.browserArtifactsDir, fileName);
   yield* fileSystem.makeDirectory(config.browserArtifactsDir, { recursive: true }).pipe(
     Effect.andThen(fileSystem.writeFile(screenshotPath, data)),

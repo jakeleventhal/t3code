@@ -8,6 +8,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as Stream from "effect/Stream";
 import { McpProtocol, McpSchema, McpServer } from "effect/unstable/ai";
 import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/unstable/http";
@@ -297,7 +298,7 @@ it.effect.each([true, false])("saves the snapshot with includeImage=%s", (includ
       expect(typeof screenshotPath).toBe("string");
       expect(path.dirname(screenshotPath!)).toBe(config.browserArtifactsDir);
       expect(path.basename(screenshotPath!)).toMatch(
-        /^browser-screenshot-example-test-[0-9a-z]+\.png$/,
+        /^browser-screenshot-example-test-[0-9a-z]+-[0-9a-f-]+\.png$/,
       );
       expect(Buffer.from(yield* fileSystem.readFile(screenshotPath!)).toString()).toBe("png");
       const textContent = snapshot.content.find((content) => content.type === "text");
@@ -346,6 +347,56 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
       expect(snapshot.structuredContent).toEqual({
         error: { _tag: "PreviewScreenshotSaveError", operation: "snapshot", failureCount: 1 },
       });
+    }),
+  ).pipe(Effect.provide(TestLayer)),
+);
+
+it.effect("retains concurrent same-host screenshots at a fixed clock time", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const connected = yield* Deferred.make<void>();
+      yield* TestClock.setTime(1000);
+      const events = yield* broker.connect({ clientId: "mcp-concurrent-save", environmentId });
+      yield* Stream.runForEach(events, (event) => {
+        if (event.type === "connected") return Deferred.succeed(connected, undefined);
+        return broker.respond({
+          clientId: "mcp-concurrent-save",
+          connectionId: event.connectionId,
+          requestId: event.request.requestId,
+          ok: true,
+          result: {
+            ...snapshotResult,
+            screenshot: {
+              ...snapshotResult.screenshot,
+              data: Buffer.from(event.request.requestId).toString("base64"),
+            },
+          },
+        });
+      }).pipe(Effect.forkScoped);
+      yield* Deferred.await(connected);
+      const snapshots = yield* Effect.all(
+        [1, 2].map(() => server.callTool({
+          name: "preview_snapshot",
+          arguments: { save: true },
+        }).pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        )),
+        { concurrency: 2 },
+      );
+      const paths = snapshots.map((snapshot) => {
+        expect(snapshot.isError).toBe(false);
+        return Schema.decodeUnknownSync(Schema.Struct({ screenshotPath: Schema.String }))(
+          snapshot.structuredContent,
+        ).screenshotPath;
+      });
+      expect(new Set(paths).size).toBe(2);
+      const contents = yield* Effect.forEach(paths, (path) => fileSystem.readFileString(path));
+      expect(new Set(contents).size).toBe(2);
+      expect(contents.every((content) => content.length > 0)).toBe(true);
     }),
   ).pipe(Effect.provide(TestLayer)),
 );
