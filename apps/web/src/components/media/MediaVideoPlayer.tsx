@@ -186,7 +186,7 @@ export function MediaVideoPlayer({
     </span>
   );
   return actionsSource ? (
-    <MediaActions source={actionsSource} tooltipContent={title}>
+    <MediaActions source={actionsSource} tooltipContent={title || undefined}>
       {player}
     </MediaActions>
   ) : (
