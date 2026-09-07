@@ -366,7 +366,10 @@ internal class TerminalCanvasView(context: Context) : View(context) {
       val gridY = py - contentPadding
       if (gridX < 0 || gridY < 0 ||
         gridX >= currentFrame.cols * cellWidthPx ||
-        gridY >= currentFrame.rows * cellHeightPx) return
+        gridY >= currentFrame.rows * cellHeightPx
+      ) {
+        return
+      }
       val col = columnAt(px)
       val row = rowAt(py)
       val index = row * currentFrame.cols + col
