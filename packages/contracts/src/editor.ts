@@ -135,7 +135,7 @@ export const RemoteOpenTarget = Schema.Struct({
 });
 export type RemoteOpenTarget = typeof RemoteOpenTarget.Type;
 
-export class ExternalLauncherUnknownEditorError extends Schema.TaggedErrorClass<ExternalLauncherUnknownEditorError>()(
+export class ExternalLauncherUnknownEditorError extends Schema.TaggedError<ExternalLauncherUnknownEditorError>()(
   "ExternalLauncherUnknownEditorError",
   {
     editor: Schema.String,
@@ -146,7 +146,7 @@ export class ExternalLauncherUnknownEditorError extends Schema.TaggedErrorClass<
   }
 }
 
-export class ExternalLauncherUnsupportedEditorError extends Schema.TaggedErrorClass<ExternalLauncherUnsupportedEditorError>()(
+export class ExternalLauncherUnsupportedEditorError extends Schema.TaggedError<ExternalLauncherUnsupportedEditorError>()(
   "ExternalLauncherUnsupportedEditorError",
   {
     editor: EditorId,
@@ -157,7 +157,7 @@ export class ExternalLauncherUnsupportedEditorError extends Schema.TaggedErrorCl
   }
 }
 
-export class ExternalLauncherCommandNotFoundError extends Schema.TaggedErrorClass<ExternalLauncherCommandNotFoundError>()(
+export class ExternalLauncherCommandNotFoundError extends Schema.TaggedError<ExternalLauncherCommandNotFoundError>()(
   "ExternalLauncherCommandNotFoundError",
   {
     editor: EditorId,
@@ -175,7 +175,7 @@ const ExternalLauncherSpawnFields = {
   cause: Schema.Defect(),
 };
 
-export class ExternalLauncherBrowserSpawnError extends Schema.TaggedErrorClass<ExternalLauncherBrowserSpawnError>()(
+export class ExternalLauncherBrowserSpawnError extends Schema.TaggedError<ExternalLauncherBrowserSpawnError>()(
   "ExternalLauncherBrowserSpawnError",
   {
     ...ExternalLauncherSpawnFields,
@@ -187,7 +187,7 @@ export class ExternalLauncherBrowserSpawnError extends Schema.TaggedErrorClass<E
   }
 }
 
-export class ExternalLauncherEditorSpawnError extends Schema.TaggedErrorClass<ExternalLauncherEditorSpawnError>()(
+export class ExternalLauncherEditorSpawnError extends Schema.TaggedError<ExternalLauncherEditorSpawnError>()(
   "ExternalLauncherEditorSpawnError",
   {
     ...ExternalLauncherSpawnFields,
