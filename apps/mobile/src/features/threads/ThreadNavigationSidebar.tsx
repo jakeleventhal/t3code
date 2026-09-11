@@ -55,6 +55,7 @@ import { SidebarFilterButton } from "./sidebar-filter-button";
 import { createSidebarHeaderItems } from "./sidebar-native-header-items";
 import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
+  ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
@@ -355,6 +356,7 @@ function ThreadNavigationSidebarPane(
   ]);
   const threadListV2Layout = useMemo(() => {
     return buildThreadListV2Items({
+      groupWorktrees: true,
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
@@ -420,6 +422,7 @@ function ThreadNavigationSidebarPane(
           pendingTask.title.toLocaleLowerCase().includes(v2SearchQuery)),
     );
     const items: SidebarListItem[] = buildThreadListV2ListItems({
+      groupWorktrees: true,
       items: threadListV2Layout.items,
       pendingTasks: v2PendingTasks,
       snoozedCount: threadListV2Layout.snoozedCount,
@@ -629,6 +632,21 @@ function ThreadNavigationSidebarPane(
   const renderListItem = useCallback(
     ({ item }: { readonly item: SidebarListItem }) => {
       switch (item.type) {
+        case "v2-worktree": {
+          const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
+          return (
+            <ThreadListV2WorktreeHeader
+              thread={item.thread}
+              count={item.count}
+              projectTitle={
+                projectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
+              }
+              environmentLabel={
+                savedConnectionsById[item.thread.environmentId]?.environmentLabel ?? null
+              }
+            />
+          );
+        }
         case "v2-pending": {
           const pendingScopeKey = scopedProjectKey(
             item.pendingTask.environmentId,
