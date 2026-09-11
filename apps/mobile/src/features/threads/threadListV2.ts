@@ -1,3 +1,5 @@
+import { buildWorktreeThreadGroups } from "@t3tools/client-runtime/state/worktree-grouping";
+import { worktreeScopeKey } from "@t3tools/shared/worktreeResource";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import {
   canSnooze,
@@ -346,7 +348,15 @@ export interface ThreadListV2SettledShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2WorktreeListItem {
+  readonly type: "v2-worktree";
+  readonly key: string;
+  readonly thread: EnvironmentThreadShell;
+  readonly count: number;
+}
+
 export type ThreadListV2ListItem =
+  | ThreadListV2WorktreeListItem
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2SnoozedShelfListItem
@@ -358,6 +368,7 @@ export function isThreadListV2ListItem(value: {
   readonly type: string;
 }): value is ThreadListV2ListItem {
   return (
+    value.type === "v2-worktree" ||
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
     value.type === "v2-snoozed-shelf" ||
@@ -377,6 +388,13 @@ export function threadListV2ListItemsAreEqual(
   item: ThreadListV2ListItem,
 ): boolean {
   switch (item.type) {
+    case "v2-worktree":
+      return (
+        previous.type === "v2-worktree" &&
+        previous.key === item.key &&
+        previous.thread === item.thread &&
+        previous.count === item.count
+      );
     case "v2-thread":
       return (
         previous.type === "v2-thread" &&
@@ -446,6 +464,7 @@ function resolveThreadListV2ItemTimeLabel(
  * reachable without competing with either the inbox or settled history.
  */
 export function buildThreadListV2ListItems(input: {
+  readonly groupWorktrees?: boolean;
   readonly items: ReadonlyArray<ThreadListV2Item>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
   readonly snoozedCount?: number;
@@ -542,11 +561,32 @@ export function buildThreadListV2ListItems(input: {
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
   }
+  const counts = new Map<string, number>();
+  for (const entry of threadItems) {
+    if (entry.type !== "v2-thread") continue;
+    const thread = entry.item.thread;
+    const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const seen = new Set<string>();
+  const grouped = input.groupWorktrees
+    ? result.flatMap((entry): ThreadListV2ListItem[] => {
+        if (entry.type !== "v2-thread") return [entry];
+        const thread = entry.item.thread;
+        const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
+        if (seen.has(key)) return [entry];
+        seen.add(key);
+        return [
+          { type: "v2-worktree", key: `worktree:${key}`, thread, count: counts.get(key)! },
+          entry,
+        ];
+      })
+    : result;
   // Hairlines depend on the final neighbour, so they are stamped after the
   // splice: a recycled cell only re-renders when its divider actually flips.
-  return result.map((entry, index) => {
+  return grouped.map((entry, index) => {
     if (entry.type !== "v2-thread" && entry.type !== "v2-pending") return entry;
-    const next = result[index + 1];
+    const next = grouped[index + 1];
     const showTrailingDivider =
       next?.type === "v2-thread" || (next?.type === "v2-pending" && !next.showPendingDivider);
     return showTrailingDivider === entry.showTrailingDivider
@@ -560,6 +600,7 @@ export function buildThreadListV2ListItems(input: {
  * the settled recency tail, matching the web v2 list.
  */
 export function buildThreadListV2Items(input: {
+  readonly groupWorktrees?: boolean;
   readonly pendingOrder?: PendingThreadOrder | null;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly environmentId: EnvironmentId | null;
@@ -661,32 +702,93 @@ export function buildThreadListV2Items(input: {
     }
   }
 
-  const orderedActive = applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
-  const orderedSnoozed = [...snoozed].sort(
-    (left, right) =>
-      parseTimestampMs(left.snoozedUntil ?? "") - parseTimestampMs(right.snoozedUntil ?? ""),
+  const memberClassification = new Map<
+    string,
+    { variant: "card" | "slim"; snoozed: boolean; pinned: boolean }
+  >();
+  if (input.groupWorktrees) {
+    const classified = [
+      ...applyPendingThreadOrder(sortPinnedThreadsByOrderKey(pinned), "pinned", pending).map(
+        (thread) => ({ thread, classification: "active" as const }),
+      ),
+      ...applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending).map((thread) => ({
+        thread,
+        classification: "active" as const,
+      })),
+      ...snoozed.map((thread) => ({ thread, classification: "snoozed" as const })),
+      ...settled.map((thread) => ({ thread, classification: "settled" as const })),
+    ];
+    for (const { thread, classification } of classified)
+      memberClassification.set(`${thread.environmentId}:${thread.id}`, {
+        variant: classification === "active" ? "card" : "slim",
+        snoozed: classification === "snoozed",
+        pinned: classification === "active" && thread.pinnedAt != null,
+      });
+    const groups = buildWorktreeThreadGroups(classified, {
+      activeThreadOrder: classified
+        .filter((entry) => entry.classification === "active")
+        .map(({ thread }) => `${thread.environmentId}:${thread.id}`),
+    });
+    pinned.length = 0;
+    active.splice(0, active.length, ...groups.activeGroups.flatMap((group) => group.threads));
+    snoozed.splice(0, snoozed.length, ...groups.snoozedGroups.flatMap((group) => group.threads));
+    settled.splice(0, settled.length, ...groups.settledGroups.flatMap((group) => group.threads));
+  }
+  const orderedActive = input.groupWorktrees
+    ? active
+    : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
+  const orderedSnoozed = input.groupWorktrees
+    ? snoozed
+    : [...snoozed].sort(
+        (left, right) =>
+          parseTimestampMs(left.snoozedUntil ?? "") - parseTimestampMs(right.snoozedUntil ?? ""),
+      );
+  const sameCheckout = (left: EnvironmentThreadShell, right: EnvironmentThreadShell) =>
+    worktreeScopeKey(left.environmentId, left.projectId, left.worktreePath) ===
+    worktreeScopeKey(right.environmentId, right.projectId, right.worktreePath);
+  const selectedThread = input.threads.find(
+    (thread) => `${thread.environmentId}:${thread.id}` === input.selectedThreadKey,
   );
-  const selectedThreadKey = input.selectedThreadKey ?? null;
+  const isSelectedCheckout = (thread: EnvironmentThreadShell) =>
+    `${thread.environmentId}:${thread.id}` === input.selectedThreadKey ||
+    (input.groupWorktrees === true &&
+      selectedThread !== undefined &&
+      sameCheckout(thread, selectedThread));
   const visibleSnoozed =
     input.snoozedShelfExpanded === true
       ? orderedSnoozed
-      : orderedSnoozed.filter(
-          (thread) => `${thread.environmentId}:${thread.id}` === selectedThreadKey,
-        );
-  const orderedSettled = sortSettledThreads(settled);
+      : orderedSnoozed.filter((thread) => isSelectedCheckout(thread));
+  const orderedSettled = input.groupWorktrees ? settled : sortSettledThreads(settled);
   const settledLimit = input.settledLimit ?? Number.POSITIVE_INFINITY;
   const pagedSettled =
     orderedSettled.length > settledLimit ? orderedSettled.slice(0, settledLimit) : orderedSettled;
+  if (
+    input.groupWorktrees &&
+    pagedSettled.length > 0 &&
+    pagedSettled.length < orderedSettled.length
+  ) {
+    const boundary = pagedSettled.at(-1)!;
+    for (const thread of orderedSettled.slice(pagedSettled.length)) {
+      if (!sameCheckout(thread, boundary)) break;
+      pagedSettled.push(thread);
+    }
+  }
   const selectedSettled = orderedSettled
     .slice(pagedSettled.length)
-    .find((thread) => `${thread.environmentId}:${thread.id}` === selectedThreadKey);
-  if (selectedSettled !== undefined) pagedSettled.push(selectedSettled);
+    .find((thread) => isSelectedCheckout(thread));
+  if (selectedSettled !== undefined) {
+    pagedSettled.push(
+      ...(input.groupWorktrees
+        ? orderedSettled.filter(
+            (thread) => sameCheckout(thread, selectedSettled) && !pagedSettled.includes(thread),
+          )
+        : [selectedSettled]),
+    );
+  }
   const visibleSettled =
     input.settledShelfExpanded !== false
       ? pagedSettled
-      : pagedSettled.filter(
-          (thread) => `${thread.environmentId}:${thread.id}` === selectedThreadKey,
-        );
+      : pagedSettled.filter((thread) => isSelectedCheckout(thread));
 
   const items: ThreadListV2Item[] = [];
   for (const thread of applyPendingThreadOrder(
@@ -730,6 +832,14 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       isLast: false,
     });
+  }
+  if (input.groupWorktrees) {
+    for (const [index, item] of items.entries()) {
+      const classification = memberClassification.get(
+        `${item.thread.environmentId}:${item.thread.id}`,
+      );
+      if (classification) items[index] = { ...item, ...classification };
+    }
   }
   const last = items.at(-1);
   if (last) {

@@ -37,6 +37,7 @@ import {
   selectThreadPreviewMiniPlayerTabId,
   usePreviewMiniPlayerStore,
 } from "~/previewMiniPlayerStore";
+import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 import { resolveBrowserNavigationTarget } from "~/browser/browserTargetResolver";
 import {
   readActiveBrowserRecordingTargets,
@@ -76,6 +77,7 @@ import {
   previewAutomationDefaultViewport,
   previewAutomationOpenNeedsOverlay,
   shouldAutoShowPreviewForAutomationUse,
+  previewAutomationOpenResizeTarget,
   shouldOpenPreviewMiniPlayer,
 } from "./previewAutomationOpenReadiness";
 import {
@@ -359,10 +361,13 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
     async (request: PreviewAutomationRequest): Promise<unknown> => {
       // Session sync and tab creation consume the same budget as overlay registration.
       const hostDeadlineMs = Date.now() + resolveHostWaitBudgetMs(request.timeoutMs);
-      const threadRef: ScopedThreadRef = {
+      // Preview sessions are worktree-scoped: an automation request from any
+      // thread in a checkout drives the worktree's shared session via its
+      // canonical thread id.
+      const threadRef: ScopedThreadRef = resolveWorktreeCanonicalThreadRef({
         environmentId,
         threadId: request.threadId,
-      };
+      });
       let tabId = request.tabId ?? null;
       const browserActivity = { release: null as (() => void) | null };
       try {
@@ -371,7 +376,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
         if (needsSessionSync) {
           const listTarget = {
             environmentId,
-            input: { threadId: request.threadId },
+            input: { threadId: threadRef.threadId },
           } as const;
           registry.refresh(previewEnvironment.list(listTarget));
           const result = await listPreviews(listTarget);
@@ -386,7 +391,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           requestId: request.requestId,
           operation: request.operation,
           environmentId,
-          threadId: request.threadId,
+          threadId: threadRef.threadId,
           tabId,
           bridgeAvailable: Boolean(previewBridge),
         };
@@ -456,7 +461,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               const result = await open({
                 environmentId,
                 input: {
-                  threadId: request.threadId,
+                  threadId: threadRef.threadId,
                   ...(resolvedInputUrl ? { url: resolvedInputUrl } : {}),
                   // An agent that didn't state a size gets the user's
                   // configured default, same as a hand-opened tab.
@@ -493,14 +498,9 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                       activeRuntimeTabId,
                       request,
                     );
-                    return await resize({
-                      environmentId,
-                      input: {
-                        threadId: request.threadId,
-                        tabId: activeTabId,
-                        viewport: defaultViewport,
-                      },
-                    });
+                    return await resize(
+                      previewAutomationOpenResizeTarget(threadRef, activeTabId, defaultViewport),
+                    );
                   },
                 );
                 if (resizeResult._tag === "Failure") {
@@ -608,7 +608,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               const result = await resize({
                 environmentId,
                 input: {
-                  threadId: request.threadId,
+                  threadId: threadRef.threadId,
                   tabId: ready.tabId,
                   viewport: setting,
                 },
@@ -634,7 +634,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                   requestId: request.requestId,
                   operation: request.operation,
                   environmentId,
-                  threadId: request.threadId,
+                  threadId: threadRef.threadId,
                 },
               );
             } catch (cause) {
@@ -654,7 +654,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                   const rollback = await resize({
                     environmentId,
                     input: {
-                      threadId: request.threadId,
+                      threadId: threadRef.threadId,
                       tabId: ready.tabId,
                       viewport: applied.previousSetting,
                     },
@@ -773,7 +773,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                 new PreviewAutomationRecordingNotActiveError({
                   requestId: request.requestId,
                   environmentId,
-                  threadId: request.threadId,
+                  threadId: threadRef.threadId,
                   tabId,
                 }),
               );
@@ -789,7 +789,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           requestId: request.requestId,
           operation: request.operation,
           environmentId,
-          threadId: request.threadId,
+          threadId: threadRef.threadId,
           tabId,
           cause,
         });
