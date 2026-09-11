@@ -101,6 +101,8 @@ model picker is open. Those defaults use `isDesktop` so they do not steal the
 browser's tab-switch shortcuts. Remove that condition in Settings if you want
 the same jumps in a browser.
 
+`chat.newInWorktree` creates another conversation in the current checkout.
+
 Combine keys with `!` for not, `&&` for and, `||` for or, and parentheses:
 
 ```json
