@@ -77,6 +77,7 @@ import {
   ThreadListShowMoreRow,
 } from "./thread-list-items";
 import {
+  ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
@@ -469,6 +470,7 @@ function ThreadNavigationSidebarPane(
         nextSnoozeWakeAt: null,
       };
     return buildThreadListV2Items({
+      groupWorktrees: true,
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
@@ -536,6 +538,7 @@ function ThreadNavigationSidebarPane(
           pendingTask.title.toLocaleLowerCase().includes(v2SearchQuery)),
     );
     const items: SidebarListItem[] = buildThreadListV2ListItems({
+      groupWorktrees: true,
       items: threadListV2Layout.items,
       pendingTasks: v2PendingTasks,
       snoozedCount: threadListV2Layout.snoozedCount,
@@ -780,11 +783,13 @@ function ThreadNavigationSidebarPane(
       }
       if (
         previous.type === "v2-thread" ||
+        previous.type === "v2-worktree" ||
         previous.type === "v2-show-more" ||
         previous.type === "v2-pending" ||
         previous.type === "v2-snoozed-shelf" ||
         previous.type === "v2-settled-shelf" ||
         item.type === "v2-thread" ||
+        item.type === "v2-worktree" ||
         item.type === "v2-show-more" ||
         item.type === "v2-pending" ||
         item.type === "v2-snoozed-shelf" ||
@@ -817,6 +822,21 @@ function ThreadNavigationSidebarPane(
   const renderListItem = useCallback(
     ({ item }: { readonly item: SidebarListItem }) => {
       switch (item.type) {
+        case "v2-worktree": {
+          const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
+          return (
+            <ThreadListV2WorktreeHeader
+              thread={item.thread}
+              count={item.count}
+              projectTitle={
+                projectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
+              }
+              environmentLabel={
+                savedConnectionsById[item.thread.environmentId]?.environmentLabel ?? null
+              }
+            />
+          );
+        }
         case "v2-pending": {
           const pendingScopeKey = scopedProjectKey(
             item.pendingTask.environmentId,
