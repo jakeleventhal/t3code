@@ -110,6 +110,7 @@ export const remoteSchemeForEditor = (id: EditorId): string | undefined => {
 export const buildRemoteOpenUrl = (input: {
   readonly editor: EditorId;
   readonly host: string;
+  readonly username?: string;
   readonly absolutePath: string;
 }): string | undefined => {
   const scheme = remoteSchemeForEditor(input.editor);
@@ -119,7 +120,8 @@ export const buildRemoteOpenUrl = (input: {
   // Windows server paths (`C:\...`) appear as `/C:/...` in vscode-remote URIs.
   const posixPath = input.absolutePath.replaceAll("\\", "/");
   const rootedPath = posixPath.startsWith("/") ? posixPath : `/${posixPath}`;
-  const encodedHost = encodeURIComponent(input.host);
+  const destination = input.username === undefined ? input.host : `${input.username}@${input.host}`;
+  const encodedHost = encodeURIComponent(destination);
   if (input.editor === "zed") {
     // Zed's remote server resolves a rooted path on the system drive, so a
     // Windows `C:\Users\x` must become `/Users/x` (verified in #8938). Other
@@ -145,6 +147,9 @@ export type RemoteOpenTargetKind = typeof RemoteOpenTargetKind.Type;
 export const RemoteOpenTarget = Schema.Struct({
   kind: RemoteOpenTargetKind,
   host: TrimmedNonEmptyString,
+  /** Login account on the environment host. Optional for compatibility with
+      servers that advertised only a hostname. */
+  username: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type RemoteOpenTarget = typeof RemoteOpenTarget.Type;
 
