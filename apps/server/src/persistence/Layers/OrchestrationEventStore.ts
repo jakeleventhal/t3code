@@ -69,6 +69,7 @@ const HasEventAfterRequestSchema = Schema.Struct({
 });
 
 const ReadFromSequenceRequestSchema = Schema.Struct({
+  eventTypes: Schema.optional(Schema.Array(OrchestrationEventType)),
   sequenceExclusive: NonNegativeInt,
   limit: Schema.Number,
 });
@@ -196,6 +197,7 @@ const makeEventStore = Effect.gen(function* () {
           metadata_json AS "metadata"
         FROM orchestration_events
         WHERE sequence > ${request.sequenceExclusive}
+          ${request.eventTypes === undefined ? sql`` : sql`AND ${sql.in("event_type", request.eventTypes)}`}
         ORDER BY sequence ASC
         LIMIT ${request.limit}
       `,
@@ -282,9 +284,10 @@ const makeEventStore = Effect.gen(function* () {
   const readFromSequence: OrchestrationEventStoreShape["readFromSequence"] = (
     sequenceExclusive,
     limit = DEFAULT_READ_FROM_SEQUENCE_LIMIT,
+    eventTypes,
   ) => {
     const normalizedLimit = Math.max(0, Math.floor(limit));
-    if (normalizedLimit === 0) {
+    if (normalizedLimit === 0 || eventTypes?.length === 0) {
       return Stream.empty;
     }
     return Stream.paginate(
@@ -293,6 +296,7 @@ const makeEventStore = Effect.gen(function* () {
         readEventRowsFromSequence({
           sequenceExclusive: cursor,
           limit: Math.min(remaining, READ_PAGE_SIZE),
+          ...(eventTypes === undefined ? {} : { eventTypes }),
         }).pipe(
           Effect.mapError(
             toPersistenceSqlOrDecodeError(

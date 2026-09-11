@@ -302,10 +302,12 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       const params = promptRequest?.params;
       assert.isTrue(typeof params === "object" && params !== null && "prompt" in params);
       if (typeof params === "object" && params !== null && "prompt" in params) {
-        assert.deepStrictEqual((params.prompt as Array<unknown>)[0], {
+        const prompt = params.prompt as Array<{ type: string; text: string }>;
+        assert.deepStrictEqual(prompt[0], {
           type: "text",
           text: "Please /review this and preserve $PATH",
         });
+        assert.include(prompt[1]?.text, "Grok harness");
       }
       assert.equal(originalInput, "Please $review this and preserve $PATH");
 

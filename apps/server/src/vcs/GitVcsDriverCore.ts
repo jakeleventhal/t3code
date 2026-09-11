@@ -524,16 +524,17 @@ const createTrace2Monitor = Effect.fn("createTrace2Monitor")(function* (
       return;
     }
 
-    if (traceRecord.success.child_class !== "hook") {
-      return;
-    }
-
     const event = traceRecord.success.event;
     const childKey = trace2ChildKey(traceRecord.success);
     if (childKey === null) {
       return;
     }
     const started = hookStartByChildKey.get(childKey);
+    // Trace2 child_exit records do not consistently repeat child_class. A
+    // matching tracked child is sufficient to identify the hook we started.
+    if (traceRecord.success.child_class !== "hook" && !(event === "child_exit" && started)) {
+      return;
+    }
     const hookNameFromEvent =
       typeof traceRecord.success.hook_name === "string" ? traceRecord.success.hook_name.trim() : "";
     const hookName = hookNameFromEvent.length > 0 ? hookNameFromEvent : (started?.hookName ?? "");

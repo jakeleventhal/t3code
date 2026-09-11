@@ -850,7 +850,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       reconcileWorkspaceSurfaces: (ref, workspaceSurfacesAvailable) =>
         set((state) =>
-          automaticUpdate(state, scopedThreadKey(ref), (current) => {
+          automaticUpdate(state, ref, (current) => {
             if (workspaceSurfacesAvailable) return current;
             const surfaces = current.surfaces.filter(
               (surface) => surface.kind !== "diff" && surface.kind !== "terminal",

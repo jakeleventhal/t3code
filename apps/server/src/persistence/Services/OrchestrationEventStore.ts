@@ -54,10 +54,12 @@ export interface OrchestrationEventStoreShape {
    * @returns Stream containing ordered events.
    *
    * Reads in fixed-size pages and normalizes non-integer/negative limits.
+   * Optional event types are filtered in SQL before payloads are loaded or decoded.
    */
   readonly readFromSequence: (
     sequenceExclusive: number,
     limit?: number,
+    eventTypes?: ReadonlyArray<OrchestrationEvent["type"]>,
   ) => Stream.Stream<OrchestrationEvent, OrchestrationEventStoreError>;
 
   /** Read one aggregate through a captured global head, without decoding other streams. */

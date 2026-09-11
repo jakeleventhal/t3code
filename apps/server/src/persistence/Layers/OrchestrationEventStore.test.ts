@@ -107,6 +107,38 @@ layer("OrchestrationEventStore", (it) => {
     }),
   );
 
+  it.effect(
+    "filters replay types before paging and counts only matching events toward the limit",
+    () =>
+      Effect.gen(function* () {
+        const eventStore = yield* OrchestrationEventStore;
+        const threadId = ThreadId.make("filtered-replay");
+        const matches: number[] = [];
+        for (let index = 0; index < 503; index++) {
+          const event = messageEvent(threadId, `filtered-message-${index}`);
+          yield* eventStore.append(event);
+          const matching = yield* eventStore.append({
+            ...event,
+            eventId: EventId.make(`filtered-delete-${index}`),
+            type: "thread.deleted",
+            payload: { threadId, deletedAt: event.occurredAt },
+          });
+          matches.push(matching.sequence);
+        }
+        const replayed = yield* Stream.runCollect(
+          eventStore.readFromSequence(matches[0]!, 501, ["thread.deleted"]),
+        );
+        assert.deepEqual(
+          Array.from(replayed, (event) => event.sequence),
+          matches.slice(1, 502),
+        );
+        assert.deepEqual(
+          Array.from(yield* Stream.runCollect(eventStore.readFromSequence(0, 10, []))),
+          [],
+        );
+      }),
+  );
+
   it.effect("fails with PersistenceDecodeError when stored json is invalid", () =>
     Effect.gen(function* () {
       const eventStore = yield* OrchestrationEventStore;
@@ -146,7 +178,7 @@ layer("OrchestrationEventStore", (it) => {
       `;
 
       const replayResult = yield* Effect.result(
-        Stream.runCollect(eventStore.readFromSequence(0, 10)),
+        Stream.runCollect(eventStore.readFromSequence(invalidRows[0]!.sequence - 1, 10)),
       );
       assert.equal(replayResult._tag, "Failure");
       if (replayResult._tag === "Failure") {
@@ -157,6 +189,12 @@ layer("OrchestrationEventStore", (it) => {
           ),
         );
       }
+      // Cleanup must not load or decode unrelated payloads, including malformed
+      // historical events that no longer need to be projected.
+      const filteredReplay = yield* Stream.runCollect(
+        eventStore.readFromSequence(0, 10, ["thread.reverted"]),
+      );
+      assert.deepEqual(Array.from(filteredReplay), []);
       const scopedResult = yield* eventStore
         .readAggregateRange({
           aggregateKind: "project",

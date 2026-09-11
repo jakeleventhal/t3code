@@ -2110,12 +2110,25 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       // Cleanup has its own cursor so retries never have to replay committed text.
       // All message and activity references are current before any files are removed.
       const pendingCleanup = new Map<string, OrchestrationEvent>();
-      let lastEvent: OrchestrationEvent | undefined;
+      // The projectors have caught up. Advance through their common boundary even
+      // when the trailing events need no cleanup, without decoding their payloads.
+      const projectedStates = yield* projectionStateRepository.listAll();
+      const cleanupBoundary = projectedStates
+        .filter((state) => projectors.some((projector) => projector.name === state.projector))
+        .reduce(
+          (oldest, state) =>
+            oldest === undefined || state.lastAppliedSequence < oldest.lastAppliedSequence
+              ? state
+              : oldest,
+          undefined as (typeof projectedStates)[number] | undefined,
+        );
       yield* Stream.runForEach(
-        eventStore.readFromSequence(cleanupStart, Number.MAX_SAFE_INTEGER),
+        eventStore.readFromSequence(cleanupStart, Number.MAX_SAFE_INTEGER, [
+          "thread.reverted",
+          "thread.deleted",
+        ]),
         (event) =>
           Effect.sync(() => {
-            lastEvent = event;
             if (event.type === "thread.reverted" || event.type === "thread.deleted") {
               pendingCleanup.set(`${event.type}:${event.payload.threadId}`, event);
             }
@@ -2133,11 +2146,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         // Leave the cleanup cursor behind this event so the next bootstrap retries it.
         if (!cleaned) return;
       }
-      if (lastEvent) {
+      if (cleanupBoundary) {
         yield* projectionStateRepository.upsert({
           projector: cleanupProjector,
-          lastAppliedSequence: lastEvent.sequence,
-          updatedAt: lastEvent.occurredAt,
+          lastAppliedSequence: cleanupBoundary.lastAppliedSequence,
+          updatedAt: cleanupBoundary.updatedAt,
         });
       }
     }).pipe(

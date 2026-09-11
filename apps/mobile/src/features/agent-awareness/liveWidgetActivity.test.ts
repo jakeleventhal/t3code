@@ -46,6 +46,7 @@ function thread(overrides: Partial<OrchestrationThreadShell> = {}): Orchestratio
     interactionMode: "default",
     branch: null,
     worktreePath: null,
+    pullRequests: [],
     latestTurn: null,
     createdAt: NOW,
     updatedAt: NOW,

@@ -216,16 +216,16 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
           }
 
           const parsed = parseBase64DataUrl(attachment.dataUrl);
-          if (!parsed || (attachment.type === "image" && !parsed.mimeType.startsWith("image/"))) {
+          if (!parsed || !parsed.mimeType.startsWith("image/")) {
             return yield* new OrchestrationDispatchCommandError({
-              message: `Invalid ${attachment.type} attachment payload for '${attachment.name}'.`,
+              message: `Invalid image attachment payload for '${attachment.name}'.`,
             });
           }
 
           const bytes = Buffer.from(parsed.base64, "base64");
           if (bytes.byteLength === 0 || bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
             return yield* new OrchestrationDispatchCommandError({
-              message: `Attachment '${attachment.name}' is empty or too large.`,
+              message: `Image attachment '${attachment.name}' is empty or too large.`,
             });
           }
 
@@ -237,7 +237,7 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
           }
 
           const persistedAttachment = {
-            type: attachment.type,
+            type: "image" as const,
             id: attachmentId,
             name: attachment.name,
             mimeType: parsed.mimeType.toLowerCase(),

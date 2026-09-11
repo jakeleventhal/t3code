@@ -30,9 +30,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
-import { appendFileAttachmentPromptText } from "../../attachmentPrompt.ts";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
-import { ServerConfig } from "../../config.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import {
   ProviderAdapterRequestError,
@@ -331,7 +329,6 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
-  const serverConfig = yield* ServerConfig;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
@@ -940,18 +937,8 @@ const make = Effect.gen(function* () {
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
-    const normalizedInput = toNonEmptyProviderInput(
-      appendFileAttachmentPromptText({
-        text: input.messageText,
-        attachmentsDir: serverConfig.attachmentsDir,
-        attachments: input.attachments ?? [],
-      }),
-    );
-    // Only image attachments go to the provider as content blocks; file
-    // attachments are delivered by path in the prompt text above.
-    const normalizedAttachments = (input.attachments ?? []).filter(
-      (attachment) => attachment.type === "image",
-    );
+    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()
       .pipe(

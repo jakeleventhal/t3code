@@ -664,7 +664,7 @@ describe("buildBrowseGroups", () => {
 });
 
 describe("buildProjectActionItems", () => {
-  const makeProject = (overrides: Partial<Project> = {}): Project =>
+  const makeProject = (overrides: Partial<Project> = {}): Project & { displayName: string } =>
     ({
       id: ProjectId.make("project-1"),
       environmentId: EnvironmentId.make("env-1"),
@@ -675,7 +675,8 @@ describe("buildProjectActionItems", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
       ...overrides,
-    }) as Project;
+      displayName: overrides.title ?? "Chats",
+    }) as Project & { displayName: string };
 
   it("labels the chats pseudo-project and hides its workspace path", () => {
     const [item] = buildProjectActionItems({

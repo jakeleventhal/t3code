@@ -1,3 +1,4 @@
+import type { ProjectKind } from "@t3tools/contracts";
 import {
   formatDiscoveredServerHost,
   selectPreferredDiscoveredServer,
@@ -9,7 +10,6 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -295,6 +295,7 @@ function SidebarThreadTooltip({
   projectCwd,
   projectFaviconPath,
   projectIcon,
+  projectKind,
   environmentLabel,
   environmentMachine,
   providerEntry,
@@ -311,6 +312,7 @@ function SidebarThreadTooltip({
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectIcon: ProjectIconOverride | null;
+  projectKind?: ProjectKind | undefined;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   providerEntry: ProviderInstanceEntry | null;
@@ -346,6 +348,7 @@ function SidebarThreadTooltip({
                   title: projectTitle ?? "",
                   faviconPath: projectFaviconPath,
                   projectIcon: projectIcon,
+                  kind: projectKind,
                 }}
                 className="size-3 shrink-0 stroke-muted-foreground"
               />
@@ -520,6 +523,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectIcon: ProjectIconOverride | null;
+  projectKind?: ProjectKind | undefined;
   isActive: boolean;
   onNavigate: (draftId: DraftId) => void;
   onDiscard: (draftId: DraftId) => void;
@@ -589,6 +593,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                 title: props.projectTitle ?? "",
                 faviconPath: props.projectFaviconPath,
                 projectIcon: props.projectIcon,
+                kind: props.projectKind,
               }}
               className="size-4 shrink-0"
             />
@@ -632,6 +637,7 @@ interface SidebarDraftRowData {
 // re-render only this block, never the whole sidebar. Vanishes at count 0.
 const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectTitleByKey: ReadonlyMap<string, string>;
+  projectKindByKey: ReadonlyMap<string, ProjectKind | undefined>;
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   projectCwdByKey: ReadonlyMap<string, string>;
   projectFaviconPathByKey: ReadonlyMap<string, string | null | undefined>;
@@ -729,6 +735,7 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
             draftId={draftId}
             session={session}
             composer={composer}
+            projectKind={props.projectKindByKey.get(projectKey)}
             projectTitle={props.projectTitleByKey.get(projectKey) ?? null}
             projectDisplayName={props.projectDisplayNameByKey.get(projectKey) ?? null}
             projectCwd={props.projectCwdByKey.get(projectKey) ?? null}
@@ -777,6 +784,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectIcon: ProjectIconOverride | null;
+  projectKind?: ProjectKind | undefined;
   projectTitle: string | null;
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
@@ -923,6 +931,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
       projectCwd={props.projectCwd}
       projectFaviconPath={props.projectFaviconPath}
       projectIcon={props.projectIcon}
+      projectKind={props.projectKind}
       environmentLabel={props.environmentLabel}
       environmentMachine={props.environmentMachine}
       providerEntry={providerEntry}
@@ -1206,6 +1215,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
                 title: props.projectTitle ?? "",
                 faviconPath: props.projectFaviconPath,
                 projectIcon: props.projectIcon,
+                kind: props.projectKind,
               }}
               className="size-4"
             />
@@ -1337,6 +1347,7 @@ const SidebarV2CardThreadRow = memo(function SidebarV2CardThreadRow(props: {
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectIcon: ProjectIconOverride | null;
+  projectKind?: ProjectKind | undefined;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   branchMismatch: { threadBranch: string; currentBranch: string } | null;
@@ -1646,6 +1657,7 @@ const SidebarV2CardThreadRow = memo(function SidebarV2CardThreadRow(props: {
         projectCwd={props.projectCwd}
         projectFaviconPath={props.projectFaviconPath}
         projectIcon={props.projectIcon}
+        projectKind={props.projectKind}
         environmentLabel={props.environmentLabel}
         environmentMachine={props.environmentMachine}
         providerEntry={providerEntry}
@@ -1679,6 +1691,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectIcon: ProjectIconOverride | null;
+  projectKind?: ProjectKind | undefined;
   projectTitle: string | null;
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
@@ -1734,12 +1747,13 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
     environmentId,
     threadId: canonicalThreadRef?.threadId ?? null,
   });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
   const handleOpenDiscoveredPort = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const port = selectPreferredDiscoveredServer(discoveredPorts);
+      const port = preferredDiscoveredPort;
       if (!port) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1768,7 +1782,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
         );
       })();
     },
-    [activeMember, discoveredPorts, newestRef, onThreadActivate, openPreview],
+    [activeMember, preferredDiscoveredPort, newestRef, onThreadActivate, openPreview],
   );
 
   const anySelected = useThreadSelectionStore((state) =>
@@ -2004,6 +2018,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                 title: props.projectTitle ?? "",
                 faviconPath: props.projectFaviconPath,
                 projectIcon: props.projectIcon,
+                kind: props.projectKind,
               }}
               className="size-4 shrink-0"
             />
@@ -2034,13 +2049,13 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                 <TooltipPopup side="top">Terminal process running</TooltipPopup>
               </Tooltip>
             ) : null}
-            {discoveredPorts.length > 0 ? (
+            {preferredDiscoveredPort ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <button
                       type="button"
-                      aria-label={`Open localhost:${selectPreferredDiscoveredServer(discoveredPorts)?.port ?? ""}`}
+                      aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
                       data-testid="sidebar-v2-worktree-devserver-indicator"
                       className="inline-flex shrink-0 cursor-pointer items-center justify-center text-emerald-600 outline-hidden focus-visible:ring-1 focus-visible:ring-ring dark:text-emerald-400"
                       onClick={handleOpenDiscoveredPort}
@@ -2050,7 +2065,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   <Globe2Icon className="size-3" />
                 </TooltipTrigger>
                 <TooltipPopup side="top">
-                  Open localhost:{selectPreferredDiscoveredServer(discoveredPorts)?.port}
+                  Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
                   {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
                 </TooltipPopup>
               </Tooltip>
@@ -2135,6 +2150,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   projectCwd={props.projectCwd}
                   projectFaviconPath={props.projectFaviconPath}
                   projectIcon={props.projectIcon}
+                  projectKind={props.projectKind}
                   environmentLabel={props.environmentLabel}
                   environmentMachine={props.environmentMachine}
                   branchMismatch={branchMismatch}
@@ -2420,6 +2436,11 @@ export default function SidebarV2() {
     [projects],
   );
   // Icons use saved titles. Group labels can include a repository owner or a different title.
+  const projectKindByKey = useMemo(
+    () =>
+      new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project.kind])),
+    [projects],
+  );
   const projectTitleByKey = useMemo(
     () =>
       new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project.title])),
@@ -4271,6 +4292,9 @@ export default function SidebarV2() {
                               `${representative.environmentId}:${representative.projectId}`,
                             ) ?? null
                           }
+                          projectKind={projectKindByKey.get(
+                            `${representative.environmentId}:${representative.projectId}`,
+                          )}
                           projectTitle={
                             projectTitleByKey.get(
                               `${representative.environmentId}:${representative.projectId}`,
@@ -4322,6 +4346,7 @@ export default function SidebarV2() {
                         <SidebarDraftBlock
                           key="draft-sessions"
                           projectTitleByKey={projectTitleByKey}
+                          projectKindByKey={projectKindByKey}
                           projectDisplayNameByKey={projectDisplayNameByKey}
                           projectCwdByKey={projectCwdByKey}
                           projectFaviconPathByKey={projectFaviconPathByKey}
@@ -4380,6 +4405,7 @@ export default function SidebarV2() {
                               projectFaviconPathByKey.get(projectLookupKey) ?? null
                             }
                             projectIcon={projectIconByKey.get(projectLookupKey) ?? null}
+                            projectKind={projectKindByKey.get(projectLookupKey)}
                             projectTitle={projectTitleByKey.get(projectLookupKey) ?? null}
                             projectDisplayName={
                               projectDisplayNameByKey.get(projectLookupKey) ?? null
