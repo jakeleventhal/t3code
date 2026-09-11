@@ -13,6 +13,7 @@ import {
   ThreadId,
   type ProjectScript,
 } from "@t3tools/contracts";
+import { isChatsProject } from "@t3tools/client-runtime/state/models";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
@@ -244,9 +245,16 @@ function ThreadRouteContent(
   const [inspectorSelection, setInspectorSelection] = useState<ThreadInspectorSelection | null>(
     () => (props.renderInspector ? { routeThreadIdentity, mode: "route" } : null),
   );
+  const selectedProjectIsChats = isChatsProject(selectedThreadProject);
   const inspectorMode = (() => {
     if (inspectorSelection?.routeThreadIdentity === routeThreadIdentity) {
       if (inspectorSelection.mode === "files" && selectedThreadCwd === null) {
+        return null;
+      }
+      if (
+        selectedProjectIsChats &&
+        (inspectorSelection.mode === "files" || inspectorSelection.mode === "git")
+      ) {
         return null;
       }
       return inspectorSelection.mode;
@@ -256,7 +264,10 @@ function ThreadRouteContent(
   useEffect(() => {
     if (
       fileInspector.supported &&
-      selectedThreadCwd === null &&
+      // Chat threads suppress the files/git inspectors while keeping a real
+      // workspace root, so the pane has to close on the kind too — otherwise
+      // switching into one leaves an empty trailing column.
+      (selectedThreadCwd === null || selectedProjectIsChats) &&
       inspectorMode === null &&
       panes.auxiliaryPaneVisible
     ) {
@@ -266,6 +277,7 @@ function ThreadRouteContent(
     fileInspector.supported,
     inspectorMode,
     panes.auxiliaryPaneVisible,
+    selectedProjectIsChats,
     selectedThreadCwd,
     toggleAuxiliaryPane,
   ]);
@@ -632,27 +644,35 @@ function ThreadRouteContent(
     environmentId: environmentIdRaw ?? "",
     threadId: threadId ?? "",
     auxiliaryPaneControl:
-      !layout.usesSplitView && fileInspector.supported && selectedThreadCwd !== null
+      !layout.usesSplitView &&
+      fileInspector.supported &&
+      selectedThreadCwd !== null &&
+      !selectedProjectIsChats
         ? {
             accessibilityLabel: "Toggle inspector",
             onPress: handleToggleInspector,
           }
         : undefined,
     onOpenFilesInspector:
-      fileInspector.supported && selectedThreadCwd !== null ? handleOpenFilesInspector : undefined,
-    onOpenGitInspector: fileInspector.supported ? handleOpenGitInspector : undefined,
+      fileInspector.supported && selectedThreadCwd !== null && !selectedProjectIsChats
+        ? handleOpenFilesInspector
+        : undefined,
+    onOpenGitInspector:
+      fileInspector.supported && !selectedProjectIsChats ? handleOpenGitInspector : undefined,
     currentBranch: selectedThread?.branch ?? null,
     gitStatus: gitStatus.data,
     gitOperationLabel: gitState.gitOperationLabel,
-    canOpenTerminal: Boolean(selectedThreadProject?.workspaceRoot),
-    canOpenFiles: Boolean(selectedThreadProject?.workspaceRoot),
-    projectScripts: selectedThreadProject
-      ? resolveProjectScripts(
-          routeEnvironmentRuntime?.serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS,
-          selectedThreadProject,
-        )
-      : [],
+    canOpenTerminal: Boolean(selectedThreadProject?.workspaceRoot) && !selectedProjectIsChats,
+    canOpenFiles: Boolean(selectedThreadProject?.workspaceRoot) && !selectedProjectIsChats,
+    projectScripts:
+      selectedThreadProject && !selectedProjectIsChats
+        ? resolveProjectScripts(
+            routeEnvironmentRuntime?.serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS,
+            selectedThreadProject,
+          )
+        : [],
     terminalSessions: terminalMenuSessions,
+    showActionControls: !selectedProjectIsChats,
     showDirectFileControl: layout.usesSplitView,
     onOpenTerminal: handleOpenTerminal,
     onOpenNewTerminal: handleOpenNewTerminal,
@@ -714,6 +734,10 @@ function ThreadRouteContent(
         onPress: props.onReturnToThread,
       });
     }
+    // The Chat pseudo-project has no codebase behind it, so the Android
+    // header keeps only the navigation action above. Its workspace root is a
+    // real directory, so the cwd/workspaceRoot guards below never catch it.
+    if (selectedProjectIsChats) return actions;
     if (selectedThreadCwd !== null) {
       actions.push({
         accessibilityLabel: "Open files",
@@ -748,7 +772,9 @@ function ThreadRouteContent(
     handleOpenGitInspector,
     handleToggleInspector,
     props.onReturnToThread,
+    selectedProjectIsChats,
     selectedThreadCwd,
+    selectedProjectIsChats,
     selectedThreadProject?.workspaceRoot,
   ]);
 
@@ -838,7 +864,10 @@ function ThreadRouteContent(
   const serverConfig = routeEnvironmentRuntime?.serverConfig ?? null;
   const renderThreadRouteBody = (showActionControls: boolean) => (
     <>
-      <ThreadGitControls {...threadGitControlProps} showActionControls={showActionControls} />
+      <ThreadGitControls
+        {...threadGitControlProps}
+        showActionControls={showActionControls && !selectedProjectIsChats}
+      />
 
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 

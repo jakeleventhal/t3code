@@ -19,8 +19,8 @@ import {
   effectiveSnoozed,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
+import { isChatsProject, type EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { resolveSettledThreadTimestamp } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -2435,6 +2435,7 @@ export default function Sidebar() {
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
+      if (isChatsProject(projectGroup)) return;
       if (isMobile) {
         setOpenMobile(false);
       }
@@ -4504,7 +4505,7 @@ export default function Sidebar() {
                               <FolderIcon className="size-4 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                            {project ? (
+                            {project && !isChatsProject(project) ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"

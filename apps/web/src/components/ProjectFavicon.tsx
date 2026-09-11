@@ -5,6 +5,7 @@ import {
   isProjectFaviconFallbackUrl,
 } from "@t3tools/shared/projectFavicon";
 import {
+  MessageCircleIcon,
   BotIcon,
   BookOpenIcon,
   BracesIcon,
@@ -101,7 +102,7 @@ const PROJECT_ICON_COLOR_BY_NAME: Record<ProjectIconName, ProjectIconColor> = {
 // changes the automatic icon, which is how the command palette drifted once.
 export type ProjectFaviconProject = Pick<
   EnvironmentProject,
-  "environmentId" | "workspaceRoot" | "title" | "faviconPath" | "projectIcon"
+  "environmentId" | "workspaceRoot" | "title" | "faviconPath" | "projectIcon" | "kind"
 >;
 
 export function ProjectFavicon(input: {
@@ -117,6 +118,9 @@ export function ProjectFavicon(input: {
       faviconPath: project.faviconPath,
     }),
   );
+  if (project.kind === "chats") {
+    return <ProjectFaviconFallback className={input.className} icon={MessageCircleIcon} />;
+  }
   if (project.projectIcon?.kind === "emoji") {
     return <ProjectFaviconFallback className={input.className} emoji={project.projectIcon.emoji} />;
   }
