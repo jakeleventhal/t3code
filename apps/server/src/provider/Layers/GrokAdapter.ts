@@ -9,6 +9,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RuntimeRequestId,
+  type ServerProviderSkill,
   type ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -16,6 +17,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { stableStringify } from "@t3tools/shared/relaySigning";
 import * as Clock from "effect/Clock";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -47,6 +49,7 @@ import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  type ProviderDriverError,
 } from "../Errors.ts";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
@@ -110,6 +113,50 @@ export interface GrokAdapterLiveOptions {
   readonly turnInactivityTimeoutMs?: number;
   /** Override the longer active-tool liveness timeout in focused tests. */
   readonly activeToolInactivityTimeoutMs?: number;
+  readonly listSkills?: (
+    cwd: string,
+  ) => Effect.Effect<ReadonlyArray<ServerProviderSkill>, ProviderDriverError>;
+}
+
+// Provider requests contain only flattened prompt text, so an inserted skill
+// chip cannot be distinguished from manually typed shell syntax here. Grok's
+// normal skill names are lowercase or qualified; reserve conventional
+// all-uppercase identifiers for environment variables so `$PATH` does not run
+// (or fail on) `grok inspect`. An all-uppercase skill can still be rewritten
+// when discovery is triggered by another normal skill token in the prompt.
+const ENVIRONMENT_VARIABLE_STYLE_TOKEN = /^[A-Z][A-Z0-9_]*$/;
+
+function submittedSkillTokens(input: string) {
+  return collectComposerInlineTokens(input, { includeTrailingSkillToken: true }).filter(
+    (token) => token.type === "skill",
+  );
+}
+
+function potentialGrokSkillTokens(input: string) {
+  return submittedSkillTokens(input).filter(
+    (token) => !ENVIRONMENT_VARIABLE_STYLE_TOKEN.test(token.value),
+  );
+}
+
+export function rewriteGrokSkillReferences(
+  input: string,
+  skills: ReadonlyArray<ServerProviderSkill>,
+): string {
+  const enabledSkillNames = new Set(
+    skills.filter((skill) => skill.enabled).map((skill) => skill.name),
+  );
+  const replacements = submittedSkillTokens(input).filter((token) =>
+    enabledSkillNames.has(token.value),
+  );
+  if (replacements.length === 0) {
+    return input;
+  }
+
+  let rewritten = input;
+  for (const token of replacements.toReversed()) {
+    rewritten = `${rewritten.slice(0, token.start)}/${token.value}${rewritten.slice(token.end)}`;
+  }
+  return rewritten;
 }
 
 interface PendingApproval {
@@ -1524,9 +1571,48 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 "reasoningEffort",
               );
 
-              const text = input.input?.trim();
-              // Grok ingests images only. Generic files reach the agent
-              // through the path line ProviderService puts in the prompt.
+              const currentModelId = yield* applyGrokAcpModelSelection({
+                runtime: ctx.acp,
+                currentModelId: ctx.currentModelId,
+                currentReasoningEffort: ctx.currentReasoningEffort,
+                requestedModelId: requestedTurnModelId,
+                requestedReasoningEffort: requestedTurnReasoningEffort,
+                mapError: (cause) =>
+                  mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_model", cause),
+              });
+              // ACP has already committed the model switch at this point. Keep
+              // both the internal comparison state and the public snapshot in
+              // sync even if later prompt preparation (for example, skill
+              // discovery) fails.
+              ctx.currentModelId = currentModelId;
+              if (requestedTurnReasoningEffort !== undefined) {
+                ctx.currentReasoningEffort = normalizeGrokReasoningEffort(
+                  requestedTurnReasoningEffort,
+                );
+              }
+              const displayModel = currentModelId
+                ? resolveGrokAcpBaseModelId(currentModelId)
+                : undefined;
+              if (displayModel) {
+                ctx.session = { ...ctx.session, model: displayModel };
+              }
+
+              const rawText = input.input?.trim();
+              const text =
+                rawText && options?.listSkills && potentialGrokSkillTokens(rawText).length > 0
+                  ? yield* options.listSkills(ctx.session.cwd ?? "").pipe(
+                      Effect.map((skills) => rewriteGrokSkillReferences(rawText, skills)),
+                      Effect.mapError(
+                        (cause) =>
+                          new ProviderAdapterRequestError({
+                            provider: PROVIDER,
+                            method: "skills/list",
+                            detail: "Failed to resolve Grok skill references for this prompt.",
+                            cause,
+                          }),
+                      ),
+                    )
+                  : rawText;
               const imagePromptParts = yield* Effect.forEach(
                 (input.attachments ?? []).filter((attachment) => attachment.type === "image"),
                 (attachment) =>
@@ -1573,24 +1659,6 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 });
               }
 
-              const currentModelId = yield* applyGrokAcpModelSelection({
-                runtime: ctx.acp,
-                currentModelId: ctx.currentModelId,
-                currentReasoningEffort: ctx.currentReasoningEffort,
-                requestedModelId: requestedTurnModelId,
-                requestedReasoningEffort: requestedTurnReasoningEffort,
-                mapError: (cause) =>
-                  mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_model", cause),
-              });
-              ctx.currentModelId = currentModelId;
-              if (requestedTurnReasoningEffort !== undefined) {
-                ctx.currentReasoningEffort = normalizeGrokReasoningEffort(
-                  requestedTurnReasoningEffort,
-                );
-              }
-              const displayModel = currentModelId
-                ? resolveGrokAcpBaseModelId(currentModelId)
-                : undefined;
               const runtimeInstructions = buildRuntimeInstructions({
                 harness: "Grok",
                 model: displayModel,
