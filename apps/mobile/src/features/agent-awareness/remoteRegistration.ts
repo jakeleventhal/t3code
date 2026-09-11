@@ -37,7 +37,10 @@ import {
 } from "../../persistence/imperative";
 import AgentActivity, { type AgentActivityProps } from "../../widgets/AgentActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import {
+  supportsAgentAwarenessLiveActivities,
+  supportsAgentAwarenessNotifications,
+} from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 
 const REMOTE_ACTIVITY_REGISTRATION_RETRY_MS = 15_000;
@@ -155,11 +158,21 @@ function readRelayConfig(): { readonly url: string } | null {
 }
 
 function canRegisterRemoteLiveActivities(): boolean {
-  return Platform.OS === "ios";
+  return Platform.OS === "ios" && supportsAgentAwarenessLiveActivities();
+}
+
+function canRegisterAgentAwarenessDevice(): boolean {
+  return (
+    Platform.OS === "ios" &&
+    (supportsAgentAwarenessNotifications() || supportsAgentAwarenessLiveActivities())
+  );
 }
 
 function canRegisterPushNotifications(): boolean {
-  return Platform.OS === "ios" || Platform.OS === "android";
+  return (
+    (Platform.OS === "android" && supportsAgentAwarenessNotifications()) ||
+    canRegisterAgentAwarenessDevice()
+  );
 }
 
 export function shouldRegisterAgentAwarenessDeviceForProvider(
@@ -262,7 +275,7 @@ function iosMajorVersion(): number {
 
 function nativePushTokenRegistration(observedPushToken?: string) {
   return Effect.gen(function* () {
-    if (!canRegisterPushNotifications() || !supportsAgentAwarenessPush()) {
+    if (!canRegisterPushNotifications() || !supportsAgentAwarenessNotifications()) {
       return { notificationsEnabled: false, pushToken: null };
     }
     const permissions = yield* Effect.tryPromise({
@@ -776,7 +789,12 @@ function registerDevice(
         appVersion: Constants.expoConfig?.version,
         ...(bundleId ? { bundleId } : {}),
         ...(Platform.OS === "ios"
-          ? { apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant) }
+          ? {
+              apsEnvironment: resolveApsEnvironment(
+                Constants.expoConfig?.extra?.appVariant,
+                Constants.expoConfig?.extra?.iosPersonalTeamBuild === true,
+              ),
+            }
           : {}),
         ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
         notificationsEnabled: pushTokenRegistration.notificationsEnabled,
