@@ -35,7 +35,9 @@ import {
 } from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { useRightPanelStore } from "../rightPanelStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
+import { resolveWorktreeCanonicalThreadRef, threadWorktreeScopeKey } from "../worktreeScope";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
@@ -157,6 +159,16 @@ export async function requestThreadUnpinConfirmation(input: {
   );
 }
 
+export function isFinalWorktreeThreadAfterDelete(
+  threadId: ThreadId,
+  worktreeThreadIds: ReadonlyArray<ThreadId>,
+  alreadyDeletedThreadIds: ReadonlySet<ThreadId>,
+): boolean {
+  return worktreeThreadIds.every(
+    (candidateId) => candidateId === threadId || alreadyDeletedThreadIds.has(candidateId),
+  );
+}
+
 /** Report navigation separately so a completed deletion can still finish worktree cleanup. */
 export async function navigateAfterThreadDeletion(navigate: () => Promise<void>) {
   const result = await settlePromise(navigate);
@@ -221,8 +233,13 @@ export function useThreadActions() {
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
   );
-  const clearTerminalUiState = useTerminalUiStateStore((state) => state.clearTerminalUiState);
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
+  const clearTerminalUiStateForKey = useTerminalUiStateStore(
+    (state) => state.clearTerminalUiStateForKey,
+  );
+  const removeTerminalSurfacesForKey = useRightPanelStore(
+    (state) => state.removeTerminalSurfacesForKey,
+  );
   const router = useRouter();
   const handleNewThread = useNewThreadHandler();
   // Keep a ref so archiveThread can call handleNewThread without appearing in
@@ -264,6 +281,15 @@ export function useThreadActions() {
       }
 
       const currentRouteThreadRef = getCurrentRouteThreadRef();
+      const worktreeScopeKey = threadWorktreeScopeKey(thread);
+      const worktreeHasOtherActiveThread = readEnvironmentThreadRefs(threadRef.environmentId).some(
+        (candidateRef) => {
+          if (candidateRef.threadId === threadRef.threadId) return false;
+          const candidate = readThreadShell(candidateRef);
+          return candidate !== null && threadWorktreeScopeKey(candidate) === worktreeScopeKey;
+        },
+      );
+      const canonicalThreadRef = resolveWorktreeCanonicalThreadRef(threadRef);
       const shouldNavigateToDraft =
         currentRouteThreadRef?.threadId === threadRef.threadId &&
         currentRouteThreadRef.environmentId === threadRef.environmentId;
@@ -280,6 +306,14 @@ export function useThreadActions() {
       }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       opts.onArchived?.();
+      if (!worktreeHasOtherActiveThread) {
+        await closeTerminal({
+          environmentId: canonicalThreadRef.environmentId,
+          input: { threadId: canonicalThreadRef.threadId },
+        });
+        clearTerminalUiStateForKey(worktreeScopeKey);
+        removeTerminalSurfacesForKey(worktreeScopeKey);
+      }
 
       if (shouldNavigateToDraft) {
         const navigationResult = await settlePromise(() =>
@@ -293,7 +327,15 @@ export function useThreadActions() {
 
       return archiveResult;
     },
-    [archiveThreadMutation, getCurrentRouteThreadRef, markThreadVisited, resolveThreadTarget],
+    [
+      archiveThreadMutation,
+      clearTerminalUiStateForKey,
+      closeTerminal,
+      getCurrentRouteThreadRef,
+      markThreadVisited,
+      removeTerminalSurfacesForKey,
+      resolveThreadTarget,
+    ],
   );
 
   const unarchiveThread = useCallback(
@@ -346,6 +388,16 @@ export function useThreadActions() {
         deletedIds && deletedIds.size > 0
           ? threads.filter((entry) => entry.id === threadRef.threadId || !deletedIds.has(entry.id))
           : threads;
+      const worktreeScopeKey = threadWorktreeScopeKey(thread);
+      const worktreeThreads = threads.filter(
+        (entry) => threadWorktreeScopeKey(entry) === worktreeScopeKey,
+      );
+      const shouldCleanUpWorktreeResources = isFinalWorktreeThreadAfterDelete(
+        threadRef.threadId,
+        worktreeThreads.map((entry) => entry.id),
+        deletedIds ?? new Set<ThreadId>(),
+      );
+      const canonicalThreadRef = resolveWorktreeCanonicalThreadRef(threadRef);
       const orphanedWorktreePath = getOrphanedWorktreePathForThread(
         survivingThreads,
         threadRef.threadId,
@@ -381,11 +433,6 @@ export function useThreadActions() {
         });
       }
 
-      await closeTerminal({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, deleteHistory: true },
-      });
-
       const deletedThreadIds = deletedIds ?? new Set<ThreadId>();
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToFallback =
@@ -404,6 +451,14 @@ export function useThreadActions() {
       if (deleteResult._tag === "Failure") {
         return deleteResult;
       }
+      if (shouldCleanUpWorktreeResources) {
+        await closeTerminal({
+          environmentId: canonicalThreadRef.environmentId,
+          input: { threadId: canonicalThreadRef.threadId, deleteHistory: true },
+        });
+        clearTerminalUiStateForKey(worktreeScopeKey);
+        removeTerminalSurfacesForKey(worktreeScopeKey);
+      }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       releaseComposerDraftUploads(threadRef);
       clearComposerDraftForThread(threadRef);
@@ -411,8 +466,6 @@ export function useThreadActions() {
         scopeProjectRef(threadRef.environmentId, thread.projectId),
         threadRef,
       );
-      clearTerminalUiState(threadRef);
-
       if (shouldNavigateToFallback) {
         const fallbackThread = fallbackThreadId
           ? readThreadShell(scopeThreadRef(threadRef.environmentId, fallbackThreadId))
@@ -484,11 +537,12 @@ export function useThreadActions() {
     [
       clearComposerDraftForThread,
       clearProjectDraftThreadById,
-      clearTerminalUiState,
+      clearTerminalUiStateForKey,
       closeTerminal,
       deleteThreadMutation,
       getCurrentRouteThreadRef,
       refreshVcsStatus,
+      removeTerminalSurfacesForKey,
       removeWorktree,
       router,
       resolveThreadTarget,

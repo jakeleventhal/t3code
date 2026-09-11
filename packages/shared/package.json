@@ -279,6 +279,10 @@
       "types": "./src/nodeSqliteClient.ts",
       "import": "./src/nodeSqliteClient.ts"
     },
+    "./worktreeResource": {
+      "types": "./src/worktreeResource.ts",
+      "import": "./src/worktreeResource.ts"
+    },
     "./hostClassification": {
       "types": "./src/hostClassification.ts",
       "import": "./src/hostClassification.ts"

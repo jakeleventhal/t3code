@@ -19,6 +19,7 @@ import {
   usePreviewMiniPlayerStore,
 } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { useWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 import { previewBridge } from "./previewBridge";
 import {
@@ -73,8 +74,9 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
     selectThreadPreviewMiniPlayer(state.byThreadKey, threadRef),
   );
   const previewState = useThreadPreviewState(threadRef);
+  const canonicalThreadRef = useWorktreeCanonicalThreadRef(threadRef) ?? threadRef;
   const snapshot = previewState.sessions[tabId] ?? null;
-  const runtimeTabId = previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId);
+  const runtimeTabId = previewRuntimeTabId(canonicalThreadRef, previewState.serverEpoch, tabId);
   const desktopOverlay = previewState.desktopByTabId[tabId] ?? null;
   const fittedSourceContent = useBrowserSurfaceStore(
     (state) => state.byTabId[runtimeTabId]?.fittedSourceContent ?? null,
