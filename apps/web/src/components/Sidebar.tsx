@@ -1,3 +1,7 @@
+import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
 import {
@@ -1735,7 +1739,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
   });
   const handleOpenDiscoveredPort = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const port = discoveredPorts[0];
+      const port = selectPreferredDiscoveredServer(discoveredPorts);
       if (!port) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2036,7 +2040,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   render={
                     <button
                       type="button"
-                      aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
+                      aria-label={`Open localhost:${selectPreferredDiscoveredServer(discoveredPorts)?.port ?? ""}`}
                       data-testid="sidebar-v2-worktree-devserver-indicator"
                       className="inline-flex shrink-0 cursor-pointer items-center justify-center text-emerald-600 outline-hidden focus-visible:ring-1 focus-visible:ring-ring dark:text-emerald-400"
                       onClick={handleOpenDiscoveredPort}
@@ -2046,7 +2050,7 @@ const SidebarV2WorktreeCard = memo(function SidebarV2WorktreeCard(props: {
                   <Globe2Icon className="size-3" />
                 </TooltipTrigger>
                 <TooltipPopup side="top">
-                  Open localhost:{discoveredPorts[0]?.port}
+                  Open localhost:{selectPreferredDiscoveredServer(discoveredPorts)?.port}
                   {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
                 </TooltipPopup>
               </Tooltip>
