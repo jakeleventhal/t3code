@@ -31,6 +31,7 @@ import { threadListEnvironmentsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
+  ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
@@ -342,7 +343,7 @@ export function HomeScreen(props: HomeScreenProps) {
           ),
     [v2ScopedProjectGroup],
   );
-  // Thread List v2 (beta): one flat list in creation order, no grouping.
+  // Thread List v2 groups conversations by checkout across connected environments.
   // Settled threads collapse into a recency tail below the card block.
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells — no snapshot merging or
@@ -485,6 +486,7 @@ export function HomeScreen(props: HomeScreenProps) {
     // Settled threads are live shells; archived threads keep their original
     // "hidden from lists" meaning.
     return buildThreadListV2Items({
+      groupWorktrees: true,
       pendingOrder,
       threads: props.threads.filter((thread) => thread.archivedAt === null),
       environmentId: props.selectedEnvironmentId,
@@ -553,6 +555,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const threadListV2Items = useMemo(
     () =>
       buildThreadListV2ListItems({
+        groupWorktrees: true,
         items: threadListV2Layout.items,
         pendingTasks: v2PendingTasks,
         snoozedCount: threadListV2Layout.snoozedCount,
@@ -584,6 +587,21 @@ export function HomeScreen(props: HomeScreenProps) {
 
   const renderV2Item = useCallback(
     ({ item }: { readonly item: ThreadListV2ListItem }) => {
+      if (item.type === "v2-worktree") {
+        const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
+        return (
+          <ThreadListV2WorktreeHeader
+            thread={item.thread}
+            count={item.count}
+            projectTitle={
+              v2ProjectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
+            }
+            environmentLabel={
+              props.savedConnectionsById[item.thread.environmentId]?.environmentLabel ?? null
+            }
+          />
+        );
+      }
       if (item.type === "v2-pending") {
         const pendingScopeKey = scopedProjectKey(
           item.pendingTask.environmentId,

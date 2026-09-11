@@ -1,5 +1,7 @@
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
+import { buildSidebarWorktreeGroups, sidebarThreadKey } from "./SidebarV2.logic";
+import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import { setThreadChangeRequestSnapshot } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
@@ -1129,7 +1131,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const openPrLink = useOpenPrLink();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
-    threadId: thread.id,
+    threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
   });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
@@ -2115,7 +2117,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
     : thread.modelSelection.model;
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
-    threadId: thread.id,
+    threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
   });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
@@ -2691,6 +2693,28 @@ export default function Sidebar() {
     };
   }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
 
+  const worktreeGroups = useMemo(
+    () =>
+      buildSidebarWorktreeGroups([
+        ...pinnedThreads.map((thread) => ({ thread, classification: "active" as const })),
+        ...activeThreads.map((thread) => ({ thread, classification: "active" as const })),
+        ...snoozedThreads.map((thread) => ({ thread, classification: "snoozed" as const })),
+        ...settledThreads.map((thread) => ({ thread, classification: "settled" as const })),
+      ]),
+    [pinnedThreads, activeThreads, snoozedThreads, settledThreads],
+  );
+  const worktreeGroupByThreadKey = useMemo(
+    () =>
+      new Map(
+        [
+          ...worktreeGroups.activeGroups,
+          ...worktreeGroups.snoozedGroups,
+          ...worktreeGroups.settledGroups,
+        ].flatMap((group) => group.memberKeys.map((key) => [key, group] as const)),
+      ),
+    [worktreeGroups],
+  );
+
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
@@ -2827,10 +2851,26 @@ export default function Sidebar() {
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
-  const orderedThreads = useMemo(
-    () => [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
-    [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads],
-  );
+  const orderedThreads = useMemo(() => {
+    const seen = new Set<string>();
+    return [
+      ...pinnedThreads,
+      ...activeThreads,
+      ...visibleSnoozedThreads,
+      ...renderedSettledThreads,
+    ].flatMap((thread) => {
+      const group = worktreeGroupByThreadKey.get(sidebarThreadKey(thread));
+      if (!group || seen.has(group.key)) return [];
+      seen.add(group.key);
+      return group.threads;
+    });
+  }, [
+    pinnedThreads,
+    activeThreads,
+    visibleSnoozedThreads,
+    renderedSettledThreads,
+    worktreeGroupByThreadKey,
+  ]);
   const orderedThreadKeys = useMemo(
     () =>
       orderedThreads.map((thread) =>
@@ -3482,8 +3522,21 @@ export default function Sidebar() {
     const settledRows = rowsOf(renderedSettledThreads, "settled");
     items.push({ kind: "marker", marker: "settled-placeholder" });
     items.push(...settledRows);
-    return items;
+    const seen = new Set<string>();
+    return items.flatMap((item): SidebarListItem[] => {
+      if (item.kind !== "thread") return [item];
+      const group = worktreeGroupByThreadKey.get(item.key);
+      if (!group || seen.has(group.key)) return [];
+      seen.add(group.key);
+      return group.memberKeys.map((key) => ({
+        kind: "thread",
+        key,
+        section: sectionByThreadKey.get(key) ?? item.section,
+      }));
+    });
   }, [
+    worktreeGroupByThreadKey,
+    sectionByThreadKey,
     activeThreads,
     pinnedThreads,
     renderedSettledThreads,
@@ -4914,9 +4967,71 @@ export default function Sidebar() {
                           onNavigateToDraft={navigateToDraft}
                         />,
                       ];
+                      const renderedWorktrees = new Set<string>();
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
-                          items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          const group = worktreeGroupByThreadKey.get(item.key);
+                          if (!group || renderedWorktrees.has(group.key)) continue;
+                          renderedWorktrees.add(group.key);
+                          const representative = group.threads.at(-1)!;
+                          const project =
+                            projectByKey.get(
+                              `${representative.environmentId}:${representative.projectId}`,
+                            ) ?? null;
+                          const isOpenCheckout = group.section === "active";
+                          items.push(
+                            <li
+                              key={group.key}
+                              data-worktree-key={group.key}
+                              className="my-1 list-none rounded-md border border-sidebar-border/60"
+                            >
+                              <button
+                                type="button"
+                                className="flex w-full min-w-0 items-center gap-1.5 px-2.5 py-2 text-left text-xs text-muted-foreground"
+                                aria-label={`Open checkout ${representative.worktreePath ?? project?.workspaceRoot ?? ""}`}
+                                onClick={() =>
+                                  navigateToThread(
+                                    scopeThreadRef(representative.environmentId, representative.id),
+                                  )
+                                }
+                                onContextMenu={(event) => {
+                                  event.preventDefault();
+                                  useThreadSelectionStore.setState({
+                                    selectedThreadKeys: new Set(group.memberKeys),
+                                    anchorThreadKey: group.memberKeys[0] ?? null,
+                                  });
+                                  void handleMultiSelectContextMenu({
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                  });
+                                }}
+                              >
+                                {project ? (
+                                  <ProjectFavicon project={project} className="size-4 shrink-0" />
+                                ) : null}
+                                <span className="min-w-0 flex-1 truncate">
+                                  {projectDisplayNameByKey.get(
+                                    `${representative.environmentId}:${representative.projectId}`,
+                                  ) ?? project?.title}{" "}
+                                  ·{" "}
+                                  {representative.worktreePath
+                                    ? (representative.branch ??
+                                      representative.worktreePath.split(/[\\/]/).at(-1))
+                                    : "Local checkout"}
+                                </span>
+                                <span>{group.threads.length}</span>
+                              </button>
+                              <ul className="list-none">
+                                {group.threads.map((thread) =>
+                                  renderThreadRow(
+                                    thread,
+                                    sectionByThreadKey.get(sidebarThreadKey(thread)) ??
+                                      (isOpenCheckout ? "active" : group.section),
+                                  ),
+                                )}
+                              </ul>
+                            </li>,
+                          );
                           continue;
                         }
                         switch (item.marker) {
