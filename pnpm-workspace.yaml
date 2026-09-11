@@ -79,6 +79,7 @@ minimumReleaseAgeExclude:
   - "@effect/vitest@4.0.0-rc.112"
   - alchemy@2.0.0-beta.76
   - effect@4.0.0-rc.112
+  - cuelume@0.2.1
   - "@legendapp/list@3.3.5"
   - "@expo/cli@57.0.20"
   - "@expo/env@2.4.3"

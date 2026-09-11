@@ -22,6 +22,7 @@ export interface Preferences {
   readonly darkThemeId?: MobileThemeId;
   readonly themeMode?: MobileThemeMode;
   readonly materialYouStyleLayoutEnabled?: boolean;
+  readonly completionSoundEnabled?: boolean;
   readonly baseFontSize?: number;
   readonly terminalFontSize?: number | null;
   readonly markdownFontSize?: number;
@@ -92,6 +93,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     darkThemeId?: MobileThemeId;
     themeMode?: MobileThemeMode;
     materialYouStyleLayoutEnabled?: boolean;
+    completionSoundEnabled?: boolean;
     baseFontSize?: number;
     terminalFontSize?: number | null;
     markdownFontSize?: number;
@@ -137,6 +139,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.materialYouStyleLayoutEnabled === "boolean") {
     preferences.materialYouStyleLayoutEnabled = parsed.materialYouStyleLayoutEnabled;
+  }
+  if (typeof parsed.completionSoundEnabled === "boolean") {
+    preferences.completionSoundEnabled = parsed.completionSoundEnabled;
   }
   if (typeof parsed.baseFontSize === "number") preferences.baseFontSize = parsed.baseFontSize;
   if (typeof parsed.terminalFontSize === "number" || parsed.terminalFontSize === null) {
