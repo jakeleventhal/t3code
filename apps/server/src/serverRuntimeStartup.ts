@@ -177,6 +177,21 @@ export const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
   model: DEFAULT_MODEL,
 });
 
+export const CHATS_PROJECT_TITLE = "Chat";
+
+export const ensureChatsProject = Effect.gen(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+  const projects = yield* ProjectService.ProjectService;
+  const crypto = yield* Crypto.Crypto;
+  return yield* projects.bootstrap({
+    commandId: CommandId.make(yield* crypto.randomUUIDv4),
+    projectId: ProjectId.make(yield* crypto.randomUUIDv4),
+    title: CHATS_PROJECT_TITLE,
+    workspaceRoot: config.chatsDir,
+    createWorkspaceRootIfMissing: true,
+  });
+});
+
 interface AutoBootstrapWelcomeTargets {
   readonly bootstrapProjectId?: ProjectId;
   readonly bootstrapThreadId?: ThreadId;
@@ -524,6 +539,7 @@ const make = (options?: StartupOptions) =>
           : Effect.succeed({})
         ).pipe(Effect.map((targets): AutoBootstrapWelcomeTargets => targets)),
       });
+      yield* runStartupPhase("chats.ensure", ensureChatsProject);
       yield* Effect.logInfo("V2 orchestration recovery completed", recovery);
       yield* runStartupPhase(
         "projects.auto-pull",

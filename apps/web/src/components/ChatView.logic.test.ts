@@ -72,6 +72,7 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  isWorkspaceShortcutBlockedForChats,
   reconcileMountedTerminalThreadIds,
   resolveDraftPromotionNavigationTarget,
   resolveEffectiveInteractionMode,
@@ -2064,5 +2065,21 @@ describe("worktree setup visibility", () => {
       ...settledDone,
       sequence: 9,
     });
+  });
+});
+
+describe("Chat workspace shortcuts", () => {
+  it("blocks workspace panels for Chat while preserving ordinary thread commands", () => {
+    for (const command of [
+      "terminal.toggle",
+      "terminal.split",
+      "terminal.splitVertical",
+      "terminal.new",
+      "diff.toggle",
+    ] as const) {
+      expect(isWorkspaceShortcutBlockedForChats(command, true)).toBe(true);
+      expect(isWorkspaceShortcutBlockedForChats(command, false)).toBe(false);
+    }
+    expect(isWorkspaceShortcutBlockedForChats("chat.new", true)).toBe(false);
   });
 });
