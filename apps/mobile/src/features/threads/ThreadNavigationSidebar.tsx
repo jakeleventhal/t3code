@@ -59,6 +59,7 @@ import { SidebarFilterButton } from "./sidebar-filter-button";
 import { createSidebarHeaderItems } from "./sidebar-native-header-items";
 import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
+  ThreadListV2SectionDivider,
   ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
@@ -642,6 +643,7 @@ function ThreadNavigationSidebarPane(
           const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
           return (
             <ThreadListV2WorktreeHeader
+              environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
               threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
               onSettleThread={settleThread}
               onUnsettleThread={unsettleThread}
@@ -766,6 +768,13 @@ function ThreadNavigationSidebarPane(
             />
           );
         }
+        case "v2-section":
+          return (
+            <ThreadListV2SectionDivider
+              label={item.label}
+              pane={Platform.OS === "android" ? "screen" : "sidebar"}
+            />
+          );
         case "v2-snoozed-shelf":
           return (
             <ThreadListV2SnoozedShelfHeader
