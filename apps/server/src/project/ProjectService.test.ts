@@ -10,6 +10,7 @@ import * as Ref from "effect/Ref";
 import { TestClock } from "effect/testing";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { ensureChatsProject } from "../serverRuntimeStartup.ts";
 import { ServerConfig } from "../config.ts";
 import { ProjectServiceLayerLive } from "../orchestration-v2/runtimeLayer.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -54,8 +55,8 @@ const makeTestLayer = (
     Layer.provideMerge(workspacePathsLayer),
     Layer.provideMerge(projectMetadataLayer),
     Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "project-service-test-" })),
-    Layer.provide(NodeServices.layer),
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "project-service-test-" })),
+    Layer.provideMerge(NodeServices.layer),
   );
 
 const TestLayer = makeTestLayer(metadataLayer);
@@ -72,6 +73,20 @@ const waitForProject = Effect.fn("ProjectServiceTest.waitForProject")(function* 
   }
   return yield* Effect.die(`Project ${projectId} was not enriched in time.`);
 });
+
+it.effect("bootstraps one Chat project across repeated startup and exposes its kind", () =>
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const service = yield* ProjectService.ProjectService;
+    const first = yield* ensureChatsProject;
+    const second = yield* ensureChatsProject;
+    assert.equal(second.project.id, first.project.id);
+    assert.equal(first.project.workspaceRoot, config.chatsDir);
+    assert.equal(first.project.kind, "chats");
+    const projects = yield* service.snapshot;
+    assert.equal(projects.projects.filter((project) => project.kind === "chats").length, 1);
+  }).pipe(Effect.provide(TestLayer)),
+);
 
 it.layer(TestLayer)("ProjectService", (it) => {
   it.effect("creates, updates, resolves, snapshots, and soft-deletes projects", () =>

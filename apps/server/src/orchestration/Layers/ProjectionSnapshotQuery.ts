@@ -1,3 +1,5 @@
+import { ServerConfig } from "../../config.ts";
+import { resolveProjectKind } from "../../project/ProjectKind.ts";
 import { ThreadTitleState } from "@t3tools/contracts";
 import {
   AgentSessionImportSource,
@@ -378,11 +380,13 @@ function mapSessionRow(
 function mapProjectShellRow(
   row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
+  chatsDir?: string,
 ): OrchestrationProjectShell {
   return {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    kind: resolveProjectKind(row.workspaceRoot, chatsDir),
     repositoryIdentity,
     defaultModelSelection: row.defaultModelSelection,
     defaultThreadEnvMode: row.defaultThreadEnvMode,
@@ -417,6 +421,9 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 }
 
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
+  const chatsDir = Option.getOrUndefined(
+    Option.map(yield* Effect.serviceOption(ServerConfig), (config) => config.chatsDir),
+  );
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const sql = yield* SqlClient.SqlClient;
@@ -2459,7 +2466,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 snapshotSequence: computeSnapshotSequence(stateRows),
                 projects: Arr.filterMap(projectRows, (row) =>
                   row.deletedAt === null
-                    ? Result.succeed(mapProjectShellRow(row, null))
+                    ? Result.succeed(mapProjectShellRow(row, null, chatsDir))
                     : Result.failVoid,
                 ),
                 threads: Arr.filterMap(threadRows, (row) =>
@@ -2622,7 +2629,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               projects: Arr.filterMap(projectRows, (row) =>
                 row.deletedAt === null && activeProjectIds.has(row.projectId)
                   ? Result.succeed(
-                      mapProjectShellRow(row, repositoryIdentities.get(row.projectId) ?? null),
+                      mapProjectShellRow(
+                        row,
+                        repositoryIdentities.get(row.projectId) ?? null,
+                        chatsDir,
+                      ),
                     )
                   : Result.failVoid,
               ),
@@ -2797,7 +2808,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             projectEnrichment
               .getAvailable(row.workspaceRoot)
               .pipe(
-                Effect.map((enrichment) => mapProjectShellRow(row, enrichment.repositoryIdentity)),
+                Effect.map((enrichment) =>
+                  mapProjectShellRow(row, enrichment.repositoryIdentity, chatsDir),
+                ),
               ),
           { concurrency: 16 },
         ),
@@ -2820,7 +2833,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               .getAvailable(option.value.workspaceRoot)
               .pipe(
                 Effect.map((enrichment) =>
-                  Option.some(mapProjectShellRow(option.value, enrichment.repositoryIdentity)),
+                  Option.some(
+                    mapProjectShellRow(option.value, enrichment.repositoryIdentity, chatsDir),
+                  ),
                 ),
               ),
       ),
@@ -2838,7 +2853,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         Effect.map((rows) =>
           Arr.filterMap(rows, (row) =>
             row.deletedAt === null
-              ? Result.succeed(mapProjectShellRow(row, null))
+              ? Result.succeed(mapProjectShellRow(row, null, chatsDir))
               : Result.failVoid,
           ),
         ),
