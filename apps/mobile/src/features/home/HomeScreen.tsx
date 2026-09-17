@@ -35,6 +35,7 @@ import { threadListEnvironmentsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
+  ThreadListV2SectionDivider,
   ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
@@ -596,6 +597,7 @@ export function HomeScreen(props: HomeScreenProps) {
         const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
         return (
           <ThreadListV2WorktreeHeader
+            environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
             threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
             onSettleThread={handleSettleThread}
             onUnsettleThread={handleUnsettleThread}
@@ -644,6 +646,9 @@ export function HomeScreen(props: HomeScreenProps) {
             onDeletePendingTask={props.onDeletePendingTask}
           />
         );
+      }
+      if (item.type === "v2-section") {
+        return <ThreadListV2SectionDivider label={item.label} />;
       }
       if (item.type === "v2-snoozed-shelf") {
         return (
