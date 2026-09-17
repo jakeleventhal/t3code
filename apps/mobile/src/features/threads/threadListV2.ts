@@ -356,7 +356,14 @@ export interface ThreadListV2WorktreeListItem {
   readonly count: number;
 }
 
+export interface ThreadListV2SectionListItem {
+  readonly type: "v2-section";
+  readonly key: "v2-pinned-header" | "v2-active-header";
+  readonly label: "Pinned" | "Active";
+}
+
 export type ThreadListV2ListItem =
+  | ThreadListV2SectionListItem
   | ThreadListV2WorktreeListItem
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
@@ -562,6 +569,40 @@ export function buildThreadListV2ListItems(input: {
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
   }
+  const pinnedKeys = new Set(
+    input.items
+      .slice(0, activeEnd)
+      .filter((item) => item.pinned)
+      .map(({ thread }) =>
+        input.groupWorktrees
+          ? worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath)
+          : `${thread.environmentId}:${thread.id}`,
+      ),
+  );
+  const addPinnedSections = (items: ThreadListV2ListItem[]): ThreadListV2ListItem[] => {
+    let pinnedSection = false;
+    return items.flatMap((entry): ThreadListV2ListItem[] => {
+      if (entry.type !== "v2-thread" && entry.type !== "v2-worktree") return [entry];
+      if (input.groupWorktrees && entry.type === "v2-thread") return [entry];
+      const thread = entry.type === "v2-worktree" ? entry.thread : entry.item.thread;
+      const key = input.groupWorktrees
+        ? worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath)
+        : `${thread.environmentId}:${thread.id}`;
+      if (pinnedKeys.has(key) && !pinnedSection) {
+        pinnedSection = true;
+        return [{ type: "v2-section", key: "v2-pinned-header", label: "Pinned" }, entry];
+      }
+      if (!pinnedKeys.has(key) && pinnedSection) {
+        pinnedSection = false;
+        // Parked shelves already have their own dividers.
+        const active = input.items.slice(0, activeEnd).some((item) => item.thread === thread);
+        return active
+          ? [{ type: "v2-section", key: "v2-active-header", label: "Active" }, entry]
+          : [entry];
+      }
+      return [entry];
+    });
+  };
   const members = new Map<string, EnvironmentThreadShell[]>();
   for (const entry of threadItems) {
     if (entry.type !== "v2-thread") continue;
@@ -587,9 +628,10 @@ export function buildThreadListV2ListItems(input: {
       })
     : result;
   // Stamp dividers after grouping so recycled rows follow their final neighbour.
-  return grouped.map((entry, index) => {
+  const sectioned = addPinnedSections(grouped);
+  return sectioned.map((entry, index) => {
     if (entry.type !== "v2-thread" && entry.type !== "v2-pending") return entry;
-    const next = grouped[index + 1];
+    const next = sectioned[index + 1];
     const showTrailingDivider =
       next?.type === "v2-thread" || (next?.type === "v2-pending" && !next.showPendingDivider);
     return showTrailingDivider === entry.showTrailingDivider
