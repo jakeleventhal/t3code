@@ -1062,8 +1062,10 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     var nextOffsets: [CGFloat] = []
     var nextFileHeaderRowIndices: [Int] = []
     nextOffsets.reserveCapacity(rows.count)
-    var maxColumnCountsByFileId: [String: Int] = [:]
+    var nextContentWidthsByFileId: [String: CGFloat] = [:]
     var offset: CGFloat = 0
+    let codeFont = self.codeFont
+    let hunkFont = self.hunkFont
 
     for (index, row) in rows.enumerated() {
       nextOffsets.append(offset)
@@ -1073,26 +1075,22 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       offset += height(for: row)
 
       let fileId = resolvedFileId(for: row)
+      let width: CGFloat
       switch row.kind {
       case "line":
-        maxColumnCountsByFileId[fileId] = max(
-          maxColumnCountsByFileId[fileId] ?? 0,
-          row.content?.count ?? 0
-        )
+        width = textWidth(row.content ?? "", font: codeFont)
       case "hunk":
-        maxColumnCountsByFileId[fileId] = max(
-          maxColumnCountsByFileId[fileId] ?? 0,
-          row.text?.count ?? 0
-        )
+        width = textWidth(row.text ?? "", font: hunkFont)
       default:
         continue
       }
+      nextContentWidthsByFileId[fileId] = max(nextContentWidthsByFileId[fileId] ?? 0, width)
     }
 
-    let characterWidth = monospaceCharacterWidth(font: codeFont)
-    codeCharacterWidth = characterWidth
-    contentWidthsByFileId = maxColumnCountsByFileId.mapValues { maxColumnCount in
-      let measuredWidth = ceil(CGFloat(maxColumnCount) * characterWidth) + style.codePadding * 2
+    codeCharacterWidth = monospaceCharacterWidth(font: codeFont)
+    // Measure the rendered text so tabs and fallback glyphs remain reachable by scrolling.
+    contentWidthsByFileId = nextContentWidthsByFileId.mapValues { width in
+      let measuredWidth = width + style.codePadding * 2
       return max(0, min(style.contentWidth, measuredWidth))
     }
     rowOffsets = nextOffsets
@@ -2339,7 +2337,8 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       .foregroundColor: color,
       .ligature: 0,
     ]
-    (text as NSString).draw(in: rect, withAttributes: attributes)
+    // Diff rows stay on one line; the caller clips them to the code viewport.
+    (text as NSString).draw(at: rect.origin, withAttributes: attributes)
   }
 
   private func drawMultilineText(
@@ -2481,7 +2480,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       fallbackColor: fallbackColor,
       font: font
     )
-    attributedText.draw(in: rect)
+    attributedText.draw(at: rect.origin)
   }
 
   private func tokenAttributedString(
