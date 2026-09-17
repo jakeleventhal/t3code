@@ -81,6 +81,7 @@ import {
   ThreadListShowMoreRow,
 } from "./thread-list-items";
 import {
+  ThreadListV2SectionDivider,
   ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
@@ -779,6 +780,9 @@ function ThreadNavigationSidebarPane(
           previous.showPendingDivider === item.showPendingDivider
         );
       }
+      if (previous.type === "v2-section" && item.type === "v2-section") {
+        return previous.label === item.label;
+      }
       if (previous.type === "v2-snoozed-shelf" && item.type === "v2-snoozed-shelf") {
         return previous.count === item.count && previous.expanded === item.expanded;
       }
@@ -786,6 +790,8 @@ function ThreadNavigationSidebarPane(
         return previous.count === item.count && previous.expanded === item.expanded;
       }
       if (
+        previous.type === "v2-section" ||
+        item.type === "v2-section" ||
         previous.type === "v2-thread" ||
         previous.type === "v2-worktree" ||
         previous.type === "v2-show-more" ||
@@ -831,6 +837,7 @@ function ThreadNavigationSidebarPane(
           const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
           return (
             <ThreadListV2WorktreeHeader
+              environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
               threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
               onSettleThread={settleThread}
               onUnsettleThread={unsettleThread}
@@ -943,6 +950,13 @@ function ThreadNavigationSidebarPane(
             />
           );
         }
+        case "v2-section":
+          return (
+            <ThreadListV2SectionDivider
+              label={item.label}
+              pane={Platform.OS === "android" ? "screen" : "sidebar"}
+            />
+          );
         case "v2-snoozed-shelf":
           return (
             <ThreadListV2SnoozedShelfHeader
