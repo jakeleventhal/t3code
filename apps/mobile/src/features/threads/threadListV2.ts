@@ -354,7 +354,14 @@ export interface ThreadListV2WorktreeListItem {
   readonly count: number;
 }
 
+export interface ThreadListV2SectionListItem {
+  readonly type: "v2-section";
+  readonly key: "v2-pinned-header" | "v2-active-header";
+  readonly label: "Pinned" | "Active";
+}
+
 export type ThreadListV2ListItem =
+  | ThreadListV2SectionListItem
   | ThreadListV2WorktreeListItem
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
@@ -552,48 +559,84 @@ export function buildThreadListV2ListItems(input: {
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
   }
-  const groupedResult = !input.groupWorktrees
-    ? result
-    : (() => {
-        const members = new Map<string, EnvironmentThreadShell[]>();
-        for (const entry of threadItems) {
-          if (entry.type !== "v2-thread") continue;
-          const thread = entry.item.thread;
-          const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
-          const group = members.get(key) ?? [];
-          group.push(thread);
-          members.set(key, group);
-        }
-        const seen = new Set<string>();
-        return result.flatMap((entry): ThreadListV2ListItem[] => {
-          if (entry.type !== "v2-thread") return [entry];
-          const thread = entry.item.thread;
-          const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
-          if (seen.has(key)) return [entry];
-          seen.add(key);
-          return [
-            {
-              type: "v2-worktree",
-              key: `worktree:${key}`,
-              thread,
-              threads: members.get(key)!,
-              count: members.get(key)!.length,
-            },
-            entry,
-          ];
-        });
-      })();
-  // Hairlines depend on the final neighbour, so they are stamped after the
-  // splice: a recycled cell only re-renders when its divider actually flips.
-  return groupedResult.map((entry, index) => {
-    if (entry.type !== "v2-thread" && entry.type !== "v2-pending") return entry;
-    const next = groupedResult[index + 1];
-    const showTrailingDivider =
-      next?.type === "v2-thread" || (next?.type === "v2-pending" && !next.showPendingDivider);
-    return showTrailingDivider === entry.showTrailingDivider
-      ? entry
-      : { ...entry, showTrailingDivider };
-  });
+  // Stamp dividers after inserting section and worktree rows so recycled cells
+  // refresh only when their final neighbour changes.
+  const withDividers = (items: ThreadListV2ListItem[]): ThreadListV2ListItem[] =>
+    items.map((entry, index) => {
+      if (entry.type !== "v2-thread" && entry.type !== "v2-pending") return entry;
+      const next = items[index + 1];
+      const showTrailingDivider =
+        next?.type === "v2-thread" || (next?.type === "v2-pending" && !next.showPendingDivider);
+      return showTrailingDivider === entry.showTrailingDivider
+        ? entry
+        : { ...entry, showTrailingDivider };
+    });
+  const pinnedKeys = new Set(
+    input.items
+      .slice(0, activeEnd)
+      .filter((item) => item.pinned)
+      .map(({ thread }) =>
+        input.groupWorktrees
+          ? worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath)
+          : `${thread.environmentId}:${thread.id}`,
+      ),
+  );
+  const addPinnedSections = (items: ThreadListV2ListItem[]): ThreadListV2ListItem[] => {
+    let pinnedSection = false;
+    return items.flatMap((entry): ThreadListV2ListItem[] => {
+      if (entry.type !== "v2-thread" && entry.type !== "v2-worktree") return [entry];
+      if (input.groupWorktrees && entry.type === "v2-thread") return [entry];
+      const thread = entry.type === "v2-worktree" ? entry.thread : entry.item.thread;
+      const key = input.groupWorktrees
+        ? worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath)
+        : `${thread.environmentId}:${thread.id}`;
+      if (pinnedKeys.has(key) && !pinnedSection) {
+        pinnedSection = true;
+        return [{ type: "v2-section", key: "v2-pinned-header", label: "Pinned" }, entry];
+      }
+      if (!pinnedKeys.has(key) && pinnedSection) {
+        pinnedSection = false;
+        // Parked shelves already have their own dividers.
+        const active = input.items.slice(0, activeEnd).some((item) => item.thread === thread);
+        return active
+          ? [{ type: "v2-section", key: "v2-active-header", label: "Active" }, entry]
+          : [entry];
+      }
+      return [entry];
+    });
+  };
+  if (!input.groupWorktrees) return withDividers(addPinnedSections(result));
+  const members = new Map<string, EnvironmentThreadShell[]>();
+  for (const entry of threadItems) {
+    if (entry.type !== "v2-thread") continue;
+    const thread = entry.item.thread;
+    const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
+    const group = members.get(key) ?? [];
+    group.push(thread);
+    members.set(key, group);
+  }
+  const seen = new Set<string>();
+  return withDividers(
+    addPinnedSections(
+      result.flatMap((entry): ThreadListV2ListItem[] => {
+        if (entry.type !== "v2-thread") return [entry];
+        const thread = entry.item.thread;
+        const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
+        if (seen.has(key)) return [entry];
+        seen.add(key);
+        return [
+          {
+            type: "v2-worktree",
+            key: `worktree:${key}`,
+            thread,
+            threads: members.get(key)!,
+            count: members.get(key)!.length,
+          },
+          entry,
+        ];
+      }),
+    ),
+  );
 }
 
 /**
