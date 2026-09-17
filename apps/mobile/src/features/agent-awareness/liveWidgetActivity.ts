@@ -1,8 +1,11 @@
-import type { EnvironmentCatalogState } from "@t3tools/client-runtime/state/connections";
+import {
+  enabledEnvironmentIds,
+  type EnvironmentCatalogState,
+} from "@t3tools/client-runtime/state/connections";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { RelayAgentActivitySnapshotResponse } from "@t3tools/contracts/relay";
-import { projectThreadAwareness } from "@t3tools/shared/agentAwareness";
+import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
@@ -37,7 +40,7 @@ export function createLiveWidgetActivitiesAtom(input: {
   return Atom.make((get): LiveWidgetActivities => {
     const environments = new Map<EnvironmentId, ReadonlyArray<AgentActivityRowProps>>();
     const now = input.now();
-    for (const environmentId of get(input.catalogValueAtom).entries.keys()) {
+    for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
       const shell = get(input.shellStateValueAtom(environmentId));
       if (shell.status !== "live" || Option.isNone(shell.snapshot)) continue;
       const snapshot = shell.snapshot.value;
@@ -46,7 +49,7 @@ export function createLiveWidgetActivitiesAtom(input: {
       for (const thread of snapshot.threads) {
         const project = projects.get(thread.projectId);
         if (!project) continue;
-        const state = projectThreadAwareness({ environmentId, project, thread });
+        const state = projectThreadAwarenessV2({ environmentId, project, thread });
         if (!state) continue;
         if (
           (state.phase === "completed" || state.phase === "failed") &&

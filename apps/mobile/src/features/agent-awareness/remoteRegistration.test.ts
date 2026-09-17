@@ -1,3 +1,5 @@
+import * as DateTime from "effect/DateTime";
+import { v2ThreadShell } from "../../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 /// <reference types="node" />
 
 import * as NodeCrypto from "node:crypto";
@@ -31,7 +33,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   type OrchestrationProjectShell,
-  type OrchestrationThreadShell,
+  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import type { RelayAgentActivitySnapshotResponse } from "@t3tools/contracts/relay";
 import { verifyDpopProof } from "@t3tools/shared/dpop";
@@ -359,37 +361,13 @@ function setLiveShell(
     createdAt: now,
     updatedAt: now,
   };
-  const thread: OrchestrationThreadShell = {
+  const thread: OrchestrationV2ThreadShell = {
+    ...v2ThreadShell,
     id: ThreadId.make("local-thread"),
     projectId: liveProjectId,
     title: "Live task",
-    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "test-model" },
-    runtimeMode: "full-access",
-    interactionMode: "default",
-    branch: null,
-    worktreePath: null,
-    latestTurn: null,
-    createdAt: now,
-    updatedAt: now,
-    archivedAt: null,
-    settledOverride: null,
-    settledAt: null,
-    latestUserMessageAt: null,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
-    session:
-      phase === null
-        ? null
-        : {
-            threadId: ThreadId.make("local-thread"),
-            status: phase,
-            providerName: "codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
-            lastError: null,
-            updatedAt: now,
-          },
+    status: phase === "ready" ? "completed" : (phase ?? "idle"),
+    updatedAt: DateTime.makeUnsafe(now),
   };
   setTestAtom(environmentShell.stateValueAtom(liveEnvironmentId), {
     status,
@@ -397,8 +375,9 @@ function setLiveShell(
     snapshot: Option.some({
       projects: [project],
       threads: phase === null ? [] : [thread],
+      schemaVersion: 1,
+      archivedThreads: [],
       snapshotSequence: 1,
-      updatedAt: now,
     }),
   });
 }
@@ -417,6 +396,7 @@ function addLiveEnvironment(): void {
             wsBaseUrl: "wss://local.example.test/ws",
           }),
           profile: Option.none(),
+          enabled: true,
         },
       ],
     ]),
@@ -1901,7 +1881,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
           updatedAt: "2026-05-25T13:06:00.000Z",
           activities: [
             {
-              ...activeAgentActivitySnapshot.aggregate.activities[0],
+              ...activeAgentActivitySnapshot.aggregate.activities[0]!,
               status: "Older status",
               updatedAt: "2026-05-25T13:06:00.000Z",
             },
@@ -2384,7 +2364,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
           updatedAt: earlier,
           activities: [
             {
-              ...activeAgentActivitySnapshot.aggregate.activities[0],
+              ...activeAgentActivitySnapshot.aggregate.activities[0]!,
               threadId: ThreadId.make("local-thread"),
               updatedAt: earlier,
             },
@@ -2542,8 +2522,9 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         snapshot: Option.some({
           projects: [],
           threads: [],
+          schemaVersion: 1,
+          archivedThreads: [],
           snapshotSequence: 1,
-          updatedAt: new Date().toISOString(),
         }),
       });
       setTestAtom(environmentCatalog.catalogValueAtom, {
@@ -2560,6 +2541,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
                 wsBaseUrl: "wss://other.example.test/ws",
               }),
               profile: Option.none(),
+              enabled: true,
             },
           ],
         ]),
