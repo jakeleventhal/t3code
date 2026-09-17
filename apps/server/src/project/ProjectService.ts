@@ -31,6 +31,8 @@ import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { planThreadDeletion } from "../orchestration-v2/ThreadDeletion.ts";
 import * as ProjectEnrichmentService from "./ProjectEnrichmentService.ts";
+import * as ServerConfig from "../config.ts";
+import { resolveProjectKind } from "./ProjectKind.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 
 export interface ProjectCreateInput extends ProjectCreatePayload {
@@ -146,6 +148,9 @@ export class ProjectService extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const projects = yield* ProjectStore.ProjectStoreV2;
+  const chatsDir = Option.getOrUndefined(
+    Option.map(yield* Effect.serviceOption(ServerConfig.ServerConfig), (config) => config.chatsDir),
+  );
   const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const threadProjections = yield* ProjectionStore.ProjectionStoreV2;
@@ -165,6 +170,7 @@ export const make = Effect.gen(function* () {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    kind: resolveProjectKind(row.workspaceRoot, chatsDir),
     repositoryIdentity: enrichment?.repositoryIdentity ?? null,
     faviconPath: row.faviconPath ?? enrichment?.faviconPath ?? null,
     defaultModelSelection: row.defaultModelSelection,
@@ -509,6 +515,7 @@ export const make = Effect.gen(function* () {
     projectEnrichment.getAvailable(shell.workspaceRoot).pipe(
       Effect.map((enrichment) => ({
         ...shell,
+        kind: resolveProjectKind(shell.workspaceRoot, chatsDir),
         repositoryIdentity: enrichment.repositoryIdentity,
       })),
     );

@@ -7,6 +7,7 @@ import {
   type ChatFileAttachment,
   type CommandId,
   type EnvironmentId,
+  type KeybindingCommand,
   isProviderDriverKind,
   ProjectId,
   type MessageId,
@@ -1353,4 +1354,18 @@ export function restorePlanFollowUpComposer(input: {
     prompt: input.snapshot.prompt,
     detectTrigger: true,
   });
+}
+
+export function isWorkspaceShortcutBlockedForChats(
+  command: KeybindingCommand,
+  activeProjectIsChats: boolean,
+): boolean {
+  return (
+    activeProjectIsChats &&
+    (command === "terminal.toggle" ||
+      command === "terminal.split" ||
+      command === "terminal.splitVertical" ||
+      command === "terminal.new" ||
+      command === "diff.toggle")
+  );
 }

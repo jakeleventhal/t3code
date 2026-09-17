@@ -36,12 +36,18 @@ interface DraftHeroHeadlineProps {
   readonly draftId: DraftId | null;
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
+  /**
+   * The Chat pseudo-project is not a codebase, so the build-oriented prompt
+   * is replaced with a neutral one.
+   */
+  readonly isChatsProject: boolean;
 }
 
 export function DraftHeroHeadline({
   draftId,
   activeProjectRef,
   activeProjectTitle,
+  isChatsProject,
 }: DraftHeroHeadlineProps) {
   const projects = useProjects();
   const threads = useThreadShells();
@@ -236,7 +242,9 @@ export function DraftHeroHeadline({
   // in the h1; without an explicit label its widget state bleeds into the
   // announced phrase.
   const headingLabel = hasResolvedProject
-    ? `What should we build in ${activeProjectDisplayName}?`
+    ? isChatsProject
+      ? "What's on your mind?"
+      : `What should we build in ${activeProjectDisplayName}?`
     : canChooseProject
       ? `${activeProjectDisplayName ?? "Choose a project"} to start`
       : "Add a project to start";
@@ -246,7 +254,9 @@ export function DraftHeroHeadline({
       aria-label={headingLabel}
       className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
     >
-      {hasResolvedProject ? (
+      {hasResolvedProject && isChatsProject ? (
+        <>What&rsquo;s on your mind?</>
+      ) : hasResolvedProject ? (
         <>What should we build in {projectSelector}?</>
       ) : canChooseProject ? (
         <>{projectSelector} to start</>
