@@ -162,6 +162,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { projectDisplayTitle } from "@t3tools/client-runtime/state/models";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
@@ -3358,7 +3359,7 @@ export function ArchivedThreadsPanel() {
           <SettingsSection
             key={`${project.environmentId}:${project.id}`}
             id={index === 0 ? searchableSetting("archive").id : undefined}
-            title={project.title}
+            title={projectDisplayTitle(project)}
             icon={<ProjectFavicon project={project} />}
           >
             {projectThreads.map((thread) => (

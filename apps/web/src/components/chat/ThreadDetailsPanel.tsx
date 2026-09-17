@@ -32,6 +32,7 @@ interface VersionMismatchIssue {
 }
 
 export interface ThreadDetailsPanelProps {
+  workspaceAvailable?: boolean;
   forceNewWorktree?: boolean;
   mode: "inline" | "popover";
   onClose?: () => void;
@@ -159,7 +160,9 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               />
             ) : null}
 
-            <BranchToolbar layout="panel" panelSection="workspace" {...branchToolbarProps} />
+            {props.workspaceAvailable !== false ? (
+              <BranchToolbar layout="panel" panelSection="workspace" {...branchToolbarProps} />
+            ) : null}
 
             {props.showOpenInPicker ? (
               <OpenInPicker

@@ -40,6 +40,7 @@ interface ChatHeaderProps {
   activeProject: EnvironmentProject | null;
   rightPanelOpen: boolean;
   onNewThreadInProject: () => void;
+  isChatsProject: boolean;
   onOpenProjectSettings?: (() => void) | undefined;
 }
 
@@ -72,10 +73,11 @@ export const ChatHeader = memo(function ChatHeader({
   activeProject,
   rightPanelOpen,
   onNewThreadInProject,
+  isChatsProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
-  const activeProjectName = activeProject?.title;
-  const activeProjectCwd = activeProject?.workspaceRoot ?? null;
+  const activeProjectName = isChatsProject ? "Chat" : activeProject?.title;
+  const activeProjectCwd = isChatsProject ? null : (activeProject?.workspaceRoot ?? null);
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
@@ -194,7 +196,7 @@ export const ChatHeader = memo(function ChatHeader({
   const handleHeaderContextMenu = useCallback(
     (event: ReactMouseEvent) => {
       if (renamingTitle !== null) return;
-      if (!isServerThread && onOpenProjectSettings === undefined) return;
+      if (!isServerThread && (isChatsProject || onOpenProjectSettings === undefined)) return;
       cancelPendingTitleMenu();
       event.preventDefault();
       if (!isServerThread) {
@@ -212,7 +214,14 @@ export const ChatHeader = memo(function ChatHeader({
       }
       openMenu({ x: event.clientX, y: event.clientY });
     },
-    [cancelPendingTitleMenu, isServerThread, onOpenProjectSettings, openMenu, renamingTitle],
+    [
+      cancelPendingTitleMenu,
+      isChatsProject,
+      isServerThread,
+      onOpenProjectSettings,
+      openMenu,
+      renamingTitle,
+    ],
   );
   const handleRenameKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {

@@ -126,6 +126,7 @@ export function makeReplayServerConfig(
       settingsPath: path.join(stateDir, "settings.json"),
       providerStatusCacheDir,
       worktreesDir,
+      chatsDir: path.join(baseDir, "chats"),
       attachmentsDir,
       browserArtifactsDir: path.join(stateDir, "browser-artifacts"),
       environmentThemesDir,
