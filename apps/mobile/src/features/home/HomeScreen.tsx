@@ -1,3 +1,7 @@
+import {
+  indexWorktreeThreads,
+  sidebarThreadKey,
+} from "@t3tools/client-runtime/state/worktree-grouping";
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import { computeThreadMoveAvailability } from "../threads/threadOrder";
 import { LegendList } from "@legendapp/list/react-native";
@@ -351,19 +355,19 @@ export function HomeScreen(props: HomeScreenProps) {
   const handleSettleThread = props.onSettleThread;
   const handleSnoozeThread = useCallback(
     (thread: EnvironmentThreadShell, snoozedUntil: string) => {
-      void props.onSnoozeThread(thread, snoozedUntil);
+      return props.onSnoozeThread(thread, snoozedUntil);
     },
     [props.onSnoozeThread],
   );
   const handleUnsnoozeThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onUnsnoozeThread(thread);
+      return props.onUnsnoozeThread(thread);
     },
     [props.onUnsnoozeThread],
   );
   const handlePinThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onPinThread(thread);
+      return props.onPinThread(thread);
     },
     [props.onPinThread],
   );
@@ -375,7 +379,7 @@ export function HomeScreen(props: HomeScreenProps) {
   );
   const handleUnpinThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onUnpinThread(thread);
+      return props.onUnpinThread(thread);
     },
     [props.onUnpinThread],
   );
@@ -585,13 +589,28 @@ export function HomeScreen(props: HomeScreenProps) {
 
   useThreadJumpShortcuts(threadListV2Items, props.onSelectThread);
 
+  const lifecycleMembersByKey = useMemo(() => indexWorktreeThreads(props.threads), [props.threads]);
   const renderV2Item = useCallback(
     ({ item }: { readonly item: ThreadListV2ListItem }) => {
       if (item.type === "v2-worktree") {
         const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
         return (
           <ThreadListV2WorktreeHeader
-            thread={item.thread}
+            threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
+            onSettleThread={handleSettleThread}
+            onUnsettleThread={handleUnsettleThread}
+            onSnoozeThread={handleSnoozeThread}
+            onUnsnoozeThread={handleUnsnoozeThread}
+            onPinThread={handlePinThread}
+            onUnpinThread={handleUnpinThread}
+            settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
+            snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+            pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
+            autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
+              item.thread.environmentId,
+            )}
+            onSetThreadAutoSettle={handleSetThreadAutoSettle}
+            project={projectByKey.get(key) ?? null}
             count={item.count}
             projectTitle={
               v2ProjectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
@@ -651,6 +670,7 @@ export function HomeScreen(props: HomeScreenProps) {
         <ThreadListV2Row
           onNewThreadOnBranch={props.onNewThreadOnBranch}
           thread={thread}
+          worktreeThreads={lifecycleMembersByKey.get(sidebarThreadKey(thread))}
           variant={item.item.variant}
           hasQueuedMessages={item.hasQueuedMessages}
           snoozed={item.item.snoozed}
@@ -711,6 +731,7 @@ export function HomeScreen(props: HomeScreenProps) {
       );
     },
     [
+      lifecycleMembersByKey,
       handleDeleteThread,
       activeReorderEnvironmentIds,
       handleMoveThread,

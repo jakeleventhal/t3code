@@ -1,3 +1,7 @@
+import {
+  indexWorktreeThreads,
+  sidebarThreadKey,
+} from "@t3tools/client-runtime/state/worktree-grouping";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { computeThreadMoveAvailability } from "./threadOrder";
 import type {
@@ -629,6 +633,7 @@ function ThreadNavigationSidebarPane(
     return true;
   }, [props.nativeChrome, props.onRequestVisibility, props.visible]);
   useHardwareKeyboardCommand("focusSearch", focusSearch);
+  const lifecycleMembersByKey = useMemo(() => indexWorktreeThreads(threads), [threads]);
   const renderListItem = useCallback(
     ({ item }: { readonly item: SidebarListItem }) => {
       switch (item.type) {
@@ -636,7 +641,21 @@ function ThreadNavigationSidebarPane(
           const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
           return (
             <ThreadListV2WorktreeHeader
-              thread={item.thread}
+              threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
+              onSettleThread={settleThread}
+              onUnsettleThread={unsettleThread}
+              onSnoozeThread={snoozeThread}
+              onUnsnoozeThread={unsnoozeThread}
+              onPinThread={pinThread}
+              onUnpinThread={unpinThread}
+              settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
+              snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+              pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
+              autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
+                item.thread.environmentId,
+              )}
+              onSetThreadAutoSettle={setThreadAutoSettle}
+              project={projectByKey.get(key) ?? null}
               count={item.count}
               projectTitle={
                 projectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
@@ -685,6 +704,7 @@ function ThreadNavigationSidebarPane(
             <ThreadListV2Row
               onNewThreadOnBranch={props.onNewThreadOnBranch}
               thread={thread}
+              worktreeThreads={lifecycleMembersByKey.get(sidebarThreadKey(thread))}
               variant={item.item.variant}
               hasQueuedMessages={item.hasQueuedMessages}
               snoozed={item.item.snoozed}
@@ -776,6 +796,7 @@ function ThreadNavigationSidebarPane(
       }
     },
     [
+      lifecycleMembersByKey,
       archiveThread,
       activeReorderEnvironmentIds,
       confirmDeletePendingTask,

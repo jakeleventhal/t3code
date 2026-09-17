@@ -1,4 +1,4 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -6,7 +6,12 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  indexWorktreeThreads,
+  sidebarThreadKey,
+  resolveWorktreeLifecycle,
+  worktreeLifecycleTargets,
+} from "@t3tools/client-runtime/state/worktree-grouping";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
@@ -25,6 +30,7 @@ import {
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
+  readThreadShells,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -88,7 +94,7 @@ export function useThreadActionMenu(input: {
     snoozeThread,
     unsnoozeThread,
     pinThread,
-    confirmAndUnpinThread,
+    unpinThread,
     setThreadAutoSettle,
     archiveThread,
     deleteThread,
@@ -98,6 +104,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const confirmThreadUnpin = useClientSettings((s) => s.confirmThreadUnpin);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -131,6 +138,9 @@ export function useThreadActionMenu(input: {
         // what the user is looking at.
         const thread = readThreadShell(threadRef);
         if (!thread) return;
+        const members = indexWorktreeThreads(readThreadShells()).get(sidebarThreadKey(thread)) ?? [
+          thread,
+        ];
         const now = new Date();
         const supports = {
           settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
@@ -144,11 +154,8 @@ export function useThreadActionMenu(input: {
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
           projectFilter: null,
-          isPinned: thread.pinnedAt != null,
-          isSettled: supports.settlement && thread.settledOverride === "settled",
-          autoSettleEnabled: thread.autoSettleDisabledAt == null,
-          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
-          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+          ...resolveWorktreeLifecycle(members, now.toISOString()),
+          lifecycleScope: "worktree",
           isRegeneratingTitle,
           isRunning: !threadRuntimeCanArchive(thread.runtime),
           supports,
@@ -162,11 +169,40 @@ export function useThreadActionMenu(input: {
             action === "snooze:custom"
               ? await requestCustomSnooze()
               : snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
-          if (!preset) return;
-          const result = await snoozeThread(threadRef, preset.snoozedUntil);
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            failureToast("Failed to snooze thread", squashAtomCommandFailure(result));
+          if (!preset || !resolveWorktreeLifecycle(members, new Date().toISOString()).canSnoozeNow)
+            return;
+          const snoozed: ScopedThreadRef[] = [];
+          for (const member of worktreeLifecycleTargets(
+            members,
+            "snooze",
+            new Date().toISOString(),
+          )) {
+            const ref = scopeThreadRef(member.environmentId, member.id);
+            const result = await snoozeThread(ref, preset.snoozedUntil);
+            if (result._tag === "Failure") {
+              if (!isAtomCommandInterrupted(result))
+                failureToast("Failed to snooze worktree", squashAtomCommandFailure(result));
+            } else snoozed.push(ref);
           }
+          if (snoozed.length === 0) return;
+          toastManager.add(
+            stackedThreadToast({
+              type: "success",
+              title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
+              timeout: 5_000,
+              actionProps: {
+                children: "Undo",
+                onClick: () => {
+                  for (const ref of snoozed)
+                    void unsnoozeThread(ref).then((undone) => {
+                      if (undone._tag === "Failure" && !isAtomCommandInterrupted(undone)) {
+                        failureToast("Failed to wake thread", squashAtomCommandFailure(undone));
+                      }
+                    });
+                },
+              },
+            }),
+          );
           return;
         }
         const reportFailure = async (
@@ -212,26 +248,77 @@ export function useThreadActionMenu(input: {
             return;
           }
           case "settle":
-            await reportFailure("Failed to settle thread", () => settleThread(threadRef));
+            for (const member of worktreeLifecycleTargets(
+              members,
+              "settle",
+              new Date().toISOString(),
+            )) {
+              await reportFailure("Failed to settle worktree", () =>
+                settleThread(scopeThreadRef(member.environmentId, member.id)),
+              );
+            }
             return;
           case "unsettle":
-            await reportFailure("Failed to un-settle thread", () => unsettleThread(threadRef));
+            for (const member of worktreeLifecycleTargets(
+              members,
+              "unsettle",
+              new Date().toISOString(),
+            )) {
+              await reportFailure("Failed to unsettle worktree", () =>
+                unsettleThread(scopeThreadRef(member.environmentId, member.id)),
+              );
+            }
             return;
           case "unsnooze":
-            await reportFailure("Failed to wake thread", () => unsnoozeThread(threadRef));
+            for (const member of worktreeLifecycleTargets(
+              members,
+              "unsnooze",
+              new Date().toISOString(),
+            )) {
+              await reportFailure("Failed to unsnooze worktree", () =>
+                unsnoozeThread(scopeThreadRef(member.environmentId, member.id)),
+              );
+            }
             return;
           case "pin":
-            await reportFailure("Failed to pin thread", () => pinThread(threadRef));
+            for (const member of worktreeLifecycleTargets(
+              members,
+              "pin",
+              new Date().toISOString(),
+            )) {
+              await reportFailure("Failed to pin worktree", () =>
+                pinThread(scopeThreadRef(member.environmentId, member.id)),
+              );
+            }
             return;
           case "unpin": {
-            await reportFailure("Failed to unpin thread", () => confirmAndUnpinThread(threadRef));
+            if (confirmThreadUnpin) {
+              const confirmed = await settlePromise(() =>
+                api.dialogs.confirm("Unpin this worktree?"),
+              );
+              if (confirmed._tag === "Failure" || !confirmed.value) return;
+            }
+            for (const member of worktreeLifecycleTargets(
+              members,
+              "unpin",
+              new Date().toISOString(),
+            )) {
+              await reportFailure("Failed to unpin worktree", () =>
+                unpinThread(scopeThreadRef(member.environmentId, member.id)),
+              );
+            }
             return;
           }
           case "auto-settle:enabled":
           case "auto-settle:disabled":
-            await reportFailure("Failed to update auto-settle", () =>
-              setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
-            );
+            for (const member of members) {
+              if (member.archivedAt != null) continue;
+              const enabled = action === "auto-settle:enabled";
+              if ((member.autoSettleDisabledAt == null) === enabled) continue;
+              await reportFailure("Failed to update auto-settle", () =>
+                setThreadAutoSettle(scopeThreadRef(member.environmentId, member.id), enabled),
+              );
+            }
             return;
           case "rename":
             onStartRename();
@@ -327,7 +414,8 @@ export function useThreadActionMenu(input: {
       archiveThread,
       confirmThreadArchive,
       confirmThreadDelete,
-      confirmAndUnpinThread,
+      confirmThreadUnpin,
+      unpinThread,
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
