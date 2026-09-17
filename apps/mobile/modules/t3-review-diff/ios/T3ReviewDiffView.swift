@@ -1091,7 +1091,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     // Measure the rendered text so tabs and fallback glyphs remain reachable by scrolling.
     contentWidthsByFileId = nextContentWidthsByFileId.mapValues { width in
       let measuredWidth = width + style.codePadding * 2
-      return max(0, min(style.contentWidth, measuredWidth))
+      return max(0, measuredWidth)
     }
     rowOffsets = nextOffsets
     fileHeaderRowIndices = nextFileHeaderRowIndices
