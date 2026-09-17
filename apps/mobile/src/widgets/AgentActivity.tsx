@@ -473,7 +473,15 @@ export function AgentActivity(
     <VStack
       alignment="leading"
       spacing={6}
-      modifiers={[padding({ all: 14 }), ...(deepLink ? [widgetURL(deepLink)] : [])]}
+      modifiers={[
+        padding({ all: 14 }),
+        activityBackgroundTint(
+          "isLiquidGlassAvailable" in environment && environment.isLiquidGlassAvailable
+            ? "clear"
+            : null,
+        ),
+        ...(deepLink ? [widgetURL(deepLink)] : []),
+      ]}
     >
       {/* Logo pinned to the leading edge; the status texts centered across the
           full width (ZStack so the logo doesn't skew the centering). No footer —

@@ -200,7 +200,7 @@ export class GitHubCliCommandError extends Schema.TaggedError<GitHubCliCommandEr
   }
 }
 
-export class GitHubRepositoryContextDecodeError extends Schema.TaggedErrorClass<GitHubRepositoryContextDecodeError>()(
+export class GitHubRepositoryContextDecodeError extends Schema.TaggedError<GitHubRepositoryContextDecodeError>()(
   "GitHubRepositoryContextDecodeError",
   {
     command: Schema.Literal("gh"),
