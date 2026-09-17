@@ -350,6 +350,7 @@ export interface ThreadListV2SettledShelfListItem {
 
 export interface ThreadListV2WorktreeListItem {
   readonly type: "v2-worktree";
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly key: string;
   readonly thread: EnvironmentThreadShell;
   readonly count: number;
@@ -561,12 +562,14 @@ export function buildThreadListV2ListItems(input: {
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
   }
-  const counts = new Map<string, number>();
+  const members = new Map<string, EnvironmentThreadShell[]>();
   for (const entry of threadItems) {
     if (entry.type !== "v2-thread") continue;
     const thread = entry.item.thread;
     const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const group = members.get(key) ?? [];
+    group.push(thread);
+    members.set(key, group);
   }
   const seen = new Set<string>();
   const grouped = input.groupWorktrees
@@ -576,14 +579,14 @@ export function buildThreadListV2ListItems(input: {
         const key = worktreeScopeKey(thread.environmentId, thread.projectId, thread.worktreePath);
         if (seen.has(key)) return [entry];
         seen.add(key);
+        const threads = members.get(key)!;
         return [
-          { type: "v2-worktree", key: `worktree:${key}`, thread, count: counts.get(key)! },
+          { type: "v2-worktree", key: `worktree:${key}`, thread, threads, count: threads.length },
           entry,
         ];
       })
     : result;
-  // Hairlines depend on the final neighbour, so they are stamped after the
-  // splice: a recycled cell only re-renders when its divider actually flips.
+  // Stamp dividers after grouping so recycled rows follow their final neighbour.
   return grouped.map((entry, index) => {
     if (entry.type !== "v2-thread" && entry.type !== "v2-pending") return entry;
     const next = grouped[index + 1];
