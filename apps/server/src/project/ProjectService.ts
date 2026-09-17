@@ -25,6 +25,8 @@ import {
 import { planThreadDeletion } from "../orchestration-v2/ThreadDeletion.ts";
 import * as ProjectionProjects from "../persistence/Services/ProjectionProjects.ts";
 import { ProjectEnrichmentService, type ProjectEnrichment } from "./ProjectEnrichmentService.ts";
+import { ServerConfig } from "../config.ts";
+import { resolveProjectKind } from "./ProjectKind.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 
 export interface ProjectCreateInput extends ProjectCreatePayload {
@@ -128,6 +130,9 @@ export class ProjectService extends Context.Service<
 >()("t3/project/ProjectService") {}
 
 export const make = Effect.gen(function* () {
+  const chatsDir = Option.getOrUndefined(
+    Option.map(yield* Effect.serviceOption(ServerConfig), (config) => config.chatsDir),
+  );
   const engine = yield* OrchestrationEngineService;
   const projects = yield* ProjectionProjects.ProjectionProjectRepository;
   const projectEnrichment = yield* ProjectEnrichmentService;
@@ -145,6 +150,7 @@ export const make = Effect.gen(function* () {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    kind: resolveProjectKind(row.workspaceRoot, chatsDir),
     repositoryIdentity: enrichment?.repositoryIdentity ?? null,
     faviconPath: row.faviconPath ?? enrichment?.faviconPath ?? null,
     defaultModelSelection: row.defaultModelSelection,

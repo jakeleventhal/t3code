@@ -31,6 +31,7 @@ import {
   effectiveSnoozed,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
+import { isChatsProject } from "@t3tools/client-runtime/state/models";
 import { resolveSettledThreadTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import {
   threadSearchMatchKey,
@@ -2535,6 +2536,7 @@ export default function Sidebar() {
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
+      if (isChatsProject(projectGroup)) return;
       if (isMobile) {
         setOpenMobile(false);
       }
@@ -4626,7 +4628,7 @@ export default function Sidebar() {
                                 machineByEnvironmentId={environmentMachineById}
                               />
                             ) : null}
-                            {project ? (
+                            {project && !isChatsProject(project) ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"

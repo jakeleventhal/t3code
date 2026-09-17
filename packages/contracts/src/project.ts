@@ -127,7 +127,11 @@ export const ProjectIconOverride = Schema.Union([
 );
 export type ProjectIconOverride = typeof ProjectIconOverride.Type;
 
+export const ProjectKind = Schema.Literals(["standard", "chats"]);
+export type ProjectKind = typeof ProjectKind.Type;
+
 export const Project = Schema.Struct({
+  kind: Schema.optional(ProjectKind),
   id: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
