@@ -3216,6 +3216,7 @@ export default function Sidebar() {
       const lifecycle = resolveWorktreeLifecycle(lifecycleThreads, selectionNow.toISOString());
       const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat);
       const lifecycleMenu = buildThreadActionMenuItems({
+        projectFilter: null,
         ...lifecycle,
         lifecycleScope: "worktree",
         branch: null,
