@@ -118,6 +118,8 @@ a shortcut.
 
 `thread.stop` interrupts the running turn in the focused thread. It has no default
 shortcut; assign one in **Settings → Keybindings**.
+`usage.open` opens the Usage page and defaults to `mod+u`. It does not run while
+the terminal has focus.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your
