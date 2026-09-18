@@ -119,9 +119,43 @@ export const discovery = {
 
 export const make = Effect.gen(function* () {
   const github = yield* GitHubCli.GitHubCli;
+  const repositoryFromContext = (
+    context: SourceControlProvider.SourceControlProviderContext | undefined,
+  ) => {
+    if (context?.remoteName !== "upstream") return undefined;
+    const scpStyle = /^git@([^:/\s]+):([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(context.remoteUrl);
+    if (scpStyle?.[1] && scpStyle[2] && scpStyle[3]) {
+      return scpStyle[1].toLowerCase() === "github.com"
+        ? `${scpStyle[2]}/${scpStyle[3]}`
+        : `${scpStyle[1]}/${scpStyle[2]}/${scpStyle[3]}`;
+    }
+    try {
+      const parsed = new URL(context.remoteUrl);
+      const [owner, name, ...rest] = parsed.pathname
+        .replace(/\/+$/, "")
+        .replace(/\.git$/i, "")
+        .split("/")
+        .filter((part) => part.length > 0);
+      if (!owner || !name || rest.length > 0) return undefined;
+      const repositoryHost = parsed.protocol === "ssh:" ? parsed.hostname : parsed.host;
+      return parsed.hostname.toLowerCase() === "github.com"
+        ? `${owner}/${name}`
+        : `${repositoryHost}/${owner}/${name}`;
+    } catch {
+      return undefined;
+    }
+  };
+  const withRepositoryFromContext = <Input extends object>(
+    input: Input,
+    context: SourceControlProvider.SourceControlProviderContext | undefined,
+  ): Input | (Input & { readonly repository: string }) => {
+    const repository = repositoryFromContext(context);
+    return repository ? { ...input, repository } : input;
+  };
 
   const listChangeRequests: SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"] =
     (input) => {
+      const repository = repositoryFromContext(input.context);
       if (input.state === "open") {
         return github
           .listOpenPullRequests({
@@ -131,6 +165,7 @@ export const make = Effect.gen(function* () {
               ? {}
               : { rateLimitHost: new URL(input.context.provider.baseUrl).host }),
             ...(input.limit !== undefined ? { limit: input.limit } : {}),
+            ...(repository ? { repository } : {}),
           })
           .pipe(
             Effect.map((items) => items.map(toChangeRequest)),
@@ -152,6 +187,8 @@ export const make = Effect.gen(function* () {
       }
 
       const stateArg: ChangeRequestState | "all" = input.state;
+      const qualifiedHead = /^([^:/\s]+):(.+)$/u.exec(input.headSelector);
+      const requestedLimit = input.limit ?? 20;
       return github
         .execute({
           cwd: input.cwd,
@@ -162,11 +199,12 @@ export const make = Effect.gen(function* () {
             "pr",
             "list",
             "--head",
-            input.headSelector,
+            qualifiedHead?.[2] ?? input.headSelector,
             "--state",
             stateArg,
             "--limit",
-            String(input.limit ?? 20),
+            String(qualifiedHead ? 100 : requestedLimit),
+            ...(repository ? ["--repo", repository] : []),
             "--json",
             "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
           ],
@@ -181,18 +219,27 @@ export const make = Effect.gen(function* () {
               Effect.flatMap((decoded) =>
                 Result.isSuccess(decoded)
                   ? Effect.succeed(
-                      decoded.success.map((item) => {
-                        const { updatedAt, ...summary } = item;
-                        return {
-                          ...toChangeRequest({
-                            ...summary,
-                            ...(Option.isSome(updatedAt)
-                              ? { updatedAt: DateTime.formatIso(updatedAt.value) }
-                              : {}),
-                          }),
-                          updatedAt,
-                        };
-                      }),
+                      decoded.success
+                        .filter(
+                          (item) =>
+                            !qualifiedHead ||
+                            (item.headRefName === qualifiedHead[2] &&
+                              item.headRepositoryOwnerLogin?.toLowerCase() ===
+                                qualifiedHead[1]?.toLowerCase()),
+                        )
+                        .slice(0, requestedLimit)
+                        .map((item) => {
+                          const { updatedAt, ...summary } = item;
+                          return {
+                            ...toChangeRequest({
+                              ...summary,
+                              ...(Option.isSome(updatedAt)
+                                ? { updatedAt: DateTime.formatIso(updatedAt.value) }
+                                : {}),
+                            }),
+                            updatedAt,
+                          };
+                        }),
                     )
                   : Effect.fail(
                       new GitHubCli.GitHubChangeRequestListDecodeError({
@@ -275,7 +322,7 @@ export const make = Effect.gen(function* () {
     getChangeRequest: (input) =>
       github
         .getPullRequest({
-          ...input,
+          ...withRepositoryFromContext(input, input.context),
           ...(input.context === undefined
             ? {}
             : { rateLimitHost: new URL(input.context.provider.baseUrl).host }),
@@ -299,13 +346,19 @@ export const make = Effect.gen(function* () {
         ),
     createChangeRequest: (input) =>
       github
-        .createPullRequest({
-          cwd: input.cwd,
-          baseBranch: input.baseRefName,
-          headSelector: input.headSelector,
-          title: input.title,
-          bodyFile: input.bodyFile,
-        })
+        .createPullRequest(
+          withRepositoryFromContext(
+            {
+              cwd: input.cwd,
+              baseBranch: input.baseRefName,
+              headSelector: input.headSelector,
+              title: input.title,
+              bodyFile: input.bodyFile,
+              ...(input.source?.repository ? { headRepository: input.source.repository } : {}),
+            },
+            input.context,
+          ),
+        )
         .pipe(
           Effect.mapError(
             (error) =>
@@ -359,7 +412,7 @@ export const make = Effect.gen(function* () {
     getDefaultBranch: (input) =>
       github
         .getDefaultBranch({
-          ...input,
+          ...withRepositoryFromContext(input, input.context),
           ...(input.context === undefined
             ? {}
             : { rateLimitHost: new URL(input.context.provider.baseUrl).host }),
@@ -378,21 +431,32 @@ export const make = Effect.gen(function* () {
           ),
         ),
     checkoutChangeRequest: (input) =>
-      github.checkoutPullRequest(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: "github",
-              operation: "checkoutChangeRequest",
-              command: error.command,
+      github
+        .checkoutPullRequest(
+          withRepositoryFromContext(
+            {
               cwd: input.cwd,
-              reference: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.reference,
-              ),
-              detail: error.detail,
-              cause: error,
-            }),
+              reference: input.reference,
+              ...(input.force !== undefined ? { force: input.force } : {}),
+            },
+            input.context,
+          ),
+        )
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new SourceControlProviderError({
+                provider: "github",
+                operation: "checkoutChangeRequest",
+                command: error.command,
+                cwd: input.cwd,
+                reference: SourceControlProvider.transportSafeSourceControlErrorValue(
+                  input.reference,
+                ),
+                detail: error.detail,
+                cause: error,
+              }),
+          ),
         ),
-      ),
   });
 });

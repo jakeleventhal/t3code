@@ -72,6 +72,63 @@ function targetsVerifiedHost(args: ReadonlyArray<string>, host: string): boolean
   return hosts.length > 0 && hosts.every((target) => target === host);
 }
 
+interface PullRequestRepositoryContext {
+  readonly baseRepository: string;
+  readonly headRepository: string;
+}
+
+interface ParsedGitHubRepositoryCoordinate {
+  readonly host?: string;
+  readonly owner: string;
+  readonly name: string;
+}
+
+interface GitHubRepositoryCoordinate extends ParsedGitHubRepositoryCoordinate {
+  readonly host: string;
+}
+
+function parseGitHubRepositoryCoordinate(
+  repository: string,
+): ParsedGitHubRepositoryCoordinate | undefined {
+  const parts = repository.split("/").filter((part) => part.length > 0);
+  if (parts.length === 2) {
+    const [owner, name] = parts;
+    return owner && name ? { owner, name } : undefined;
+  }
+  if (parts.length === 3) {
+    const [host, owner, name] = parts;
+    return host && owner && name ? { host, owner, name } : undefined;
+  }
+  return undefined;
+}
+
+function resolveGitHubRepositoryCoordinate(
+  coordinate: ParsedGitHubRepositoryCoordinate | undefined,
+  fallbackHost: string | undefined,
+): GitHubRepositoryCoordinate | undefined {
+  const host = coordinate?.host ?? fallbackHost;
+  return coordinate && host ? { ...coordinate, host } : undefined;
+}
+
+function formatGitHubRepositoryCoordinate(coordinate: GitHubRepositoryCoordinate): string {
+  return `${coordinate.host}/${coordinate.owner}/${coordinate.name}`;
+}
+
+function qualifyPullRequestHead(
+  context: PullRequestRepositoryContext,
+  headSelector: string,
+): string {
+  if (
+    context.baseRepository.toLowerCase() === context.headRepository.toLowerCase() ||
+    /^[^:/\s]+:.+$/u.test(headSelector)
+  ) {
+    return headSelector;
+  }
+
+  const head = parseGitHubRepositoryCoordinate(context.headRepository);
+  return head ? `${head.owner}:${headSelector}` : headSelector;
+}
+
 const gitHubCliFailureFields = {
   command: Schema.Literal("gh"),
   cwd: Schema.String,
@@ -143,6 +200,22 @@ export class GitHubCliCommandError extends Schema.TaggedError<GitHubCliCommandEr
   }
 }
 
+export class GitHubRepositoryContextDecodeError extends Schema.TaggedErrorClass<GitHubRepositoryContextDecodeError>()(
+  "GitHubRepositoryContextDecodeError",
+  {
+    command: Schema.Literal("gh"),
+    cwd: Schema.String,
+  },
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid pull request repository context.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed in resolvePullRequestRepositoryContext: ${this.detail}`;
+  }
+}
+
 const gitHubCliDecodeFields = {
   command: Schema.Literal("gh"),
   cwd: Schema.String,
@@ -207,6 +280,7 @@ export const GitHubCliError = Schema.Union([
   GitHubCliRateLimitError,
   GitHubPullRequestNotFoundError,
   GitHubCliCommandError,
+  GitHubRepositoryContextDecodeError,
   GitHubPullRequestListDecodeError,
   GitHubChangeRequestListDecodeError,
   GitHubPullRequestDecodeError,
@@ -298,12 +372,14 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly limit?: number;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
@@ -323,17 +399,21 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly title: string;
       readonly bodyFile: string;
+      readonly repository?: string;
+      readonly headRepository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly force?: boolean;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
   }
 >()("t3/sourceControl/GitHubCli") {}
@@ -519,10 +599,84 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const resolvePullRequestRepositoryContext = Effect.fn(
+    "GitHubCli.resolvePullRequestRepositoryContext",
+  )(function* (input: {
+    readonly cwd: string;
+    readonly repository?: string;
+    readonly headRepository?: string;
+  }) {
+    const explicitBase = input.repository
+      ? parseGitHubRepositoryCoordinate(input.repository)
+      : undefined;
+    const explicitHead = input.headRepository
+      ? parseGitHubRepositoryCoordinate(input.headRepository)
+      : undefined;
+
+    const explicitBaseWithHost = resolveGitHubRepositoryCoordinate(
+      explicitBase,
+      explicitHead?.host,
+    );
+    const explicitHeadWithHost = resolveGitHubRepositoryCoordinate(
+      explicitHead,
+      explicitBase?.host,
+    );
+    if (explicitBaseWithHost && explicitHeadWithHost) {
+      return {
+        baseRepository: formatGitHubRepositoryCoordinate(explicitBaseWithHost),
+        headRepository: formatGitHubRepositoryCoordinate(explicitHeadWithHost),
+      };
+    }
+
+    const result = yield* execute({
+      cwd: input.cwd,
+      args: [
+        "repo",
+        "view",
+        ...(input.headRepository ? [input.headRepository] : []),
+        "--json",
+        "nameWithOwner,parent,url",
+        "--jq",
+        '. as $repo | (.url | capture("^https?://(?<host>[^/]+)").host) as $host | [if $repo.parent then "\\($host)/\\($repo.parent.owner.login)/\\($repo.parent.name)" else "\\($host)/\\($repo.nameWithOwner)" end, "\\($host)/\\($repo.nameWithOwner)"] | @tsv',
+      ],
+    });
+    const [resolvedBaseValue, resolvedHeadValue] = result.stdout.trim().split("\t");
+    const resolvedBase = resolveGitHubRepositoryCoordinate(
+      resolvedBaseValue ? parseGitHubRepositoryCoordinate(resolvedBaseValue) : undefined,
+      undefined,
+    );
+    const resolvedHead = resolveGitHubRepositoryCoordinate(
+      resolvedHeadValue ? parseGitHubRepositoryCoordinate(resolvedHeadValue) : undefined,
+      undefined,
+    );
+    const base = resolveGitHubRepositoryCoordinate(
+      explicitBase ?? resolvedBase,
+      explicitBase?.host ?? resolvedBase?.host ?? resolvedHead?.host,
+    );
+    const head = resolveGitHubRepositoryCoordinate(
+      explicitHead ?? resolvedHead,
+      explicitHead?.host ?? resolvedHead?.host ?? base?.host,
+    );
+
+    if (!base || !head) {
+      return yield* new GitHubRepositoryContextDecodeError({
+        command: "gh",
+        cwd: input.cwd,
+      });
+    }
+
+    return {
+      baseRepository: formatGitHubRepositoryCoordinate(base),
+      headRepository: formatGitHubRepositoryCoordinate(head),
+    };
+  });
+
   return GitHubCli.of({
     execute,
-    listOpenPullRequests: (input) =>
-      execute({
+    listOpenPullRequests: (input) => {
+      const qualifiedHead = /^([^:/\s]+):(.+)$/u.exec(input.headSelector);
+      const requestedLimit = input.limit ?? 1;
+      return execute({
         cwd: input.cwd,
         ...(input.rateLimitHost === undefined ? {} : { rateLimitHost: input.rateLimitHost }),
         allowReserve: true,
@@ -530,11 +684,12 @@ export const make = Effect.gen(function* () {
           "pr",
           "list",
           "--head",
-          input.headSelector,
+          qualifiedHead?.[2] ?? input.headSelector,
           "--state",
           "open",
           "--limit",
-          String(input.limit ?? 1),
+          String(qualifiedHead ? 100 : requestedLimit),
+          ...(input.repository ? ["--repo", input.repository] : []),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -554,12 +709,21 @@ export const make = Effect.gen(function* () {
                       }),
                     );
                   }
-
-                  return Effect.succeed(decoded.success.map(pullRequestSummary));
+                  const matching = qualifiedHead
+                    ? decoded.success.filter(
+                        (pullRequest) =>
+                          pullRequest.state === "open" &&
+                          pullRequest.headRefName === qualifiedHead[2] &&
+                          pullRequest.headRepositoryOwnerLogin?.toLowerCase() ===
+                            qualifiedHead[1]?.toLowerCase(),
+                      )
+                    : decoded.success;
+                  return Effect.succeed(matching.slice(0, requestedLimit).map(pullRequestSummary));
                 }),
               ),
         ),
-      ),
+      );
+    },
     getPullRequest: (input) =>
       execute({
         cwd: input.cwd,
@@ -569,6 +733,7 @@ export const make = Effect.gen(function* () {
           "pr",
           "view",
           input.reference,
+          ...(input.repository ? ["--repo", input.repository] : []),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -622,26 +787,84 @@ export const make = Effect.gen(function* () {
         ),
       ),
     createPullRequest: (input) =>
-      execute({
-        cwd: input.cwd,
-        args: [
-          "pr",
-          "create",
-          "--base",
-          input.baseBranch,
-          "--head",
-          input.headSelector,
-          "--title",
-          input.title,
-          "--body-file",
-          input.bodyFile,
-        ],
-      }).pipe(Effect.asVoid),
+      resolvePullRequestRepositoryContext(input).pipe(
+        Effect.flatMap((context) => {
+          const base = resolveGitHubRepositoryCoordinate(
+            parseGitHubRepositoryCoordinate(context.baseRepository),
+            undefined,
+          );
+          const head = resolveGitHubRepositoryCoordinate(
+            parseGitHubRepositoryCoordinate(context.headRepository),
+            undefined,
+          );
+          if (
+            base &&
+            head &&
+            context.baseRepository.toLowerCase() !== context.headRepository.toLowerCase()
+          ) {
+            const qualifiedHead = qualifyPullRequestHead(context, input.headSelector);
+            const qualifiedHeadMatch = /^([^:/\s]+):(.+)$/u.exec(qualifiedHead);
+            const headOwner = qualifiedHeadMatch?.[1] ?? head.owner;
+            const headBranch = qualifiedHeadMatch?.[2] ?? qualifiedHead;
+            return execute({
+              cwd: input.cwd,
+              args: [
+                "api",
+                "--hostname",
+                base.host,
+                `repos/${base.owner}/${base.name}/pulls`,
+                "--method",
+                "POST",
+                "-f",
+                `title=${input.title}`,
+                "-f",
+                `head=${headOwner}:${headBranch}`,
+                "-f",
+                `head_repo=${head.name}`,
+                "-f",
+                `base=${input.baseBranch}`,
+                "-F",
+                `body=@${input.bodyFile}`,
+                "-F",
+                "maintainer_can_modify=true",
+                "--silent",
+              ],
+            });
+          }
+
+          return execute({
+            cwd: input.cwd,
+            args: [
+              "pr",
+              "create",
+              "--base",
+              input.baseBranch,
+              "--head",
+              qualifyPullRequestHead(context, input.headSelector),
+              "--title",
+              input.title,
+              "--body-file",
+              input.bodyFile,
+              "--repo",
+              context.baseRepository,
+            ],
+          });
+        }),
+        Effect.asVoid,
+      ),
     getDefaultBranch: (input) =>
       execute({
         cwd: input.cwd,
         ...(input.rateLimitHost === undefined ? {} : { rateLimitHost: input.rateLimitHost }),
-        args: ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+        args: [
+          "repo",
+          "view",
+          ...(input.repository ? [input.repository] : []),
+          "--json",
+          "defaultBranchRef",
+          "--jq",
+          ".defaultBranchRef.name",
+        ],
       }).pipe(
         Effect.map((value) => {
           const trimmed = value.stdout.trim();
@@ -651,7 +874,13 @@ export const make = Effect.gen(function* () {
     checkoutPullRequest: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
+        args: [
+          "pr",
+          "checkout",
+          input.reference,
+          ...(input.force ? ["--force"] : []),
+          ...(input.repository ? ["--repo", input.repository] : []),
+        ],
       }).pipe(Effect.asVoid),
   });
 });
