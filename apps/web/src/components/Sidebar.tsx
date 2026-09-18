@@ -213,7 +213,12 @@ import {
   type TerminalStatusIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
-import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
+import {
+  resolveSnoozePresets,
+  snoozeWakeDescription,
+  snoozeWakeLabel,
+  type SnoozePreset,
+} from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
@@ -1477,7 +1482,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             )}
           >
             {props.snoozeSupported && !props.lifecycle.isSnoozed && props.lifecycle.canSnoozeNow ? (
-              <SnoozePopoverButton
+              <SnoozeMenuButton
                 open={snoozeMenuOpen}
                 onOpenChange={setSnoozeMenuOpen}
                 onSnooze={(preset) => props.onLifecycleAction("snooze", preset)}
@@ -1536,7 +1541,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           ) : null}
           {badge?.kind === "stack" || pr || currentPr ? (
             <ThreadPullRequestBadgeControl
-              variant="underline"
+              render={<button type="button" className="min-w-0" />}
               badge={badge}
               pullRequests={metadata.pullRequests}
               number={pr?.number ?? currentPr?.number}
@@ -2704,11 +2709,13 @@ export default function Sidebar() {
   }, []);
 
   const [draggedGroupKey, setDraggedGroupKey] = useState<string | null>(null);
+  const [isContextDrag, setIsContextDrag] = useState(false);
   const dragSensorRef = useRef<SidebarPointerSensor | null>(null);
   const contextDragKeyRef = useRef<string | null>(null);
   const finishThreadDrag = useCallback((started: boolean) => {
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
+    setIsContextDrag(false);
     endThreadContextDrag();
     if (started) {
       listMotionRef.current?.release();
@@ -2739,11 +2746,7 @@ export default function Sidebar() {
   const moveThreadContextDrag = useCallback(
     (point: { x: number; y: number }) => {
       const contextDrag = pointerOutsideThreadList(point);
-      setDragState((current) =>
-        current === null || current.contextDrag === contextDrag
-          ? current
-          : { ...current, contextDrag },
-      );
+      setIsContextDrag(contextDrag);
       if (!contextDrag) {
         endThreadContextDrag();
         return false;
@@ -3223,6 +3226,7 @@ export default function Sidebar() {
       const lifecycle = resolveWorktreeLifecycle(lifecycleThreads, selectionNow.toISOString());
       const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat);
       const lifecycleMenu = buildThreadActionMenuItems({
+        projectFilter: null,
         ...lifecycle,
         lifecycleScope: "worktree",
         branch: null,

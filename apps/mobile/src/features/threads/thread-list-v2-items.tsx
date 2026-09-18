@@ -1,5 +1,4 @@
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
-import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import {
   resolveWorktreeLifecycle,
   worktreeLifecycleTargets,
@@ -44,6 +43,7 @@ import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
@@ -1186,7 +1186,7 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
               />
             ) : null}
             <Text className="ml-auto text-xs tabular-nums text-foreground-tertiary">
-              {threadTimeLabel(thread)}
+              {relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt)}
             </Text>
           </View>
           <View className="flex-row items-center gap-1.5">

@@ -374,6 +374,8 @@ export function isThreadListV2ListItem(value: {
   readonly type: string;
 }): value is ThreadListV2ListItem {
   return (
+    value.type === "v2-section" ||
+    value.type === "v2-worktree" ||
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
     value.type === "v2-snoozed-shelf" ||
@@ -393,6 +395,15 @@ export function threadListV2ListItemsAreEqual(
   item: ThreadListV2ListItem,
 ): boolean {
   switch (item.type) {
+    case "v2-section":
+      return previous.type === "v2-section" && previous.key === item.key;
+    case "v2-worktree":
+      return (
+        previous.type === "v2-worktree" &&
+        previous.key === item.key &&
+        previous.thread === item.thread &&
+        previous.count === item.count
+      );
     case "v2-thread":
       return (
         previous.type === "v2-thread" &&
