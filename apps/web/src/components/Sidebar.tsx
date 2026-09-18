@@ -72,6 +72,7 @@ import {
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
+  Globe2Icon,
   PinIcon,
   PlusIcon,
   SettingsIcon,
@@ -230,6 +231,13 @@ import {
   type ProviderInstanceEntry,
 } from "../providerInstances";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { useThreadDiscoveredPorts } from "../portDiscoveryState";
+import { previewEnvironment } from "../state/preview";
+import { openDiscoveredPort } from "./preview/openDiscoveredPort";
+import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
 import {
@@ -939,6 +947,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     activeThreadBranch: thread.branch,
     currentGitBranch: visibleGitStatus?.refName ?? null,
   });
+  const discoveredPorts = useThreadDiscoveredPorts({
+    environmentId: thread.environmentId,
+    threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
+  });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
+  const openPreview = useAtomCommand(previewEnvironment.open, {
+    reportFailure: false,
+  });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
@@ -1155,6 +1171,53 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onCommitRename(threadRef, renamingTitle, thread.title);
     }
   }, [onCommitRename, renamingTitle, thread.title, threadRef]);
+  const handleOpenDiscoveredPort = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!preferredDiscoveredPort) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onThreadActivate(threadRef);
+      void (async () => {
+        const result = await openDiscoveredPort({
+          threadRef,
+          port: preferredDiscoveredPort,
+          openPreview,
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open preview",
+            description:
+              error instanceof Error ? error.message : "The preview could not be opened.",
+          }),
+        );
+      })();
+    },
+    [onThreadActivate, openPreview, preferredDiscoveredPort, threadRef],
+  );
+
+  const discoveredPortButton = preferredDiscoveredPort ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
+            onClick={handleOpenDiscoveredPort}
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-emerald-600 outline-none hover:text-emerald-700 focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-400 dark:hover:text-emerald-300"
+          />
+        }
+      >
+        <Globe2Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
+      </TooltipPopup>
+    </Tooltip>
+  ) : null;
+
   // All sidebar rows share one surface model. Live threads used to look
   // like elevated cards while settled threads were plain rows, leaving neither
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
@@ -1303,6 +1366,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   </span>
                 )
               ) : null}
+              {discoveredPortButton}
               <SidebarProviderStack
                 thread={thread}
                 providerEntryByInstanceId={props.providerEntryByInstanceId}
