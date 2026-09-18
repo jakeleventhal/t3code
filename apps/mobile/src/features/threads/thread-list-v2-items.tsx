@@ -42,6 +42,7 @@ import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSym
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
+import { ThreadDevServerIndicator } from "./thread-dev-server-indicator";
 import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
@@ -1037,6 +1038,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             {rowContent(close)}
           </ControlPillMenu>
         )}
+        <ThreadDevServerIndicator
+          environmentId={thread.environmentId}
+          threadId={worktreeResourceThreadId(thread.projectId, thread.worktreePath)}
+        />
       </ThreadSwipeable>
     </View>
   );
