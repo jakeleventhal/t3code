@@ -5,7 +5,10 @@ const { withDangerousMod, withXcodeProject } = require("expo/config-plugins");
 
 // Register before expo-widgets: our mods run after its target generation.
 module.exports = function withAgentWidgetRefresh(config) {
-  const pushEnvironment = config.extra?.appVariant === "development" ? "development" : "production";
+  const pushEnvironment =
+    config.extra?.appVariant === "development" || config.extra?.iosPersonalTeamBuild === true
+      ? "development"
+      : "production";
   const eas = config.extra?.eas ?? {};
   const build = eas.build ?? {};
   const experimental = build.experimental ?? {};
