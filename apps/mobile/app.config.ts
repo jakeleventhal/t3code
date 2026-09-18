@@ -10,6 +10,10 @@ Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
+const iosPersonalTeamPushNotifications =
+  isIosPersonalTeamBuild && repoEnv.T3CODE_IOS_PERSONAL_TEAM_PUSH_NOTIFICATIONS === "1";
+const iosPersonalTeamLiveActivities =
+  iosPersonalTeamPushNotifications && repoEnv.T3CODE_IOS_PERSONAL_TEAM_LIVE_ACTIVITIES === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
@@ -288,14 +292,13 @@ const config: ExpoConfig = {
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    appleTeamId: isIosPersonalTeamBuild ? undefined : "ARK85ZXQ4Z",
+    associatedDomains: isIosPersonalTeamBuild
+      ? undefined
+      : [`applinks:${variant.relyingParty}`, `webcredentials:${variant.relyingParty}`],
     entitlements: {
       "com.apple.developer.user-fonts": ["app-usage"],
-      "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
+      "keychain-access-groups": [`$(AppIdentifierPrefix)${iosBundleIdentifier}`],
     },
     infoPlist: {
       UISupportedInterfaceOrientations: [
@@ -414,7 +417,8 @@ const config: ExpoConfig = {
       {
         icon: variant.assets.androidNotificationIcon,
         color: variant.assets.androidNotificationColor,
-        mode: APP_VARIANT === "development" ? "development" : "production",
+        mode:
+          APP_VARIANT === "development" || isIosPersonalTeamBuild ? "development" : "production",
       },
     ],
     // appleSignIn must be gated here: withoutIosPersonalTeamCapabilities.cjs runs before
@@ -521,9 +525,10 @@ const config: ExpoConfig = {
     // expo-widgets' — its dangerous mod wipes ios/ExpoWidgetsTarget/ (which
     // would delete the asset catalog) and its xcodeproj mod creates the widget
     // target (which must exist before the compile phase can be attached).
-    ...(!isIosPersonalTeamBuild
+    ...(!isIosPersonalTeamBuild || iosPersonalTeamLiveActivities
       ? ["./plugins/withWidgetLogoAsset.cjs", "./plugins/withAgentWidgetRefresh.cjs", widgetsPlugin]
       : []),
+    "./plugins/withIosSceneLifecycle.cjs",
     "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
     "./plugins/withAndroidFbjniVersion.cjs",
@@ -532,11 +537,15 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
+    ...(isIosPersonalTeamBuild && !iosPersonalTeamPushNotifications
+      ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"]
+      : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    iosPersonalTeamPushNotifications,
+    iosPersonalTeamLiveActivities,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
       backgroundUrl: repoEnv.T3CODE_BACKGROUND_RELAY_URL ?? null,
