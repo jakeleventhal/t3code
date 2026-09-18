@@ -1,5 +1,4 @@
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
-import { setThreadChangeRequestSnapshot } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -203,7 +202,6 @@ import {
   type SidebarSection,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
-import {} from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
 import { createSidebarListMotion } from "./Sidebar.motion";
 import {
@@ -618,16 +616,28 @@ function SidebarSectionHeader(props: {
       data-testid={`sidebar-${props.marker}`}
       className={cn("mx-0.5 h-8", props.className)}
     >
-      {props.toggle ? <CollapsibleSectionHeader
-        onClick={props.toggle.onToggle}
-        expanded={props.toggle.expanded}
-        tone={
-          props.isDropTarget ? "accent" : props.dragging ? "emphasized" : snoozed ? "info" : "muted"
-        }
-        data-testid={`sidebar-${snoozed ? "snoozed" : "settled"}-shelf-toggle`}
-      >
-        {props.label}
-      </CollapsibleSectionHeader> : <div className="flex h-full items-center px-2 text-xs font-medium text-sidebar-muted-foreground/60">{props.label}</div>}
+      {props.toggle ? (
+        <CollapsibleSectionHeader
+          onClick={props.toggle.onToggle}
+          expanded={props.toggle.expanded}
+          tone={
+            props.isDropTarget
+              ? "accent"
+              : props.dragging
+                ? "emphasized"
+                : snoozed
+                  ? "info"
+                  : "muted"
+          }
+          data-testid={`sidebar-${snoozed ? "snoozed" : "settled"}-shelf-toggle`}
+        >
+          {props.label}
+        </CollapsibleSectionHeader>
+      ) : (
+        <div className="flex h-full items-center px-2 text-xs font-medium text-sidebar-muted-foreground/60">
+          {props.label}
+        </div>
+      )}
     </SidebarMarker>
   );
 }
@@ -1234,6 +1244,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   return (
     <li
       data-thread-item
+      data-thread-key={threadKey}
       {...(fileDropHandlers ?? {})}
       className={cn("list-none [content-visibility:auto] [contain-intrinsic-size:auto_24px]")}
     >
@@ -1528,6 +1539,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             <ThreadPullRequestBadgeControl
               variant="underline"
               badge={badge}
+              pullRequests={metadata.pullRequests}
               number={pr?.number ?? currentPr?.number}
               url={pr?.url ?? currentPr?.url}
               status={prStatusIndicator(pr, linked?.sourceControlProvider)}
@@ -1535,15 +1547,17 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                 useRightPanelStore.getState().open(prThreadRef, "pull-requests");
                 props.onActivate(prThreadRef);
               }}
-              onOpenPullRequest={(event) => {
-                const url = pr?.url ?? currentPr?.url;
+              onOpenPullRequest={(event, targetUrl) => {
+                const url = targetUrl ?? pr?.url ?? currentPr?.url;
                 if (!url) return;
                 const opened = openPrLink(
                   event,
                   url,
-                  props.openPullRequestsInRightPanel ? threadRef : undefined,
+                  targetUrl !== undefined || props.openPullRequestsInRightPanel
+                    ? prThreadRef
+                    : undefined,
                 );
-                if (opened && !active) props.onActivate(threadRef);
+                if (opened && !active) props.onActivate(prThreadRef);
               }}
             />
           ) : null}
@@ -2809,10 +2823,21 @@ export default function Sidebar() {
     [unpinThread],
   );
 
-  const handleWorktreeDragStart = useCallback((event: DragStartEvent) => {
-    listMotionRef.current?.suspend();
-    setDraggedGroupKey(String(event.active.id));
-  }, []);
+  const handleWorktreeDragStart = useCallback(
+    (event: DragStartEvent) => {
+      listMotionRef.current?.suspend();
+      const groupKey = String(event.active.id);
+      const target = event.activatorEvent.target;
+      const pickedThreadKey =
+        target instanceof Element
+          ? target.closest<HTMLElement>("[data-thread-key]")?.dataset.threadKey
+          : undefined;
+      const group = worktreeGroups.activeGroups.find((candidate) => candidate.key === groupKey);
+      contextDragKeyRef.current = pickedThreadKey ?? group?.memberKeys[0] ?? null;
+      setDraggedGroupKey(groupKey);
+    },
+    [worktreeGroups.activeGroups],
+  );
   // Include every visible row in the measured order. Older servers disable
   // pickup on their rows without changing where those rows render.
   const sidebarListItems = useMemo((): readonly SidebarListItem[] => {
