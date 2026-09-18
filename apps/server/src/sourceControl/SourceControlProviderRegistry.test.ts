@@ -43,6 +43,7 @@ function makeRegistry(input: {
   readonly github?: Partial<GitHubCli.GitHubCli["Service"]>;
   readonly gitlab?: Partial<GitLabCli.GitLabCli["Service"]>;
   readonly resolve?: VcsDriverRegistry.VcsDriverRegistry["Service"]["resolve"];
+  readonly github?: Partial<GitHubCli.GitHubCli["Service"]>;
 }) {
   const driver = {
     listRemotes: () =>
@@ -344,4 +345,66 @@ it.effect(
         );
       }
     }).pipe(Effect.scoped),
+);
+
+it.effect("prefers the upstream repository context for conventional GitHub forks", () =>
+  Effect.gen(function* () {
+    let repository: string | undefined;
+    const registry = yield* makeRegistry({
+      remotes: [
+        { name: "origin", url: "git@github.com:contributor/t3code.git" },
+        { name: "upstream", url: "git@github.com:T3Tools/t3code.git" },
+      ],
+      github: {
+        getDefaultBranch: (input) => {
+          repository = input.repository;
+          return Effect.succeed("main");
+        },
+      },
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+    const defaultBranch = yield* provider.getDefaultBranch({ cwd: "/repo" });
+
+    assert.strictEqual(defaultBranch, "main");
+    assert.strictEqual(repository, "T3Tools/t3code");
+  }),
+);
+
+it.effect("does not let an unrelated upstream remote override origin", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry({
+      remotes: [
+        { name: "origin", url: "git@github.com:T3Tools/t3code.git" },
+        { name: "upstream", url: "https://dev.azure.com/acme/project/_git/repo" },
+      ],
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+
+    assert.strictEqual(provider.kind, "github");
+  }),
+);
+
+it.effect("does not target an unrelated GitHub upstream repository", () =>
+  Effect.gen(function* () {
+    let repository: string | undefined;
+    const registry = yield* makeRegistry({
+      remotes: [
+        { name: "origin", url: "git@github.com:contributor/t3code.git" },
+        { name: "upstream", url: "git@github.com:someone/other-project.git" },
+      ],
+      github: {
+        getDefaultBranch: (input) => {
+          repository = input.repository;
+          return Effect.succeed("main");
+        },
+      },
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+    yield* provider.getDefaultBranch({ cwd: "/repo" });
+
+    assert.strictEqual(repository, undefined);
+  }),
 );
