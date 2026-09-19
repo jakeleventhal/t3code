@@ -1014,6 +1014,8 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   private var codeCharacterWidth: CGFloat = 8
   /// Columns per visual line while word wrap is on; nil while code rows pan horizontally.
   private var codeWrapColumns: Int?
+  /// UTF-16 offsets where each visual line starts, for rows that wrap onto more than one line.
+  private var wrapLineStartsByRowId: [String: [Int]] = [:]
   private var panStartHorizontalOffset: CGFloat = 0
   private var activePanFileId: String?
   private var activePanKind: ReviewDiffHorizontalPanKind?
@@ -1066,6 +1068,24 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     ceil(codeFont.lineHeight)
   }
 
+  /// UTF-16 offsets where each visual line starts. A break that would split a composed
+  /// character, such as an emoji or a letter with combining marks, moves before it.
+  private func wrapLineStarts(_ text: NSString, columns: Int) -> [Int] {
+    var lineStarts = [0]
+    var lineStart = 0
+    while text.length - lineStart > columns {
+      let composed = text.rangeOfComposedCharacterSequence(at: lineStart + columns)
+      // A single composed character wider than the line keeps the line from being empty.
+      let nextLineStart = composed.location > lineStart ? composed.location : NSMaxRange(composed)
+      guard nextLineStart < text.length else {
+        break
+      }
+      lineStarts.append(nextLineStart)
+      lineStart = nextLineStart
+    }
+    return lineStarts
+  }
+
   func frameForRow(at index: Int) -> CGRect? {
     guard rows.indices.contains(index), rowOffsets.indices.contains(index) else {
       return nil
@@ -1084,6 +1104,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     var nextFileHeaderRowIndices: [Int] = []
     nextOffsets.reserveCapacity(rows.count)
     var nextContentWidthsByFileId: [String: CGFloat] = [:]
+    var nextWrapLineStartsByRowId: [String: [Int]] = [:]
     var offset: CGFloat = 0
     let codeFont = self.codeFont
     let hunkFont = self.hunkFont
@@ -1106,9 +1127,10 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       case "line":
         width = textWidth(row.content ?? "", font: codeFont)
         let columnCount = row.content?.utf16.count ?? 0
-        if let wrapColumns, rowHeight > 0, columnCount > wrapColumns {
-          let extraLineCount = (columnCount - 1) / wrapColumns
-          rowHeight += CGFloat(extraLineCount) * wrapLineHeight
+        if let wrapColumns, let content = row.content, rowHeight > 0, columnCount > wrapColumns {
+          let lineStarts = wrapLineStarts(content as NSString, columns: wrapColumns)
+          nextWrapLineStartsByRowId[row.id] = lineStarts
+          rowHeight += CGFloat(lineStarts.count - 1) * wrapLineHeight
         }
       case "hunk":
         width = textWidth(row.text ?? "", font: hunkFont)
@@ -1121,6 +1143,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
 
     codeCharacterWidth = characterWidth
     codeWrapColumns = wrapColumns
+    wrapLineStartsByRowId = nextWrapLineStartsByRowId
     // Measure rendered text so tabs and fallback glyphs remain reachable when scrolling.
     contentWidthsByFileId = nextContentWidthsByFileId.mapValues { width in
       max(0, width + style.codePadding * 2)
@@ -2245,7 +2268,14 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       width: contentWidth,
       height: codeFont.lineHeight
     )
-    drawWordDiffRanges(row, firstLineRect: firstLineRect, context: context, horizontalOffset: horizontalOffset)
+    let lineStarts = wrapLineStartsByRowId[row.id] ?? [0]
+    drawWordDiffRanges(
+      row,
+      lineStarts: lineStarts,
+      firstLineRect: firstLineRect,
+      context: context,
+      horizontalOffset: horizontalOffset
+    )
     if let tokens = tokensByRowId[row.id], !tokens.isEmpty {
       let attributedText = tokenAttributedString(
         rowId: row.id,
@@ -2253,15 +2283,15 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
         fallbackColor: theme.text,
         font: codeFont
       )
-      drawCodeLines(length: attributedText.length, firstLineRect: codeTextRect) { range, lineRect in
+      drawCodeLines(length: attributedText.length, lineStarts: lineStarts, firstLineRect: codeTextRect) { range, lineRect in
         let segment = range.length == attributedText.length
           ? attributedText
           : attributedText.attributedSubstring(from: range)
-        segment.draw(in: lineRect)
+        segment.draw(at: lineRect.origin)
       }
     } else {
       let content = (row.content ?? "") as NSString
-      drawCodeLines(length: content.length, firstLineRect: codeTextRect) { range, lineRect in
+      drawCodeLines(length: content.length, lineStarts: lineStarts, firstLineRect: codeTextRect) { range, lineRect in
         let segment = range.length == content.length ? content as String : content.substring(with: range)
         drawText(segment, rect: lineRect, color: theme.text, font: codeFont)
       }
@@ -2269,20 +2299,17 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     context.restoreGState()
   }
 
-  /// Draws each wrap segment on its own visual line, or the whole row when wrapping is off.
-  /// Segments are fixed UTF-16 column counts so they always match the row layout.
-  private func drawCodeLines(length: Int, firstLineRect: CGRect, draw: (NSRange, CGRect) -> Void) {
-    guard let columns = codeWrapColumns, length > columns else {
-      draw(NSRange(location: 0, length: length), firstLineRect)
-      return
-    }
-
-    var location = 0
+  /// Draws the segment starting at each of the row's line starts on its own visual line.
+  private func drawCodeLines(
+    length: Int,
+    lineStarts: [Int],
+    firstLineRect: CGRect,
+    draw: (NSRange, CGRect) -> Void
+  ) {
     var lineRect = firstLineRect
-    while location < length {
-      let segmentLength = min(columns, length - location)
-      draw(NSRange(location: location, length: segmentLength), lineRect)
-      location += segmentLength
+    for (line, lineStart) in lineStarts.enumerated() {
+      let lineEnd = line + 1 < lineStarts.count ? lineStarts[line + 1] : length
+      draw(NSRange(location: lineStart, length: lineEnd - lineStart), lineRect)
       lineRect.origin.y += codeWrapLineHeight
     }
   }
@@ -2306,6 +2333,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
 
   private func drawWordDiffRanges(
     _ row: ReviewDiffNativeRow,
+    lineStarts: [Int],
     firstLineRect: CGRect,
     context: CGContext,
     horizontalOffset: CGFloat
@@ -2335,19 +2363,20 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       }
 
       // A wrapped row splits the highlight at each visual line boundary.
-      let columns = codeWrapColumns ?? range.end
-      var start = range.start
-      while start < range.end {
-        let line = start / columns
-        let end = min(range.end, (line + 1) * columns)
+      for (line, lineStart) in lineStarts.enumerated() {
+        let lineEnd = line + 1 < lineStarts.count ? lineStarts[line + 1] : Int.max
+        let start = max(range.start, lineStart)
+        let end = min(range.end, lineEnd)
+        guard end > start else {
+          continue
+        }
         let highlightRect = CGRect(
-          x: codeStartX - horizontalOffset + CGFloat(start - line * columns) * codeCharacterWidth,
+          x: codeStartX - horizontalOffset + CGFloat(start - lineStart) * codeCharacterWidth,
           y: highlightY + CGFloat(line) * codeWrapLineHeight,
           width: max(2, CGFloat(end - start) * codeCharacterWidth),
           height: highlightHeight
         )
         UIBezierPath(roundedRect: highlightRect, cornerRadius: 3).fill()
-        start = end
       }
     }
   }
