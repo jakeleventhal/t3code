@@ -18,6 +18,7 @@ const GrokCredentials = Schema.Record(
   Schema.Struct({
     key: Schema.optional(Schema.String),
     auth_mode: Schema.optional(Schema.String),
+    email: Schema.optional(Schema.String),
   }),
 );
 const decodeCredentials = Schema.decodeEffect(Schema.fromJsonString(GrokCredentials));
@@ -57,71 +58,79 @@ export function grokUsageResponseToLimits(
   return makeUsageLimits({ checkedAt, windows: [window] });
 }
 
+/**
+ * The grok.com login the CLI uses by default, or undefined when the CLI is
+ * configured to pick another account, endpoint, or an API key.
+ */
+const readGrokCredential = Effect.fn("readGrokCredential")(function* (
+  environment: NodeJS.ProcessEnv,
+) {
+  // T3's ACP adapter explicitly selects API-key auth when this variable is set.
+  if (environment.XAI_API_KEY?.trim()) return undefined;
+  // Alternate auth deployments can select another scope or account from the same file.
+  if (
+    [
+      "GROK_OIDC_ISSUER",
+      "GROK_OIDC_CLIENT_ID",
+      "GROK_OAUTH2_ISSUER",
+      "GROK_OAUTH2_CLIENT_ID",
+      "GROK_OAUTH2_PRINCIPAL_TYPE",
+      "GROK_OAUTH2_PRINCIPAL_ID",
+      "GROK_AUTH_PROVIDER_COMMAND",
+      "GROK_LOCAL_AUTH",
+      "GROK_CLI_CHAT_PROXY_BASE_URL",
+      "GROK_MODELS_BASE_URL",
+      "GROK_CONFIG",
+      "GROK_CONFIG_PATH",
+    ].some((name) => environment[name]?.trim())
+  ) {
+    return undefined;
+  }
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const home =
+    environment.GROK_HOME?.trim() ||
+    path.join(environment.HOME || environment.USERPROFILE || NodeOS.homedir(), ".grok");
+  for (const configPath of [
+    path.join(home, "config.toml"),
+    path.join(home, "managed_config.toml"),
+    path.join(home, "requirements.toml"),
+    "/etc/grok/managed_config.toml",
+    "/etc/grok/requirements.toml",
+  ]) {
+    const config = yield* fs.readFileString(configPath).pipe(
+      Effect.catchTags({
+        PlatformError: (error) =>
+          error.reason._tag === "NotFound" ? Effect.succeed("") : Effect.fail(error),
+      }),
+    );
+    // These sections can change the selected account or endpoint. Leave custom deployments to the CLI.
+    if (/^\s*(?:\[\[?\s*)?["']?(?:auth|grok_com_config|endpoints)["']?\s*[.\]=]/m.test(config)) {
+      return undefined;
+    }
+  }
+  const contents =
+    environment.GROK_AUTH?.trim() ||
+    (yield* fs.readFileString(path.join(home, "auth.json")).pipe(
+      Effect.catchTags({
+        PlatformError: (error) =>
+          error.reason._tag === "NotFound" ? Effect.succeed("{}") : Effect.fail(error),
+      }),
+    ));
+  const credentials = yield* decodeCredentials(contents);
+  // Never pick an arbitrary account from other deployments stored in the same file.
+  const credential =
+    credentials["https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"] ??
+    credentials["https://accounts.x.ai/sign-in"];
+  return credential?.auth_mode === "api_key" ? undefined : credential;
+});
+
 export const readGrokUsageLimits = Effect.fn("readGrokUsageLimits")(function* (
   environment: NodeJS.ProcessEnv = process.env,
 ) {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   return yield* Effect.gen(function* () {
-    // T3's ACP adapter explicitly selects API-key auth when this variable is set.
-    if (environment.XAI_API_KEY?.trim()) {
-      return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
-    }
-    // Alternate auth deployments can select another scope or account from the same file.
-    if (
-      [
-        "GROK_OIDC_ISSUER",
-        "GROK_OIDC_CLIENT_ID",
-        "GROK_OAUTH2_ISSUER",
-        "GROK_OAUTH2_CLIENT_ID",
-        "GROK_OAUTH2_PRINCIPAL_TYPE",
-        "GROK_OAUTH2_PRINCIPAL_ID",
-        "GROK_AUTH_PROVIDER_COMMAND",
-        "GROK_LOCAL_AUTH",
-        "GROK_CLI_CHAT_PROXY_BASE_URL",
-        "GROK_MODELS_BASE_URL",
-        "GROK_CONFIG",
-        "GROK_CONFIG_PATH",
-      ].some((name) => environment[name]?.trim())
-    ) {
-      return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
-    }
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const home =
-      environment.GROK_HOME?.trim() ||
-      path.join(environment.HOME || environment.USERPROFILE || NodeOS.homedir(), ".grok");
-    for (const configPath of [
-      path.join(home, "config.toml"),
-      path.join(home, "managed_config.toml"),
-      path.join(home, "requirements.toml"),
-      "/etc/grok/managed_config.toml",
-      "/etc/grok/requirements.toml",
-    ]) {
-      const config = yield* fs.readFileString(configPath).pipe(
-        Effect.catchTags({
-          PlatformError: (error) =>
-            error.reason._tag === "NotFound" ? Effect.succeed("") : Effect.fail(error),
-        }),
-      );
-      // These sections can change the selected account or endpoint. Leave custom deployments to the CLI.
-      if (/^\s*(?:\[\[?\s*)?["']?(?:auth|grok_com_config|endpoints)["']?\s*[.\]=]/m.test(config)) {
-        return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
-      }
-    }
-    const contents =
-      environment.GROK_AUTH?.trim() ||
-      (yield* fs.readFileString(path.join(home, "auth.json")).pipe(
-        Effect.catchTags({
-          PlatformError: (error) =>
-            error.reason._tag === "NotFound" ? Effect.succeed("{}") : Effect.fail(error),
-        }),
-      ));
-    const credentials = yield* decodeCredentials(contents);
-    // Never pick an arbitrary account from other deployments stored in the same file.
-    const credential =
-      credentials["https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"] ??
-      credentials["https://accounts.x.ai/sign-in"];
-    const token = credential?.auth_mode === "api_key" ? undefined : credential?.key?.trim();
+    const token = (yield* readGrokCredential(environment))?.key?.trim();
     if (!token) return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(
@@ -146,3 +155,10 @@ export const readGrokUsageLimits = Effect.fn("readGrokUsageLimits")(function* (
     ),
   );
 });
+
+/** The email of the account whose limits `readGrokUsageLimits` reports, when the login records one. */
+export const readGrokAccountEmail = (environment: NodeJS.ProcessEnv = process.env) =>
+  readGrokCredential(environment).pipe(
+    Effect.map((credential) => credential?.email?.trim() || undefined),
+    Effect.orElseSucceed(() => undefined),
+  );

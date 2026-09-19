@@ -19,7 +19,11 @@ import {
   parseGrokModelsCliOutput,
 } from "./GrokProvider.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
-import { grokUsageResponseToLimits, readGrokUsageLimits } from "./grokUsageLimits.ts";
+import {
+  grokUsageResponseToLimits,
+  readGrokAccountEmail,
+  readGrokUsageLimits,
+} from "./grokUsageLimits.ts";
 
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -777,6 +781,48 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
           reason: "probeFailed",
           message: "Grok could not read usage limits.",
         });
+      }
+    }),
+  );
+});
+
+it.layer(NodeServices.layer)("readGrokAccountEmail", (it) => {
+  it.effect("names the account whose limits are read, and nothing for other auth", () =>
+    Effect.gen(function* () {
+      const current = '"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"';
+      const cases = [
+        [
+          { GROK_AUTH: `{${current}:{"key":"t","email":" Someone@Example.com "}}` },
+          "Someone@Example.com",
+        ],
+        [
+          {
+            GROK_AUTH: `{${current}:{"key":"t","email":"current@example.com"},"https://accounts.x.ai/sign-in":{"key":"t","email":"legacy@example.com"}}`,
+          },
+          "current@example.com",
+        ],
+        [{ GROK_AUTH: `{${current}:{"key":"t"}}` }, undefined],
+        [
+          {
+            GROK_AUTH: `{${current}:{"key":"t","email":"someone@example.com"}}`,
+            XAI_API_KEY: "api-key",
+          },
+          undefined,
+        ],
+        [
+          {
+            GROK_AUTH: `{${current}:{"key":"t","email":"someone@example.com","auth_mode":"api_key"}}`,
+          },
+          undefined,
+        ],
+        [{ GROK_AUTH: "not-json" }, undefined],
+      ] as const;
+      for (const [environment, expected] of cases) {
+        const email = yield* readGrokAccountEmail({
+          HOME: "/definitely/not/a/grok-home",
+          ...environment,
+        });
+        expect(email).toBe(expected);
       }
     }),
   );
