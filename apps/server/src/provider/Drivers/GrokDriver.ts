@@ -22,7 +22,7 @@ import {
   checkGrokProviderStatus,
   enrichGrokSnapshot,
 } from "../Layers/GrokProvider.ts";
-import { readGrokAccountEmail, readGrokUsageLimits } from "../Layers/grokUsageLimits.ts";
+import { readGrokAccount } from "../Layers/grokUsageLimits.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -111,9 +111,9 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
         Effect.flatMap((snapshot) =>
           effectiveConfig.enabled && snapshot.installed && snapshot.auth.status === "authenticated"
-            ? Effect.all([readGrokUsageLimits(processEnv), readGrokAccountEmail(processEnv)]).pipe(
+            ? readGrokAccount(processEnv).pipe(
                 // The email lets clients recognize one account signed in on several environments.
-                Effect.map(([usageLimits, email]) => ({
+                Effect.map(({ email, usageLimits }) => ({
                   ...snapshot,
                   auth: email ? { ...snapshot.auth, email } : snapshot.auth,
                   usageLimits,

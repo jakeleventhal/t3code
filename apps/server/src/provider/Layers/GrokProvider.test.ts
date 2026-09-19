@@ -19,11 +19,7 @@ import {
   parseGrokModelsCliOutput,
 } from "./GrokProvider.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
-import {
-  grokUsageResponseToLimits,
-  readGrokAccountEmail,
-  readGrokUsageLimits,
-} from "./grokUsageLimits.ts";
+import { grokUsageResponseToLimits, readGrokAccount } from "./grokUsageLimits.ts";
 
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -587,7 +583,7 @@ describe("Grok usage limits", () => {
   });
 });
 
-it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
+it.layer(NodeServices.layer)("readGrokAccount", (it) => {
   it.effect("reads the configured Grok home and prefers the current login scope to legacy", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -596,7 +592,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
         NodePath.join(directory, "auth.json"),
         '{"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":{"key":"session-token","auth_mode":"oauth"},"https://accounts.x.ai/sign-in":{"key":"legacy-token"}}',
       );
-      const limits = yield* readGrokUsageLimits({
+      const { usageLimits: limits } = yield* readGrokAccount({
         GROK_HOME: directory,
         HOME: "/unrelated-home",
       }).pipe(
@@ -622,7 +618,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
   it.effect(
     "uses GROK_AUTH without reading stored credentials and accepts the legacy login scope",
     () =>
-      readGrokUsageLimits({
+      readGrokAccount({
         GROK_AUTH: '{"https://accounts.x.ai/sign-in":{"key":"legacy-token"}}',
       }).pipe(
         Effect.provideService(
@@ -646,7 +642,9 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
             );
           }),
         ),
-        Effect.tap((limits) => Effect.sync(() => expect(limits.windows[0]?.usedPercent).toBe(12))),
+        Effect.tap(({ usageLimits }) =>
+          Effect.sync(() => expect(usageLimits.windows[0]?.usedPercent).toBe(12)),
+        ),
       ),
   );
 
@@ -685,7 +683,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
           GROK_CONFIG_PATH: "/custom-config.toml",
         },
       ]) {
-        const limits = yield* readGrokUsageLimits({
+        const { usageLimits: limits } = yield* readGrokAccount({
           HOME: "/definitely/not/a/grok-home",
           ...environment,
         }).pipe(
@@ -707,7 +705,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
         const fs = yield* FileSystem.FileSystem;
         const directory = yield* fs.makeTempDirectoryScoped();
         const client = HttpClient.make(() => Effect.die("must not request without credentials"));
-        const missing = yield* readGrokUsageLimits({ HOME: directory }).pipe(
+        const { usageLimits: missing } = yield* readGrokAccount({ HOME: directory }).pipe(
           Effect.provideService(HttpClient.HttpClient, client),
         );
         expect(missing.unavailable?.reason).toBe("unsupported");
@@ -715,7 +713,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
           "private-token-invalid-json",
           '{"https://accounts.x.ai/sign-in":{"key":42}}',
         ]) {
-          const malformed = yield* readGrokUsageLimits({
+          const { usageLimits: malformed } = yield* readGrokAccount({
             GROK_HOME: directory,
             GROK_AUTH: contents,
           }).pipe(Effect.provideService(HttpClient.HttpClient, client));
@@ -736,7 +734,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
           '[grok_com_config]\nissuer = "https://custom.example"',
           'endpoints.proxy = "https://custom.example"',
         ]) {
-          const limits = yield* readGrokUsageLimits({
+          const { usageLimits: limits } = yield* readGrokAccount({
             GROK_AUTH: '{"https://accounts.x.ai/sign-in":{"key":"stored-token"}}',
           }).pipe(
             Effect.provideService(
@@ -765,7 +763,7 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
         new Response("private response", { status: 401 }),
         Response.json({ config: { creditUsagePercent: "private-value" } }),
       ]) {
-        const limits = yield* readGrokUsageLimits({
+        const { usageLimits: limits } = yield* readGrokAccount({
           HOME: "/definitely/not/a/grok-home",
           GROK_AUTH: '{"https://accounts.x.ai/sign-in":{"key":"private-token"}}',
         }).pipe(
@@ -786,8 +784,8 @@ it.layer(NodeServices.layer)("readGrokUsageLimits", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("readGrokAccountEmail", (it) => {
-  it.effect("names the account whose limits are read, and nothing for other auth", () =>
+it.layer(NodeServices.layer)("readGrokAccount email", (it) => {
+  it.effect("names the account whose limits were read, and nothing for other auth", () =>
     Effect.gen(function* () {
       const current = '"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"';
       const cases = [
@@ -818,11 +816,24 @@ it.layer(NodeServices.layer)("readGrokAccountEmail", (it) => {
         [{ GROK_AUTH: "not-json" }, undefined],
       ] as const;
       for (const [environment, expected] of cases) {
-        const email = yield* readGrokAccountEmail({
+        const { email, usageLimits } = yield* readGrokAccount({
           HOME: "/definitely/not/a/grok-home",
           ...environment,
-        });
+        }).pipe(
+          Effect.provideService(
+            HttpClient.HttpClient,
+            HttpClient.make((request) =>
+              Effect.succeed(
+                HttpClientResponse.fromWeb(
+                  request,
+                  Response.json({ config: { creditUsagePercent: 25 } }),
+                ),
+              ),
+            ),
+          ),
+        );
         expect(email).toBe(expected);
+        if (expected) expect(usageLimits.windows[0]?.usedPercent).toBe(25);
       }
     }),
   );
