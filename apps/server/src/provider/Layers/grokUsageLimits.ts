@@ -125,13 +125,24 @@ const readGrokCredential = Effect.fn("readGrokCredential")(function* (
   return credential?.auth_mode === "api_key" ? undefined : credential;
 });
 
-export const readGrokUsageLimits = Effect.fn("readGrokUsageLimits")(function* (
+/**
+ * Reads the default grok.com login once and reports its usage limits along with
+ * its email, so the email always names the account whose quota was read.
+ */
+export const readGrokAccount = Effect.fn("readGrokAccount")(function* (
   environment: NodeJS.ProcessEnv = process.env,
 ) {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   return yield* Effect.gen(function* () {
-    const token = (yield* readGrokCredential(environment))?.key?.trim();
-    if (!token) return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
+    const credential = yield* readGrokCredential(environment);
+    const email = credential?.email?.trim() || undefined;
+    const token = credential?.key?.trim();
+    if (!token) {
+      return {
+        email,
+        usageLimits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }),
+      };
+    }
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(
       HttpClientRequest.get("https://cli-chat-proxy.grok.com/v1/billing?format=credits").pipe(
@@ -141,24 +152,18 @@ export const readGrokUsageLimits = Effect.fn("readGrokUsageLimits")(function* (
     const body = yield* HttpClientResponse.schemaBodyJson(GrokUsageResponse)(
       yield* HttpClientResponse.filterStatusOk(response),
     );
-    return grokUsageResponseToLimits(body, checkedAt);
+    return { email, usageLimits: grokUsageResponseToLimits(body, checkedAt) };
   }).pipe(
     Effect.timeout("10 seconds"),
     Effect.catch(() =>
-      Effect.succeed(
-        makeUnavailableUsageLimits({
+      Effect.succeed({
+        email: undefined,
+        usageLimits: makeUnavailableUsageLimits({
           checkedAt,
           reason: "probeFailed",
           message: "Grok could not read usage limits.",
         }),
-      ),
+      }),
     ),
   );
 });
-
-/** The email of the account whose limits `readGrokUsageLimits` reports, when the login records one. */
-export const readGrokAccountEmail = (environment: NodeJS.ProcessEnv = process.env) =>
-  readGrokCredential(environment).pipe(
-    Effect.map((credential) => credential?.email?.trim() || undefined),
-    Effect.orElseSucceed(() => undefined),
-  );
