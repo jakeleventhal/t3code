@@ -138,7 +138,7 @@ export const readGrokAccount = Effect.fn("readGrokAccount")(function* (
     reason: "probeFailed",
     message: "Grok could not read usage limits.",
   });
-  const credential = yield* Effect.option(readGrokCredential(environment));
+  const credential = yield* Effect.option(readGrokCredential(environment).pipe(Effect.timeout("10 seconds")));
   if (Option.isNone(credential)) return { email: undefined, usageLimits: probeFailed };
   const email = credential.value?.email?.trim() || undefined;
   const token = credential.value?.key?.trim();
