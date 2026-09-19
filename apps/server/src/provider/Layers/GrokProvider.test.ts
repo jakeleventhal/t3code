@@ -757,15 +757,16 @@ it.layer(NodeServices.layer)("readGrokAccount", (it) => {
       }),
   );
 
-  it.effect("sanitizes HTTP failures and malformed billing responses", () =>
+  it.effect("sanitizes HTTP failures and malformed billing responses, keeping the account", () =>
     Effect.gen(function* () {
       for (const response of [
         new Response("private response", { status: 401 }),
         Response.json({ config: { creditUsagePercent: "private-value" } }),
       ]) {
-        const { usageLimits: limits } = yield* readGrokAccount({
+        const { email, usageLimits: limits } = yield* readGrokAccount({
           HOME: "/definitely/not/a/grok-home",
-          GROK_AUTH: '{"https://accounts.x.ai/sign-in":{"key":"private-token"}}',
+          GROK_AUTH:
+            '{"https://accounts.x.ai/sign-in":{"key":"private-token","email":"someone@example.com"}}',
         }).pipe(
           Effect.provideService(
             HttpClient.HttpClient,
@@ -774,6 +775,7 @@ it.layer(NodeServices.layer)("readGrokAccount", (it) => {
             ),
           ),
         );
+        expect(email).toBe("someone@example.com");
         expect(limits.windows).toEqual([]);
         expect(limits.unavailable).toEqual({
           reason: "probeFailed",
