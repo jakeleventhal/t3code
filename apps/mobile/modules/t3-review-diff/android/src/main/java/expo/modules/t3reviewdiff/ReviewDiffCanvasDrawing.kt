@@ -10,14 +10,34 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import java.text.BreakIterator
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
-internal val SINGLE_LINE_STARTS = intArrayOf(0)
+private val SINGLE_LINE_STARTS = intArrayOf(0)
 
 /** A code row's visual lines: UTF-16 offsets where each starts, and the height of each. */
 internal class CodeLines(val starts: IntArray, val height: Int) {
   fun end(line: Int, length: Int): Int = if (line + 1 < starts.size) starts[line + 1] else length
+}
+
+/**
+ * Word wrap layout for code rows at one view width. Only rows that wrap onto more than one
+ * visual line have line starts; [enabled] is false while code rows pan horizontally instead.
+ */
+internal class CodeWrapLayout(
+  val enabled: Boolean,
+  private val lineHeight: Int,
+  private val lineStartsByRowId: Map<String, IntArray>
+) {
+  fun lines(rowId: String): CodeLines =
+    CodeLines(lineStartsByRowId[rowId] ?: SINGLE_LINE_STARTS, lineHeight)
+
+  fun extraHeight(rowId: String): Int = ((lineStartsByRowId[rowId]?.size ?: 1) - 1) * lineHeight
+
+  companion object {
+    val NONE = CodeWrapLayout(enabled = false, lineHeight = 0, lineStartsByRowId = emptyMap())
+  }
 }
 
 /**
@@ -203,6 +223,24 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     }
     configureTextPaint(textPaint, color, style.codeFontSizePx)
     textPaint.isUnderlineText = fontStyle and 4 != 0
+  }
+
+  fun codeWrapLayout(rows: List<DiffRow>, style: DiffStyle, width: Int): CodeWrapLayout {
+    configureCodePaint(theme.text, 0, style)
+    val characterWidth = textPaint.measureText("M")
+    val availableWidth = width - style.changeBarWidthPx - style.gutterWidthPx -
+      style.codePaddingPx * 2f
+    if (!style.wordWrap || characterWidth <= 0f || availableWidth < characterWidth) {
+      return CodeWrapLayout.NONE
+    }
+    val columns = (availableWidth / characterWidth).toInt()
+    return CodeWrapLayout(
+      enabled = true,
+      lineHeight = ceil(textPaint.fontMetrics.run { descent - ascent }).toInt(),
+      lineStartsByRowId = rows.asSequence()
+        .filter { it.kind == "line" && it.content.length > columns }
+        .associate { it.id to wrapLineStarts(it.content, columns) },
+    )
   }
 
   fun lineNumberColor(change: String): Int = when (change) {
