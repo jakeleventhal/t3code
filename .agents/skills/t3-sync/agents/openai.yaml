@@ -1,0 +1,4 @@
+interface:
+  display_name: "T3 Personal Sync"
+  short_description: "Sync latest V2 preview with PRs and fork features"
+  default_prompt: "Use $t3-sync to rebuild and deploy the latest V2 preview with my open authored PRs and the refreshed Chat and worktree feature branches."
