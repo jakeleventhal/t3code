@@ -133,16 +133,20 @@ export const readGrokAccount = Effect.fn("readGrokAccount")(function* (
   environment: NodeJS.ProcessEnv = process.env,
 ) {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  return yield* Effect.gen(function* () {
-    const credential = yield* readGrokCredential(environment);
-    const email = credential?.email?.trim() || undefined;
-    const token = credential?.key?.trim();
-    if (!token) {
-      return {
-        email,
-        usageLimits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }),
-      };
-    }
+  const probeFailed = makeUnavailableUsageLimits({
+    checkedAt,
+    reason: "probeFailed",
+    message: "Grok could not read usage limits.",
+  });
+  const credential = yield* Effect.option(readGrokCredential(environment));
+  if (Option.isNone(credential)) return { email: undefined, usageLimits: probeFailed };
+  const email = credential.value?.email?.trim() || undefined;
+  const token = credential.value?.key?.trim();
+  if (!token) {
+    return { email, usageLimits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }) };
+  }
+  // A failed quota request still knows which account it asked about.
+  const usageLimits = yield* Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(
       HttpClientRequest.get("https://cli-chat-proxy.grok.com/v1/billing?format=credits").pipe(
@@ -152,18 +156,10 @@ export const readGrokAccount = Effect.fn("readGrokAccount")(function* (
     const body = yield* HttpClientResponse.schemaBodyJson(GrokUsageResponse)(
       yield* HttpClientResponse.filterStatusOk(response),
     );
-    return { email, usageLimits: grokUsageResponseToLimits(body, checkedAt) };
+    return grokUsageResponseToLimits(body, checkedAt);
   }).pipe(
     Effect.timeout("10 seconds"),
-    Effect.catch(() =>
-      Effect.succeed({
-        email: undefined,
-        usageLimits: makeUnavailableUsageLimits({
-          checkedAt,
-          reason: "probeFailed",
-          message: "Grok could not read usage limits.",
-        }),
-      }),
-    ),
+    Effect.catch(() => Effect.succeed(probeFailed)),
   );
+  return { email, usageLimits };
 });
