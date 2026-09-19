@@ -198,12 +198,16 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     }
   }
 
+  /** Highlights word diffs; [top]..[bottom] is the row's first visual line. */
+  @Suppress("LongParameterList")
   fun drawWordDiffRanges(
     canvas: Canvas,
     row: DiffRow,
     codeX: Float,
     top: Int,
-    bottom: Int
+    bottom: Int,
+    wrapColumns: Int?,
+    wrapLineHeight: Int
   ) {
     if (row.wordDiffRanges.isEmpty() || (row.change != "add" && row.change != "delete")) return
     val color = if (row.change == "add") theme.addBar else theme.deleteBar
@@ -213,14 +217,23 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     val highlightHeight = max(4f * density, min(bottom - top - 4f * density, fontHeight))
     val highlightTop = (top + bottom - highlightHeight) / 2f
     row.wordDiffRanges.forEach { range ->
-      val left = codeX + range.start * characterWidth
-      val right = max(left + 2f * density, codeX + range.end * characterWidth)
-      canvas.drawRoundRect(
-        RectF(left, highlightTop, right, highlightTop + highlightHeight),
-        3f * density,
-        3f * density,
-        backgroundPaint,
-      )
+      // A wrapped row splits the highlight at each visual line boundary.
+      val columns = wrapColumns ?: range.end
+      var start = range.start
+      while (start < range.end) {
+        val line = start / columns
+        val end = min(range.end, (line + 1) * columns)
+        val left = codeX + (start - line * columns) * characterWidth
+        val right = max(left + 2f * density, left + (end - start) * characterWidth)
+        val lineTop = highlightTop + line * wrapLineHeight
+        canvas.drawRoundRect(
+          RectF(left, lineTop, right, lineTop + highlightHeight),
+          3f * density,
+          3f * density,
+          backgroundPaint,
+        )
+        start = end
+      }
     }
   }
 

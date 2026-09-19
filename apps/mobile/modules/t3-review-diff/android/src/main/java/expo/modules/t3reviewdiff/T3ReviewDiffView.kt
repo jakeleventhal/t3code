@@ -543,6 +543,7 @@ internal data class DiffTheme(
 }
 
 internal data class DiffStyle(
+  val wordWrap: Boolean,
   val rowHeightPx: Float,
   val gutterWidthPx: Float,
   val codePaddingPx: Float,
@@ -564,6 +565,7 @@ internal data class DiffStyle(
 ) {
   companion object {
     fun defaults(density: Float): DiffStyle = DiffStyle(
+      wordWrap = false,
       rowHeightPx = 20f * density,
       gutterWidthPx = 72f * density,
       codePaddingPx = 10f * density,
@@ -587,6 +589,7 @@ internal data class DiffStyle(
     fun fromJson(value: String, fallback: DiffStyle, density: Float): DiffStyle = try {
       val json = JSONObject(value)
       DiffStyle(
+        wordWrap = json.optBoolean("wordWrap", fallback.wordWrap),
         rowHeightPx = json.floatDp("rowHeight", fallback.rowHeightPx, density),
         gutterWidthPx = json.floatDp("gutterWidth", fallback.gutterWidthPx, density),
         codePaddingPx = json.floatDp("codePadding", fallback.codePaddingPx, density),
@@ -684,6 +687,11 @@ private class DiffCanvasView(context: Context) : View(context) {
     },
   )
   private var rowOffsets = intArrayOf(0)
+
+  /** Columns per visual line while word wrap is on; null while code rows pan horizontally. */
+  private var codeWrapColumns: Int? = null
+  private var codeCharacterWidth = 0f
+  private var codeWrapLineHeight = 0
   private var verticalOffset = 0
   private var horizontalOffset = 0
   private val headerPathOffsetsByFileId = mutableMapOf<String, Int>()
@@ -751,6 +759,8 @@ private class DiffCanvasView(context: Context) : View(context) {
 
   override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
     super.onSizeChanged(width, height, oldWidth, oldHeight)
+    // Wrapped rows take their height from the width, so a new width is a new layout.
+    if (style.wordWrap && width != oldWidth) layoutRows()
     setVerticalOffset(verticalOffset)
     setHorizontalOffset(horizontalOffset)
     clampHeaderPathOffsets()
@@ -818,7 +828,8 @@ private class DiffCanvasView(context: Context) : View(context) {
 
   fun horizontalOffset(): Int = horizontalOffset
 
-  fun maxHorizontalOffset(): Int = max(0, contentWidthPx - width)
+  fun maxHorizontalOffset(): Int =
+    if (codeWrapColumns != null) 0 else max(0, contentWidthPx - width)
 
   fun maxHorizontalOffset(target: HorizontalPanTarget): Int =
     if (target.kind == HorizontalPanKind.FILE_HEADER_PATH) {
@@ -844,14 +855,31 @@ private class DiffCanvasView(context: Context) : View(context) {
   }
 
   private fun rebuildOffsets() {
+    layoutRows()
+    requestLayout()
+    invalidate()
+  }
+
+  private fun layoutRows() {
+    drawing.configureCodePaint(theme.text, 0, style)
+    codeCharacterWidth = textPaint.measureText("M")
+    codeWrapLineHeight = ceil(textPaint.fontMetrics.run { descent - ascent }).toInt()
+    val wrapAvailableWidth = width - style.changeBarWidthPx - style.gutterWidthPx -
+      style.codePaddingPx * 2f
+    codeWrapColumns = if (
+      style.wordWrap && codeCharacterWidth > 0f && wrapAvailableWidth >= codeCharacterWidth
+    ) {
+      (wrapAvailableWidth / codeCharacterWidth).toInt()
+    } else {
+      null
+    }
     rowOffsets = IntArray(rows.size + 1)
     rows.forEachIndexed { index, row ->
       rowOffsets[index + 1] = rowOffsets[index] + rowHeight(row)
     }
     setVerticalOffset(verticalOffset)
+    setHorizontalOffset(horizontalOffset)
     clampHeaderPathOffsets()
-    requestLayout()
-    invalidate()
   }
 
   private fun rowHeight(row: DiffRow): Int = when (row.kind) {
@@ -862,8 +890,15 @@ private class DiffCanvasView(context: Context) : View(context) {
     } else {
       (124 * density).toInt()
     }
+    "line" -> style.rowHeightPx.toInt() + wrappedLineCount(row.content.length) * codeWrapLineHeight
     else -> style.rowHeightPx.toInt()
   }.coerceAtLeast(1)
+
+  /** Visual lines a wrapped row adds below its first line. */
+  private fun wrappedLineCount(length: Int): Int {
+    val columns = codeWrapColumns ?: return 0
+    return if (length > columns) (length - 1) / columns else 0
+  }
 
   @Suppress("ReturnCount")
   private fun rowIndexAt(y: Int): Int {
@@ -1191,23 +1226,71 @@ private class DiffCanvasView(context: Context) : View(context) {
       )
     }
 
+    // Wrapped rows keep the line number and first code line in the first row-height band.
+    val firstLineBottom = top + style.rowHeightPx.toInt()
     val tokens = tokensByRowId[row.id]
+    val wrapColumns = codeWrapColumns
     drawScrollableCode(canvas, top, bottom) { codeX ->
       drawing.configureCodePaint(theme.text, 0, style)
-      drawing.drawWordDiffRanges(canvas, row, codeX, top, bottom)
+      drawing.drawWordDiffRanges(
+        canvas,
+        row,
+        codeX,
+        top,
+        firstLineBottom,
+        wrapColumns,
+        codeWrapLineHeight,
+      )
+      val baseline = centeredBaseline(top, firstLineBottom, textPaint)
       if (tokens.isNullOrEmpty()) {
-        canvas.drawText(row.content, codeX, centeredBaseline(top, bottom, textPaint), textPaint)
+        if (wrapColumns == null) {
+          canvas.drawText(row.content, codeX, baseline, textPaint)
+        } else {
+          drawWrappedCode(canvas, row.content, 0, codeX, baseline, wrapColumns)
+        }
       } else {
         var x = codeX
+        var column = 0
         tokens.forEach { token ->
           drawing.configureCodePaint(token.color ?: theme.text, token.fontStyle, style)
-          canvas.drawText(token.content, x, centeredBaseline(top, bottom, textPaint), textPaint)
-          x += textPaint.measureText(token.content)
+          if (wrapColumns == null) {
+            canvas.drawText(token.content, x, baseline, textPaint)
+            x += textPaint.measureText(token.content)
+          } else {
+            drawWrappedCode(canvas, token.content, column, codeX, baseline, wrapColumns)
+          }
+          column += token.content.length
         }
       }
     }
 
-    drawLineNumber(canvas, row, top, bottom)
+    drawLineNumber(canvas, row, top, firstLineBottom)
+  }
+
+  /** Draws [text], which starts at [column] of its row, on one visual line per wrap segment. */
+  @Suppress("LongParameterList")
+  private fun drawWrappedCode(
+    canvas: Canvas,
+    text: String,
+    column: Int,
+    codeX: Float,
+    baseline: Float,
+    columns: Int
+  ) {
+    var start = 0
+    while (start < text.length) {
+      val line = (column + start) / columns
+      val end = min(text.length, (line + 1) * columns - column)
+      canvas.drawText(
+        text,
+        start,
+        end,
+        codeX + (column + start - line * columns) * codeCharacterWidth,
+        baseline + line * codeWrapLineHeight,
+        textPaint,
+      )
+      start = end
+    }
   }
 
   private fun drawLineNumber(canvas: Canvas, row: DiffRow, top: Int, bottom: Int) {
