@@ -688,12 +688,7 @@ private class DiffCanvasView(context: Context) : View(context) {
   )
   private var rowOffsets = intArrayOf(0)
 
-  /** Columns per visual line while word wrap is on; null while code rows pan horizontally. */
-  private var codeWrapColumns: Int? = null
-  private var codeWrapLineHeight = 0
-
-  /** UTF-16 offsets where each visual line starts, for rows that wrap onto more than one line. */
-  private var wrapLineStartsByRowId: Map<String, IntArray> = emptyMap()
+  private var codeWrap = CodeWrapLayout.NONE
   private var verticalOffset = 0
   private var horizontalOffset = 0
   private val headerPathOffsetsByFileId = mutableMapOf<String, Int>()
@@ -831,7 +826,7 @@ private class DiffCanvasView(context: Context) : View(context) {
   fun horizontalOffset(): Int = horizontalOffset
 
   fun maxHorizontalOffset(): Int =
-    if (codeWrapColumns != null) 0 else max(0, contentWidthPx - width)
+    if (codeWrap.enabled) 0 else max(0, contentWidthPx - width)
 
   fun maxHorizontalOffset(target: HorizontalPanTarget): Int =
     if (target.kind == HorizontalPanKind.FILE_HEADER_PATH) {
@@ -863,26 +858,7 @@ private class DiffCanvasView(context: Context) : View(context) {
   }
 
   private fun layoutRows() {
-    drawing.configureCodePaint(theme.text, 0, style)
-    val characterWidth = textPaint.measureText("M")
-    codeWrapLineHeight = ceil(textPaint.fontMetrics.run { descent - ascent }).toInt()
-    val wrapAvailableWidth = width - style.changeBarWidthPx - style.gutterWidthPx -
-      style.codePaddingPx * 2f
-    val wrapColumns = if (
-      style.wordWrap && characterWidth > 0f && wrapAvailableWidth >= characterWidth
-    ) {
-      (wrapAvailableWidth / characterWidth).toInt()
-    } else {
-      null
-    }
-    codeWrapColumns = wrapColumns
-    wrapLineStartsByRowId = if (wrapColumns == null) {
-      emptyMap()
-    } else {
-      rows.asSequence()
-        .filter { it.kind == "line" && it.content.length > wrapColumns }
-        .associate { it.id to wrapLineStarts(it.content, wrapColumns) }
-    }
+    codeWrap = drawing.codeWrapLayout(rows, style, width)
     rowOffsets = IntArray(rows.size + 1)
     rows.forEachIndexed { index, row ->
       rowOffsets[index + 1] = rowOffsets[index] + rowHeight(row)
@@ -900,8 +876,7 @@ private class DiffCanvasView(context: Context) : View(context) {
     } else {
       (124 * density).toInt()
     }
-    "line" -> style.rowHeightPx.toInt() +
-      ((wrapLineStartsByRowId[row.id]?.size ?: 1) - 1) * codeWrapLineHeight
+    "line" -> style.rowHeightPx.toInt() + codeWrap.extraHeight(row.id)
     else -> style.rowHeightPx.toInt()
   }.coerceAtLeast(1)
 
@@ -1233,10 +1208,7 @@ private class DiffCanvasView(context: Context) : View(context) {
 
     // Wrapped rows keep the line number and first code line in the first row-height band.
     val firstLineBottom = top + style.rowHeightPx.toInt()
-    val lines = CodeLines(
-      starts = wrapLineStartsByRowId[row.id] ?: SINGLE_LINE_STARTS,
-      height = codeWrapLineHeight,
-    )
+    val lines = codeWrap.lines(row.id)
     drawScrollableCode(canvas, top, bottom) { codeX ->
       drawing.configureCodePaint(theme.text, 0, style)
       drawing.drawWordDiffRanges(canvas, row, codeX, top, firstLineBottom, lines)
