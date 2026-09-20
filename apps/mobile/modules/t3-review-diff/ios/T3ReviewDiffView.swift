@@ -438,16 +438,21 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
           guard let self, generation == self.rowsDecodeGeneration else {
             return
           }
-          self.rows = decodedRows
-          self.contentView.rows = decodedRows
-          self.hasAppliedInitialRowIndex = false
-          self.lastVisibleFileId = nil
-          self.emitDebug("rows-decoded", [
-            "rows": decodedRows.count,
-            "firstKind": decodedRows.first?.kind ?? "none",
-          ])
-          self.updateContentMetrics()
-          self.applyPendingScrollIfNeeded()
+          self.contentView.prepareRows(decodedRows, on: self.payloadDecodeQueue, isCurrent: { [weak self] in
+            generation == self?.rowsDecodeGeneration
+          }, completion: { [weak self] in
+            guard let self, generation == self.rowsDecodeGeneration else { return }
+            self.rows = decodedRows
+            self.contentView.rows = decodedRows
+            self.hasAppliedInitialRowIndex = false
+            self.lastVisibleFileId = nil
+            self.emitDebug("rows-decoded", [
+              "rows": decodedRows.count,
+              "firstKind": decodedRows.first?.kind ?? "none",
+            ])
+            self.updateContentMetrics()
+            self.applyPendingScrollIfNeeded()
+          })
         }
       } catch {
         let message = error.localizedDescription
@@ -933,6 +938,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       headerPathOffsetsByFileId.removeAll()
       activePanFileId = nil
       activePanKind = nil
+      codeDecorationVersion += 1
       tokenAttributedStringsByRowId.removeAll()
       rebuildRowLayout()
       setNeedsDisplayForVisibleBounds()
@@ -940,6 +946,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   }
   var tokensByRowId: [String: [ReviewDiffNativeToken]] = [:] {
     didSet {
+      codeDecorationVersion += 1
       tokenAttributedStringsByRowId.removeAll()
       clampHorizontalOffsets()
       setNeedsDisplayForVisibleBounds()
@@ -980,6 +987,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   }
   var style = ReviewDiffNativeStyle.resolve(nil) {
     didSet {
+      codeDecorationVersion += 1
       tokenAttributedStringsByRowId.removeAll()
       rebuildRowLayout()
       clampHorizontalOffsets()
@@ -1000,6 +1008,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   var theme = ReviewDiffNativeTheme.resolve("light") {
     didSet {
       tokenColorsByHex.removeAll()
+      codeDecorationVersion += 1
       tokenAttributedStringsByRowId.removeAll()
       setNeedsDisplayForVisibleBounds()
     }
@@ -1014,8 +1023,11 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   private var codeCharacterWidth: CGFloat = 8
   /// Columns per visual line while word wrap is on; nil while code rows pan horizontally.
   private var codeWrapColumns: Int?
-  /// UTF-16 offsets where each visual line starts, for rows that wrap onto more than one line.
-  private var wrapLineStartsByRowId: [String: [Int]] = [:]
+  /// Text geometry survives comment height changes; width, font, and content invalidate it.
+  private var codeLayoutsByRowId: [String: ReviewDiffCodeLayout] = [:]
+  private var codeLayoutWidth: CGFloat = 0
+  private var codeLayoutFont: UIFont?
+  private var codeDecorationVersion = 0
   private var panStartHorizontalOffset: CGFloat = 0
   private var activePanFileId: String?
   private var activePanKind: ReviewDiffHorizontalPanKind?
@@ -1068,24 +1080,6 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     ceil(codeFont.lineHeight)
   }
 
-  /// UTF-16 offsets where each visual line starts. A break that would split a composed
-  /// character, such as an emoji or a letter with combining marks, moves before it.
-  private func wrapLineStarts(_ text: NSString, columns: Int) -> [Int] {
-    var lineStarts = [0]
-    var lineStart = 0
-    while text.length - lineStart > columns {
-      let composed = text.rangeOfComposedCharacterSequence(at: lineStart + columns)
-      // A single composed character wider than the line keeps the line from being empty.
-      let nextLineStart = composed.location > lineStart ? composed.location : NSMaxRange(composed)
-      guard nextLineStart < text.length else {
-        break
-      }
-      lineStarts.append(nextLineStart)
-      lineStart = nextLineStart
-    }
-    return lineStarts
-  }
-
   func frameForRow(at index: Int) -> CGRect? {
     guard rows.indices.contains(index), rowOffsets.indices.contains(index) else {
       return nil
@@ -1099,19 +1093,63 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     )
   }
 
+  /// Shape new content on the existing decode worker before publishing rows to the UI.
+  func prepareRows(
+    _ rows: [ReviewDiffNativeRow],
+    on queue: DispatchQueue,
+    isCurrent: @escaping () -> Bool,
+    completion: @escaping () -> Void
+  ) {
+    let font = codeFont
+    let width = viewportWidth - codeStartX - style.codePadding
+    let characterWidth = monospaceCharacterWidth(font: font)
+    guard style.wordWrap, width >= characterWidth, characterWidth > 0 else {
+      completion()
+      return
+    }
+    let cached = codeLayoutWidth == width && codeLayoutFont == font ? codeLayoutsByRowId : [:]
+    queue.async { [weak self] in
+      var layouts: [String: ReviewDiffCodeLayout] = [:]
+      for row in rows where row.kind == "line" {
+        guard let text = row.content else { continue }
+        if let previous = cached[row.id], previous.text == text {
+          layouts[row.id] = previous
+        } else {
+          layouts[row.id] = ReviewDiffCodeLayout(text: text, font: font, width: width, characterWidth: characterWidth)
+        }
+      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self, isCurrent() else { return }
+        if self.codeFont != font || self.viewportWidth - self.codeStartX - self.style.codePadding != width {
+          self.prepareRows(rows, on: queue, isCurrent: isCurrent, completion: completion)
+          return
+        }
+        self.codeLayoutWidth = width
+        self.codeLayoutFont = font
+        self.codeLayoutsByRowId = layouts
+        completion()
+      }
+    }
+  }
+
   private func rebuildRowLayout() {
     var nextOffsets: [CGFloat] = []
     var nextFileHeaderRowIndices: [Int] = []
     nextOffsets.reserveCapacity(rows.count)
     var maxColumnCountsByFileId: [String: Int] = [:]
-    var nextWrapLineStartsByRowId: [String: [Int]] = [:]
+    var nextCodeLayouts: [String: ReviewDiffCodeLayout] = [:]
     var offset: CGFloat = 0
-    let characterWidth = monospaceCharacterWidth(font: codeFont)
+    let font = codeFont
+    let characterWidth = monospaceCharacterWidth(font: font)
     let wrapAvailableWidth = viewportWidth - codeStartX - style.codePadding
     let wrapColumns = style.wordWrap && characterWidth > 0 && wrapAvailableWidth >= characterWidth
       ? Int(wrapAvailableWidth / characterWidth)
       : nil
-    let wrapLineHeight = codeWrapLineHeight
+    if codeLayoutWidth != wrapAvailableWidth || codeLayoutFont != font {
+      codeLayoutsByRowId.removeAll()
+      codeLayoutWidth = wrapAvailableWidth
+      codeLayoutFont = font
+    }
 
     for (index, row) in rows.enumerated() {
       nextOffsets.append(offset)
@@ -1126,10 +1164,20 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
         // UTF-16 columns match the word diff ranges and the segments drawCodeLines draws.
         let columnCount = row.content?.utf16.count ?? 0
         maxColumnCountsByFileId[fileId] = max(maxColumnCountsByFileId[fileId] ?? 0, columnCount)
-        if let wrapColumns, let content = row.content, rowHeight > 0, columnCount > wrapColumns {
-          let lineStarts = wrapLineStarts(content as NSString, columns: wrapColumns)
-          nextWrapLineStartsByRowId[row.id] = lineStarts
-          rowHeight += CGFloat(lineStarts.count - 1) * wrapLineHeight
+        if wrapColumns != nil, let content = row.content {
+          let cached = codeLayoutsByRowId[row.id]
+          let layout: ReviewDiffCodeLayout
+          if let cached, cached.text == content {
+            layout = cached
+          } else {
+            layout = ReviewDiffCodeLayout(
+              text: content, font: font, width: wrapAvailableWidth, characterWidth: characterWidth
+            )
+          }
+          nextCodeLayouts[row.id] = layout
+          if rowHeight > 0 {
+            rowHeight = max(rowHeight, layout.firstLineHeight) + layout.extraHeight
+          }
         }
       case "hunk":
         maxColumnCountsByFileId[fileId] = max(
@@ -1144,7 +1192,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
 
     codeCharacterWidth = characterWidth
     codeWrapColumns = wrapColumns
-    wrapLineStartsByRowId = nextWrapLineStartsByRowId
+    codeLayoutsByRowId = nextCodeLayouts
     contentWidthsByFileId = maxColumnCountsByFileId.mapValues { maxColumnCount in
       let measuredWidth = ceil(CGFloat(maxColumnCount) * characterWidth) + style.codePadding * 2
       return max(0, min(style.contentWidth, measuredWidth))
@@ -2230,7 +2278,11 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let contentWidth = contentWidth(for: fileId)
     let change = row.change ?? "context"
     // Wrapped rows keep the line number and first code line in the first row-height band.
-    let firstLineRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: style.rowHeight)
+    let layout = codeLayoutsByRowId[row.id]
+    let firstLineRect = CGRect(
+      x: rect.minX, y: rect.minY, width: rect.width,
+      height: max(style.rowHeight, layout?.firstLineHeight ?? 0)
+    )
     rowBackground(for: change).setFill()
     context.fill(rect)
 
@@ -2269,7 +2321,27 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       width: contentWidth,
       height: codeFont.lineHeight
     )
-    let lineStarts = wrapLineStartsByRowId[row.id] ?? [0]
+    if let layout, layout.usesNativeLayout {
+      let text = tokensByRowId[row.id].map {
+        tokenAttributedString(rowId: row.id, tokens: $0, fallbackColor: theme.text, font: codeFont)
+      } ?? NSAttributedString(string: row.content ?? "", attributes: [.foregroundColor: theme.text])
+      let highlights = (change == "add" || change == "delete") ? (row.wordDiffRanges ?? []) : []
+      layout.decorate(
+        text: text,
+        highlights: highlights.filter { $0.start >= 0 && $0.end > $0.start }.map {
+          NSRange(location: $0.start, length: $0.end - $0.start)
+        },
+        color: (change == "add" ? theme.addBar : theme.deleteBar).withAlphaComponent(0.28),
+        version: codeDecorationVersion
+      )
+      layout.draw(
+        at: CGPoint(x: codeStartX, y: rect.minY + max(0, (firstLineRect.height - layout.firstLineHeight) / 2)),
+        clip: context.boundingBoxOfClipPath
+      )
+      context.restoreGState()
+      return
+    }
+    let lineStarts = layout?.starts ?? [0]
     drawWordDiffRanges(
       row,
       lineStarts: lineStarts,
@@ -2308,7 +2380,13 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     draw: (NSRange, CGRect) -> Void
   ) {
     var lineRect = firstLineRect
-    for (line, lineStart) in lineStarts.enumerated() {
+    let clip = UIGraphicsGetCurrentContext()?.boundingBoxOfClipPath ?? bounds
+    let first = max(0, Int(floor((clip.minY - firstLineRect.minY) / codeWrapLineHeight)))
+    let last = min(lineStarts.count, Int(ceil((clip.maxY - firstLineRect.minY) / codeWrapLineHeight)))
+    guard first < last else { return }
+    lineRect.origin.y += CGFloat(first) * codeWrapLineHeight
+    for line in first..<last {
+      let lineStart = lineStarts[line]
       let lineEnd = line + 1 < lineStarts.count ? lineStarts[line + 1] : length
       draw(NSRange(location: lineStart, length: lineEnd - lineStart), lineRect)
       lineRect.origin.y += codeWrapLineHeight

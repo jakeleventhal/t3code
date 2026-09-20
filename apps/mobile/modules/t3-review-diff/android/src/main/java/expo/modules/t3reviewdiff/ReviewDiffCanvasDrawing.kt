@@ -9,56 +9,9 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
-import java.text.BreakIterator
-import kotlin.math.ceil
+import android.text.TextPaint
 import kotlin.math.max
 import kotlin.math.min
-
-private val SINGLE_LINE_STARTS = intArrayOf(0)
-
-/** A code row's visual lines: UTF-16 offsets where each starts, and the height of each. */
-internal class CodeLines(val starts: IntArray, val height: Int) {
-  fun end(line: Int, length: Int): Int = if (line + 1 < starts.size) starts[line + 1] else length
-}
-
-/**
- * Word wrap layout for code rows at one view width. Only rows that wrap onto more than one
- * visual line have line starts; [enabled] is false while code rows pan horizontally instead.
- */
-internal class CodeWrapLayout(
-  val enabled: Boolean,
-  private val lineHeight: Int,
-  private val lineStartsByRowId: Map<String, IntArray>
-) {
-  fun lines(rowId: String): CodeLines =
-    CodeLines(lineStartsByRowId[rowId] ?: SINGLE_LINE_STARTS, lineHeight)
-
-  fun extraHeight(rowId: String): Int = ((lineStartsByRowId[rowId]?.size ?: 1) - 1) * lineHeight
-
-  companion object {
-    val NONE = CodeWrapLayout(enabled = false, lineHeight = 0, lineStartsByRowId = emptyMap())
-  }
-}
-
-/**
- * UTF-16 offsets where each visual line of a wrapped row starts. A break that would split a
- * character cluster, such as an emoji or a letter with combining marks, moves before it.
- */
-internal fun wrapLineStarts(text: String, columns: Int): IntArray {
-  val characters = BreakIterator.getCharacterInstance().apply { setText(text) }
-  val starts = mutableListOf(0)
-  var lineStart = 0
-  while (text.length - lineStart > columns) {
-    val limit = lineStart + columns
-    val boundary = if (characters.isBoundary(limit)) limit else characters.preceding(limit)
-    // A single cluster wider than the line keeps the line from being empty.
-    val nextLineStart = if (boundary > lineStart) boundary else characters.following(limit)
-    if (nextLineStart == BreakIterator.DONE || nextLineStart >= text.length) break
-    starts.add(nextLineStart)
-    lineStart = nextLineStart
-  }
-  return starts.toIntArray()
-}
 
 internal class ReviewDiffCanvasDrawing(context: Context) {
   private val density = context.resources.displayMetrics.density
@@ -225,22 +178,37 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     textPaint.isUnderlineText = fontStyle and 4 != 0
   }
 
-  fun codeWrapLayout(rows: List<DiffRow>, style: DiffStyle, width: Int): CodeWrapLayout {
+  var codeLayouts = CodeLayoutCache()
+
+  /** Capture paint on the UI thread; the decode worker owns the new cache until publication. */
+  fun prepareRows(
+    tokens: Map<String, List<DiffToken>>,
+    style: DiffStyle,
+    width: Int
+  ): (List<DiffRow>) -> CodeLayoutCache {
     configureCodePaint(theme.text, 0, style)
-    val characterWidth = textPaint.measureText("M")
+    val paint = TextPaint(textPaint)
+    val colors = theme
+    val cache = codeLayouts.copyForPreparation()
+    val availableWidth = (
+      width - style.changeBarWidthPx - style.gutterWidthPx -
+        style.codePaddingPx * 2f
+      ).toInt()
+    return { rows ->
+      cache.apply { layout(rows, tokens, paint, style, colors, availableWidth) }
+    }
+  }
+
+  fun codeWrapLayout(
+    rows: List<DiffRow>,
+    tokens: Map<String, List<DiffToken>>,
+    style: DiffStyle,
+    width: Int
+  ): CodeWrapLayout {
+    configureCodePaint(theme.text, 0, style)
     val availableWidth = width - style.changeBarWidthPx - style.gutterWidthPx -
       style.codePaddingPx * 2f
-    if (!style.wordWrap || characterWidth <= 0f || availableWidth < characterWidth) {
-      return CodeWrapLayout.NONE
-    }
-    val columns = (availableWidth / characterWidth).toInt()
-    return CodeWrapLayout(
-      enabled = true,
-      lineHeight = ceil(textPaint.fontMetrics.run { descent - ascent }).toInt(),
-      lineStartsByRowId = rows.asSequence()
-        .filter { it.kind == "line" && it.content.length > columns }
-        .associate { it.id to wrapLineStarts(it.content, columns) },
-    )
+    return codeLayouts.layout(rows, tokens, textPaint, style, theme, availableWidth.toInt())
   }
 
   fun lineNumberColor(change: String): Int = when (change) {
@@ -274,6 +242,7 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     bottom: Int,
     lines: CodeLines
   ) {
+    if (lines.nativeLayout != null) return
     if (row.wordDiffRanges.isEmpty() || (row.change != "add" && row.change != "delete")) return
     val color = if (row.change == "add") theme.addBar else theme.deleteBar
     backgroundPaint.color = withAlpha(color, 71)
@@ -311,6 +280,14 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     style: DiffStyle,
     lines: CodeLines
   ) {
+    val nativeLayout = lines.nativeLayout
+    if (nativeLayout != null) {
+      canvas.save()
+      canvas.translate(codeX, baseline - nativeLayout.getLineBaseline(0))
+      nativeLayout.draw(canvas)
+      canvas.restore()
+      return
+    }
     val runs = if (tokens.isNullOrEmpty()) listOf(DiffToken(content, null, 0)) else tokens
     var line = 0
     var x = codeX
@@ -324,8 +301,13 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
           x = codeX
         }
         val end = min(run.content.length, lines.end(line, Int.MAX_VALUE) - column)
-        canvas.drawText(run.content, start, end, x, baseline + line * lines.height, textPaint)
-        x += textPaint.measureText(run.content, start, end)
+        val lineBaseline = baseline + line * lines.height
+        if (lineBaseline + textPaint.fontMetrics.descent >= canvas.clipBounds.top &&
+          lineBaseline + textPaint.fontMetrics.ascent <= canvas.clipBounds.bottom
+        ) {
+          canvas.drawText(run.content, start, end, x, lineBaseline, textPaint)
+          x += textPaint.measureText(run.content, start, end)
+        }
         start = end
       }
       column += run.content.length
