@@ -503,11 +503,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const offersVoiceConversation =
     voiceModeSupported && selectedProviderStatus?.supportsVoice === true;
-  // The server attaches voice to the thread's provider session, which the first message creates.
+  // The server attaches voice to the thread's provider thread, which the first
+  // run creates. An optimistic pending thread already has a message timestamp.
   const canToggleVoiceConversation =
     voiceConversationLive ||
     (props.connectionState === "connected" &&
-      props.selectedThread.latestUserMessageAt !== null &&
+      props.selectedThread.activeProviderThreadId !== null &&
       !voiceInput.isBusy);
   const toggleVoiceConversation = useCallback(() => voiceMode.toggle(voiceTarget), [voiceTarget]);
   const voiceModeButton = offersVoiceConversation ? (
