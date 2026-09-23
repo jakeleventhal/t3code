@@ -6,6 +6,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
+  RunId,
   ThreadId,
   type OrchestrationV2Command,
   type OrchestrationV2ShellSnapshot,
@@ -181,6 +182,32 @@ describe("remote thread lifecycle commands", () => {
       }),
     );
   }
+
+  it.effect("previews an Until done snooze bound to the run in progress", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const snoozeUntilDone = () =>
+        h.commands.snooze.run(h.registry, {
+          environmentId: ENVIRONMENT_ID,
+          input: { threadId: THREAD_ID, wakeOn: "run-end" },
+        });
+      // Idle: nothing to wait for, so the preview leaves the thread awake.
+      void snoozeUntilDone();
+      expect(h.registry.get(h.visibleAtom)?.threads[0]?.snoozeWakeOn ?? null).toBeNull();
+      expect((yield* Queue.take(h.requests)).command).toMatchObject({ wakeOn: "run-end" });
+
+      const runId = RunId.make("run-1");
+      h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), {
+        ...SNAPSHOT,
+        threads: [{ ...SNAPSHOT.threads[0]!, latestRunId: runId, status: "running" }],
+      });
+      void snoozeUntilDone();
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject({
+        snoozedUntil: null,
+        snoozeWakeOn: { type: "run-end", runId },
+      });
+    }),
+  );
 
   it.effect("keeps the preview after acknowledgement until the matching shell update arrives", () =>
     Effect.gen(function* () {
