@@ -28,7 +28,12 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
-import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  resolveSnoozePresets,
+  isThreadRunInProgress,
+  type SnoozeTarget,
+} from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Pressable, useWindowDimensions, View } from "react-native";
@@ -439,12 +444,14 @@ interface WorktreeActionProps {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly settlementSupported: boolean;
   readonly snoozeSupported: boolean;
+  /** False on servers that predate "Until done" snoozes. */
+  readonly snoozeUntilDoneSupported: boolean;
   readonly pinningSupported: boolean;
   /** False on servers that predate thread.auto-settle.set. */
   readonly autoSettleOptOutSupported: boolean;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
-  readonly onSnoozeThread: (thread: EnvironmentThreadShell, until: string) => void;
+  readonly onSnoozeThread: (thread: EnvironmentThreadShell, target: SnoozeTarget) => void;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => void;
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
@@ -454,9 +461,11 @@ interface WorktreeActionProps {
 function useWorktreeActions(props: WorktreeActionProps) {
   const lifecycle = resolveWorktreeLifecycle(props.threads, new Date().toISOString());
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
-  const presets = resolveSnoozePresets(new Date());
+  const presets = resolveSnoozePresets(new Date(), {
+    untilDone: props.snoozeUntilDoneSupported && props.threads.every(isThreadRunInProgress),
+  });
   const apply = useCallback(
-    async (action: WorktreeLifecycleAction, until?: string) => {
+    async (action: WorktreeLifecycleAction, target?: SnoozeTarget) => {
       if (
         action === "snooze" &&
         !resolveWorktreeLifecycle(props.threads, new Date().toISOString()).canSnoozeNow
@@ -479,7 +488,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
             await props.onUnpinThread(thread);
             break;
           case "snooze":
-            if (until) await props.onSnoozeThread(thread, until);
+            if (target) await props.onSnoozeThread(thread, target);
             break;
           case "unsnooze":
             await props.onUnsnoozeThread(thread);
@@ -592,7 +601,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
       displayedPresets: presets,
       now: new Date(),
     });
-    if (selection._tag === "selected") void apply("snooze", selection.preset.snoozedUntil);
+    if (selection._tag === "selected") void apply("snooze", selection.preset);
     if (selection._tag === "expired")
       Alert.alert("Could not snooze worktree", "That snooze time has passed. Choose another time.");
   };
@@ -604,7 +613,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
     customSnoozeSheet: customSnoozeOpen ? (
       <CustomSnoozeSheet
         onClose={() => setCustomSnoozeOpen(false)}
-        onSnooze={(until) => void apply("snooze", until)}
+        onSnooze={(until) => void apply("snooze", { snoozedUntil: until })}
       />
     ) : null,
   };
@@ -665,7 +674,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onRenameThread: (thread: EnvironmentThreadShell) => void;
   readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => void;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly onSnoozeThread: (thread: EnvironmentThreadShell, snoozedUntil: string) => void;
+  readonly onSnoozeThread: (thread: EnvironmentThreadShell, target: SnoozeTarget) => void;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
@@ -677,6 +686,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly settlementSupported: boolean;
   /** False on servers that predate thread.snooze/unsnooze. */
   readonly snoozeSupported: boolean;
+  /** False on servers that predate "Until done" snoozes. */
+  readonly snoozeUntilDoneSupported: boolean;
   /** False on servers that predate thread.pin/unpin. */
   readonly pinningSupported: boolean;
   /** False on servers that predate thread.auto-settle.set. */
@@ -773,7 +784,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   });
   const handleSettle = useCallback(() => worktreeActions.apply("settle"), [worktreeActions.apply]);
   const handleSnooze = useCallback(
-    (until: string) => void worktreeActions.apply("snooze", until),
+    (target: SnoozeTarget) => void worktreeActions.apply("snooze", target),
     [worktreeActions.apply],
   );
   const handleUnsnooze = useCallback(

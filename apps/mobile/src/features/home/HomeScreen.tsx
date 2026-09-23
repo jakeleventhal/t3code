@@ -92,7 +92,7 @@ interface HomeScreenProps {
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onSnoozeThread: (
     thread: EnvironmentThreadShell,
-    snoozedUntil: string,
+    target: import("@t3tools/client-runtime/state/thread-settled").SnoozeTarget,
   ) => Promise<boolean>;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
@@ -355,8 +355,11 @@ export function HomeScreen(props: HomeScreenProps) {
   // optimistic holds.
   const handleSettleThread = props.onSettleThread;
   const handleSnoozeThread = useCallback(
-    (thread: EnvironmentThreadShell, snoozedUntil: string) => {
-      return props.onSnoozeThread(thread, snoozedUntil);
+    (
+      thread: EnvironmentThreadShell,
+      target: import("@t3tools/client-runtime/state/thread-settled").SnoozeTarget,
+    ) => {
+      return props.onSnoozeThread(thread, target);
     },
     [props.onSnoozeThread],
   );
@@ -446,6 +449,7 @@ export function HomeScreen(props: HomeScreenProps) {
     machineByEnvironmentId,
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
+    snoozeUntilDoneEnvironmentIds,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     pinReorderEnvironmentIds,
@@ -607,6 +611,7 @@ export function HomeScreen(props: HomeScreenProps) {
             onUnpinThread={handleUnpinThread}
             settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
             snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+            snoozeUntilDoneSupported={snoozeUntilDoneEnvironmentIds.has(item.thread.environmentId)}
             pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
             autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
               item.thread.environmentId,
@@ -714,6 +719,7 @@ export function HomeScreen(props: HomeScreenProps) {
           settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
           onSettleThread={handleSettleThread}
           snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
+          snoozeUntilDoneSupported={snoozeUntilDoneEnvironmentIds.has(thread.environmentId)}
           pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
           autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}
           reorderSupported={
@@ -767,6 +773,7 @@ export function HomeScreen(props: HomeScreenProps) {
       providersByEnvironmentId,
       settlementEnvironmentIds,
       snoozeEnvironmentIds,
+      snoozeUntilDoneEnvironmentIds,
       threadSearchMatchByKey,
       titleRegenerationEnvironmentIds,
       toggleSettledShelf,

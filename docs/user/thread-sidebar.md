@@ -177,6 +177,9 @@ local time zone, or a duration in minutes, hours, or days. Durations start when
 you confirm; one day means 24 hours. On web and desktop, you can also snooze
 several selected threads together. Choose **Wake thread** to bring a thread back early.
 
+While an agent is working, **Snooze → Until done** hides the thread until the run
+finishes, fails, or is stopped.
+
 ## Dev server shortcuts
 
 When a terminal starts a local dev server, a globe appears on its thread. Select it to open the

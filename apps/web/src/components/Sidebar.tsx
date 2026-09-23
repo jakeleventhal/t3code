@@ -220,7 +220,10 @@ import {
   snoozeWakeDescription,
   snoozeWakeLabel,
   type SnoozePreset,
+  type SnoozeTarget,
 } from "./Sidebar.snooze";
+import { isThreadRunInProgress } from "@t3tools/client-runtime/state/thread-settled";
+import { readEnvironmentSupportsSnoozeUntilDone } from "../state/entities";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
@@ -282,6 +285,13 @@ const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
+}
+
+/** "Until done" needs server support and a run the snooze can bind to. */
+function canSnoozeUntilDone(thread: SidebarThreadSummary) {
+  return (
+    readEnvironmentSupportsSnoozeUntilDone(thread.environmentId) && isThreadRunInProgress(thread)
+  );
 }
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
@@ -520,15 +530,17 @@ function SidebarThreadTooltip({
 function SnoozeMenuButton(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
+  onSnooze: (preset: SnoozeTarget) => void;
   timestampFormat: TimestampFormat;
+  untilDone: boolean;
 }) {
   const { open, onOpenChange, onSnooze, timestampFormat } = props;
   // Presets resolve at open time so "In 1 hour" is relative to the click,
   // not to when the row mounted.
   const presets = useMemo(
-    () => (open ? resolveSnoozePresets(new Date(), timestampFormat) : []),
-    [open, timestampFormat],
+    () =>
+      open ? resolveSnoozePresets(new Date(), timestampFormat, { untilDone: props.untilDone }) : [],
+    [open, timestampFormat, props.untilDone],
   );
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
@@ -1398,10 +1410,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   snoozeSupported: boolean;
   pinningSupported: boolean;
   timestampFormat: TimestampFormat;
-  onLifecycleAction: (
-    action: WorktreeLifecycleAction,
-    preset?: Pick<SnoozePreset, "snoozedUntil">,
-  ) => void;
+  onLifecycleAction: (action: WorktreeLifecycleAction, preset?: SnoozeTarget) => void;
   dragDisabled: boolean;
   group: SidebarWorktreeGroup;
   project: EnvironmentProject | null;
@@ -1548,6 +1557,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                 onOpenChange={setSnoozeMenuOpen}
                 onSnooze={(preset) => props.onLifecycleAction("snooze", preset)}
                 timestampFormat={props.timestampFormat}
+                untilDone={group.threads.every(canSnoozeUntilDone)}
               />
             ) : null}
             {props.snoozeSupported && props.lifecycle.isSnoozed ? (
@@ -2297,11 +2307,12 @@ export default function Sidebar() {
   // moment a snooze expires instead of on the next minute tick. Sorted
   // soonest-first, so entry 0 is the boundary.
   useEffect(() => {
-    const nextWakeAtMs =
-      snoozedThreads.length > 0 && snoozedThreads[0]?.snoozedUntil != null
-        ? Date.parse(snoozedThreads[0].snoozedUntil)
-        : Number.NaN;
-    if (Number.isNaN(nextWakeAtMs)) return;
+    const nextWakeAtMs = snoozedThreads.reduce((earliest, thread) => {
+      if (thread.snoozedUntil == null) return earliest;
+      const wakeAtMs = Date.parse(thread.snoozedUntil);
+      return Number.isFinite(wakeAtMs) ? Math.min(earliest, wakeAtMs) : earliest;
+    }, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(nextWakeAtMs)) return;
     // setTimeout delays are signed 32-bit: anything larger overflows and
     // fires immediately, turning a far-future wake (event-condition snoozes
     // synced from elsewhere) into a tight re-arm loop. Clamped, the timer
@@ -3136,7 +3147,7 @@ export default function Sidebar() {
   const performSnooze = useCallback(
     async (
       threadRef: ScopedThreadRef,
-      preset: Pick<SnoozePreset, "snoozedUntil">,
+      preset: SnoozeTarget,
       opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
     ) => {
       const threadKey = scopedThreadKey(threadRef);
@@ -3148,7 +3159,7 @@ export default function Sidebar() {
         // Snoozing the open thread moves you forward, same as settle —
         // both park the thread you're done with for now.
         const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
-        const result = await snoozeThread(threadRef, preset.snoozedUntil);
+        const result = await snoozeThread(threadRef, preset);
         if (result._tag === "Failure") {
           // Never navigate away from a thread that did not snooze.
           return isAtomCommandInterrupted(result)
@@ -3179,7 +3190,7 @@ export default function Sidebar() {
     async (
       members: ReadonlyArray<EnvironmentThreadShell>,
       action: WorktreeLifecycleAction,
-      preset?: Pick<SnoozePreset, "snoozedUntil">,
+      preset?: SnoozeTarget,
     ) => {
       const now = new Date().toISOString();
       if (action === "snooze" && !resolveWorktreeLifecycle(members, now).canSnoozeNow) return;
@@ -3231,7 +3242,10 @@ export default function Sidebar() {
         toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
+            title:
+              preset.wakeOn === "run-end"
+                ? "Snoozed until done"
+                : `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
             timeout: 5000,
             actionProps: {
               children: "Undo",
@@ -3286,7 +3300,9 @@ export default function Sidebar() {
         ).values(),
       ];
       const lifecycle = resolveWorktreeLifecycle(lifecycleThreads, selectionNow.toISOString());
-      const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat);
+      const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat, {
+        untilDone: lifecycleThreads.every(canSnoozeUntilDone),
+      });
       const lifecycleMenu = buildThreadActionMenuItems({
         projectFilter: null,
         ...lifecycle,
@@ -3484,7 +3500,9 @@ export default function Sidebar() {
         const members = lifecycleMembersByKey.get(threadKey) ?? [thread];
         const lifecycle = resolveWorktreeLifecycle(members, new Date().toISOString());
         // Presets resolve at menu-open time (same as the popover).
-        const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
+        const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat, {
+          untilDone: members.every(canSnoozeUntilDone),
+        });
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
             project.memberProjectRefs.some(
@@ -4136,11 +4154,13 @@ export default function Sidebar() {
                                   : "settle"
                             }
                             snoozeWakeLabelText={
-                              section === "snoozed" && thread.snoozedUntil != null
-                                ? snoozeWakeLabel(thread.snoozedUntil, {
-                                    now: new Date().toISOString(),
-                                  })
-                                : null
+                              section === "snoozed" && thread.snoozeWakeOn === "run-end"
+                                ? "Until done"
+                                : section === "snoozed" && thread.snoozedUntil != null
+                                  ? snoozeWakeLabel(thread.snoozedUntil, {
+                                      now: new Date().toISOString(),
+                                    })
+                                  : null
                             }
                             // All sections: a woken thread can classify straight
                             // into the settled tail (PR merged while snoozed), and

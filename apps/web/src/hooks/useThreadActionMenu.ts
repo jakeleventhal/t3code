@@ -17,6 +17,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 
 import { resolveSnoozePresets, snoozeWakeDescription } from "../components/Sidebar.snooze";
+import { isThreadRunInProgress } from "@t3tools/client-runtime/state/thread-settled";
 import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,
@@ -29,6 +30,7 @@ import {
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
+  readEnvironmentSupportsSnoozeUntilDone,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShells,
   readThreadShell,
@@ -150,7 +152,13 @@ export function useThreadActionMenu(input: {
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
-        const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+        const snoozePresets = resolveSnoozePresets(now, timestampFormat, {
+          untilDone: members.every(
+            (member) =>
+              readEnvironmentSupportsSnoozeUntilDone(member.environmentId) &&
+              isThreadRunInProgress(member),
+          ),
+        });
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
           projectFilter: null,
@@ -178,7 +186,7 @@ export function useThreadActionMenu(input: {
             new Date().toISOString(),
           )) {
             const ref = scopeThreadRef(member.environmentId, member.id);
-            const result = await snoozeThread(ref, preset.snoozedUntil);
+            const result = await snoozeThread(ref, preset);
             if (result._tag === "Failure") {
               if (!isAtomCommandInterrupted(result))
                 failureToast("Failed to snooze worktree", squashAtomCommandFailure(result));
@@ -188,7 +196,10 @@ export function useThreadActionMenu(input: {
           toastManager.add(
             stackedThreadToast({
               type: "success",
-              title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
+              title:
+                preset.snoozedUntil === undefined
+                  ? "Snoozed until done"
+                  : `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
               timeout: 5_000,
               actionProps: {
                 children: "Undo",
