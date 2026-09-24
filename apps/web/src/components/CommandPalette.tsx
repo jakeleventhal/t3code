@@ -2047,6 +2047,7 @@ function OpenCommandPaletteDialog(props: {
     searchTerms: ["usage", "use", "tokens", "cost", "spend", "limits", "stats", "analytics"],
     title: "Open usage",
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "usage.open",
     run: async () => {
       await navigate({ to: "/usage" });
     },
