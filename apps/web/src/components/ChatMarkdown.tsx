@@ -163,6 +163,7 @@ import {
   serializeTableElementToCsv,
   serializeTableElementToMarkdown,
 } from "../markdown-clipboard";
+import { remarkStandaloneMediaLinks } from "../markdown-media-links";
 import {
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
@@ -1406,6 +1407,7 @@ function ChatMarkdownImage(props: {
   readonly src: string | null;
   readonly sourceFailed?: boolean | undefined;
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown: string | undefined;
   readonly standalone: boolean;
   readonly className?: string | undefined;
@@ -1451,7 +1453,7 @@ function ChatMarkdownImage(props: {
 
   if (settled) {
     return (
-      <MediaActions source={props.actionsSource}>
+      <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
         <img
           {...props.imageProps}
           ref={markLoadedIfComplete}
@@ -1490,7 +1492,7 @@ function ChatMarkdownImage(props: {
     );
   }
   return (
-    <MediaActions source={props.actionsSource}>
+    <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
       <span
         id={props.imageProps?.id}
         data-markdown-copy={props.copyMarkdown}
@@ -1525,6 +1527,7 @@ function ChatMarkdownImage(props: {
 }
 
 function ChatMarkdownVideo(props: {
+  readonly title?: string | undefined;
   readonly src: string | null;
   readonly alt: string;
   readonly copyMarkdown: string | undefined;
@@ -1541,6 +1544,7 @@ function ChatMarkdownVideo(props: {
       src={props.src}
       sourceFailed={props.sourceFailed}
       label={props.alt}
+      title={props.title}
       originalUrl={props.originalUrl}
       style={props.style}
       copyMarkdown={props.copyMarkdown}
@@ -1575,6 +1579,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   >;
   readonly kind?: "image" | "video";
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
   /** Reserve a slot while loading; off for images that share a line with text. */
@@ -1655,6 +1660,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   if (props.kind === "video") {
     return (
       <ChatMarkdownVideo
+        title={props.title}
         src={src}
         sourceFailed={assetUrl._tag === "Failure" && fallbackSrc === undefined}
         alt={props.alt}
@@ -1673,6 +1679,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
       key={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
       src={src}
       sourceFailed={assetUrl._tag === "Failure" && fallbackSrc === undefined}
+      title={props.title}
       alt={props.alt}
       copyMarkdown={props.copyMarkdown}
       standalone={props.standalone ?? true}
@@ -3259,6 +3266,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (kind === "video") {
         return (
           <ChatMarkdownVideo
+            title={authoredTitle}
             src={mediaSrc}
             alt={altText}
             copyMarkdown={copyMarkdown}
@@ -3271,6 +3279,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return (
         <ChatMarkdownImage
           key={mediaSrc}
+          title={authoredTitle}
           src={mediaSrc}
           alt={altText}
           copyMarkdown={copyMarkdown}
@@ -3296,6 +3305,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           srcFragment={markdownImageSourceFragment(classifiedSrc)}
           standalone={standalone}
           style={authoredSizeStyle}
@@ -3398,13 +3408,16 @@ function ChatMarkdown({
     props.isStreaming === true &&
     extraRemarkPlugins.length === 0 &&
     /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
+  const { cwd, imageBaseDir, threadRef } = componentState;
+  const embedLocalPaths = threadRef !== undefined;
   const remarkPlugins = useMemo(
-    () => [
+    (): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      [remarkStandaloneMediaLinks, { embedLocalPaths, workspaceRoot: imageBaseDir ?? cwd }],
       ...extraRemarkPlugins,
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],
-    [extraRemarkPlugins, incrementalParsing, lineBreaks],
+    [cwd, embedLocalPaths, extraRemarkPlugins, imageBaseDir, incrementalParsing, lineBreaks],
   );
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
