@@ -42,3 +42,19 @@ describe("PreviewAutomationStatus", () => {
     ).toEqual({ width: 412, height: 915 });
   });
 });
+
+describe("ConfiguredLocalServerUrls", () => {
+  it("bounds the number and length of probe candidates", () => {
+    expect(() =>
+      decodeConfiguredLocalServerUrls(
+        Array.from(
+          { length: CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS + 1 },
+          (_, index) => `http://localhost:${3_000 + index}`,
+        ),
+      ),
+    ).toThrow();
+    expect(() =>
+      decodeConfiguredLocalServerUrls([`http://localhost/${"a".repeat(PREVIEW_URL_MAX_LENGTH)}`]),
+    ).toThrow();
+  });
+});
