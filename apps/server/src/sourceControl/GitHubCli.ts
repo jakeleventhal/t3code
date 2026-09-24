@@ -72,6 +72,11 @@ function targetsVerifiedHost(args: ReadonlyArray<string>, host: string): boolean
   return hosts.length > 0 && hosts.every((target) => target === host);
 }
 
+/** `--repo` pins gh to one repository instead of the one it would infer from the checkout's remotes. */
+function repositoryArgs(repository: string | undefined): ReadonlyArray<string> {
+  return repository === undefined ? [] : ["--repo", repository];
+}
+
 const gitHubCliFailureFields = {
   command: Schema.Literal("gh"),
   cwd: Schema.String,
@@ -299,12 +304,14 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly limit?: number;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
@@ -324,17 +331,20 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly title: string;
       readonly bodyFile: string;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
       readonly rateLimitHost?: string;
+      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly force?: boolean;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
   }
 >()("t3/sourceControl/GitHubCli") {}
@@ -569,6 +579,7 @@ export const make = Effect.gen(function* () {
           "open",
           "--limit",
           String(input.limit ?? 1),
+          ...repositoryArgs(input.repository),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -603,6 +614,7 @@ export const make = Effect.gen(function* () {
           "pr",
           "view",
           input.reference,
+          ...repositoryArgs(input.repository),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
         ],
@@ -669,13 +681,22 @@ export const make = Effect.gen(function* () {
           input.title,
           "--body-file",
           input.bodyFile,
+          ...repositoryArgs(input.repository),
         ],
       }).pipe(Effect.asVoid),
     getDefaultBranch: (input) =>
       execute({
         cwd: input.cwd,
         ...(input.rateLimitHost === undefined ? {} : { rateLimitHost: input.rateLimitHost }),
-        args: ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+        args: [
+          "repo",
+          "view",
+          ...(input.repository === undefined ? [] : [input.repository]),
+          "--json",
+          "defaultBranchRef",
+          "--jq",
+          ".defaultBranchRef.name",
+        ],
       }).pipe(
         Effect.map((value) => {
           const trimmed = value.stdout.trim();
@@ -685,7 +706,13 @@ export const make = Effect.gen(function* () {
     checkoutPullRequest: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
+        args: [
+          "pr",
+          "checkout",
+          input.reference,
+          ...(input.force ? ["--force"] : []),
+          ...repositoryArgs(input.repository),
+        ],
       }).pipe(Effect.asVoid),
   });
 });
