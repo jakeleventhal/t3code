@@ -8,6 +8,7 @@ import {
   nativeMarkdownDocumentRuns,
   nativeMarkdownWithAuthoredWindowsPaths,
   nativeMarkdownWithPreservedSoftBreaks,
+  nativeMarkdownWithStandaloneMediaLinks,
 } from "./nativeMarkdownText";
 import { MarkdownImageRendererContext, NativeMarkdownBlock } from "./NativeMarkdownBlock";
 import {
@@ -48,13 +49,17 @@ export function SelectableMarkdownText({
   fileContextMenu,
   onFileContextMenuAction,
   renderImage,
+  workspaceRoot,
   marginTop = 0,
   marginBottom = 0,
 }: SelectableMarkdownTextProps) {
   const chunks = useMemo(() => {
-    const parsedDocument = nativeMarkdownWithAuthoredWindowsPaths(
-      parseMarkdownWithOptions(markdown, { gfm: true, html: true, math: false }),
-      markdown,
+    const parsedDocument = nativeMarkdownWithStandaloneMediaLinks(
+      nativeMarkdownWithAuthoredWindowsPaths(
+        parseMarkdownWithOptions(markdown, { gfm: true, html: true, math: false }),
+        markdown,
+      ),
+      { embedLocalPaths: renderImage != null, workspaceRoot },
     );
     const document = preserveSoftBreaks
       ? nativeMarkdownWithPreservedSoftBreaks(parsedDocument)
@@ -67,7 +72,7 @@ export function SelectableMarkdownText({
           }
         : chunk,
     );
-  }, [markdown, preserveSoftBreaks, skills]);
+  }, [markdown, preserveSoftBreaks, renderImage, skills, workspaceRoot]);
 
   const fileContextMenuHandlers = useMemo<MarkdownFileContextMenuHandlers | null>(
     () =>
