@@ -20,7 +20,7 @@ export async function openDiscoveredPort<E>(input: {
   const resolvedUrl =
     previewRuntimeFor(input.threadRef.environmentId) === "server"
       ? input.port.url
-      : resolveDiscoveredServerUrl(input.threadRef.environmentId, input.port.url);
+      : resolveDiscoveredServerUrl(input.threadRef.environmentId, input.port.url, input.port.port, input.port.urlKind);
   const result = await openPreviewSession({
     openPreview: input.openPreview,
     threadRef: input.threadRef,

@@ -1,5 +1,6 @@
 import type {
   BrowserNavigationTarget,
+  DiscoveredLocalServerUrlKind,
   EnvironmentId,
   PreviewUrlResolution,
 } from "@t3tools/contracts";
@@ -90,10 +91,37 @@ const reachesEnvironmentLoopback = (target: ConnectionTarget): boolean =>
   isElectron &&
   (target._tag === "PrimaryConnectionTarget" || isDesktopLocalConnectionTarget(target));
 
-export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
+export function resolveDiscoveredServerUrl(
+  environmentId: EnvironmentId,
+  rawUrl: string,
+  targetPort?: number,
+  urlKind?: DiscoveredLocalServerUrlKind,
+): string {
   try {
     const normalizedUrl = normalizePreviewUrl(rawUrl);
     const parsed = new URL(normalizedUrl);
+    const isLocalProxy =
+      urlKind === "local-proxy" ||
+      (urlKind === undefined &&
+        parsed.hostname !== "localhost" &&
+        parsed.hostname.endsWith(".localhost"));
+    if (targetPort !== undefined && isLocalProxy) {
+      const environmentUrl = readEnvironmentUrl(environmentId);
+      if (!isLocalLoopbackHost(environmentUrl.hostname)) {
+        return resolveEnvironmentPortTarget(
+          environmentId,
+          {
+            kind: "environment-port",
+            port: targetPort,
+            protocol: "http",
+            path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+          },
+          environmentUrl,
+          normalizedUrl,
+        ).resolvedUrl;
+      }
+      return normalizedUrl;
+    }
     if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
     const target = readPreparedConnection(environmentId)?.target;
     if (target && reachesEnvironmentLoopback(target)) return normalizedUrl;
