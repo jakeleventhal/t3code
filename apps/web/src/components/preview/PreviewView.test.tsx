@@ -3,6 +3,7 @@ import {
   DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
+  type DiscoveredLocalServerUrlKind,
   EnvironmentId,
   FILL_PREVIEW_VIEWPORT,
   ThreadId,
@@ -19,7 +20,9 @@ const mocks = vi.hoisted(() => ({
   setAnnotationSendEnabled: vi.fn(async (): Promise<void> => undefined),
   cancelPickElement: vi.fn(async () => undefined),
   submittedUrl: null as ((url: string) => void) | null,
-  emptyStateUrl: null as ((url: string) => void) | null,
+  emptyStateUrl: null as
+    | ((url: string, targetPort?: number, urlKind?: DiscoveredLocalServerUrlKind) => void)
+    | null,
   togglePictureInPicture: null as (() => void) | null,
   toggleNativePictureInPicture: null as (() => void) | null,
   pictureInPicturePressed: false,
@@ -250,7 +253,9 @@ vi.mock("./PreviewChromeRow", () => ({
 }));
 
 vi.mock("./PreviewEmptyState", () => ({
-  PreviewEmptyState: (props: { onOpenUrl: (url: string) => void }) => {
+  PreviewEmptyState: (props: {
+    onOpenUrl: (url: string, targetPort?: number, urlKind?: DiscoveredLocalServerUrlKind) => void;
+  }) => {
     mocks.emptyStateUrl = props.onOpenUrl;
     return null;
   },
@@ -516,6 +521,18 @@ describe("PreviewView navigation", () => {
         expect.objectContaining({ threadId: expect.anything() }),
         "http://localhost:5173/app?mode=test#top",
       ),
+    );
+  });
+
+  it("maps an empty-state Portless server onto its remote listener port", async () => {
+    mocks.showEmptyState = true;
+    renderToStaticMarkup(<PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible />);
+
+    expect(mocks.emptyStateUrl).not.toBeNull();
+    mocks.emptyStateUrl?.("https://current.test/", 4058, "local-proxy");
+
+    await vi.waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith(TEST_RUNTIME_TAB_ID, "http://172.25.85.75:4058/"),
     );
   });
 
