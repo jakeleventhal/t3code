@@ -468,7 +468,11 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
         />
       ) : null}
       {showActionControls && props.devServers.length > 0 ? (
-        <NativeHeaderToolbar.Menu icon="globe" separateBackground>
+        <NativeHeaderToolbar.Menu
+          accessibilityLabel="Open dev server"
+          icon="globe"
+          separateBackground
+        >
           {props.devServers.map((resolved) => (
             <NativeHeaderToolbar.MenuAction
               key={`${resolved.server.host}:${resolved.server.port}`}
