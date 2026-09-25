@@ -104,9 +104,9 @@ export const remoteSchemeForEditor = (id: EditorId): string | undefined => {
 };
 
 /**
- * Builds a `<scheme>://vscode-remote/ssh-remote+<host><path>` deep link (Zed
- * takes `zed://ssh/<host><path>`) that opens `absolutePath` on `host` in the
- * local editor over SSH. Returns undefined for editors without remote
+ * Builds a `<scheme>://vscode-remote/ssh-remote+[<user>@]<host><path>` deep
+ * link (Zed takes `zed://ssh/[<user>@]<host><path>`) that opens `absolutePath`
+ * on `host` in the local editor over SSH. Returns undefined for editors without remote
  * deep-link support.
  */
 export const buildRemoteOpenUrl = (input: {
@@ -130,7 +130,12 @@ export const buildRemoteOpenUrl = (input: {
     // POSIX path that happens to start with `/C:` is left alone.
     const zedPath = /^[Cc]:[\\/]/.test(input.absolutePath) ? rootedPath.slice(3) : rootedPath;
     const encodedZedPath = zedPath.split("/").map(encodeURIComponent).join("/");
-    return `${scheme}://ssh/${encodedHost}${encodedZedPath}`;
+    // Zed reads this segment as ssh URL userinfo, so the `@` stays literal.
+    const zedDestination =
+      input.username === undefined
+        ? encodedHost
+        : `${encodeURIComponent(input.username)}@${encodedHost}`;
+    return `${scheme}://ssh/${zedDestination}${encodedZedPath}`;
   }
   const encodedPath = rootedPath.split("/").map(encodeURIComponent).join("/");
   const destination = input.username === undefined ? input.host : `${input.username}@${input.host}`;
