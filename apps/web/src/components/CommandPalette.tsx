@@ -518,6 +518,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     // Claim navigation before the composer's underline shortcut consumes mod+u.
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
+      // Capture phase runs before shortcut recorders, so let them record usage.open.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
           terminalFocus: isTerminalFocused(),
