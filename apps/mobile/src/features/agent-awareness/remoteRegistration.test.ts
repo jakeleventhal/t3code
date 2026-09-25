@@ -7,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest";
 import Constants from "expo-constants";
 import * as Cause from "effect/Cause";
 import type { LiveActivity } from "expo-widgets";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -31,10 +32,11 @@ import {
   ProviderInstanceId,
   ThreadId,
   type OrchestrationProjectShell,
-  type OrchestrationThreadShell,
+  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import type { RelayAgentActivitySnapshotResponse } from "@t3tools/contracts/relay";
 import { verifyDpopProof } from "@t3tools/shared/dpop";
+import { v2ThreadShell } from "../../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { cryptoLayer } from "../cloud/dpop";
 import { managedRelayClientLayer } from "../cloud/managedRelayLayer";
@@ -357,47 +359,24 @@ function setLiveShell(
     createdAt: now,
     updatedAt: now,
   };
-  const thread: OrchestrationThreadShell = {
+  const thread: OrchestrationV2ThreadShell = {
+    ...v2ThreadShell,
     id: ThreadId.make("local-thread"),
     projectId: liveProjectId,
     title: "Live task",
     modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "test-model" },
-    runtimeMode: "full-access",
-    interactionMode: "default",
-    branch: null,
-    worktreePath: null,
-    pullRequests: [],
-    latestTurn: null,
-    createdAt: now,
-    updatedAt: now,
-    archivedAt: null,
-    settledOverride: null,
-    settledAt: null,
-    latestUserMessageAt: null,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
-    session:
-      phase === null
-        ? null
-        : {
-            threadId: ThreadId.make("local-thread"),
-            status: phase,
-            providerName: "codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
-            lastError: null,
-            updatedAt: now,
-          },
+    status: phase === "ready" ? "completed" : (phase ?? "idle"),
+    updatedAt: DateTime.makeUnsafe(now),
   };
   setTestAtom(environmentShell.stateValueAtom(liveEnvironmentId), {
     status,
     error: Option.none(),
     snapshot: Option.some({
+      schemaVersion: 1,
       projects: [project],
       threads: phase === null ? [] : [thread],
+      archivedThreads: [],
       snapshotSequence: 1,
-      updatedAt: now,
     }),
   });
 }
@@ -2540,10 +2519,11 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         status: "live",
         error: Option.none(),
         snapshot: Option.some({
+          schemaVersion: 1,
           projects: [],
           threads: [],
+          archivedThreads: [],
           snapshotSequence: 1,
-          updatedAt: new Date().toISOString(),
         }),
       });
       setTestAtom(environmentCatalog.catalogValueAtom, {

@@ -4154,13 +4154,11 @@ export default function Sidebar() {
                                   : "settle"
                             }
                             snoozeWakeLabelText={
-                              section === "snoozed" && thread.snoozeWakeOn === "run-end"
-                                ? "Until done"
-                                : section === "snoozed" && thread.snoozedUntil != null
-                                  ? snoozeWakeLabel(thread.snoozedUntil, {
-                                      now: new Date().toISOString(),
-                                    })
-                                  : null
+                              section === "snoozed"
+                                ? snoozeWakeLabel(thread, {
+                                    now: new Date().toISOString(),
+                                  })
+                                : null
                             }
                             // All sections: a woken thread can classify straight
                             // into the settled tail (PR merged while snoozed), and

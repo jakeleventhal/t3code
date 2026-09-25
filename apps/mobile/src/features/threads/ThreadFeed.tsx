@@ -2948,7 +2948,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             markdownContentWidth,
             threadTitle: props.threadTitle,
             skills: props.skills,
-            workspaceRoot: props.workspaceRoot,
           })}
           {props.worktreeSetup && info.index === setupAnchorIndex ? (
             <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />

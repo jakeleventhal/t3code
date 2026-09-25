@@ -653,6 +653,9 @@ function ThreadNavigationSidebarPane(
               onUnpinThread={unpinThread}
               settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
               snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+              snoozeUntilDoneSupported={snoozeUntilDoneEnvironmentIds.has(
+                item.thread.environmentId,
+              )}
               pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
               autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
                 item.thread.environmentId,
