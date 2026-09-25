@@ -29,7 +29,6 @@ import type {
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import {
-  canSnooze,
   isThreadRunInProgress,
   resolveSnoozePresets,
   type SnoozeTarget,
@@ -446,12 +445,13 @@ interface WorktreeActionProps {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly settlementSupported: boolean;
   readonly snoozeSupported: boolean;
+  readonly snoozeUntilDoneSupported: boolean;
   readonly pinningSupported: boolean;
   /** False on servers that predate thread.auto-settle.set. */
   readonly autoSettleOptOutSupported: boolean;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
-  readonly onSnoozeThread: (thread: EnvironmentThreadShell, until: string) => void;
+  readonly onSnoozeThread: (thread: EnvironmentThreadShell, target: SnoozeTarget) => void;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => void;
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
@@ -461,15 +461,22 @@ interface WorktreeActionProps {
 function useWorktreeActions(props: WorktreeActionProps) {
   const lifecycle = resolveWorktreeLifecycle(props.threads, new Date().toISOString());
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
-  const presets = resolveSnoozePresets(new Date());
+  const presets = resolveSnoozePresets(new Date(), {
+    untilDone: props.snoozeUntilDoneSupported && lifecycle.canSnoozeUntilDone,
+  });
   const apply = useCallback(
-    async (action: WorktreeLifecycleAction, until?: string) => {
+    async (action: WorktreeLifecycleAction, target?: SnoozeTarget) => {
       if (
         action === "snooze" &&
         !resolveWorktreeLifecycle(props.threads, new Date().toISOString()).canSnoozeNow
       )
         return false;
-      const members = worktreeLifecycleTargets(props.threads, action, new Date().toISOString());
+      const members = worktreeLifecycleTargets(
+        props.threads,
+        action,
+        new Date().toISOString(),
+        target,
+      );
       let succeeded = true;
       for (const thread of members) {
         switch (action) {
@@ -486,7 +493,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
             await props.onUnpinThread(thread);
             break;
           case "snooze":
-            if (until) await props.onSnoozeThread(thread, until);
+            if (target) await props.onSnoozeThread(thread, target);
             break;
           case "unsnooze":
             await props.onUnsnoozeThread(thread);
@@ -599,7 +606,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
       displayedPresets: presets,
       now: new Date(),
     });
-    if (selection._tag === "selected") void apply("snooze", selection.preset.snoozedUntil);
+    if (selection._tag === "selected") void apply("snooze", selection.preset);
     if (selection._tag === "expired")
       Alert.alert("Could not snooze worktree", "That snooze time has passed. Choose another time.");
   };
@@ -611,7 +618,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
     customSnoozeSheet: customSnoozeOpen ? (
       <CustomSnoozeSheet
         onClose={() => setCustomSnoozeOpen(false)}
-        onSnooze={(until) => void apply("snooze", until)}
+        onSnooze={(until) => void apply("snooze", { snoozedUntil: until })}
       />
     ) : null,
   };
@@ -765,7 +772,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () => onRegenerateThreadTitle(thread),
     [onRegenerateThreadTitle, thread],
   );
-  const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
   // A recycled cell reassigns this mounted row to a different thread without
   // remounting it, and the render closure stops running while list equality
   // says the item is unchanged — so any row-local UI state must be dismissed
@@ -773,19 +779,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // opened for one thread survives the thread's removal/reorder and its
   // submit snoozes whichever thread the cell was reassigned to. (ThreadSwipeable
   // enforces the same contract on the swipe layer with its resetKey.)
-  const rowIdentity = `${thread.environmentId}:${thread.id}`;
-  const [boundIdentity, setBoundIdentity] = useState(rowIdentity);
-  if (boundIdentity !== rowIdentity) {
-    setBoundIdentity(rowIdentity);
-    setCustomSnoozeOpen(false);
-  }
   const worktreeActions = useWorktreeActions({
     ...props,
     threads: props.worktreeThreads ?? [thread],
   });
   const handleSettle = useCallback(() => worktreeActions.apply("settle"), [worktreeActions.apply]);
   const handleSnooze = useCallback(
-    (until: string) => void worktreeActions.apply("snooze", until),
+    (target: SnoozeTarget) => void worktreeActions.apply("snooze", target),
     [worktreeActions.apply],
   );
   const handleUnsnooze = useCallback(
@@ -913,7 +913,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handleMoveUp,
       handlePin,
       handleSettle,
-      handleSnooze,
       handleUnpin,
       handleUnsettle,
       handleUnsnooze,

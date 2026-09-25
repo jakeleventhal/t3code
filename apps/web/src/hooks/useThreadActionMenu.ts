@@ -1,3 +1,4 @@
+import { isThreadRunInProgress } from "@t3tools/client-runtime/state/thread-settled";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
@@ -154,7 +155,7 @@ export function useThreadActionMenu(input: {
         const snoozePresets = resolveSnoozePresets(now, timestampFormat, {
           untilDone:
             readEnvironmentSupportsSnoozeUntilDone(threadRef.environmentId) &&
-            isThreadRunInProgress(thread),
+            members.some(isThreadRunInProgress),
         });
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
@@ -181,9 +182,10 @@ export function useThreadActionMenu(input: {
             members,
             "snooze",
             new Date().toISOString(),
+            preset,
           )) {
             const ref = scopeThreadRef(member.environmentId, member.id);
-            const result = await snoozeThread(ref, preset.snoozedUntil);
+            const result = await snoozeThread(ref, preset);
             if (result._tag === "Failure") {
               if (!isAtomCommandInterrupted(result))
                 failureToast("Failed to snooze worktree", squashAtomCommandFailure(result));
@@ -193,7 +195,10 @@ export function useThreadActionMenu(input: {
           toastManager.add(
             stackedThreadToast({
               type: "success",
-              title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
+              title:
+                preset.snoozedUntil === undefined
+                  ? "Snoozed until done"
+                  : `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
               timeout: 5_000,
               actionProps: {
                 children: "Undo",

@@ -120,6 +120,39 @@ describe("V2 preview upgrade", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
+  it.effect("clears the personal snooze column record before upgrading", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 52 });
+      yield* Migrator.make({})({
+        loader: Migrator.fromRecord({
+          "53_PullRequestFilesViewed": PullRequestFilesViewed,
+          "54_OrchestrationV2": OrchestrationV2,
+          "55_RemoveRedundantProjectionIndexes": RemoveRedundantProjectionIndexes,
+        }),
+      });
+      yield* sql`ALTER TABLE projection_threads ADD COLUMN snooze_wake_on TEXT`;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name)
+        VALUES (56, 'ProjectionThreadsSnoozeWakeOn')
+      `;
+      yield* runMigrations();
+      const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+        SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
+      `;
+      assert.deepStrictEqual(
+        history.map((row) => [row.migration_id, row.name] as const),
+        migrationManifest,
+      );
+      assert.strictEqual(
+        (yield* sql`
+          SELECT 1 FROM pragma_table_info('projection_threads') WHERE name = 'snooze_wake_on'
+        `).length,
+        0,
+      );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect("refuses unexpected later migrations without modifying their history", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

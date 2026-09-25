@@ -1,4 +1,9 @@
-import { canSnooze, effectiveSnoozed } from "./threadSettled.ts";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  isThreadRunInProgress,
+  type SnoozeTarget,
+} from "./threadSettled.ts";
 import { scopedThreadKey, scopeThreadRef } from "../environment/index.ts";
 import type { EnvironmentThreadShell } from "./models.ts";
 import {
@@ -369,6 +374,9 @@ export function resolveWorktreeLifecycle(
       threads.length > 0 && threads.every((thread) => thread.settledOverride === "settled"),
     isSnoozed: threads.some((thread) => effectiveSnoozed(thread, { now })),
     canSnoozeNow: threads.length > 0 && threads.every((thread) => canSnooze(thread, { now })),
+    canSnoozeUntilDone: threads.some(
+      (thread) => canSnooze(thread, { now }) && isThreadRunInProgress(thread),
+    ),
     autoSettleEnabled: threads.every((thread) => thread.autoSettleDisabledAt == null),
   };
 }
@@ -378,6 +386,7 @@ export function worktreeLifecycleTargets(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   action: WorktreeLifecycleAction,
   now: string,
+  target?: SnoozeTarget,
 ) {
   return threads.filter((thread) => {
     if (thread.archivedAt != null) return false;
@@ -395,7 +404,10 @@ export function worktreeLifecycleTargets(
       case "unsettle":
         return thread.settledOverride === "settled";
       case "snooze":
-        return canSnooze(thread, { now });
+        return (
+          canSnooze(thread, { now }) &&
+          (target?.wakeOn !== "run-end" || isThreadRunInProgress(thread))
+        );
       case "unsnooze":
         return effectiveSnoozed(thread, { now });
     }

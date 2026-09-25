@@ -825,7 +825,9 @@ function ThreadRouteContent(
   );
   const linkedDevServers = useThreadDevServers({
     environmentId: selectedThread?.environmentId ?? null,
-    threadId: selectedThread?.id ?? null,
+    threadId: selectedThread
+      ? worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath)
+      : null,
   });
   const preparedConnection = usePreparedConnection(selectedThread?.environmentId ?? null);
   const devServers = useMemo(() => {

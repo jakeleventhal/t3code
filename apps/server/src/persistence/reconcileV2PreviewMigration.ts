@@ -15,6 +15,24 @@ export const reconcileV2PreviewMigration = Effect.fn("reconcileV2PreviewMigratio
         SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
       `;
       if (tables.length === 0) return [];
+      // TODO(PERSONAL-BRANCH): earlier personal builds recorded an unused
+      // snooze column as migration 56. Clear it so the preview can renumber.
+      const personalSnoozeColumn = yield* sql`
+        SELECT 1 FROM effect_sql_migrations
+        WHERE migration_id = 56 AND name = 'ProjectionThreadsSnoozeWakeOn'
+      `;
+      if (personalSnoozeColumn.length > 0) {
+        const columns = yield* sql`
+          SELECT 1 FROM pragma_table_info('projection_threads') WHERE name = 'snooze_wake_on'
+        `;
+        if (columns.length > 0) {
+          yield* sql`ALTER TABLE projection_threads DROP COLUMN snooze_wake_on`;
+        }
+        yield* sql`
+          DELETE FROM effect_sql_migrations
+          WHERE migration_id = 56 AND name = 'ProjectionThreadsSnoozeWakeOn'
+        `;
+      }
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
         SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 53
       `;

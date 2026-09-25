@@ -41,7 +41,12 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
-import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  effectiveSnoozed,
+  isThreadRunInProgress,
+  type SnoozeTarget,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   threadSearchMatchKey,
@@ -73,6 +78,7 @@ import {
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
+  Globe2Icon,
   PinIcon,
   PlusIcon,
   SettingsIcon,
@@ -239,7 +245,7 @@ import {
   selectPreferredDiscoveredServer,
 } from "./preview/useDiscoveredLocalServers";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { Button, InlineButton } from "./ui/button";
+import { Button } from "./ui/button";
 import {
   Combobox,
   ComboboxEmpty,
@@ -1367,12 +1373,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   lifecycle: ReturnType<typeof resolveWorktreeLifecycle>;
   settlementSupported: boolean;
   snoozeSupported: boolean;
+  snoozeUntilDoneSupported: boolean;
   pinningSupported: boolean;
   timestampFormat: TimestampFormat;
-  onLifecycleAction: (
-    action: WorktreeLifecycleAction,
-    preset?: Pick<SnoozePreset, "snoozedUntil">,
-  ) => void;
+  onLifecycleAction: (action: WorktreeLifecycleAction, preset?: SnoozeTarget) => void;
   dragDisabled: boolean;
   group: SidebarWorktreeGroup;
   project: EnvironmentProject | null;
@@ -1435,6 +1439,12 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     environmentId: thread.environmentId,
     threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
   });
+  const discoveredPorts = useThreadDiscoveredPorts({
+    environmentId: thread.environmentId,
+    threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
+  });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
+  const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const checkout =
     visibleGitStatus?.refName ??
@@ -1519,6 +1529,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                 onOpenChange={setSnoozeMenuOpen}
                 onSnooze={(preset) => props.onLifecycleAction("snooze", preset)}
                 timestampFormat={props.timestampFormat}
+                untilDone={props.snoozeUntilDoneSupported && props.lifecycle.canSnoozeUntilDone}
               />
             ) : null}
             {props.snoozeSupported && props.lifecycle.isSnoozed ? (
@@ -1562,6 +1573,31 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             </TooltipTrigger>
             <TooltipPopup>{cwd ?? checkout}</TooltipPopup>
           </Tooltip>
+          {preferredDiscoveredPort ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
+                    onClick={() => {
+                      void openDiscoveredPort({
+                        threadRef,
+                        port: preferredDiscoveredPort,
+                        openPreview,
+                      }).then((result) => {
+                        if (result._tag === "Success") props.onActivate(threadRef);
+                      });
+                    }}
+                    className="inline-flex shrink-0 rounded-sm text-success-foreground"
+                  />
+                }
+              >
+                <Globe2Icon className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup>Open dev server</TooltipPopup>
+            </Tooltip>
+          ) : null}
           {terminalStatus ? (
             <span
               role="img"
@@ -3150,11 +3186,11 @@ export default function Sidebar() {
     async (
       members: ReadonlyArray<EnvironmentThreadShell>,
       action: WorktreeLifecycleAction,
-      preset?: Pick<SnoozePreset, "snoozedUntil">,
+      preset?: SnoozeTarget,
     ) => {
       const now = new Date().toISOString();
       if (action === "snooze" && !resolveWorktreeLifecycle(members, now).canSnoozeNow) return;
-      const targets = worktreeLifecycleTargets(members, action, now);
+      const targets = worktreeLifecycleTargets(members, action, now, preset);
       if (action === "unpin" && confirmThreadUnpin) {
         const api = readLocalApi();
         if (!api) return;
@@ -3202,7 +3238,10 @@ export default function Sidebar() {
         toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
+            title:
+              preset.snoozedUntil === undefined
+                ? "Snoozed until done"
+                : `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
             timeout: 5000,
             actionProps: {
               children: "Undo",
@@ -3257,7 +3296,15 @@ export default function Sidebar() {
         ).values(),
       ];
       const lifecycle = resolveWorktreeLifecycle(lifecycleThreads, selectionNow.toISOString());
-      const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat);
+      const snoozePresets = resolveSnoozePresets(selectionNow, timestampFormat, {
+        untilDone:
+          lifecycleThreads.some(isThreadRunInProgress) &&
+          lifecycleThreads.every(
+            (thread) =>
+              serverConfigs.get(thread.environmentId)?.environment.capabilities
+                .threadSnoozeUntilDone === true,
+          ),
+      });
       const lifecycleMenu = buildThreadActionMenuItems({
         projectFilter: null,
         ...lifecycle,
@@ -3458,7 +3505,7 @@ export default function Sidebar() {
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat, {
           untilDone:
             serverConfigs.get(thread.environmentId)?.environment.capabilities
-              .threadSnoozeUntilDone === true && isThreadRunInProgress(thread),
+              .threadSnoozeUntilDone === true && members.some(isThreadRunInProgress),
         });
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
@@ -4197,6 +4244,10 @@ export default function Sidebar() {
                               snoozeSupported={
                                 serverConfigs.get(representative.environmentId)?.environment
                                   .capabilities.threadSnooze === true
+                              }
+                              snoozeUntilDoneSupported={
+                                serverConfigs.get(representative.environmentId)?.environment
+                                  .capabilities.threadSnoozeUntilDone === true
                               }
                               pinningSupported={
                                 serverConfigs.get(representative.environmentId)?.environment

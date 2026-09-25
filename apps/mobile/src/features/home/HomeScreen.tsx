@@ -407,8 +407,8 @@ export function HomeScreen(props: HomeScreenProps) {
   // optimistic holds.
   const handleSettleThread = props.onSettleThread;
   const handleSnoozeThread = useCallback(
-    (thread: EnvironmentThreadShell, snoozedUntil: string) => {
-      return props.onSnoozeThread(thread, snoozedUntil);
+    (thread: EnvironmentThreadShell, target: SnoozeTarget) => {
+      return props.onSnoozeThread(thread, target);
     },
     [props.onSnoozeThread],
   );
@@ -663,6 +663,7 @@ export function HomeScreen(props: HomeScreenProps) {
             onUnpinThread={handleUnpinThread}
             settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
             snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+            snoozeUntilDoneSupported={snoozeUntilDoneEnvironmentIds.has(item.thread.environmentId)}
             pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
             autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
               item.thread.environmentId,

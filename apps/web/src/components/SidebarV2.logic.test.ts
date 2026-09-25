@@ -13,7 +13,7 @@ import {
 } from "@t3tools/client-runtime/state/worktree-grouping";
 import { worktreeScopeKey } from "@t3tools/shared/worktreeResource";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, RunId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
@@ -599,6 +599,29 @@ describe("worktree lifecycle actions", () => {
     const c = member("c", { snoozedUntil: "2026-09-19T12:00:00Z" });
     expect(resolveWorktreeLifecycle([a, b, c], now).isSnoozed).toBe(true);
     expect(worktreeLifecycleTargets([a, b, c], "unsnooze", now)).toEqual([a, c]);
+  });
+  it("snoozes only running siblings until done while timed snooze includes idle siblings", () => {
+    const running = member("running", {
+      latestRun: { runId: RunId.make("run-current"), status: "running" } as NonNullable<
+        EnvironmentThreadShell["latestRun"]
+      >,
+    });
+    const idle = member("idle");
+    const blocked = member("blocked", {
+      ...running,
+      id: ThreadId.make("blocked"),
+      hasPendingApprovals: true,
+    });
+    expect(resolveWorktreeLifecycle([running, idle], now).canSnoozeUntilDone).toBe(true);
+    expect(
+      worktreeLifecycleTargets([running, idle, blocked], "snooze", now, { wakeOn: "run-end" }),
+    ).toEqual([running]);
+    expect(
+      worktreeLifecycleTargets([running, idle], "snooze", now, {
+        snoozedUntil: "2026-09-18T12:00:00Z",
+      }),
+    ).toEqual([running, idle]);
+    expect(resolveWorktreeLifecycle([idle], now).canSnoozeUntilDone).toBe(false);
   });
   it("blocks group snooze when any member is waiting on the user", () => {
     expect(
