@@ -1512,6 +1512,7 @@ function renderFeedEntry(
                   markdown={reasoningMessage.text}
                   markdownStyles={markdownStyles.assistant}
                   linkHandlers={props.markdownLinkHandlers}
+                  workspaceRoot={props.workspaceRoot}
                   renderImage={props.renderMarkdownImage}
                   skills={props.skills}
                 />

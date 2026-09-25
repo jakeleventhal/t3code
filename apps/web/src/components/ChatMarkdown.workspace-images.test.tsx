@@ -359,6 +359,14 @@ describe("ChatMarkdown workspace images", () => {
     expect(copiedMarkdownFrom(html)).toBe('![logo](images/logo.svg "My Title")');
   });
 
+  it.each([
+    "[shot](.t3/workspace-image.svg)",
+    '[Recording](https://cdn.example.com/clip.mp4 "Demo recording")',
+    "https://cdn.example.com/shot.png",
+  ])("copies an embedded standalone link as the authored link: %s", (markdown) => {
+    expect(copiedMarkdownFrom(render(markdown))).toBe(markdown);
+  });
+
   it("escapes double quotes in an authored image title", () => {
     const html = render(`![logo](images/logo.svg 'My "Title"')`);
 
