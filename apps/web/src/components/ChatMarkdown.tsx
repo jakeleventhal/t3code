@@ -478,6 +478,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       "dataLocalSrc",
+      "dataMarkdownLink",
       "dataMarkdownTitle",
       "dataStandalone",
     ],
@@ -1346,11 +1347,20 @@ const CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME = cn(
   CHAT_MARKDOWN_MEDIA_BOUNDS_CLASS_NAME,
 );
 
-function markdownImageCopy(alt: string, src: string, title: string | undefined): string {
-  const escapedAlt = alt.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+/** A standalone link embedded as media copies back as the link its author wrote. */
+function markdownImageCopy(
+  alt: string,
+  src: string,
+  title: string | undefined,
+  authoredAsLink: boolean,
+): string {
+  // An autolink's text was its URL, so the bare URL is what the author wrote.
+  if (authoredAsLink && alt === "" && title === undefined) return src;
+  const text = authoredAsLink && alt === "" ? src : alt;
+  const escapedAlt = text.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
   const titleSuffix =
     title === undefined ? "" : ` "${title.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-  return `![${escapedAlt}](${src}${titleSuffix})`;
+  return `${authoredAsLink ? "" : "!"}[${escapedAlt}](${src}${titleSuffix})`;
 }
 
 /**
@@ -3167,7 +3177,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const classifiedSrc =
       typeof localSrc === "string" ? srcString.replaceAll("\\", "/") : srcString;
     const altText = alt ?? "";
-    const copyMarkdown = markdownImageCopy(altText, srcString, authoredTitle);
+    const copyMarkdown = markdownImageCopy(
+      altText,
+      srcString,
+      authoredTitle,
+      // Checked for presence: rehype-raw may turn the boolean flag into a string.
+      node?.properties?.dataMarkdownLink !== undefined,
+    );
     const { className, style: _style, width, height, ...imageProps } = props;
     const authoredSizeStyle = authoredImageSizeStyle(width, height);
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
@@ -3189,6 +3205,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           standalone={standalone}
           className={className}
           style={authoredSizeStyle}
