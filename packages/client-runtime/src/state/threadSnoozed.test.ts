@@ -202,6 +202,32 @@ describe("run-end snoozes", () => {
     expect(threadWokeAt(laterRun, { now: NOW })).toBe(requestedAt);
   });
 
+  it("stay snoozed behind a follow-up queued or cancelled while the bound run is active", () => {
+    for (const status of ["queued", "cancelled"]) {
+      const shell = {
+        ...makeRunShell({ runId: "run-2", status, requestedAt: "2026-04-10T10:00:00.000Z" }),
+        runtime: { status: "running", activeRunId: runId },
+      };
+      expect(effectiveSnoozed(shell, { now: NOW })).toBe(true);
+      expect(threadWokeAt(shell, { now: NOW })).toBe(null);
+    }
+    // Once the bound run ends, the follow-up starts and marks the wake.
+    const startedAt = "2026-04-10T11:15:00.000Z";
+    const followUp: ThreadSnoozeShell = {
+      ...makeRunShell({ runId: "run-2", status: "running" }),
+      latestRun: {
+        runId: "run-2",
+        status: "running",
+        requestedAt: "2026-04-10T10:00:00.000Z",
+        startedAt,
+        completedAt: null,
+      },
+      runtime: { status: "running", activeRunId: "run-2" },
+    };
+    expect(effectiveSnoozed(followUp, { now: NOW })).toBe(false);
+    expect(threadWokeAt(followUp, { now: NOW })).toBe(startedAt);
+  });
+
   it("are offered first, only when requested, and label as when done", () => {
     const now = localDate(2026, 4, 8, 10);
     expect(resolveSnoozePresets(now).some((preset) => preset.id === "until-done")).toBe(false);
