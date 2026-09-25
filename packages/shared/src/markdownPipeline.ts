@@ -145,6 +145,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       "dataLocalSrc",
+      "dataMarkdownLink",
       "dataMarkdownTitle",
       "dataStandalone",
     ],
