@@ -2445,11 +2445,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         markdown={text}
         markdownStyles={markdownStyles.assistant}
         linkHandlers={markdownLinkHandlers}
+        workspaceRoot={props.workspaceRoot}
         renderImage={renderMarkdownImage}
         skills={props.skills}
       />
     ),
-    [markdownStyles.assistant, markdownLinkHandlers, renderMarkdownImage, props.skills],
+    [
+      markdownStyles.assistant,
+      markdownLinkHandlers,
+      props.workspaceRoot,
+      renderMarkdownImage,
+      props.skills,
+    ],
   );
   const reviewCommentColors = useReviewCommentColors();
   const unsettledTurnId = threadFeedRunIsUnsettled(props.latestRun) ? props.latestRun.runId : null;
