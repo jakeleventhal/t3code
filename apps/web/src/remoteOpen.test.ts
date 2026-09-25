@@ -162,6 +162,14 @@ describe("buildRemoteOpenUrl", () => {
         absolutePath: "/Users/r2d2/code",
       }),
     ).toBe("cursor://vscode-remote/ssh-remote+r2d2%40r2d2/Users/r2d2/code");
+    expect(
+      buildRemoteOpenUrl({
+        editor: "zed",
+        host: "r2d2",
+        username: "r2d2",
+        absolutePath: "/Users/r2d2/code",
+      }),
+    ).toBe("zed://ssh/r2d2@r2d2/Users/r2d2/code");
   });
 
   it("roots Windows paths", () => {
