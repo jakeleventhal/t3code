@@ -191,16 +191,22 @@ describe("remote thread lifecycle commands", () => {
           environmentId: ENVIRONMENT_ID,
           input: { threadId: THREAD_ID, wakeOn: "run-end" },
         });
-      // Idle: nothing to wait for, so the preview leaves the thread awake.
-      void snoozeUntilDone();
+      // Idle: nothing to wait for, so the preview leaves the thread awake,
+      // even when a run starts before the server replies.
+      const idle = snoozeUntilDone();
       expect(h.registry.get(h.visibleAtom)?.threads[0]?.snoozeWakeOn ?? null).toBeNull();
-      expect((yield* Queue.take(h.requests)).command).toMatchObject({ wakeOn: "run-end" });
+      const request = yield* Queue.take(h.requests);
+      expect(request.command).toMatchObject({ wakeOn: "run-end" });
 
       const runId = RunId.make("run-1");
       h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), {
         ...SNAPSHOT,
         threads: [{ ...SNAPSHOT.threads[0]!, latestRunId: runId, status: "running" }],
       });
+      expect(h.registry.get(h.visibleAtom)?.threads[0]?.snoozeWakeOn ?? null).toBeNull();
+      yield* Deferred.fail(request.reply, new Error("No run in progress"));
+      yield* Effect.promise(() => idle);
+
       void snoozeUntilDone();
       expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject({
         snoozedUntil: null,

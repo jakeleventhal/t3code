@@ -154,15 +154,15 @@ function snoozedRunEnded(shell: ThreadSnoozeShell): boolean {
   return latestRun?.runId !== shell.snoozeWakeOn.runId || !isThreadRunInProgress(shell);
 }
 
-/** The latest run is still working: the only time "Until done" is offered. */
+/**
+ * The latest run is still working: the only time "Until done" is offered.
+ * Excludes "queued" to match the run statuses the server binds a run-end
+ * snooze to.
+ */
 export function isThreadRunInProgress(shell: Pick<QueuedThreadShell, "latestRun">): boolean {
   const status = shell.latestRun?.status;
   return (
-    status === "preparing" ||
-    status === "queued" ||
-    status === "starting" ||
-    status === "running" ||
-    status === "waiting"
+    status === "preparing" || status === "starting" || status === "running" || status === "waiting"
   );
 }
 

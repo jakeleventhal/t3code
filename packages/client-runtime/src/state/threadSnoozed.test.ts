@@ -214,6 +214,8 @@ describe("run-end snoozes", () => {
     expect(snoozeWakeLabel(makeRunShell({ status: "running" }), { now: NOW })).toBe("when done");
     expect(isThreadRunInProgress(makeRunShell({ status: "running" }))).toBe(true);
     expect(isThreadRunInProgress(makeRunShell({ status: "completed" }))).toBe(false);
+    // The server refuses to snooze a queued run, so "Until done" is not offered.
+    expect(isThreadRunInProgress(makeRunShell({ status: "queued" }))).toBe(false);
   });
 });
 
