@@ -1187,9 +1187,10 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
         }
         maxWidthsByFileId[fileId] = max(maxWidthsByFileId[fileId] ?? 0, width)
       case "hunk":
+        // Hunk context can hold tabs and draws in its own font, so measure what drawHunkRow draws.
         maxWidthsByFileId[fileId] = max(
           maxWidthsByFileId[fileId] ?? 0,
-          CGFloat(row.text?.utf16.count ?? 0) * characterWidth
+          textWidth(row.text ?? "", font: hunkFont)
         )
       default:
         break

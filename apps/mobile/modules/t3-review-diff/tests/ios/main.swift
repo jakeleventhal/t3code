@@ -47,7 +47,7 @@ for fixture in fixtures {
   }
 }
 // Unwrapped rows stay on one line, and their measured width covers every drawn glyph.
-for text in ["\t\t\"extends\": \"@riptech/tsconfig/tsconfig.test.json\",", "漢字\tvalue"] {
+for text in ["\t\t\"extends\": \"@riptech/tsconfig/tsconfig.test.json\",", "漢字\tvalue", "مرحبا\tvalue"] {
   let layout = ReviewDiffCodeLayout(
     text: text, font: font, width: ReviewDiffCodeLayout.unboundedWidth, characterWidth: characterWidth
   )
