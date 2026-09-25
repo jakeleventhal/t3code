@@ -62,7 +62,7 @@ describe("remarkStandaloneMediaLinks", () => {
     );
 
     expect(html).toContain(
-      '<img src="https://cdn.example.com/a.png" alt="a.png"/><br/>\n<img src="https://cdn.example.com/b.png" alt="b.png"/>',
+      '<img src="https://cdn.example.com/a.png" alt="a.png" data-markdown-link="true"/><br/>\n<img src="https://cdn.example.com/b.png" alt="b.png" data-markdown-link="true"/>',
     );
     expect(html).not.toContain("<a ");
   });
@@ -95,7 +95,7 @@ describe("remarkStandaloneMediaLinks", () => {
       );
 
       expect(html).toContain(
-        'Here is the result:<br/>\n<img src="https://cdn.example.com/shot.png" alt="shot.png"/><br/>\nSee ',
+        'Here is the result:<br/>\n<img src="https://cdn.example.com/shot.png" alt="shot.png" data-markdown-link="true"/><br/>\nSee ',
       );
       expect(html).toContain('<a href="https://cdn.example.com/detail.png">detail.png</a>');
     },
