@@ -1055,7 +1055,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               {statusLabel.label}
             </Text>
           ) : null}
-          <ThreadDevServerIndicator thread={thread} selected={selected} />
+          <ThreadDevServerIndicator
+            environmentId={thread.environmentId}
+            threadId={worktreeResourceThreadId(thread.projectId, thread.worktreePath)}
+          />
           {providerInstance ? (
             // Earlier owners peek out behind the current provider so a
             // handed-off thread shows where it has been. The current owner
