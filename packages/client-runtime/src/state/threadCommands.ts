@@ -413,7 +413,7 @@ export function createThreadEnvironmentAtoms<R, E>(
       settledAt: null,
       unsettledAt: thread.settledOverride === "active" ? (thread.unsettledAt ?? null) : now,
     })),
-    snooze: optimistic.wrap(commands.snooze, (thread, input, now, accepted) => {
+    snooze: optimistic.wrap(commands.snooze, (thread, input, now, accepted, dispatched) => {
       if (
         (!accepted &&
           (thread.pendingRuntimeRequest !== null ||
@@ -424,16 +424,18 @@ export function createThreadEnvironmentAtoms<R, E>(
       ) {
         return thread;
       }
-      // Mirrors the server: "Until done" binds to the run in progress.
+      // Mirrors the server: "Until done" binds to the run in progress when the
+      // user acted, so a run starting mid-request cannot adopt the snooze.
       let snoozeWakeOn: OrchestrationV2SnoozeWakeOn | null = null;
       if (input.wakeOn === "run-end") {
         if (
-          thread.latestRunId === null ||
-          !["preparing", "starting", "running", "waiting"].includes(thread.status)
+          dispatched === undefined ||
+          dispatched.latestRunId === null ||
+          !["preparing", "starting", "running", "waiting"].includes(dispatched.status)
         ) {
           return thread;
         }
-        snoozeWakeOn = { type: "run-end", runId: thread.latestRunId };
+        snoozeWakeOn = { type: "run-end", runId: dispatched.latestRunId };
       }
       const sameWake =
         (thread.snoozedUntil == null
