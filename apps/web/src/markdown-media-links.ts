@@ -10,6 +10,7 @@ interface MarkdownAstNode {
   alt?: string | null;
   value?: unknown;
   children?: MarkdownAstNode[];
+  data?: { hProperties?: Record<string, unknown> };
 }
 
 const TRAILING_NEWLINE_PATTERN = /\n[ \t]*$/u;
@@ -82,6 +83,8 @@ export function remarkStandaloneMediaLinks(options: {
           title: child.title ?? null,
           // An autolink's text is its URL, which is not worth repeating as alt text.
           alt: text === child.url ? "" : text,
+          // Copying the message gives back the authored link, not image syntax.
+          data: { hProperties: { dataMarkdownLink: true } },
         });
         if (after?.type === "text" && typeof after.value === "string") {
           after.value = after.value.replace(LEADING_NEWLINE_PATTERN, "");
