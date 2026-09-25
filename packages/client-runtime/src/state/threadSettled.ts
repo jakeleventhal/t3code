@@ -22,6 +22,7 @@ interface SettlementRuntimeLike {
   readonly providerName?: unknown;
   readonly runtimeMode?: unknown;
   readonly activeTurnId?: unknown;
+  readonly activeRunId?: string | null;
   readonly lastError?: unknown;
   readonly status: string;
   readonly updatedAt?: string;
@@ -146,10 +147,13 @@ export function threadRaisedHandWhileSnoozed(shell: ThreadSnoozeShell): boolean 
 /**
  * An "Until done" snooze's run has ended, however it ended: the run stopped,
  * or a newer run replaced it. Binding to the run keeps a stale condition from
- * re-hiding the thread when a later run starts.
+ * re-hiding the thread when a later run starts. A follow-up queued behind the
+ * bound run becomes the latest run while the bound run is still active, so
+ * the active run wins over the latest one.
  */
 function snoozedRunEnded(shell: ThreadSnoozeShell): boolean {
   if (shell.snoozeWakeOn?.type !== "run-end") return false;
+  if (shell.runtime?.activeRunId === shell.snoozeWakeOn.runId) return false;
   const latestRun = shell.latestRun ?? null;
   return latestRun?.runId !== shell.snoozeWakeOn.runId || !isThreadRunInProgress(shell);
 }
@@ -247,12 +251,12 @@ export function threadWokeAt(
       return latestRun.completedAt;
     }
     // A run-end wake reports when the snoozed run stopped, or when the run
-    // that replaced it was requested.
+    // that replaced it started (a queued follow-up is requested earlier).
     if (snoozedRunEnded(shell)) {
       const endedAt =
         latestRun?.runId === shell.snoozeWakeOn?.runId
           ? latestRun?.completedAt
-          : latestRun?.requestedAt;
+          : (latestRun?.startedAt ?? latestRun?.requestedAt);
       if (endedAt != null) return endedAt;
     }
     return runtime?.updatedAt ?? shell.snoozedAt ?? null;
