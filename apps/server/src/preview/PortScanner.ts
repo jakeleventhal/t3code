@@ -47,6 +47,7 @@ import * as Semaphore from "effect/Semaphore";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 
 import * as ProcessRunner from "../processRunner.ts";
+import { isProcessAlive } from "../serverRuntimeState.ts";
 
 export class PortDiscovery extends Context.Service<
   PortDiscovery,
@@ -753,14 +754,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       proxyPortRaw: Option.getOrNull(proxyPortRaw),
       tls,
       proxyListening,
-      isProcessAlive: (pid) => {
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          return false;
-        }
-      },
+      isProcessAlive,
     });
   });
 
