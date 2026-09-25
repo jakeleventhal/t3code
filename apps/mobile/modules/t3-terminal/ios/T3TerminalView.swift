@@ -501,8 +501,8 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: x, y: y)
   }
 
-  private func screenBoundaryPoint(_ coordinate: ghostty_point_coord_e) -> ghostty_point_s {
-    ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: coordinate, x: 0, y: 0)
+  private func boundaryPoint(_ tag: ghostty_point_tag_e, _ coordinate: ghostty_point_coord_e) -> ghostty_point_s {
+    ghostty_point_s(tag: tag, coord: coordinate, x: 0, y: 0)
   }
 
   private func readText(from topLeft: ghostty_point_s, to bottomRight: ghostty_point_s) -> String? {
@@ -534,19 +534,16 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
           !tappedCell.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
 
-    let screenOrigin = screenBoundaryPoint(GHOSTTY_POINT_COORD_TOP_LEFT)
-    let screenEnd = screenBoundaryPoint(GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
-    guard let prefix = readText(from: screenOrigin, to: tappedPoint),
-          !prefix.isEmpty,
-          let screenText = readText(from: screenOrigin, to: screenEnd),
-          !screenText.isEmpty
+    // Text dumps are expensive, so a tap reads only the viewport. The prefix
+    // dump ends at the tapped cell inclusive, so its last UTF-16 unit is the
+    // tapped character's offset within the viewport dump.
+    let viewportOrigin = boundaryPoint(GHOSTTY_POINT_VIEWPORT, GHOSTTY_POINT_COORD_TOP_LEFT)
+    let viewportEnd = boundaryPoint(GHOSTTY_POINT_VIEWPORT, GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
+    guard let prefix = readText(from: viewportOrigin, to: tappedPoint),
+          let viewportText = readText(from: viewportOrigin, to: viewportEnd)
     else { return }
 
-    // The prefix dump ends at the tapped cell inclusive, so its last UTF-16
-    // unit is the tapped character's offset within the full screen dump. The
-    // screen range includes scrollback, so a logical line that starts above
-    // the viewport still reaches JS with its URL scheme intact.
-    let fullText = screenText as NSString
+    let fullText = viewportText as NSString
     let tapOffset = (prefix as NSString).length - 1
     guard tapOffset >= 0, tapOffset < fullText.length else { return }
 
@@ -555,8 +552,23 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     while lineText.hasSuffix("\n") || lineText.hasSuffix("\r") {
       lineText.removeLast()
     }
-    let tapIndex = tapOffset - lineRange.location
+    var tapIndex = tapOffset - lineRange.location
     guard tapIndex >= 0, tapIndex < (lineText as NSString).length else { return }
+
+    // A line touching the viewport top may start in scrollback. Only then read
+    // back to the screen origin, so a URL wrapped above the viewport keeps its
+    // scheme. The rest of the line still comes from the viewport dump.
+    if lineRange.location == 0 {
+      let screenOrigin = boundaryPoint(GHOSTTY_POINT_SCREEN, GHOSTTY_POINT_COORD_TOP_LEFT)
+      guard let screenPrefix = readText(from: screenOrigin, to: tappedPoint).map({ $0 as NSString }),
+            screenPrefix.length > 0
+      else { return }
+      let lineStart = screenPrefix.lineRange(for: NSRange(location: screenPrefix.length - 1, length: 0)).location
+      let head = screenPrefix.substring(from: lineStart)
+      let tail = (lineText as NSString).substring(from: tapIndex + 1)
+      lineText = head + tail
+      tapIndex = (head as NSString).length - 1
+    }
 
     onLinkTap([
       "lineText": lineText,
