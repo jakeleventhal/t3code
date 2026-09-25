@@ -137,11 +137,6 @@ const DEFAULT_BINDINGS = compile([
     whenAst: whenNot(whenIdentifier("terminalFocus")),
   },
   {
-    shortcut: modShortcut("u"),
-    command: "usage.open",
-    whenAst: whenNot(whenIdentifier("terminalFocus")),
-  },
-  {
     shortcut: modShortcut("t", { altKey: true, shiftKey: true }),
     command: "themeEditor.toggle",
   },
@@ -733,22 +728,6 @@ describe("chat/editor shortcuts", () => {
         context: { terminalFocus: true },
       }),
       "projectSearch.toggle",
-    );
-  });
-
-  it("matches usage.open outside terminal focus", () => {
-    assert.strictEqual(
-      resolveShortcutCommand(event({ key: "u", metaKey: true }), DEFAULT_BINDINGS, {
-        platform: "MacIntel",
-        context: { terminalFocus: false },
-      }),
-      "usage.open",
-    );
-    assert.isNull(
-      resolveShortcutCommand(event({ key: "u", ctrlKey: true }), DEFAULT_BINDINGS, {
-        platform: "Linux",
-        context: { terminalFocus: true },
-      }),
     );
   });
 
