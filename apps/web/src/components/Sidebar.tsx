@@ -41,7 +41,9 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
-import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";import {
+import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
@@ -181,6 +183,7 @@ import {
   orderItemsByPreferredIds,
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
+  resolveSidebarRowAccessibility,
   resolveSidebarThreadSection,
   resolveSidebarThreadStatus,
   resolveWorkingStartedAt,
@@ -1315,7 +1318,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ref={rowRef}
               role="button"
               tabIndex={0}
-              data-testid={variant === "card" ? "sidebar-row-card" : "sidebar-row-slim"}              aria-busy={isRegeneratingTitle || undefined}
+              aria-label={accessibility.label}
+              aria-current={accessibility.current}
+              data-testid={variant === "card" ? "sidebar-row-card" : "sidebar-row-slim"}
+              aria-busy={isRegeneratingTitle || undefined}
               className={cn(rowSurfaceClassName, "flex min-h-6 items-center gap-1.5 px-2 py-0")}
               onClick={handleClick}
               onDoubleClick={handleDoubleClick}
@@ -1324,6 +1330,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
+          {accessibleTitle}
           {draftIndicator}
           {title}
 
@@ -1341,7 +1348,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   <button
                     type="button"
                     aria-label="Dismiss Woke notification"
-                    onClick={handleAcknowledgeWokeClick}                    className={cn(
+                    onClick={handleAcknowledgeWokeClick}
+                    className={cn(
                       "shrink-0 rounded-sm text-xs hover:underline focus-visible:ring-2 focus-visible:ring-ring",
                       topStatus.className,
                     )}
@@ -3049,7 +3057,8 @@ export default function Sidebar() {
             canDragWorktree(group) &&
             worktreeReorderSection(group) === section
           );
-        }),      });
+        }),
+      });
     },
     [canDragWorktree, groupByKey],
   );

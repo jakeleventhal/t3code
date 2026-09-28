@@ -715,6 +715,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onMoveThread,
   } = props;
   const snoozedRow = props.snoozed === true;
+  const dormant = useSwipeRowDormant(props.activationKey);
 
   const { providerDrivers, providerIconUrl } = useMemo(() => {
     const provider = props.providers?.find(
@@ -988,7 +989,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     >
       <View
         className={cn(
-          "min-h-[36px] flex-row items-center gap-2 py-1",          sidebarPane ? "px-3" : "px-5",
+          "min-h-[36px] flex-row items-center gap-2 py-1",
+          sidebarPane ? "px-3" : "px-5",
         )}
       >
         <View className="min-w-0 flex-1">
@@ -1056,7 +1058,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 displayName={providerInstance.displayName}
                 accentColor={providerInstance.accentColor}
                 showBadge={providerInstance.showBadge}
-                surfaceColor={rowAppearance.providerIconSurfaceColor}              />
+                surfaceColor={rowAppearance.providerIconSurfaceColor}
+              />
             </View>
           ) : null}
         </View>
@@ -1163,8 +1166,9 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
               <ProjectFavicon
                 environmentId={thread.environmentId}
                 faviconPath={props.project.faviconPath}
+                projectIcon={props.project.projectIcon}
                 size={15}
-                projectTitle={props.projectTitle}
+                projectTitle={props.project.title}
                 workspaceRoot={props.project.workspaceRoot}
               />
             ) : null}
@@ -1222,9 +1226,7 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
                           : "accent-foreground-muted"
                   }
                 />
-                <Text className={cn("text-xs", pr.textClassName)}>
-                  {pr.kind === "stack" || pr.others > 0 ? pr.label : `#${pr.label}`}
-                </Text>
+                <Text className={cn("text-xs", pr.textClassName)}>{pr.label}</Text>
               </View>
             ) : null}
           </View>
