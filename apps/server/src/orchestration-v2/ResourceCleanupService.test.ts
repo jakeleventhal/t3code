@@ -5,16 +5,16 @@ import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { ServerConfig } from "../config.ts";
-import { TerminalManager } from "../terminal/Manager.ts";
-import { ProjectionStoreV2, layerMemory } from "./ProjectionStore.ts";
-import { ResourceCleanupService, live } from "./ResourceCleanupService.ts";
+import * as ServerConfig from "../config.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import * as ResourceCleanupService from "./ResourceCleanupService.ts";
 
 const projectId = ProjectId.make("project:cleanup");
 const now = DateTime.makeUnsafe("2026-09-17T12:00:00Z");
 const createThread = (id: string, worktreePath: string | null, project = projectId) =>
   Effect.gen(function* () {
-    const projection = yield* ProjectionStoreV2;
+    const projection = yield* ProjectionStore.ProjectionStoreV2;
     const threadId = ThreadId.make(id);
     const payload = {
       id: threadId,
@@ -54,10 +54,10 @@ for (const worktreePath of [null, "/work/feature"]) {
     `keeps sibling terminals and closes only the final checkout owner (${worktreePath ?? "local"})`,
     () => {
       const closed: string[] = [];
-      const testLayer = live.pipe(
-        Layer.provideMerge(layerMemory),
+      const testLayer = ResourceCleanupService.live.pipe(
+        Layer.provideMerge(ProjectionStore.layerMemory),
         Layer.provide(
-          Layer.mock(TerminalManager)({
+          Layer.mock(TerminalManager.TerminalManager)({
             close: ({ threadId }) =>
               Effect.sync(() => {
                 closed.push(threadId);
@@ -68,8 +68,8 @@ for (const worktreePath of [null, "/work/feature"]) {
         Layer.provide(NodeServices.layer),
       );
       return Effect.gen(function* () {
-        const projection = yield* ProjectionStoreV2;
-        const cleanup = yield* ResourceCleanupService;
+        const projection = yield* ProjectionStore.ProjectionStoreV2;
+        const cleanup = yield* ResourceCleanupService.ResourceCleanupService;
         const first = yield* createThread("first", worktreePath);
         const sibling = yield* createThread("sibling", worktreePath);
         // Neither another checkout nor an equal path under another project keeps this owner alive.
