@@ -1248,42 +1248,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
-  // Stacks show their layer count; multiple unrelated links show their total count.
-  // Either opens the thread's pull requests tab; a single PR link opens that PR and still
-  // supports opening the host in a new tab.
-  const prBadgeShape = supportsMultiplePullRequests
-    ? resolveThreadPullRequestBadge(thread.pullRequests)
-    : null;
-  const handlePrListClick = useCallback(() => {
-    useRightPanelStore.getState().open(threadRef, "pull-requests");
-    if (!props.isActive) onThreadActivate(threadRef);
-  }, [onThreadActivate, props.isActive, threadRef]);
-  const prBadge =
-    prBadgeShape?.kind === "stack" || pr || currentLinkedPr ? (
-      <ThreadPullRequestBadgeControl
-        render={<InlineButton />}
-        badge={prBadgeShape}
-        pullRequests={thread.pullRequests}
-        number={pr?.number ?? currentLinkedPr?.number}
-        url={pr?.url ?? currentLinkedPr?.url}
-        status={prStatus}
-        onOpenList={handlePrListClick}
-        onOpenPullRequest={handlePrClick}
-      />
-    ) : null;
-  const terminalStatusIcon = terminalStatus ? (
-    <span
-      role="img"
-      aria-label={terminalProcessLabel(terminalProcessCount)}
-      data-testid={`sidebar-terminal-status-${thread.id}`}
-      className={cn("inline-flex shrink-0 items-center justify-center", terminalStatus.colorClass)}
-    >
-      <TerminalIcon
-        className={cn("size-3.5", terminalStatus.pulse && "motion-safe:animate-status-pulse")}
-        onAnimationStart={synchronizeTerminalPulse}
-      />
-    </span>
-  ) : null;
   // Same pen the new-thread draft rows lead with, so both kinds of unsent
   // work read the same way in the list.
   const draftIndicator = hasUnsentDraft ? (
@@ -1607,7 +1571,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
               number={pr?.number ?? currentPr?.number}
               url={pr?.url ?? currentPr?.url}
               status={prStatusIndicator(pr, linked?.sourceControlProvider)}
-              onOpenStack={() => {
+              onOpenList={() => {
                 useRightPanelStore.getState().open(prThreadRef, "pull-requests");
                 props.onActivate(prThreadRef);
               }}
