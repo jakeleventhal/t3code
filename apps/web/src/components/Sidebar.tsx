@@ -512,15 +512,16 @@ function SidebarThreadTooltip({
 function SnoozeMenuButton(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
+  onSnooze: (target: SnoozeTarget) => void;
+  untilDone: boolean;
   timestampFormat: TimestampFormat;
 }) {
-  const { open, onOpenChange, onSnooze, timestampFormat } = props;
+  const { open, onOpenChange, onSnooze, untilDone, timestampFormat } = props;
   // Presets resolve at open time so "In 1 hour" is relative to the click,
   // not to when the row mounted.
   const presets = useMemo(
-    () => (open ? resolveSnoozePresets(new Date(), timestampFormat) : []),
-    [open, timestampFormat],
+    () => (open ? resolveSnoozePresets(new Date(), timestampFormat, { untilDone }) : []),
+    [open, untilDone, timestampFormat],
   );
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
@@ -2172,6 +2173,7 @@ export default function Sidebar() {
       activeReorderableThreadKeys: activeReorderable,
       activeThreads: sortedActive,
       // Soonest wake first: "what comes back next" is the shelf's question.
+      // "Until done" snoozes have no wake time and lead the shelf.
       snoozedThreads: snoozed.toSorted(
         (left, right) =>
           firstValidTimestampMs(left.snoozedUntil ?? null) -
@@ -2259,12 +2261,10 @@ export default function Sidebar() {
 
   // Arm a timeout for the earliest upcoming wake so the shelf empties the
   // moment a snooze expires instead of on the next minute tick. Sorted
-  // soonest-first, so entry 0 is the boundary.
+  // soonest-first, so the first timed entry is the boundary.
   useEffect(() => {
-    const nextWakeAtMs =
-      snoozedThreads.length > 0 && snoozedThreads[0]?.snoozedUntil != null
-        ? Date.parse(snoozedThreads[0].snoozedUntil)
-        : Number.NaN;
+    const nextWakeAt = snoozedThreads.find((thread) => thread.snoozedUntil != null)?.snoozedUntil;
+    const nextWakeAtMs = nextWakeAt == null ? Number.NaN : Date.parse(nextWakeAt);
     if (Number.isNaN(nextWakeAtMs)) return;
     // setTimeout delays are signed 32-bit: anything larger overflows and
     // fires immediately, turning a far-future wake (event-condition snoozes
@@ -3100,7 +3100,7 @@ export default function Sidebar() {
   const performSnooze = useCallback(
     async (
       threadRef: ScopedThreadRef,
-      preset: Pick<SnoozePreset, "snoozedUntil">,
+      target: SnoozeTarget,
       opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
     ) => {
       const threadKey = scopedThreadKey(threadRef);
@@ -3112,7 +3112,7 @@ export default function Sidebar() {
         // Snoozing the open thread moves you forward, same as settle —
         // both park the thread you're done with for now.
         const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
-        const result = await snoozeThread(threadRef, preset.snoozedUntil);
+        const result = await snoozeThread(threadRef, target);
         if (result._tag === "Failure") {
           // Never navigate away from a thread that did not snooze.
           return isAtomCommandInterrupted(result)
@@ -3448,7 +3448,11 @@ export default function Sidebar() {
         const members = lifecycleMembersByKey.get(threadKey) ?? [thread];
         const lifecycle = resolveWorktreeLifecycle(members, new Date().toISOString());
         // Presets resolve at menu-open time (same as the popover).
-        const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
+        const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat, {
+          untilDone:
+            serverConfigs.get(thread.environmentId)?.environment.capabilities
+              .threadSnoozeUntilDone === true && isThreadRunInProgress(thread),
+        });
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
             project.memberProjectRefs.some(
@@ -4104,8 +4108,8 @@ export default function Sidebar() {
                                   : "settle"
                             }
                             snoozeWakeLabelText={
-                              section === "snoozed" && thread.snoozedUntil != null
-                                ? snoozeWakeLabel(thread.snoozedUntil, {
+                              section === "snoozed"
+                                ? snoozeWakeLabel(thread, {
                                     now: new Date().toISOString(),
                                   })
                                 : null

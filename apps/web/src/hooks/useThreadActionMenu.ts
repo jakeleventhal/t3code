@@ -29,6 +29,7 @@ import {
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
+  readEnvironmentSupportsSnoozeUntilDone,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShells,
   readThreadShell,
@@ -150,7 +151,11 @@ export function useThreadActionMenu(input: {
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
-        const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+        const snoozePresets = resolveSnoozePresets(now, timestampFormat, {
+          untilDone:
+            readEnvironmentSupportsSnoozeUntilDone(threadRef.environmentId) &&
+            isThreadRunInProgress(thread),
+        });
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
           projectFilter: null,

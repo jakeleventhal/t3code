@@ -2,7 +2,8 @@ import { useAndroidControlSizing } from "../../components/useAndroidControlSizin
 import {
   indexWorktreeThreads,
   sidebarThreadKey,
-} from "@t3tools/client-runtime/state/worktree-grouping";import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+} from "@t3tools/client-runtime/state/worktree-grouping";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { computeThreadMoveAvailability } from "./threadOrder";
 import type {
   EnvironmentProject,
@@ -319,6 +320,7 @@ function ThreadNavigationSidebarPane(
     machineByEnvironmentId,
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
+    snoozeUntilDoneEnvironmentIds,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     pinReorderEnvironmentIds,
@@ -746,6 +748,7 @@ function ThreadNavigationSidebarPane(
               settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
               onSettleThread={settleThread}
               snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
+              snoozeUntilDoneSupported={snoozeUntilDoneEnvironmentIds.has(thread.environmentId)}
               pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
               autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}
               reorderSupported={
@@ -838,6 +841,7 @@ function ThreadNavigationSidebarPane(
       titleRegenerationEnvironmentIds,
       settleThread,
       settlementEnvironmentIds,
+      snoozeUntilDoneEnvironmentIds,
       showMoreSettled,
       sidebarScrollGesture,
       snoozeEnvironmentIds,
