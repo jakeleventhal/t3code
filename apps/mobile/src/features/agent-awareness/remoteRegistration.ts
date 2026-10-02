@@ -221,6 +221,7 @@ export function setAgentAwarenessRelayTokenProvider(
     // unset JS identity is a remount, not evidence of a different account.
     if (relayTokenProviderIdentity && identity !== relayTokenProviderIdentity) {
       clearAndroidAgentNotifications();
+      if (provider) clearAgentWidgetRefresh();
     }
     androidDeviceReplayedAt = null;
     stopLiveWidgetObserver();
@@ -258,7 +259,13 @@ export function setAgentAwarenessRelayTokenProvider(
   }
   // Native timelines survive JS restarts. Clear unowned content before a new
   // session publishes, even if its relay read fails. Token refreshes keep it.
-  if (!isExistingIdentity) publishRegularWidget(idleWidgetProps());
+  if (!isExistingIdentity) {
+    // Compare the persisted native identity before any asynchronous registration
+    // work; a cold JS runtime cannot otherwise identify the previous account.
+    if (identity) agentWidgetToken(identity);
+    publishedWidgetContent = null;
+    publishRegularWidget(idleWidgetProps());
+  }
   ensurePushTokenListener();
   ensureAppStateListener();
   startLiveWidgetObserver();
