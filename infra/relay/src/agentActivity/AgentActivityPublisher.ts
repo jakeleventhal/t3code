@@ -21,6 +21,7 @@ import * as EnvironmentLinks from "../environments/EnvironmentLinks.ts";
 import * as LiveActivities from "./LiveActivities.ts";
 import * as ApnsDeliveries from "./ApnsDeliveries.ts";
 import * as FcmDeliveries from "./FcmDeliveries.ts";
+import * as AgentWidgetRefresh from "./AgentWidgetRefresh.ts";
 
 export type AgentActivityPublishError =
   | FcmDeliveries.FcmDeliveryError
@@ -53,6 +54,7 @@ export const make = Effect.gen(function* () {
   const liveActivities = yield* LiveActivities.LiveActivities;
   const apnsDeliveries = yield* ApnsDeliveries.ApnsDeliveries;
   const fcmDeliveries = yield* FcmDeliveries.FcmDeliveries;
+  const widgets = yield* AgentWidgetRefresh.AgentWidgetRefresh;
 
   const publishForDeliveryUser = Effect.fnUntraced(function* (input: {
     readonly deliveryUser: EnvironmentLinks.AgentAwarenessDeliveryUserRecord;
@@ -105,7 +107,11 @@ export const make = Effect.gen(function* () {
       }),
       { concurrency: 4 },
     );
-    return deliveriesByTarget.flat();
+    const widgetDeliveries = yield* widgets.notify({ userId: input.deliveryUser.userId }).pipe(
+      Effect.tapError((cause) => Effect.logWarning("Widget refresh enqueue failed", { cause })),
+      Effect.orElseSucceed(() => []),
+    );
+    return [...deliveriesByTarget.flat(), ...widgetDeliveries];
   });
 
   return AgentActivityPublisher.of({

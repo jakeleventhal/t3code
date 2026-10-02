@@ -71,6 +71,17 @@ import {
   clearAndroidAgentNotifications,
 } from "./androidNotifications";
 
+import {
+  agentWidgetToken,
+  configureAgentWidgetRefresh,
+  clearAgentWidgetRefresh,
+} from "./agentWidgetRefresh";
+vi.mock("./agentWidgetRefresh", () => ({
+  agentWidgetToken: vi.fn(() => null),
+  configureAgentWidgetRefresh: vi.fn(),
+  clearAgentWidgetRefresh: vi.fn(),
+}));
+
 vi.mock("./androidNotifications", () => ({
   supportsAndroidAgentNotifications: vi.fn(() => true),
   configureAndroidAgentNotifications: vi.fn(),
@@ -476,6 +487,9 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     widgetMocks.start.mockReturnValue({});
     environmentConfigsMock.configs.clear();
     vi.mocked(publishAgentActivityWidget).mockReset().mockReturnValue(true);
+    vi.mocked(agentWidgetToken).mockReset().mockReturnValue(null);
+    vi.mocked(configureAgentWidgetRefresh).mockClear();
+    vi.mocked(clearAgentWidgetRefresh).mockClear();
   });
 
   it.effect.each(["unchanged", "sign-out", "account switch"] as const)(
@@ -1065,6 +1079,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
   });
 
   it.effect("registers the APNs device when cloud auth becomes available", () => {
+    vi.mocked(agentWidgetToken).mockReturnValue("a".repeat(64));
     const fetchMock = vi.fn((request: RequestInfo | URL) => {
       const url = request instanceof Request ? request.url : String(request);
       return Promise.resolve(
@@ -1088,7 +1103,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       },
     };
 
-    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
 
     return Effect.gen(function* () {
       yield* runBackgroundOperations();
@@ -1120,7 +1135,20 @@ describe("makeRelayDeviceRegistrationRequest", () => {
           nowEpochSeconds: proofIat(dpop),
         }),
       ).toMatchObject({ ok: true });
+      const payload =
+        request instanceof Request
+          ? yield* Effect.promise(() => request.json())
+          : JSON.parse(String(init?.body));
+      expect(payload.widgetAccessToken).toBe("a".repeat(64));
+      expect(configureAgentWidgetRefresh).toHaveBeenLastCalledWith(
+        "https://relay.example.test",
+        "a".repeat(64),
+      );
       expect(getAgentAwarenessRegistrationStatus()).toBe("registered");
+      releaseAgentAwarenessRelayTokenProvider();
+      expect(clearAgentWidgetRefresh).not.toHaveBeenCalled();
+      setAgentAwarenessRelayTokenProvider(null);
+      expect(clearAgentWidgetRefresh).toHaveBeenCalledOnce();
     }).pipe(Effect.provide(layerRelayTest));
   });
 
