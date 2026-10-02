@@ -187,7 +187,10 @@ describe("AgentActivityPublisher", () => {
               Layer.succeed(FcmDeliveries.FcmDeliveries, {
                 enqueue: () =>
                   Effect.fail(
-                    new FcmDeliveries.FcmDeliveryError({ operation: "enqueue", cause: "test failure" }),
+                    new FcmDeliveries.FcmDeliveryError({
+                      operation: "enqueue",
+                      cause: "test failure",
+                    }),
                   ),
                 process: () => Effect.void,
               }),
