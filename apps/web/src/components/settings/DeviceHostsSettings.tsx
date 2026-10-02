@@ -230,9 +230,9 @@ function DeviceHostList({
                         }
                       >
                         {platform.platform === "ios" ? (
-                          <AppleIcon className="size-3.5" />
+                          <AppleIcon className="size-3" />
                         ) : (
-                          <AndroidIcon className="size-3.5" />
+                          <AndroidIcon className="size-3" />
                         )}
                       </TooltipTrigger>
                       <TooltipPopup>
