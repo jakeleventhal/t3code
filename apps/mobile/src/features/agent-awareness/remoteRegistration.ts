@@ -49,6 +49,11 @@ import {
 } from "./agentLiveActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
 import { supportsAgentAwarenessPush } from "./capabilities";
+import {
+  agentWidgetToken,
+  configureAgentWidgetRefresh,
+  clearAgentWidgetRefresh,
+} from "./agentWidgetRefresh";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 import {
   createLiveWidgetActivitiesAtom,
@@ -226,6 +231,7 @@ export function setAgentAwarenessRelayTokenProvider(
   relayTokenProviderIdentity = provider ? (identity ?? null) : null;
   if (!provider) {
     clearAndroidAgentNotifications();
+    clearAgentWidgetRefresh();
     pushTokenSubscription?.remove();
     pushTokenSubscription = null;
     appStateSubscription?.remove();
@@ -356,6 +362,7 @@ function registrationSignature(body: RelayDeviceRegistrationRequest): string {
   return [
     body.deviceId,
     body.pushToken ?? "",
+    body.widgetAccessToken ?? "",
     body.bundleId ?? "",
     body.apsEnvironment ?? "",
     body.appVersion ?? "",
@@ -417,7 +424,13 @@ function registerDeviceWithRelay(
       });
       return;
     }
-    const payload = body;
+    const widgetToken =
+      Platform.OS === "ios" && supportsAgentAwarenessPush() && identity
+        ? agentWidgetToken(identity)
+        : null;
+    const payload = widgetToken ? { ...body, widgetAccessToken: widgetToken } : body;
+    // The relay URL participates so pointing the app at a different relay
+    // invalidates the record and re-registers there.
     const signature = `${relayConfig.url}|${registrationSignature(payload)}`;
     // Android registration also silently replays the current card. Collapse
     // foreground bursts, but repair missed pushes on cold start or a return
@@ -432,6 +445,7 @@ function registerDeviceWithRelay(
       persisted.signature === signature &&
       !needsAndroidReplay
     ) {
+      if (widgetToken) configureAgentWidgetRefresh(relayConfig.url, widgetToken);
       setRegistrationStatus("registered");
       logRegistrationDebug("relay device registration skipped; already registered for account", {
         expectedGeneration,
@@ -457,6 +471,7 @@ function registerDeviceWithRelay(
       });
       return;
     }
+    if (widgetToken) configureAgentWidgetRefresh(relayConfig.url, widgetToken);
     if (body.platform === "android") androidDeviceReplayedAt = Date.now();
     setRegistrationStatus("registered");
     yield* Effect.promise(() =>
