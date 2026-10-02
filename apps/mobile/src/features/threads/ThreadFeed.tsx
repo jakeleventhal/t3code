@@ -2963,7 +2963,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             onPressPreview,
             onPressVideo,
             markdownLinkHandlers,
-            workspaceRoot: props.workspaceRoot,
             renderMarkdownImage,
             renderViewedImage,
             renderReasoning,
