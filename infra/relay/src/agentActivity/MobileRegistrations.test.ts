@@ -25,6 +25,7 @@ import { FcmDeliveries } from "./FcmDeliveries.ts";
 const publisherLayer = AgentActivityPublisher.layer.pipe(
   Layer.provide(
     Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+      revoke: () => Effect.void,
       refresh: () => Effect.succeed({ aggregate: null }),
       notify: () => Effect.succeed([]),
       process: (job) =>
@@ -179,6 +180,7 @@ function makeRegistrationReplayLayer(input: {
       ApnsDeliveries.layer.pipe(
         Layer.provide(
           Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+            revoke: () => Effect.void,
             refresh: () => Effect.succeed({ aggregate: null }),
             notify: () => Effect.succeed([]),
             process: (job) =>
