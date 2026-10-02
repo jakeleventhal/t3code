@@ -74,6 +74,7 @@ import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvide
 import * as ManagedEndpointAllocations from "../environments/ManagedEndpointAllocations.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
 import * as MobileRegistrations from "../agentActivity/MobileRegistrations.ts";
+import * as AgentWidgetRefresh from "../agentActivity/AgentWidgetRefresh.ts";
 import { withSpanAttributes } from "../observability.ts";
 import * as RelayDb from "../db.ts";
 
@@ -673,6 +674,43 @@ export const recoverEnvironmentTunnelRecord = Effect.fn(
   };
 });
 
+export const widgetApi = HttpApiBuilder.group(
+  RelayApi,
+  "widget",
+  Effect.fnUntraced(function* (handlers) {
+    const widgets = yield* AgentWidgetRefresh.AgentWidgetRefresh;
+    return handlers.handle(
+      "refresh",
+      Effect.fn("relay.api.widget.refresh")(
+        function* ({ headers, query }) {
+          const token = headers.authorization.replace(/^Bearer /i, "");
+          yield* appendRelayCredentialResponseHeaders;
+          return yield* widgets.refresh({
+            token,
+            ...(query.pushToken !== undefined ? { pushToken: query.pushToken } : {}),
+          });
+        },
+        mapErrorTags({
+          WidgetRefreshUnauthorized: (_error, traceId) =>
+            new RelayAuthInvalidError({ code: "auth_invalid", reason: "not_authorized", traceId }),
+          WidgetRefreshPersistenceError: (_error, traceId) =>
+            new RelayInternalError({
+              code: "internal_error",
+              reason: "persistence_failed",
+              traceId,
+            }),
+          AgentActivityRowListPersistenceError: (_error, traceId) =>
+            new RelayInternalError({
+              code: "internal_error",
+              reason: "persistence_failed",
+              traceId,
+            }),
+        }),
+      ),
+    );
+  }),
+);
+
 export const mobileApi = HttpApiBuilder.group(
   RelayApi,
   "mobile",
@@ -1203,6 +1241,12 @@ export const serverApi = HttpApiBuilder.group(
               traceId,
             }),
           ApnsDeliveryQueueSendError: (_error, traceId) =>
+            new RelayInternalError({
+              code: "internal_error",
+              reason: "upstream_unavailable",
+              traceId,
+            }),
+          WidgetRefreshDeliveryError: (_error, traceId) =>
             new RelayInternalError({
               code: "internal_error",
               reason: "upstream_unavailable",
