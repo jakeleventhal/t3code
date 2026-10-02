@@ -69,6 +69,10 @@ export const make = Effect.gen(function* () {
     readonly state: RelayAgentActivityState | null;
     readonly nowMs: number;
   }) {
+    const widgetDeliveries = yield* widgets.notify({ userId: input.deliveryUser.userId }).pipe(
+      Effect.tapError((cause) => Effect.logWarning("Widget refresh enqueue failed", { cause })),
+      Effect.orElseSucceed(() => []),
+    );
     const activeStates = input.deliveryUser.liveActivitiesEnabled
       ? yield* rows.listForUser({ userId: input.deliveryUser.userId })
       : [];
@@ -114,10 +118,6 @@ export const make = Effect.gen(function* () {
         );
       }),
       { concurrency: 4 },
-    );
-    const widgetDeliveries = yield* widgets.notify({ userId: input.deliveryUser.userId }).pipe(
-      Effect.tapError((cause) => Effect.logWarning("Widget refresh enqueue failed", { cause })),
-      Effect.orElseSucceed(() => []),
     );
     return [...deliveriesByTarget.flat(), ...widgetDeliveries];
   });
