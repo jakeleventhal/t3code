@@ -1,3 +1,4 @@
+import * as AgentWidgetRefresh from "./AgentWidgetRefresh.ts";
 import type { RelayAgentActivityState, RelayDeliveryResult } from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -11,6 +12,21 @@ import * as FcmDeliveries from "./FcmDeliveries.ts";
 import * as ApnsDeliveries from "./ApnsDeliveries.ts";
 
 const publisherLayer = AgentActivityPublisher.layer.pipe(
+  Layer.provide(
+    Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+      refresh: () => Effect.succeed({ aggregate: null }),
+      notify: () => Effect.succeed([]),
+      process: (job) =>
+        Effect.succeed({
+          deviceId: job.target.deviceId,
+          kind: "widget_refresh",
+          ok: true,
+          apnsStatus: null,
+          apnsReason: null,
+          apnsId: null,
+        }),
+    }),
+  ),
   Layer.provide(
     Layer.succeed(FcmDeliveries.FcmDeliveries, {
       enqueue: () => Effect.succeed(null),
@@ -162,6 +178,21 @@ describe("AgentActivityPublisher", () => {
     }).pipe(
       Effect.provide(
         AgentActivityPublisher.layer.pipe(
+          Layer.provide(
+            Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+              refresh: () => Effect.succeed({ aggregate: null }),
+              notify: () => Effect.succeed([]),
+              process: (job) =>
+                Effect.succeed({
+                  deviceId: job.target.deviceId,
+                  kind: "widget_refresh",
+                  ok: true,
+                  apnsStatus: null,
+                  apnsReason: null,
+                  apnsId: null,
+                }),
+            }),
+          ),
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(AgentActivityRows.AgentActivityRows, makeAgentActivityRows()),
