@@ -179,6 +179,7 @@ function makeLayer(input: {
   return ApnsDeliveries.layer.pipe(
     Layer.provide(
       Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+        revoke: () => Effect.void,
         refresh: () => Effect.succeed({ aggregate: null }),
         notify: () => Effect.succeed([]),
         process: (job) =>
