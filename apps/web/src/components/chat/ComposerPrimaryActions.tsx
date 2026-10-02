@@ -1,6 +1,6 @@
 import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, PlayIcon } from "lucide-react";
-import { fitIcon } from "morphicons";
+import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -77,11 +77,6 @@ const messageActionPillClassName =
 const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
 };
-
-// The original send arrow uses a 14px grid; morph endpoints share Lucide's 24px grid.
-const sendIcon = fitIcon("M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5", 14);
-const queueIcon = "M16 5H3M11 12H3M16 19H3M18 9v6M21 12h-6";
-const steerIcon = "m15 14 5-5-5-5M4 20v-7a4 4 0 0 1 4-4h12";
 
 export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   compact,
@@ -315,14 +310,18 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         <PlayIcon className="size-4 fill-current" aria-hidden="true" />
       ) : isEditingQueuedMessage ? (
         <CheckIcon className="size-4" aria-hidden="true" />
+      ) : isRunning ? (
+        <MorphIcon icon={isQueuing ? ListPlus : CornerUpRight} size={16} reducedMotion="user" />
       ) : (
-        <MorphIcon
-          icon={isQueuing ? queueIcon : isRunning ? steerIcon : sendIcon}
-          size={isRunning ? 16 : 14}
-          strokeWidth={isRunning ? 2 : (1.8 * 24) / 14}
-          spring="snappy"
-          reducedMotion="user"
-        />
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path
+            d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       )}
     </button>
   );
