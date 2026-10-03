@@ -624,6 +624,10 @@ function threadDetail(
     pendingRequestCount: projection.runtimeRequests.filter(
       (request) => request.status === "pending",
     ).length,
+    queuedRunCount: projection.runs.filter((run) => run.status === "queued").length,
+    heldQueuedRunCount: projection.runs.filter(
+      (run) => run.status === "queued" && run.queueHeld === true,
+    ).length,
     archived: projection.thread.archivedAt !== null,
     ...threadSettlement(projection.thread),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
@@ -1068,9 +1072,11 @@ const make = Effect.gen(function* () {
             )
           : workState === "result_available"
             ? taskStatusForRun(progress.resultRun ?? childRun)
-            : taskStatusForRun(childRun) === "queued"
-              ? "queued"
-              : "running";
+            : progress.pendingRun !== undefined
+              ? taskStatusForRun(progress.pendingRun)
+              : taskStatusForRun(childRun) === "queued"
+                ? "queued"
+                : "running";
       const derivedResult =
         task.result !== null
           ? task.result
@@ -1521,32 +1527,59 @@ const make = Effect.gen(function* () {
         }
         const child = yield* loadProjection(current.childThreadId);
         const activeRun = ThreadManagementService.latestActiveRun(child);
-        if (activeRun === undefined) {
+        const queuedRuns = child.runs.filter((run) => run.status === "queued");
+        if (activeRun === undefined && queuedRuns.length === 0) {
           return yield* failure(
             "task_not_cancellable",
-            `Delegated task ${input.taskId} has no interruptible child run.`,
+            `Delegated task ${input.taskId} has no interruptible or queued child run.`,
           );
         }
-        yield* threadManagement
-          .dispatch({
-            type: "run.interrupt",
-            commandId: stableCommandId({
-              scope,
-              requestKey: key,
-              operation: "cancel-task",
-            }),
-            threadId: current.childThreadId,
-            runId: activeRun.id,
-            ...(input.reason === undefined ? {} : { reason: input.reason }),
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              failure(
-                "task_not_cancellable",
-                `Unable to interrupt delegated task ${input.taskId}: ${errorMessage(error)}`,
+        // Cancel unstarted intent atomically so terminal reactions cannot
+        // promote a continuation that this cancellation also owns.
+        const firstQueuedRun = queuedRuns[0];
+        if (firstQueuedRun !== undefined) {
+          yield* threadManagement
+            .dispatch({
+              type: "queued-run.cancel",
+              commandId: stableCommandId({
+                scope,
+                requestKey: key,
+                operation: "cancel-task-queued",
+              }),
+              threadId: current.childThreadId,
+              runId: firstQueuedRun.id,
+              additionalRunIds: queuedRuns.slice(1).map((run) => run.id),
+            })
+            .pipe(
+              Effect.mapError((error) =>
+                failure(
+                  "task_not_cancellable",
+                  `Unable to cancel queued runs for delegated task ${input.taskId}: ${errorMessage(error)}`,
+                ),
               ),
-            ),
-          );
+            );
+        }
+        if (activeRun !== undefined)
+          yield* threadManagement
+            .dispatch({
+              type: "run.interrupt",
+              commandId: stableCommandId({
+                scope,
+                requestKey: key,
+                operation: "cancel-task",
+              }),
+              threadId: current.childThreadId,
+              runId: activeRun.id,
+              ...(input.reason === undefined ? {} : { reason: input.reason }),
+            })
+            .pipe(
+              Effect.mapError((error) =>
+                failure(
+                  "task_not_cancellable",
+                  `Unable to interrupt delegated task ${input.taskId}: ${errorMessage(error)}`,
+                ),
+              ),
+            );
         yield* disposeCompletionDelivery.pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("orchestrator-mcp.cancel-task.delivery-dispose-failed", {
