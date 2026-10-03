@@ -2,10 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { summarizeSubagentStatuses } from "@t3tools/client-runtime/state/subagent-display";
-import {
-  isActiveSubagentStatus,
-  isTerminalSubagentStatus,
-} from "@t3tools/client-runtime/state/subagentRuntime";
+import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import type {
   EnvironmentId,
   OrchestrationV2Subagent,
@@ -22,6 +19,7 @@ import type { ThreadFeedActivity } from "../../lib/threadActivity";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
 import { SubagentStatusDot } from "./SubagentStatusDot";
+import { SubagentMetadata } from "./SubagentMetadata";
 import { subagentCardDetail, subagentCardElapsed } from "./subagent-card-presentation";
 import { resolveSubagentRowPresentation } from "./threadAgentsPresentation";
 import { WorkLogBlock } from "./work-log-layout";
@@ -99,6 +97,7 @@ export function ThreadSubagentGroup(props: {
       completedAt: live?.completedAt ?? item.completedAt,
       result: live?.result ?? item.result,
       progress: live?.progress ?? item.progress,
+      model: live?.model ?? null,
     };
   });
   const grouped = agents.length > 1;
@@ -158,18 +157,13 @@ export function ThreadSubagentGroup(props: {
         <View className="mb-1 gap-px rounded-xl border border-border bg-card/30 p-1">
           {agents.map((agent) => {
             const presentation = resolveSubagentRowPresentation(agent);
-            const detail = subagentCardDetail(
-              isTerminalSubagentStatus(agent.status)
-                ? agent.result?.trim() || agent.progress || null
-                : agent.progress?.trim() || agent.result,
-            );
+            const detail = subagentCardDetail(presentation.detail);
             const threadId = agent.childThreadId;
             return (
               <Pressable
                 key={agent.item.id}
                 accessible
                 accessibilityRole={threadId === null ? undefined : "link"}
-                accessibilityLabel={`${presentation.title}, ${presentation.statusLabel}${detail ? `, ${detail}` : ""}`}
                 accessibilityHint={
                   threadId === null ? "Provider-managed agent" : "Opens this agent's thread"
                 }
@@ -196,26 +190,27 @@ export function ThreadSubagentGroup(props: {
                     >
                       {presentation.title}
                     </Text>
-                    {detail && agent.status !== "completed" ? (
-                      <Text
-                        className={cn(
-                          "shrink-0 text-2xs text-foreground-muted",
-                          agent.status === "failed" && "text-adaptive-rose-600-400",
-                        )}
-                      >
-                        {presentation.statusLabel}
-                      </Text>
-                    ) : null}
+                    <Text
+                      className={cn(
+                        "shrink-0 text-2xs text-foreground-muted",
+                        agent.status === "failed" && "text-adaptive-rose-600-400",
+                      )}
+                    >
+                      {presentation.statusLabel}
+                    </Text>
                   </View>
-                  <Text
-                    numberOfLines={1}
-                    className={cn(
-                      "text-xs text-foreground-muted",
-                      agent.status === "failed" && "text-adaptive-rose-600-400",
-                    )}
-                  >
-                    {detail ?? presentation.statusLabel}
-                  </Text>
+                  <SubagentMetadata environmentId={props.environmentId} subagent={agent} />
+                  {detail ? (
+                    <Text
+                      numberOfLines={3}
+                      className={cn(
+                        "text-xs text-foreground-muted",
+                        agent.status === "failed" && "text-adaptive-rose-600-400",
+                      )}
+                    >
+                      {detail}
+                    </Text>
+                  ) : null}
                 </View>
                 <SubagentElapsed agents={[agent]} />
                 {threadId !== null ? (
