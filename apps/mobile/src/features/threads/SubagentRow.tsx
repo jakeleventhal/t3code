@@ -53,7 +53,13 @@ export function SubagentRow(props: {
             >
               {presentation.title}
             </Text>
-            <Text className="shrink-0 text-xs text-foreground-muted">·</Text>
+            <Text
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              className="shrink-0 text-xs text-foreground-muted"
+            >
+              ·
+            </Text>
             <Text
               className={cn(
                 "shrink-0 text-xs font-t3-medium",
@@ -123,10 +129,12 @@ function SubagentMetadata(props: {
         {modelLabel}
       </Text>
       {workspace.map(({ label, value }) => (
-        // Not its own accessibility element: the enclosing row reads this
-        // label in place of the icon, keeping each agent a single stop.
+        // The row reads this label in place of the icon. collapsable keeps the
+        // view (and label) from being flattened away without making it a
+        // separate accessibility stop.
         <View
           key={label}
+          collapsable={false}
           accessibilityLabel={`${label}: ${value}`}
           className="min-w-0 shrink flex-row items-center gap-1.5"
         >
