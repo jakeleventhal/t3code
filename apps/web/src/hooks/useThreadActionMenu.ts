@@ -16,7 +16,7 @@ import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 
-import { resolveSnoozePresets } from "../components/Sidebar.snooze";
+import { resolveSnoozePresets, snoozeWakeDescription } from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,

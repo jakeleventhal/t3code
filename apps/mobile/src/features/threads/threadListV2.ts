@@ -396,12 +396,17 @@ export function threadListV2ListItemsAreEqual(
   item: ThreadListV2ListItem,
 ): boolean {
   switch (item.type) {
+    case "v2-section":
+      return (
+        previous.type === "v2-section" && previous.key === item.key && previous.label === item.label
+      );
     case "v2-worktree":
       return (
         previous.type === "v2-worktree" &&
         previous.key === item.key &&
         previous.thread === item.thread &&
-        previous.count === item.count
+        previous.count === item.count &&
+        previous.threads.every((thread, index) => thread === item.threads[index])
       );
     case "v2-thread":
       return (

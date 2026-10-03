@@ -180,6 +180,7 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
+  applySidebarThreadDrop,
   animateSidebarLayoutChanges,
   filterSidebarV2VisibleThreads,
   buildBulkTitleRegenerationContextMenuItem,
@@ -204,7 +205,6 @@ import {
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   shouldRecedeSidebarThread,
-  resolveWorkingStartedAt,
   sidebarListItemId,
   sidebarMarkerId,
   sortInboxThreadsByReturn,
@@ -219,7 +219,6 @@ import {
   type SidebarSection,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
-import {} from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
 import { createSidebarListMotion } from "./Sidebar.motion";
 import {
@@ -234,7 +233,12 @@ import {
   type TerminalStatusIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
-import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
+import {
+  resolveSnoozePresets,
+  snoozeWakeLabel,
+  snoozeWakeDescription,
+  type SnoozePreset,
+} from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
@@ -1312,7 +1316,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {thread.title}
     </span>
   );
-  const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
   // Same pen the new-thread draft rows lead with, so both kinds of unsent
   // work read the same way in the list.
@@ -1347,6 +1350,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ref={rowRef}
               role="button"
               tabIndex={0}
+              aria-label={accessibility.label}
+              aria-current={accessibility.current}
               data-testid={variant === "card" ? "sidebar-row-card" : "sidebar-row-slim"}
               aria-busy={isRegeneratingTitle || undefined}
               className={cn(rowSurfaceClassName, "flex min-h-6 items-center gap-1.5 px-2 py-0")}
@@ -1368,9 +1373,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           {
             <>
               {variantAction === "unsnooze" && props.snoozeWakeLabelText ? (
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  {props.snoozeWakeLabelText}
-                </span>
+                <span className="text-xs text-info-foreground">{props.snoozeWakeLabelText}</span>
               ) : topStatus ? (
                 isWokeStatus ? (
                   <button
@@ -1570,7 +1573,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             )}
           >
             {props.snoozeSupported && !props.lifecycle.isSnoozed && props.lifecycle.canSnoozeNow ? (
-              <SnoozePopoverButton
+              <SnoozeMenuButton
                 open={snoozeMenuOpen}
                 onOpenChange={setSnoozeMenuOpen}
                 onSnooze={(preset) => props.onLifecycleAction("snooze", preset)}
@@ -1629,12 +1632,13 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           ) : null}
           {badge?.kind === "stack" || pr || currentPr ? (
             <ThreadPullRequestBadgeControl
-              variant="underline"
+              render={<InlineButton />}
+              pullRequests={metadata.pullRequests}
               badge={badge}
               number={pr?.number ?? currentPr?.number}
               url={pr?.url ?? currentPr?.url}
               status={prStatusIndicator(pr, linked?.sourceControlProvider)}
-              onOpenStack={() => {
+              onOpenList={() => {
                 useRightPanelStore.getState().open(prThreadRef, "pull-requests");
                 props.onActivate(prThreadRef);
               }}
@@ -2161,6 +2165,20 @@ export default function Sidebar() {
     [openProjectSettings],
   );
 
+  const [optimisticDrop, setOptimisticDrop] = useState<{
+    readonly key: string;
+    readonly sourceSection: SidebarSection;
+    readonly section: "pinned" | "active" | "settled";
+    readonly occurredAt: string;
+    readonly clearsSnooze: boolean;
+    /** Full destination order for pinned and active drops. */
+    readonly order: readonly string[] | null;
+    /** Destination order keys before the drop, to recognize concurrent writes. */
+    readonly keysAtDrop: ReadonlyMap<string, string | null>;
+    /** The keys this drop writes (one per planned assignment). The
+        override holds until all of them appear in canonical state. */
+    readonly assignedKeys: ReadonlyMap<string, string>;
+  } | null>(null);
   const [pendingWorktreeReorder, setPendingWorktreeReorder] = useState<NonNullable<
     ReturnType<typeof planWorktreeGroupReorder>
   > | null>(null);
@@ -2293,10 +2311,15 @@ export default function Sidebar() {
       [
         ...pinnedThreads.map((thread) => ({ thread, classification: "active" as const })),
         ...activeThreads.map((thread) => ({ thread, classification: "active" as const })),
+        ...workingThreads.map((thread) => ({ thread, classification: "active" as const })),
         ...snoozedThreads.map((thread) => ({ thread, classification: "snoozed" as const })),
         ...settledThreads.map((thread) => ({ thread, classification: "settled" as const })),
       ],
-      { activeThreadOrder: [...pinnedThreads, ...activeThreads].map(sidebarThreadKey) },
+      {
+        activeThreadOrder: [...pinnedThreads, ...activeThreads, ...workingThreads].map(
+          sidebarThreadKey,
+        ),
+      },
     );
     return pendingWorktreeReorder === null
       ? groups
@@ -2308,7 +2331,14 @@ export default function Sidebar() {
             getId: (group) => group.key,
           }),
         };
-  }, [pinnedThreads, activeThreads, snoozedThreads, settledThreads, pendingWorktreeReorder]);
+  }, [
+    pinnedThreads,
+    activeThreads,
+    workingThreads,
+    snoozedThreads,
+    settledThreads,
+    pendingWorktreeReorder,
+  ]);
   const worktreeGroupByThreadKey = useMemo(
     () =>
       new Map(
@@ -3119,7 +3149,13 @@ export default function Sidebar() {
     }
     const items: SidebarListItem[] = [];
     let pinnedSection = false;
+    const workingGroups = worktreeGroups.activeGroups.filter((group) =>
+      group.threads.every(
+        (thread) => sectionByThreadKey.get(sidebarThreadKey(thread)) === "working",
+      ),
+    );
     for (const group of worktreeGroups.activeGroups) {
+      if (workingGroups.includes(group)) continue;
       const pinned = worktreeReorderSection(group) === "pinned";
       if (pinned && !pinnedSection) {
         items.push({ kind: "marker", marker: "pinned-header" });
@@ -3135,6 +3171,10 @@ export default function Sidebar() {
           section: sectionByThreadKey.get(sidebarThreadKey(thread)) ?? "active",
         })),
       );
+    }
+    if (workingGroups.length > 0) {
+      items.push({ kind: "marker", marker: "working-header" });
+      items.push(...rowsOf(visibleWorkingThreads, "working"));
     }
     if (snoozedThreads.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
@@ -3481,10 +3521,17 @@ export default function Sidebar() {
       const lifecycleMenu = buildThreadActionMenuItems({
         ...lifecycle,
         lifecycleScope: "worktree",
+        projectFilter: null,
+        autoSettleEnabled: lifecycleThreads.every((thread) => thread.autoSettleDisabledAt == null),
         branch: null,
         isRegeneratingTitle: false,
         isRunning: false,
         supports: {
+          autoSettleOptOut: lifecycleThreads.every(
+            (thread) =>
+              serverConfigs.get(thread.environmentId)?.environment.capabilities
+                .threadAutoSettleOptOut === true,
+          ),
           settlement: lifecycleThreads.every(
             (thread) =>
               serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSettlement ===
@@ -4456,6 +4503,23 @@ export default function Sidebar() {
                           continue;
                         }
                         switch (item.marker) {
+                          case "working-header":
+                            items.push(
+                              <SidebarSectionHeader
+                                key="working-shelf-header"
+                                marker="working-header"
+                                label={
+                                  workingShelfExpanded
+                                    ? "Working"
+                                    : `Working (${workingThreads.length})`
+                                }
+                                toggle={{
+                                  expanded: workingShelfExpanded,
+                                  onToggle: toggleWorkingShelf,
+                                }}
+                              />,
+                            );
+                            break;
                           case "pinned-header":
                           case "pinned-divider":
                             items.push(

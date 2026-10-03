@@ -1,6 +1,7 @@
 import * as NodeNet from "node:net";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { describe, it } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
 import {
   CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS,

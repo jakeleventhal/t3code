@@ -1,7 +1,6 @@
 "use client";
 
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   FILL_PREVIEW_VIEWPORT,
@@ -306,8 +305,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
   );
   const liveTabs = useMemo(
     () =>
-      Object.entries(previewSessions).flatMap(([key, state]) => {
-        const ref = parseScopedThreadKey(key);
+      previewSessions.flatMap(({ threadRef: ref, state }) => {
         if (ref?.environmentId !== environmentId) return [];
         return Object.values(state.sessions)
           .filter((tab) => state.desktopByTabId[tab.tabId]?.hasWebContents)

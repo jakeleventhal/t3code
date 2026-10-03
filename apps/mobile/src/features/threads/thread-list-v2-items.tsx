@@ -41,6 +41,7 @@ import { ControlPillMenu } from "../../components/ControlPill";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
+import { relativeTime } from "../../lib/time";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { ThreadDevServerIndicator } from "./thread-dev-server-indicator";
@@ -85,6 +86,21 @@ const STATUS_LABEL_BY_STATUS: Partial<
 
 // Menus keep lifecycle and title regeneration together. Archive keeps its
 // own surface (thread screen / settings) rather than crowding v2 rows.
+const CARD_MENU_ACTIONS: MenuAction[] = [
+  { id: "settle", title: "Settle", image: "checkmark" },
+  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
+];
+
+const SLIM_MENU_ACTIONS: MenuAction[] = [
+  { id: "unsettle", title: "Un-settle", image: "arrow.uturn.backward" },
+  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
+];
+
+const SNOOZED_MENU_ACTIONS: MenuAction[] = [
+  { id: "unsnooze", title: "Wake thread", image: "clock" },
+  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
+];
+
 const LEGACY_MENU_ACTIONS: MenuAction[] = [
   { id: "archive", title: "Archive", image: "archivebox" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
@@ -452,6 +468,13 @@ interface WorktreeActionProps {
 function useWorktreeActions(props: WorktreeActionProps) {
   const lifecycle = resolveWorktreeLifecycle(props.threads, new Date().toISOString());
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
+  // Recycled rows must close a custom snooze sheet when their checkout changes.
+  const identity = props.threads.map((thread) => `${thread.environmentId}:${thread.id}`).join("|");
+  const [boundIdentity, setBoundIdentity] = useState(identity);
+  if (boundIdentity !== identity) {
+    setBoundIdentity(identity);
+    setCustomSnoozeOpen(false);
+  }
   const presets = resolveSnoozePresets(new Date());
   const apply = useCallback(
     async (action: WorktreeLifecycleAction, until?: string) => {
@@ -728,21 +751,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...props,
     threads: props.worktreeThreads ?? [thread],
   });
-  const handleSettle = useCallback(() => onSettleThread(thread), [onSettleThread, thread]);
-  const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
-  // A recycled cell reassigns this mounted row to a different thread without
-  // remounting it, and the render closure stops running while list equality
-  // says the item is unchanged — so any row-local UI state must be dismissed
-  // when the identity under it changes. Without this, a custom snooze sheet
-  // opened for one thread survives the thread's removal/reorder and its
-  // submit snoozes whichever thread the cell was reassigned to. (ThreadSwipeable
-  // enforces the same contract on the swipe layer with its resetKey.)
-  const rowIdentity = `${thread.environmentId}:${thread.id}`;
-  const [boundIdentity, setBoundIdentity] = useState(rowIdentity);
-  if (boundIdentity !== rowIdentity) {
-    setBoundIdentity(rowIdentity);
-    setCustomSnoozeOpen(false);
-  }
+  const handleSettle = useCallback(
+    () => void worktreeActions.apply("settle"),
+    [worktreeActions.apply],
+  );
   const handleSnooze = useCallback(
     (until: string) => void worktreeActions.apply("snooze", until),
     [worktreeActions.apply],
@@ -760,10 +772,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () => void worktreeActions.apply("unpin"),
     [worktreeActions.apply],
   );
-  const handleUnsnooze = useCallback(() => onUnsnoozeThread(thread), [onUnsnoozeThread, thread]);
-  const handleUnsettle = useCallback(() => onUnsettleThread(thread), [onUnsettleThread, thread]);
-  const handlePin = useCallback(() => onPinThread(thread), [onPinThread, thread]);
-  const handleUnpin = useCallback(() => onUnpinThread(thread), [onUnpinThread, thread]);
   const handleSetAutoSettle = useCallback(
     (enabled: boolean) => onSetThreadAutoSettle(thread, enabled),
     [onSetThreadAutoSettle, thread],
@@ -1463,7 +1471,7 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
               />
             ) : null}
             <Text className="ml-auto text-xs tabular-nums text-foreground-tertiary">
-              {threadTimeLabel(thread)}
+              {relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt)}
             </Text>
           </View>
           <View className="flex-row items-center gap-1.5">
