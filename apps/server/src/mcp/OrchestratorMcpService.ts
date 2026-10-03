@@ -1547,52 +1547,31 @@ const make = Effect.gen(function* () {
             `Delegated task ${input.taskId} has no interruptible or queued child run.`,
           );
         }
-        // Cancel unstarted intent atomically so terminal reactions cannot
-        // promote a continuation that this cancellation also owns.
-        const firstQueuedRun = queuedRuns[0];
-        if (firstQueuedRun !== undefined) {
-          yield* threadManagement
-            .dispatch({
-              type: "queued-run.cancel",
-              commandId: stableCommandId({
-                scope,
-                requestKey: key,
-                operation: "cancel-task-queued",
-              }),
-              threadId: current.childThreadId,
-              runId: firstQueuedRun.id,
-              additionalRunIds: queuedRuns.slice(1).map((run) => run.id),
-            })
-            .pipe(
-              Effect.mapError((error) =>
-                failure(
-                  "task_not_cancellable",
-                  `Unable to cancel queued runs for delegated task ${input.taskId}: ${errorMessage(error)}`,
-                ),
+        // The orchestrator revalidates this bounded cohort under the child lock:
+        // queued work may have started, or active work may have ended meanwhile.
+        yield* threadManagement
+          .dispatch({
+            type: "thread.runs.cancel",
+            commandId: stableCommandId({
+              scope,
+              requestKey: key,
+              operation: "cancel-task",
+            }),
+            threadId: current.childThreadId,
+            runIds: [
+              ...(activeRun === undefined ? [] : [activeRun.id]),
+              ...queuedRuns.map((run) => run.id),
+            ],
+            ...(input.reason === undefined ? {} : { reason: input.reason }),
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                "task_not_cancellable",
+                `Unable to cancel delegated task ${input.taskId}: ${errorMessage(error)}`,
               ),
-            );
-        }
-        if (activeRun !== undefined)
-          yield* threadManagement
-            .dispatch({
-              type: "run.interrupt",
-              commandId: stableCommandId({
-                scope,
-                requestKey: key,
-                operation: "cancel-task",
-              }),
-              threadId: current.childThreadId,
-              runId: activeRun.id,
-              ...(input.reason === undefined ? {} : { reason: input.reason }),
-            })
-            .pipe(
-              Effect.mapError((error) =>
-                failure(
-                  "task_not_cancellable",
-                  `Unable to interrupt delegated task ${input.taskId}: ${errorMessage(error)}`,
-                ),
-              ),
-            );
+            ),
+          );
         yield* disposeCompletionDelivery.pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("orchestrator-mcp.cancel-task.delivery-dispose-failed", {
