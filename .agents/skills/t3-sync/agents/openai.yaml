@@ -1,0 +1,4 @@
+interface:
+  display_name: "T3 Personal Sync"
+  short_description: "Sync main with open PRs and five retained closed PRs"
+  default_prompt: "Use $t3-sync to rebuild upstream main with all my open PRs and the five retained closed PRs, then deploy the personal Nightly desktop on Jakebook, iPhone app, and R2-D2 server."
