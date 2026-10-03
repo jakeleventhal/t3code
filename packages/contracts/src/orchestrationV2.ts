@@ -2757,9 +2757,6 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
-    // Cancel one task's queued continuations in the same transaction, before
-    // terminal reactions can promote another member of the queue.
-    additionalRunIds: Schema.optionalKey(Schema.Array(RunId)),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
@@ -2875,6 +2872,14 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
  * send them.
  */
 const OrchestrationV2InternalCommand = Schema.Union([
+  /** Cancels the work selected by a task cancellation, even if a queued run started meanwhile. */
+  Schema.Struct({
+    type: Schema.Literal("thread.runs.cancel"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runIds: Schema.Array(RunId),
+    reason: Schema.optional(Schema.String),
+  }),
   /**
    * Records what a pull request watch saw, and wakes the agent in the same transaction when
    * `wake` is set. Rejected once the watch started at `startedAt` has ended, and a wake is

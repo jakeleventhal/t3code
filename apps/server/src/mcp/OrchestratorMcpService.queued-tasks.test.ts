@@ -133,7 +133,7 @@ function fixture(
           dispatch: (command) =>
             Effect.suspend(() => {
               commands.push(command);
-              return options.failCancellation && command.type === "queued-run.cancel"
+              return options.failCancellation && command.type === "thread.runs.cancel"
                 ? Effect.fail(new Error("Cancellation failed") as never)
                 : Effect.succeed({} as never);
             }),
@@ -179,15 +179,14 @@ it.effect("cancels queued-only unpublished work without a provider interruption"
     assert.equal(result.status, "cancel_requested");
     assert.deepEqual(
       commands.map((command) => command.type),
-      ["queued-run.cancel"],
+      ["thread.runs.cancel"],
     );
     const command = commands[0]!;
-    assert.equal(command.type, "queued-run.cancel");
-    if (command.type !== "queued-run.cancel")
+    assert.equal(command.type, "thread.runs.cancel");
+    if (command.type !== "thread.runs.cancel")
       return yield* Effect.die("Expected queue cancellation");
     assert.equal(command.threadId, childThreadId);
-    assert.equal(command.runId, child.runs[1]!.id);
-    assert.deepEqual(command.additionalRunIds, [RunId.make("run:queued-task:6")]);
+    assert.deepEqual(command.runIds, [child.runs[1]!.id, RunId.make("run:queued-task:6")]);
   }).pipe(Effect.provide(layer));
 });
 
@@ -228,7 +227,30 @@ it.effect("does not dispose completion delivery when queue cancellation fails", 
     assert.equal(error.code, "task_not_cancellable");
     assert.deepEqual(
       commands.map((command) => command.type),
-      ["queued-run.cancel"],
+      ["thread.runs.cancel"],
     );
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("cancels executing and queued work with one bounded command", () => {
+  const { commands, layer } = fixture({ executing: true, secondQueued: true });
+  return Effect.gen(function* () {
+    const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+    yield* service.cancelTask(scope, {
+      taskId,
+      clientRequestId: "cancel-active-and-queue",
+      reason: "Stop this task",
+    });
+    assert.lengthOf(commands, 1);
+    const command = commands[0]!;
+    assert.equal(command.type, "thread.runs.cancel");
+    if (command.type !== "thread.runs.cancel")
+      return yield* Effect.die("Expected cohort cancellation");
+    assert.deepEqual(command.runIds, [
+      RunId.make("run:queued-task:5"),
+      RunId.make("run:queued-task:2"),
+      RunId.make("run:queued-task:6"),
+    ]);
+    assert.equal(command.reason, "Stop this task");
   }).pipe(Effect.provide(layer));
 });

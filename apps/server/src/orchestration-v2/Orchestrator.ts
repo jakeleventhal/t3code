@@ -387,6 +387,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "prepared-run.progress":
     case "prepared-run.fail":
     case "run.interrupt":
+    case "thread.runs.cancel":
     case "queued-message.promote-to-steer":
     case "queue.resume":
     case "queued-run.reorder":
@@ -7455,7 +7456,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
 
   const loadProjectionForCommand = <K extends ProjectionRecordField>(
-    command: OrchestrationV2Command,
+    command: OrchestrationV2ServerCommand,
     fields: ReadonlyArray<K>,
     filter?: ProjectionRecordFilter,
   ) =>
@@ -9452,10 +9453,53 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* dispatchQueuedRunReorder(command, events);
         break;
       case "queued-run.cancel":
-        for (const runId of new Set([command.runId, ...(command.additionalRunIds ?? [])])) {
-          yield* dispatchQueuedRunCancel({ ...command, runId }, events);
+        yield* dispatchQueuedRunCancel(command, events);
+        break;
+      case "thread.runs.cancel": {
+        // Selection is bounded by the caller's snapshot. Revalidate statuses under
+        // the thread lock so promotion cannot escape cancellation, and later
+        // messages are never swept into this command or its receipt replay.
+        const projection = yield* loadProjectionForCommand(command, ["runs"]);
+        const selected = new Set(command.runIds);
+        if (
+          selected.size === 0 ||
+          [...selected].some((id) => !projection.runs.some((run) => run.id === id))
+        ) {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: "Cancellation must select existing runs.",
+          });
+        }
+        const runs = projection.runs.filter((run) => selected.has(run.id));
+        for (const run of runs.filter((run) => run.status === "queued")) {
+          yield* dispatchQueuedRunCancel(
+            {
+              type: "queued-run.cancel",
+              commandId: command.commandId,
+              threadId: command.threadId,
+              runId: run.id,
+            },
+            events,
+          );
+        }
+        for (const run of runs.filter((run) =>
+          ["preparing", "starting", "running", "waiting"].includes(run.status),
+        )) {
+          cancelUnsettledEffects = yield* dispatchRunInterrupt(
+            {
+              type: "run.interrupt",
+              commandId: command.commandId,
+              threadId: command.threadId,
+              runId: run.id,
+              ...(command.reason === undefined ? {} : { reason: command.reason }),
+            },
+            events,
+            effects,
+          );
         }
         break;
+      }
       case "queued-run.edit":
         yield* dispatchQueuedRunEdit(command, events);
         break;
@@ -9561,9 +9605,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const plan = yield* dispatchOnce(command).pipe(
       Effect.flatMap((planned) =>
-        // A settle that finds the provider already ended everything has
-        // nothing to record, which is its expected outcome, not a failure.
-        planned.events.length > 0 || command.type === "thread.background-work.settle"
+        // Settling or cancelling work that already ended is an accepted no-op.
+        planned.events.length > 0 ||
+        command.type === "thread.background-work.settle" ||
+        command.type === "thread.runs.cancel"
           ? Effect.succeed(planned)
           : Effect.fail(
               new OrchestratorDispatchError({
@@ -9611,8 +9656,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     );
 
     if (plan.events.length === 0) {
-      // A settle that ended nothing still records its receipt: a replayed Stop
-      // effect then finds it instead of settling work that appeared since.
+      // An accepted no-op still records its receipt so replay cannot act on
+      // work that appeared after the original request.
       const resultSequence = yield* Effect.gen(function* () {
         const sequence = yield* eventSink.latestSequence({ threadId: commandThreadId(command) });
         yield* commandReceipts.insertIfAbsent({

@@ -15,6 +15,7 @@ import {
   ProviderInstanceId,
   ProviderThreadId,
   RunId,
+  RunAttemptId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -297,6 +298,136 @@ const seedParentWithTerminalTask = (input: {
       ],
     });
   });
+
+const seedCancellationCohort = Effect.fn(function* (
+  name: string,
+  mode: "starting" | "missing_attempt" | "terminal",
+) {
+  const orchestrator = yield* Orchestrator.OrchestratorV2;
+  const sink = yield* EventSink.EventSinkV2;
+  const now = yield* DateTime.now;
+  const threadId = ThreadId.make(`thread:bounded-cancel:${name}`);
+  const originalRunId = RunId.make(`run:bounded-cancel:${name}:original`);
+  yield* seedParentWithTerminalTask({
+    threadId,
+    runId: originalRunId,
+    projectId: ProjectId.make(`project:bounded-cancel:${name}`),
+    rootNodeId: NodeId.make(`node:bounded-cancel:${name}:original`),
+    taskId: NodeId.make(`node:bounded-cancel:${name}:task`),
+    deliveryState: "disposed",
+    now,
+  });
+  const original = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+  const rootNodeId = NodeId.make(`node:bounded-cancel:${name}:promoted`);
+  const providerThreadId = ProviderThreadId.make(`provider-thread:bounded-cancel:${name}`);
+  const attemptId = RunAttemptId.make(`attempt:bounded-cancel:${name}:promoted`);
+  const promoted: OrchestrationV2Run = {
+    ...original,
+    id: RunId.make(`run:bounded-cancel:${name}:promoted`),
+    ordinal: 2,
+    rootNodeId,
+    providerThreadId,
+    activeAttemptId: attemptId,
+    userMessageId: MessageId.make(`message:bounded-cancel:${name}:promoted`),
+    status: mode === "terminal" ? "completed" : "starting",
+    completedAt: mode === "terminal" ? now : null,
+    delegatedCompletion: undefined,
+  };
+  const queued: OrchestrationV2Run = {
+    ...promoted,
+    id: RunId.make(`run:bounded-cancel:${name}:queued`),
+    ordinal: 3,
+    rootNodeId: null,
+    providerThreadId: null,
+    activeAttemptId: null,
+    userMessageId: MessageId.make(`message:bounded-cancel:${name}:queued`),
+    status: mode === "terminal" ? "cancelled" : "queued",
+    queueHeld: true,
+    startedAt: null,
+    completedAt: mode === "terminal" ? now : null,
+  };
+  yield* sink.write({
+    events: [
+      {
+        id: EventId.make(`event:${threadId}:original-finished`),
+        type: "run.updated",
+        threadId,
+        runId: originalRunId,
+        occurredAt: now,
+        payload: { ...original, status: "completed", completedAt: now },
+      },
+      {
+        id: EventId.make(`event:${threadId}:provider`),
+        type: "provider-thread.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          ...(yield* orchestrator.getThreadProjection(threadId)).providerThreads[0]!,
+          id: providerThreadId,
+          ownerNodeId: rootNodeId,
+          providerSessionId: null,
+          nativeThreadRef: { driver, nativeId: `native:${providerThreadId}`, strength: "strong" },
+        },
+      },
+      {
+        id: EventId.make(`event:${threadId}:node`),
+        type: "node.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: rootNodeId,
+          threadId,
+          runId: promoted.id,
+          parentNodeId: null,
+          rootNodeId,
+          kind: "root_turn",
+          status: "running",
+          countsForRun: true,
+          providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      },
+      ...(mode === "missing_attempt"
+        ? []
+        : [
+            {
+              id: EventId.make(`event:${threadId}:attempt`),
+              type: "run-attempt.updated" as const,
+              threadId,
+              runId: promoted.id,
+              occurredAt: now,
+              payload: {
+                id: attemptId,
+                runId: promoted.id,
+                attemptOrdinal: 1,
+                rootNodeId,
+                providerInstanceId: modelSelection.instanceId,
+                providerThreadId,
+                providerTurnId: null,
+                reason: "initial" as const,
+                status: "pending" as const,
+                startedAt: null,
+                completedAt: null,
+              },
+            },
+          ]),
+      ...[promoted, queued].map((payload) => ({
+        id: EventId.make(`event:${payload.id}`),
+        type: "run.created" as const,
+        threadId,
+        runId: payload.id,
+        occurredAt: now,
+        payload,
+      })),
+    ],
+  });
+  return { threadId, originalRunId, promoted, queued, attemptId, rootNodeId, now };
+});
 
 it.layer(TestLayer)("delegated completion delivery repairs", (it) => {
   it.effect(
@@ -701,11 +832,10 @@ it.layer(TestLayer)("delegated completion delivery repairs", (it) => {
         ],
       });
       const receipt = yield* orchestrator.dispatch({
-        type: "queued-run.cancel",
+        type: "thread.runs.cancel",
         commandId: CommandId.make("command:atomic-queue-cancel"),
         threadId,
-        runId: queued[0]!.id,
-        additionalRunIds: [queued[1]!.id, queued[0]!.id],
+        runIds: [queued[0]!.id, queued[1]!.id, queued[0]!.id],
       });
       const cancelled = receipt.storedEvents.filter(
         (stored) =>
@@ -732,6 +862,163 @@ it.layer(TestLayer)("delegated completion delivery repairs", (it) => {
             after.runs.find((candidate) => candidate.id === run.id)?.activeAttemptId === null,
         ),
       );
+    }),
+  );
+
+  it.effect("cancels the bounded task cohort after a queued child promotes to Starting", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const cohort = yield* seedCancellationCohort("promoted", "starting");
+      const receipt = yield* orchestrator.dispatch({
+        type: "thread.runs.cancel",
+        commandId: CommandId.make("command:bounded-cancel:promoted"),
+        threadId: cohort.threadId,
+        runIds: [cohort.originalRunId, cohort.promoted.id, cohort.queued.id],
+        reason: "Cancel selected delegated task work",
+      });
+      const after = yield* orchestrator.getThreadProjection(cohort.threadId);
+      assert.equal(after.runs.find((run) => run.id === cohort.originalRunId)?.status, "completed");
+      assert.equal(after.runs.find((run) => run.id === cohort.promoted.id)?.status, "interrupted");
+      assert.equal(after.runs.find((run) => run.id === cohort.queued.id)?.status, "cancelled");
+      assert.equal(
+        after.attempts.find((attempt) => attempt.id === cohort.attemptId)?.status,
+        "interrupted",
+      );
+      assert.equal(
+        after.nodes.find((node) => node.id === cohort.rootNodeId)?.status,
+        "interrupted",
+      );
+      assert.isTrue(
+        receipt.storedEvents.some(
+          (stored) =>
+            stored.event.type === "turn-item.updated" &&
+            stored.event.payload.type === "run_interrupt_result" &&
+            stored.event.payload.status === "interrupted",
+        ),
+      );
+      assert.lengthOf(after.providerSessions, 0);
+      assert.isFalse(
+        after.runs.some((run) =>
+          ["preparing", "starting", "running", "queued"].includes(run.status),
+        ),
+      );
+    }),
+  );
+
+  it.effect(
+    "records terminal cancellation as a no-op and never sweeps later input on receipt replay",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const cohort = yield* seedCancellationCohort("terminal", "terminal");
+        const command = {
+          type: "thread.runs.cancel" as const,
+          commandId: CommandId.make("command:bounded-cancel:terminal"),
+          threadId: cohort.threadId,
+          runIds: [cohort.originalRunId, cohort.promoted.id, cohort.queued.id],
+        };
+        const first = yield* orchestrator.dispatch(command);
+        assert.lengthOf(first.storedEvents, 0);
+        const late: OrchestrationV2Run = {
+          ...cohort.queued,
+          id: RunId.make("run:bounded-cancel:terminal:later"),
+          ordinal: 4,
+          userMessageId: MessageId.make("message:bounded-cancel:terminal:later"),
+          status: "queued",
+          completedAt: null,
+        };
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("event:bounded-cancel:terminal:later-run"),
+              type: "run.created",
+              threadId: cohort.threadId,
+              runId: late.id,
+              occurredAt: cohort.now,
+              payload: late,
+            },
+            {
+              id: EventId.make("event:bounded-cancel:terminal:later-message"),
+              type: "message.updated",
+              threadId: cohort.threadId,
+              occurredAt: cohort.now,
+              payload: {
+                id: late.userMessageId,
+                threadId: cohort.threadId,
+                runId: late.id,
+                nodeId: null,
+                createdBy: "user",
+                creationSource: "web",
+                role: "user",
+                text: "New work after the cancellation",
+                attachments: [],
+                streaming: false,
+                createdAt: cohort.now,
+                updatedAt: cohort.now,
+              },
+            },
+          ],
+        });
+        const replay = yield* orchestrator.dispatch(command);
+        assert.equal(replay.sequence, first.sequence);
+        assert.lengthOf(replay.storedEvents, 0);
+        const after = yield* orchestrator.getThreadProjection(cohort.threadId);
+        assert.equal(after.runs.find((run) => run.id === late.id)?.status, "queued");
+        assert.equal(
+          after.messages.find((message) => message.id === late.userMessageId)?.text,
+          "New work after the cancellation",
+        );
+      }),
+  );
+
+  it.effect.each(["unknown", "missing_attempt"] as const)(
+    "rejects the entire cancellation cohort for $0 without partially cancelling queued work",
+    (failure) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const cohort = yield* seedCancellationCohort(
+          failure,
+          failure === "unknown" ? "starting" : "missing_attempt",
+        );
+        const selected = [cohort.queued.id, cohort.promoted.id];
+        if (failure === "unknown") selected.push(RunId.make("run:bounded-cancel:missing"));
+        const result = yield* orchestrator
+          .dispatch({
+            type: "thread.runs.cancel",
+            commandId: CommandId.make(`command:bounded-cancel:${failure}`),
+            threadId: cohort.threadId,
+            runIds: selected,
+          })
+          .pipe(Effect.exit);
+        assert.equal(result._tag, "Failure");
+        const after = yield* orchestrator.getThreadProjection(cohort.threadId);
+        assert.equal(after.runs.find((run) => run.id === cohort.promoted.id)?.status, "starting");
+        assert.equal(after.runs.find((run) => run.id === cohort.queued.id)?.status, "queued");
+        assert.isTrue(after.runs.find((run) => run.id === cohort.queued.id)?.queueHeld);
+        assert.isFalse(
+          after.turnItems.some(
+            (item) => item.type === "run_interrupt_request" || item.type === "run_interrupt_result",
+          ),
+        );
+      }),
+  );
+
+  it.effect("keeps public queued-run cancellation strict when its selected run has completed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const cohort = yield* seedCancellationCohort("public-strict", "terminal");
+      const result = yield* orchestrator
+        .dispatch({
+          type: "queued-run.cancel",
+          commandId: CommandId.make("command:bounded-cancel:public-strict"),
+          threadId: cohort.threadId,
+          runId: cohort.originalRunId,
+        })
+        .pipe(Effect.exit);
+      assert.equal(result._tag, "Failure");
+      const after = yield* orchestrator.getThreadProjection(cohort.threadId);
+      assert.equal(after.runs.find((run) => run.id === cohort.originalRunId)?.status, "completed");
     }),
   );
 
