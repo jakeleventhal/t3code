@@ -227,6 +227,7 @@ export function ComposerActionButton(props: {
   // Forwarded so a Menu can drive this button as its long-press
   // anchor: Android injects onLongPress, iOS injects onTouchStart and onPress.
   readonly onLongPress?: PressableProps["onLongPress"];
+  readonly delayLongPress?: PressableProps["delayLongPress"];
   readonly onTouchStart?: PressableProps["onTouchStart"];
 }) {
   const { scale, smallIconSize } = useAndroidControlSizing();
@@ -240,6 +241,7 @@ export function ComposerActionButton(props: {
       disabled={props.disabled}
       onPress={props.onPress}
       onLongPress={props.onLongPress}
+      delayLongPress={props.delayLongPress}
       onTouchStart={props.onTouchStart}
     >
       <View
