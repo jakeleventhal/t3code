@@ -1982,6 +1982,37 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
         assert.isNull(onlyHeldShell.latestRunId);
         assert.equal(onlyHeldShell.status, "idle");
       }
+
+      // A wake run counts from the start of the work it continues.
+      yield* projectionStore.apply({
+        id: EventId.make("event:projection-shell-interruptible:wake"),
+        type: "run.updated",
+        threadId,
+        runId,
+        nodeId: rootNodeId,
+        driver,
+        occurredAt: later,
+        payload: {
+          ...run,
+          status: "running",
+          requestedAt: later,
+          startedAt: later,
+          workStartedAt: now,
+        },
+      });
+      const wakeProjection = yield* projectionStore.getThreadProjection(threadId);
+      const wakeSqlShell = (yield* projectionStore.getShellSnapshot()).threads.find(
+        (row) => row.id === threadId,
+      )!;
+      for (const wakeShell of [
+        wakeSqlShell,
+        ProjectionStore.threadShellFromProjection(wakeProjection),
+      ]) {
+        assert.equal(
+          wakeShell.activityRunStartedAt && DateTime.toEpochMillis(wakeShell.activityRunStartedAt),
+          DateTime.toEpochMillis(now),
+        );
+      }
     }),
   );
 
@@ -2245,8 +2276,33 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
         },
       });
       yield* assertSummary("Plan limit reached.", "usage_limit");
+      // A restart continuation ran ahead of the held queue and ended before the
+      // resumed failed run: the failure is still the latest executed run.
+      const aheadRunId = RunId.make("run:limit-shell:ran-ahead");
+      yield* store.apply({
+        id: EventId.make("event:limit-shell:ran-ahead"),
+        type: "run.created",
+        threadId,
+        runId: aheadRunId,
+        nodeId: NodeId.make("node:limit-shell:ran-ahead"),
+        driver,
+        providerInstanceId,
+        occurredAt: now,
+        payload: {
+          ...original,
+          id: aheadRunId,
+          ordinal: original.ordinal + 3,
+          rootNodeId: NodeId.make("node:limit-shell:ran-ahead"),
+          userMessageId: MessageId.make("message:limit-shell:ran-ahead"),
+          status: "completed",
+          startedAt: DateTime.subtract(now, { minutes: 10 }),
+          completedAt: DateTime.subtract(now, { minutes: 5 }),
+        },
+      });
+      yield* assertSummary("Plan limit reached.", "usage_limit");
       const sql = yield* SqlClient.SqlClient;
       // The rest of this case treats the failed run as the latest run.
+      yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE run_id = ${aheadRunId}`;
       yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE run_id = ${queuedRunId}`;
       yield* assertSummary("Plan limit reached.", "usage_limit");
       yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE run_id = ${cancelledRunId}`;
@@ -4341,6 +4397,36 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
         released && projectThreadAwarenessV2({ environmentId, project, thread: released });
       assert.equal(state?.phase, "completed");
       assert.equal(state?.updatedAt, DateTime.formatIso(releasedAt));
+
+      // A later provider must not hide this owner's roster from restart recovery.
+      yield* store.apply({
+        id: EventId.make("event:held-completion:monitor-restarted"),
+        type: "provider-thread.updated",
+        threadId,
+        occurredAt: releasedAt,
+        payload: { ...providerThread, updatedAt: releasedAt },
+      });
+      const newerRunId = RunId.make("run:held-completion:new-provider");
+      yield* store.apply({
+        id: EventId.make("event:held-completion:new-provider"),
+        type: "run.created",
+        threadId,
+        runId: newerRunId,
+        occurredAt: releasedAt,
+        payload: {
+          ...(yield* store.getThreadProjection(threadId)).runs[0]!,
+          id: newerRunId,
+          ordinal: 2,
+          providerThreadId: ProviderThreadId.make("provider-thread:held-completion:new-provider"),
+          requestedAt: releasedAt,
+          startedAt: releasedAt,
+          completedAt: releasedAt,
+        },
+      });
+      assert.deepEqual(
+        (yield* store.getRuntimeRecoveryProjection(threadId)).runs.map((run) => run.id),
+        [runId, newerRunId],
+      );
     }),
   );
 });
