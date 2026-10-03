@@ -14,5 +14,12 @@ if (!majorVersion) {
 }
 
 module.exports = {
-  extraSources: [{ type: "contents", id: "appMajorVersion", contents: majorVersion }],
+  extraSources: [
+    { type: "contents", id: "appMajorVersion", contents: majorVersion },
+    ...[
+      "plugins/withAgentWidgetRefresh.cjs",
+      "plugins/widget/AgentWidgetTimelineProvider.swift",
+      "plugins/widget/AgentWidgetState.swift",
+    ].map((filePath) => ({ type: "file", filePath, reasons: ["agentWidgetRefresh"] })),
+  ],
 };
