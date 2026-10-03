@@ -2757,6 +2757,9 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
+    // Cancel one task's queued continuations in the same transaction, before
+    // terminal reactions can promote another member of the queue.
+    additionalRunIds: Schema.optionalKey(Schema.Array(RunId)),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
