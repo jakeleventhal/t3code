@@ -123,9 +123,10 @@ function SubagentMetadata(props: {
         {modelLabel}
       </Text>
       {workspace.map(({ label, value }) => (
+        // Not its own accessibility element: the enclosing row reads this
+        // label in place of the icon, keeping each agent a single stop.
         <View
           key={label}
-          accessible
           accessibilityLabel={`${label}: ${value}`}
           className="min-w-0 shrink flex-row items-center gap-1.5"
         >
