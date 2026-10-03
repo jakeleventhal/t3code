@@ -18,10 +18,8 @@ import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
-import { SubagentStatusDot } from "./SubagentStatusDot";
-import { SubagentMetadata } from "./SubagentMetadata";
-import { subagentCardDetail, subagentCardElapsed } from "./subagent-card-presentation";
-import { resolveSubagentRowPresentation } from "./threadAgentsPresentation";
+import { subagentCardElapsed } from "./subagent-card-presentation";
+import { SubagentRow } from "./SubagentRow";
 import { WorkLogBlock } from "./work-log-layout";
 
 type SubagentItem = Extract<OrchestrationV2TurnItem, { type: "subagent" }>;
@@ -45,27 +43,20 @@ function SubagentElapsed({ agents }: { readonly agents: ReadonlyArray<AgentTimin
   }, [appActive, focused, live]);
   const elapsed = subagentCardElapsed(agents, nowMs);
   return elapsed ? (
-    <Text className="shrink-0 text-2xs tabular-nums text-foreground-muted">{elapsed}</Text>
+    <Text className="shrink-0 text-xs tabular-nums text-foreground-muted">{elapsed}</Text>
   ) : null;
 }
 
 function SubagentAvatar(props: {
   readonly item: SubagentItem;
   readonly iconUrl?: string | null | undefined;
-  readonly status?: OrchestrationV2Subagent["status"];
 }) {
   return (
     <View
       accessible={false}
-      className="relative h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"
+      className="h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"
     >
       <ProviderIcon provider={props.item.driver} iconUrl={props.iconUrl} size={15} />
-      {props.status ? (
-        <SubagentStatusDot
-          placement="provider"
-          tone={resolveSubagentRowPresentation({ ...props.item, status: props.status }).tone}
-        />
-      ) : null}
     </View>
   );
 }
@@ -156,8 +147,6 @@ export function ThreadSubagentGroup(props: {
       {!grouped || expanded ? (
         <View className="mb-1 gap-px rounded-xl border border-border bg-card/30 p-1">
           {agents.map((agent) => {
-            const presentation = resolveSubagentRowPresentation(agent);
-            const detail = subagentCardDetail(presentation.detail);
             const threadId = agent.childThreadId;
             return (
               <Pressable
@@ -175,51 +164,13 @@ export function ThreadSubagentGroup(props: {
                       threadId: String(threadId),
                     });
                 }}
-                className="min-h-14 flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-subtle"
+                className="rounded-lg px-3 py-3 active:bg-subtle"
               >
-                <SubagentAvatar
-                  item={agent.item}
-                  iconUrl={iconUrl(agent.item)}
-                  status={agent.status}
+                <SubagentRow
+                  environmentId={props.environmentId}
+                  subagent={agent}
+                  elapsed={<SubagentElapsed agents={[agent]} />}
                 />
-                <View className="min-w-0 flex-1 gap-0.5">
-                  <View className="flex-row items-baseline gap-2">
-                    <Text
-                      numberOfLines={1}
-                      className="min-w-0 shrink font-t3-medium text-sm text-foreground"
-                    >
-                      {presentation.title}
-                    </Text>
-                    <Text
-                      className={cn(
-                        "shrink-0 text-2xs text-foreground-muted",
-                        agent.status === "failed" && "text-adaptive-rose-600-400",
-                      )}
-                    >
-                      {presentation.statusLabel}
-                    </Text>
-                  </View>
-                  <SubagentMetadata environmentId={props.environmentId} subagent={agent} />
-                  {detail ? (
-                    <Text
-                      numberOfLines={3}
-                      className={cn(
-                        "text-xs text-foreground-muted",
-                        agent.status === "failed" && "text-adaptive-rose-600-400",
-                      )}
-                    >
-                      {detail}
-                    </Text>
-                  ) : null}
-                </View>
-                <SubagentElapsed agents={[agent]} />
-                {threadId !== null ? (
-                  <SymbolView
-                    name="chevron.right"
-                    size={12}
-                    tintColorClassName="accent-icon-subtle"
-                  />
-                ) : null}
               </Pressable>
             );
           })}

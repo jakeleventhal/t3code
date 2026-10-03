@@ -17,14 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidSheetHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { environmentThreadDetails } from "../../state/threads";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
-import { resolveSubagentRowPresentation } from "./threadAgentsPresentation";
-
-import { SubagentStatusDot } from "./SubagentStatusDot";
-import { SubagentMetadata } from "./SubagentMetadata";
+import { SubagentRow } from "./SubagentRow";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -129,30 +125,15 @@ function AgentRow(props: {
   readonly onOpen: (childThreadId: ThreadId) => void;
 }) {
   const { subagent } = props;
-  const presentation = resolveSubagentRowPresentation(subagent);
   const childThreadId = subagent.childThreadId;
 
   const row = (
-    <View className="min-h-14 flex-row items-center gap-3 border-b border-border py-3">
-      <SubagentStatusDot tone={presentation.tone} placement="sheet" />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="font-t3-medium text-sm text-foreground" numberOfLines={2}>
-          {presentation.title}
-        </Text>
-        <SubagentMetadata environmentId={props.environmentId} subagent={subagent} />
-        <Text className="text-xs text-foreground-muted" numberOfLines={1}>
-          {presentation.statusLabel}
-        </Text>
-        {presentation.detail ? (
-          <Text className="text-xs text-foreground-secondary" numberOfLines={3}>
-            {presentation.detail}
-          </Text>
-        ) : null}
-      </View>
-      <AgentElapsed subagent={subagent} tickSeconds={props.tickSeconds} />
-      {presentation.canOpenThread ? (
-        <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-subtle" />
-      ) : null}
+    <View className="border-b border-border py-3.5">
+      <SubagentRow
+        environmentId={props.environmentId}
+        subagent={subagent}
+        elapsed={<AgentElapsed subagent={subagent} tickSeconds={props.tickSeconds} />}
+      />
     </View>
   );
 
@@ -185,7 +166,7 @@ function AgentElapsed(props: {
 }) {
   const elapsed = useSubagentElapsed(props.subagent, props.tickSeconds);
   return elapsed === null ? null : (
-    <Text className="shrink-0 text-2xs tabular-nums text-foreground-muted">{elapsed}</Text>
+    <Text className="shrink-0 text-xs tabular-nums text-foreground-muted">{elapsed}</Text>
   );
 }
 
