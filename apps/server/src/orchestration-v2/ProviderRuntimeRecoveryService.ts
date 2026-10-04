@@ -164,31 +164,6 @@ function resolveStaleBackgroundItemProviderInstanceId(
 }
 
 /**
- * Provider threads with background work reconciliation would cancel and
- * record for their next turn.
- */
-function providerThreadsWithOpenBackgroundWork(
-  projection: ProjectionStore.ProjectionRuntimeRecoveryState,
-): ReadonlySet<ProviderThreadId> {
-  const ids = new Set<ProviderThreadId>();
-  const taskIds = appOwnedSubagentIds(projection);
-  for (const item of projection.turnItems ?? []) {
-    if (isAppOwnedSubagentItem(item, taskIds)) continue;
-    if (!isBackgroundCapableTurnItemType(item.type) || !isNonterminalTurnItemStatus(item.status))
-      continue;
-    const providerThreadId =
-      item.providerThreadId ??
-      projection.runs.find((run) => run.id === item.runId)?.providerThreadId;
-    if (providerThreadId != null) ids.add(providerThreadId);
-  }
-  for (const thread of projection.providerThreads ?? []) {
-    if (thread.ownerNodeId === null && providerThreadHasPendingBackgroundTasks(thread))
-      ids.add(thread.id);
-  }
-  return ids;
-}
-
-/**
  * A provider thread's latest started run: the last turn that provider saw.
  * Restart recovery records the thread's cancelled background work on it, and
  * the next run on the same provider thread delivers it with its input.

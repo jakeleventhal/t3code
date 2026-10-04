@@ -2007,7 +2007,6 @@ it.layer(TestLayer)("delegated tasks across a server restart", (it) => {
   );
 });
 
-
 it.effect.each([
   {
     heldQueue: true,
@@ -2221,23 +2220,10 @@ it.effect.each([
   return Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
     const beforeRuntimeRecovery = yield* orchestrator.getThreadProjection(parentId);
-    assert.equal(beforeRuntimeRecovery.subagents[0]?.status, heldQueue ? "pending" : "running");
-    const sink = yield* EventSink.EventSinkV2;
-    const afterSequence = yield* sink.latestSequence();
+    assert.equal(beforeRuntimeRecovery.subagents[0]?.status, "running");
     const runtimeRecovery = yield* ProviderRuntimeRecoveryService.ProviderRuntimeRecoveryService;
     yield* runtimeRecovery.recover;
-    if (!heldQueue) {
-      yield* sink.stream({ afterSequence, eventType: "subagent.updated" }).pipe(
-        Stream.filter(
-          (stored) =>
-            stored.event.type === "subagent.updated" &&
-            stored.event.payload.id === taskId &&
-            stored.event.payload.status === "cancelled",
-        ),
-        Stream.take(1),
-        Stream.runDrain,
-      );
-    }
+    yield* orchestrator.recoverDelegatedTasks;
     const parent = yield* orchestrator.getThreadProjection(parentId);
     const child = yield* orchestrator.getThreadProjection(childId);
     if (heldQueue) {
