@@ -1,3 +1,4 @@
+import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import { DEFAULT_TERMINAL_ID, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { type KnownTerminalSession } from "@t3tools/client-runtime/state/terminal";
 import { SymbolView } from "../../components/AppSymbol";
@@ -285,7 +286,9 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       : null;
   const knownSessions = useKnownTerminalSessions({
     environmentId: selectedThread?.environmentId ?? null,
-    threadId: selectedThread?.id ?? null,
+    threadId: selectedThread
+      ? worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath)
+      : null,
   });
   const runningSession = useMemo(
     () => pickRunningTerminalSessionForBootstrap(knownSessions),
@@ -300,7 +303,10 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       selectedThread
         ? {
             environmentId: selectedThread.environmentId,
-            threadId: selectedThread.id,
+            threadId: worktreeResourceThreadId(
+              selectedThread.projectId,
+              selectedThread.worktreePath,
+            ),
             terminalId,
           }
         : null,
@@ -395,7 +401,10 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       isEnvironmentReady &&
       !shouldRedirectToRunningTerminal
         ? {
-            threadId: selectedThread.id,
+            threadId: worktreeResourceThreadId(
+              selectedThread.projectId,
+              selectedThread.worktreePath,
+            ),
             terminalId,
             cwd: launchLocation.cwd,
             worktreePath: launchLocation.worktreePath,
@@ -472,7 +481,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     void openTerminal({
       environmentId: selectedThread.environmentId,
       input: {
-        threadId: selectedThread.id,
+        threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
         terminalId,
         cwd: terminalAttachInput.cwd,
         worktreePath: terminalAttachInput.worktreePath,
@@ -718,7 +727,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     void writeTerminal({
       environmentId: selectedThread.environmentId,
       input: {
-        threadId: selectedThread.id,
+        threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
         terminalId,
         data: initialInput,
       },
@@ -802,7 +811,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       const result = await writeTerminal({
         environmentId: selectedThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
           terminalId,
           data,
         },
@@ -903,7 +912,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       void resizeTerminal({
         environmentId: selectedThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
           terminalId,
           cols: size.cols,
           rows: size.rows,
@@ -1019,7 +1028,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       void closeTerminal({
         environmentId: selectedThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
           terminalId,
         },
       });
@@ -1089,7 +1098,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     void clearTerminal({
       environmentId: selectedThread.environmentId,
       input: {
-        threadId: selectedThread.id,
+        threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
         terminalId,
       },
     });
