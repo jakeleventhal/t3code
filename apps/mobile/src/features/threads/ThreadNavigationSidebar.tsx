@@ -1,4 +1,8 @@
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
+import {
+  indexWorktreeThreads,
+  sidebarThreadKey,
+} from "@t3tools/client-runtime/state/worktree-grouping";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { computeThreadMoveAvailability } from "./threadOrder";
 import type {
@@ -56,6 +60,8 @@ import { SidebarFilterButton } from "./sidebar-filter-button";
 import { createSidebarHeaderItems } from "./sidebar-native-header-items";
 import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
+  ThreadListV2SectionDivider,
+  ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
@@ -368,6 +374,7 @@ function ThreadNavigationSidebarPane(
   const threadListV2Layout = useMemo(() => {
     threadListInboxReturns.observe(workingShelfEnabled ? threads : null);
     return buildThreadListV2Items({
+      groupWorktrees: true,
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
@@ -438,6 +445,7 @@ function ThreadNavigationSidebarPane(
           pendingTask.title.toLocaleLowerCase().includes(v2SearchQuery)),
     );
     const items: SidebarListItem[] = buildThreadListV2ListItems({
+      groupWorktrees: true,
       items: threadListV2Layout.items,
       pendingTasks: v2PendingTasks,
       workingCount: threadListV2Layout.workingCount,
@@ -651,9 +659,41 @@ function ThreadNavigationSidebarPane(
     return true;
   }, [props.nativeChrome, props.onRequestVisibility, props.visible]);
   useHardwareKeyboardCommand("focusSearch", focusSearch);
+  const lifecycleMembersByKey = useMemo(() => indexWorktreeThreads(threads), [threads]);
   const renderListItem = useCallback(
     ({ item }: { readonly item: SidebarListItem }) => {
       switch (item.type) {
+        case "v2-worktree": {
+          const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
+          return (
+            <ThreadListV2WorktreeHeader
+              pinned={item.pinned}
+              environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
+              threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
+              onSettleThread={settleThread}
+              onUnsettleThread={unsettleThread}
+              onSnoozeThread={snoozeThread}
+              onUnsnoozeThread={unsnoozeThread}
+              onPinThread={pinThread}
+              onUnpinThread={unpinThread}
+              settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
+              snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+              pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
+              autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
+                item.thread.environmentId,
+              )}
+              onSetThreadAutoSettle={setThreadAutoSettle}
+              project={projectByKey.get(key) ?? null}
+              count={item.count}
+              projectTitle={
+                projectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
+              }
+              environmentLabel={
+                savedConnectionsById[item.thread.environmentId]?.environmentLabel ?? null
+              }
+            />
+          );
+        }
         case "v2-pending": {
           const pendingScopeKey = scopedProjectKey(
             item.pendingTask.environmentId,
@@ -692,6 +732,7 @@ function ThreadNavigationSidebarPane(
             <ThreadListV2Row
               onNewThreadOnBranch={props.onNewThreadOnBranch}
               thread={thread}
+              worktreeThreads={lifecycleMembersByKey.get(sidebarThreadKey(thread))}
               variant={item.item.variant}
               hasQueuedMessages={item.hasQueuedMessages}
               snoozed={item.item.snoozed}
@@ -762,6 +803,13 @@ function ThreadNavigationSidebarPane(
               pane="sidebar"
             />
           );
+        case "v2-section":
+          return (
+            <ThreadListV2SectionDivider
+              label={item.label}
+              pane={Platform.OS === "android" ? "screen" : "sidebar"}
+            />
+          );
         case "v2-snoozed-shelf":
           return (
             <ThreadListV2SnoozedShelfHeader
@@ -793,6 +841,7 @@ function ThreadNavigationSidebarPane(
       }
     },
     [
+      lifecycleMembersByKey,
       archiveThread,
       activeReorderEnvironmentIds,
       confirmDeletePendingTask,

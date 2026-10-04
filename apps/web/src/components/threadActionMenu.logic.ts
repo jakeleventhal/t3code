@@ -70,6 +70,7 @@ export function buildDraftActionMenuItems(options: {
 }
 
 export interface ThreadActionMenuState {
+  readonly lifecycleScope?: "thread" | "worktree";
   readonly branch: string | null;
   /**
    * Project scoping for the thread list. Null on surfaces with no scoped
@@ -108,6 +109,7 @@ export interface ThreadActionMenuState {
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
+  const scope = state.lifecycleScope ?? "thread";
   return [
     ...(state.branch
       ? [
@@ -121,8 +123,8 @@ export function buildThreadActionMenuItems(
     ...(state.supports.pinning
       ? [
           state.isPinned
-            ? { id: "unpin" as const, label: "Unpin thread", icon: "pin-off" }
-            : { id: "pin" as const, label: "Pin thread", icon: "pin" },
+            ? { id: "unpin" as const, label: `Unpin ${scope}`, icon: "pin-off" }
+            : { id: "pin" as const, label: `Pin ${scope}`, icon: "pin" },
         ]
       : []),
     // Both lifecycle actions stay available on pinned threads: settling
@@ -131,17 +133,25 @@ export function buildThreadActionMenuItems(
     ...(state.supports.settlement
       ? [
           state.isSettled
-            ? { id: "unsettle" as const, label: "Un-settle thread", icon: "circle-check" }
-            : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
+            ? {
+                id: "unsettle" as const,
+                label: scope === "worktree" ? "Unsettle worktree" : "Un-settle thread",
+                icon: "circle-check",
+              }
+            : { id: "settle" as const, label: `Settle ${scope}`, icon: "circle-check" },
         ]
       : []),
     ...(state.supports.snooze
       ? [
           state.isSnoozed
-            ? { id: "unsnooze" as const, label: "Wake thread", icon: "clock" }
+            ? {
+                id: "unsnooze" as const,
+                label: scope === "worktree" ? "Unsnooze worktree" : "Wake thread",
+                icon: "clock",
+              }
             : {
                 id: "snooze" as const,
-                label: "Snooze",
+                label: state.lifecycleScope === "worktree" ? "Snooze worktree" : "Snooze",
                 icon: "clock",
                 disabled: !state.canSnoozeNow,
                 children: [
