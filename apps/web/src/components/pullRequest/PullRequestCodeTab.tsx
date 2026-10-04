@@ -98,6 +98,7 @@ import {
 import {
   isFileDiffCollapsed,
   isLineInFileDiff,
+  retainReviewDiffSlices,
   toggleFileDiffFoldForViewed,
   type DiffFoldOverride,
 } from "./pullRequestDiff.logic";
@@ -426,11 +427,14 @@ function PullRequestCodeTab({
     isViewed: isFileViewed,
     isStale: isFileViewedStale,
   } = filesViewed;
+  // Reread the first page and the viewed ticks. The pages already on screen stay until that
+  // page arrives: blanking them remounts the viewer and sends the reader back to the top,
+  // including on every agent turn.
   const appliedRefreshToken = useRef(refreshToken);
   useEffect(() => {
     if (appliedRefreshToken.current === refreshToken) return;
     appliedRefreshToken.current = refreshToken;
-    setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
+    setSliceState((previous) => retainReviewDiffSlices(previous, scopeKey));
     refreshFirstDiffPage();
     refreshFilesViewed();
   }, [refreshToken, scopeKey, refreshFirstDiffPage, refreshFilesViewed]);
