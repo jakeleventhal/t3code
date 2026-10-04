@@ -667,6 +667,7 @@ function ThreadNavigationSidebarPane(
           const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
           return (
             <ThreadListV2WorktreeHeader
+              pinned={item.pinned}
               environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
               threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
               onSettleThread={settleThread}

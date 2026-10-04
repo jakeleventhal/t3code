@@ -1515,7 +1515,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             </TooltipTrigger>
             <TooltipPopup>{props.environmentLabel ?? "Environment"}</TooltipPopup>
           </Tooltip>
-          {props.lifecycle.isPinned ? (
+          {/* Only checkouts in the pinned block show the pin. A pinned
+              checkout parked on a shelf unpins from its menu. */}
+          {worktreeReorderSection(group) === "pinned" ? (
             <button
               type="button"
               aria-label="Unpin worktree"
