@@ -85,6 +85,7 @@ import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewA
 import {
   isFileDiffCollapsed,
   isLineInFileDiff,
+  retainReviewDiffSlices,
   toggleFileDiffFoldForViewed,
   type DiffFoldOverride,
 } from "./pullRequestDiff.logic";
@@ -432,14 +433,14 @@ function PullRequestCodeTab({
     isViewed: isFileViewed,
     isStale: isFileViewedStale,
   } = filesViewed;
-  // The button goes around the host's cache, so everything the tab reads from it starts over:
-  // the diff from its first page, and with it the ticks, which a push since the last read can
-  // have marked as standing against an older version of the file.
+  // Reread the first page and the viewed ticks. The pages already on screen stay until that
+  // page arrives: blanking them remounts the viewer and sends the reader back to the top,
+  // including on every agent turn.
   const appliedRefreshToken = useRef(refreshToken);
   useEffect(() => {
     if (appliedRefreshToken.current === refreshToken) return;
     appliedRefreshToken.current = refreshToken;
-    setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
+    setSliceState((previous) => retainReviewDiffSlices(previous, scopeKey));
     refreshFirstDiffPage();
     refreshFilesViewed();
   }, [refreshToken, scopeKey, refreshFirstDiffPage, refreshFilesViewed]);
