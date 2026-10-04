@@ -1,3 +1,4 @@
+import { shouldApplyProactiveChangesScope } from "../components/ChatView.logic";
 import type { RunId, ScopedThreadRef, ThreadLinkedPullRequest } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useEffect, useRef } from "react";
@@ -175,6 +176,7 @@ export function useProactivePanels(input: {
         diffAction === "defer" || shouldDeferLink ? previousRunningTurnId : activeRunningTurnId,
     };
     if (diffAction !== "open" || newlyCompletedTurnId === null) return;
+    const alreadyReviewingDiff = openSurface?.kind === "diff";
     if (
       !panels.openProactive(
         threadRef,
@@ -184,7 +186,9 @@ export function useProactivePanels(input: {
     ) {
       return;
     }
-    useDiffPanelStore.getState().selectGitScope(threadRef, "branch");
+    if (shouldApplyProactiveChangesScope({ openedDiff: true, alreadyReviewingDiff })) {
+      useDiffPanelStore.getState().selectGitScope(threadRef, "branch");
+    }
     onDiffPanelOpen?.();
   }, [
     activeLatestRun?.runId,
