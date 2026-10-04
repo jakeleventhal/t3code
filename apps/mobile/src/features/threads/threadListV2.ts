@@ -380,6 +380,8 @@ export interface ThreadListV2WorktreeListItem {
   readonly key: string;
   readonly thread: EnvironmentThreadShell;
   readonly count: number;
+  /** In the pinned block. A pinned checkout parked on a shelf is not. */
+  readonly pinned: boolean;
 }
 
 export interface ThreadListV2SectionListItem {
@@ -432,7 +434,8 @@ export function threadListV2ListItemsAreEqual(
         previous.type === "v2-worktree" &&
         previous.key === item.key &&
         previous.thread === item.thread &&
-        previous.count === item.count
+        previous.count === item.count &&
+        previous.pinned === item.pinned
       );
     case "v2-thread":
       return (
@@ -698,6 +701,7 @@ export function buildThreadListV2ListItems(input: {
             thread,
             threads: members.get(key)!,
             count: members.get(key)!.length,
+            pinned: pinnedKeys.has(key),
           },
           entry,
         ];

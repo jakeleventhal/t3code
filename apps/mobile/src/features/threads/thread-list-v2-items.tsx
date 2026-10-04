@@ -1423,6 +1423,8 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
     readonly environmentMachine?: EnvironmentMachineKind;
     readonly environmentLabel: string | null;
     readonly count: number;
+    /** In the pinned block; parked checkouts keep Unpin in their menu only. */
+    readonly pinned: boolean;
   },
 ) {
   const worktreeActions = useWorktreeActions(props);
@@ -1477,7 +1479,7 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
                 tintColorClassName="accent-foreground-muted"
               />
             </View>
-            {worktreeActions.lifecycle.isPinned ? (
+            {props.pinned ? (
               <SymbolView
                 name="pin"
                 size={11}
