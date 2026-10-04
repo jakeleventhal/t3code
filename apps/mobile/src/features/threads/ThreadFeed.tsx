@@ -151,6 +151,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { markdownLinkIconSource } from "@t3tools/mobile-markdown-text/link-icons";
+import { nativeMarkdownWithStandaloneMediaLinks } from "@t3tools/mobile-markdown-text/markdown";
 import {
   normalizeNativeMarkdownUrl,
   resolveMarkdownInlineCodePresentation,
@@ -903,6 +904,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly markdown: string;
   readonly markdownStyles: MarkdownStyleSet;
   readonly linkHandlers: MarkdownLinkHandlers;
+  readonly workspaceRoot?: string | null;
   readonly onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
@@ -942,12 +944,16 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
         {...props.linkHandlers}
+        workspaceRoot={props.workspaceRoot}
         renderImage={props.renderImage}
       />
     ) : (
       <Markdown
         key={`markdown:${segment.sourceOffset}`}
         options={{ gfm: true }}
+        astTransform={(node) =>
+          nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+        }
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -1534,6 +1540,7 @@ function renderFeedEntry(
     readonly onPressPreview: (source: FilePreviewSource) => void;
     readonly onPressVideo: (attachment: ChatFileAttachment, sourceIdentifier: string) => void;
     readonly markdownLinkHandlers: MarkdownLinkHandlers;
+    readonly workspaceRoot?: string | null;
     readonly renderMarkdownImage: MarkdownImageRenderer;
     readonly renderViewedImage: MarkdownImageRenderer;
     readonly renderReasoning: (text: string) => ReactNode;
@@ -1766,6 +1773,7 @@ function renderFeedEntry(
                   reviewCommentColors={props.reviewCommentColors}
                   skills={props.skills}
                   linkHandlers={props.markdownLinkHandlers}
+                  workspaceRoot={props.workspaceRoot}
                   renderImage={props.renderMarkdownImage}
                 />
               </MarkdownImageAvailableWidthContext>
@@ -1869,6 +1877,7 @@ function renderFeedEntry(
               markdown={renderedText}
               markdownStyles={styles}
               linkHandlers={props.markdownLinkHandlers}
+              workspaceRoot={props.workspaceRoot}
               onUseArtifactTemplate={props.onUseArtifactTemplate}
               renderImage={props.renderMarkdownImage}
               skills={props.skills}
@@ -1956,6 +1965,7 @@ type UserMessageContentProps = {
   readonly reviewCommentColors: ReviewCommentColors;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly linkHandlers: MarkdownLinkHandlers;
+  readonly workspaceRoot?: string | null;
   readonly renderImage: MarkdownImageRenderer;
 };
 
@@ -2042,6 +2052,7 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
           textStyle={props.markdownStyles.nativeTextStyle}
           preserveSoftBreaks
           {...props.linkHandlers}
+          workspaceRoot={props.workspaceRoot}
           renderImage={props.renderImage}
         />
       );
@@ -2049,6 +2060,9 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
     return (
       <Markdown
         options={{ gfm: true }}
+        astTransform={(node) =>
+          nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+        }
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
@@ -2085,12 +2099,16 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
             textStyle={props.markdownStyles.nativeTextStyle}
             preserveSoftBreaks
             {...props.linkHandlers}
+            workspaceRoot={props.workspaceRoot}
             renderImage={props.renderImage}
           />
         ) : (
           <Markdown
             key={segment.id}
             options={{ gfm: true }}
+            astTransform={(node) =>
+              nativeMarkdownWithStandaloneMediaLinks(node, { workspaceRoot: props.workspaceRoot })
+            }
             renderers={props.markdownStyles.renderers}
             styles={props.markdownStyles.styles}
             theme={props.markdownStyles.theme}
@@ -2995,6 +3013,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       markdownContentWidth,
       onCopyWorkRow,
       markdownLinkHandlers,
+      props.workspaceRoot,
       onPressPreview,
       onPressVideo,
       onToggleTurnFold,
