@@ -835,6 +835,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       iosMajorVersion: 18,
       appVersion: "1.0.0",
       pushToken: "apns-token",
+      pushToStartToken: "push-to-start-token",
       preferences: {
         liveActivitiesEnabled: false,
         notificationsEnabled: true,
@@ -2167,68 +2168,64 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.scoped),
   );
 
-  for (const liveActivitiesEnabled of [false, true]) {
-    it.effect(
-      `publishes later local shell work after the registered local-start refresh was idle (Live Activities ${liveActivitiesEnabled})`,
-      () => {
-        addLiveEnvironment();
-        setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
-        backgroundRuntime.pending.length = 0;
-        const activity = {
-          getPushToken: vi.fn(() => Promise.resolve("activity-token")),
-          addPushTokenListener: vi.fn(),
-        };
-        widgetMocks.start.mockReturnValueOnce(activity);
-        const preferences = Promise.resolve({ liveActivitiesEnabled } as Preferences);
-        vi.mocked(loadPreferences).mockReturnValue(preferences);
-        armAgentAwarenessLiveActivityForLocalWork({
-          environmentId: liveEnvironmentId,
-          threadTitle: "Live task",
-          projectTitle: "Live project",
-        });
-        const preferencesDrained = preferences.catch(() => null).then(() => undefined);
+  it.effect.each([false, true])(
+    "publishes later local shell work after the registered local-start refresh was idle (Live Activities %s)",
+    (liveActivitiesEnabled) => {
+      addLiveEnvironment();
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
+      backgroundRuntime.pending.length = 0;
+      const activity = {
+        getPushToken: vi.fn(() => Promise.resolve("activity-token")),
+        addPushTokenListener: vi.fn(),
+      };
+      widgetMocks.start.mockReturnValueOnce(activity);
+      const preferences = Promise.resolve({ liveActivitiesEnabled } as Preferences);
+      vi.mocked(loadPreferences).mockReturnValue(preferences);
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: liveEnvironmentId,
+        threadTitle: "Live task",
+        projectTitle: "Live project",
+      });
+      const preferencesDrained = preferences.catch(() => null).then(() => undefined);
 
-        return Effect.gen(function* () {
-          yield* Effect.promise(() => preferencesDrained);
-          expect(widgetMocks.start).toHaveBeenCalledTimes(liveActivitiesEnabled ? 1 : 0);
-          yield* runBackgroundOperations();
-          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
-            expect.objectContaining({ activeCount: 0, activities: [] }),
-          );
-          setLiveShell("starting");
-          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-              activeCount: 1,
-              activities: [
-                expect.objectContaining({ threadTitle: "Live task", status: "Connecting" }),
-              ],
-            }),
-          );
-          setLiveShell("running");
-          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-              activeCount: 1,
-              activities: [
-                expect.objectContaining({ threadTitle: "Live task", status: "Working" }),
-              ],
-            }),
-          );
-          setLiveShell("ready");
-          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-              activeCount: 0,
-              activities: [expect.objectContaining({ threadTitle: "Live task", status: "Done" })],
-            }),
-          );
-          setLiveShell(null);
-          expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
-            expect.objectContaining({ activeCount: 0, activities: [] }),
-          );
-          expect(backgroundRuntime.pending).toHaveLength(0);
-        }).pipe(Effect.provide(snapshotRelayLayer(() => Effect.succeed({ aggregate: null }))));
-      },
-    );
-  }
+      return Effect.gen(function* () {
+        yield* Effect.promise(() => preferencesDrained);
+        expect(widgetMocks.start).toHaveBeenCalledTimes(liveActivitiesEnabled ? 1 : 0);
+        yield* runBackgroundOperations();
+        expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+          expect.objectContaining({ activeCount: 0, activities: [] }),
+        );
+        setLiveShell("starting");
+        expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            activeCount: 1,
+            activities: [
+              expect.objectContaining({ threadTitle: "Live task", status: "Connecting" }),
+            ],
+          }),
+        );
+        setLiveShell("running");
+        expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            activeCount: 1,
+            activities: [expect.objectContaining({ threadTitle: "Live task", status: "Working" })],
+          }),
+        );
+        setLiveShell("ready");
+        expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            activeCount: 0,
+            activities: [expect.objectContaining({ threadTitle: "Live task", status: "Done" })],
+          }),
+        );
+        setLiveShell(null);
+        expect(publishAgentActivityWidget).toHaveBeenLastCalledWith(
+          expect.objectContaining({ activeCount: 0, activities: [] }),
+        );
+        expect(backgroundRuntime.pending).toHaveLength(0);
+      }).pipe(Effect.provide(snapshotRelayLayer(() => Effect.succeed({ aggregate: null }))));
+    },
+  );
 
   it.effect.each(["completed", "multiple running"] as const)(
     "keeps %s widget rows when delayed local arming is followed by a relay failure",
