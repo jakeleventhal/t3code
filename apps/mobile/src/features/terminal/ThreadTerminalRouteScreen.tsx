@@ -1,3 +1,4 @@
+import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
 import {
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
@@ -318,7 +319,9 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     error: sessionsError,
   } = useKnownTerminalSessions({
     environmentId: selectedThread?.environmentId ?? null,
-    threadId: selectedThread?.id ?? null,
+    threadId: selectedThread
+      ? worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath)
+      : null,
   });
   const runningSession = useMemo(
     () =>
@@ -336,7 +339,10 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       selectedThread
         ? {
             environmentId: selectedThread.environmentId,
-            threadId: selectedThread.id,
+            threadId: worktreeResourceThreadId(
+              selectedThread.projectId,
+              selectedThread.worktreePath,
+            ),
             terminalId,
           }
         : null,
@@ -431,7 +437,10 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       isEnvironmentReady &&
       !shouldRedirectToRunningTerminal
         ? {
-            threadId: selectedThread.id,
+            threadId: worktreeResourceThreadId(
+              selectedThread.projectId,
+              selectedThread.worktreePath,
+            ),
             terminalId,
             cwd: launchLocation.cwd,
             worktreePath: launchLocation.worktreePath,
@@ -715,7 +724,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     void writeTerminal({
       environmentId: selectedThread.environmentId,
       input: {
-        threadId: selectedThread.id,
+        threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
         terminalId,
         data: initialInput,
       },
@@ -804,7 +813,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       const result = await writeTerminal({
         environmentId: selectedThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
           terminalId,
           data,
         },
@@ -991,7 +1000,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       const result = await openTerminal({
         environmentId: selectedThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
           terminalId,
           cwd: terminalAttachInput.cwd,
           worktreePath: terminalAttachInput.worktreePath,
@@ -1013,7 +1022,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         return;
       void closeTerminal({
         environmentId: selectedThread.environmentId,
-        input: { threadId: selectedThread.id, terminalId },
+        input: { threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath), terminalId },
       });
       if (navigation.isFocused()) {
         navigateAwayAfterExit();
@@ -1080,7 +1089,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     void clearTerminal({
       environmentId: selectedThread.environmentId,
       input: {
-        threadId: selectedThread.id,
+        threadId: worktreeResourceThreadId(selectedThread.projectId, selectedThread.worktreePath),
         terminalId,
       },
     });

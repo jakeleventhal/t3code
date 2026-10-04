@@ -25,6 +25,7 @@ import {
   updatePreviewServerSnapshot,
 } from "~/previewStateStore";
 import { selectSelectedRightPanelSurface, useRightPanelStore } from "~/rightPanelStore";
+import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 import {
   browserDefaultOpenProfileId,
@@ -70,6 +71,9 @@ export async function openUrlInPreview<E>(input: {
     return AsyncResult.failure(Cause.fail(defaults));
   }
   const runtime = previewRuntimeFor(input.threadRef.environmentId);
+  // Preview sessions are worktree-scoped: open through the worktree's
+  // canonical thread id so sibling threads share one set of tabs.
+  const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
   const previousActiveTabId = readThreadPreviewState(input.threadRef).activeTabId;
   // The server's "opened" event switches the preview tab but not the panel's
   // selection, so a changed selection means the user picked a tab themselves.
@@ -78,9 +82,9 @@ export async function openUrlInPreview<E>(input: {
       ?.id ?? null;
   const surfaceBeforeOpen = selectedSurface();
   const result = await input.openPreview({
-    environmentId: input.threadRef.environmentId,
+    environmentId: canonicalRef.environmentId,
     input: {
-      threadId: input.threadRef.threadId,
+      threadId: canonicalRef.threadId,
       url: input.url,
       // Built here rather than via `openPreviewSession` because this path
       // maps the result differently, so the configured defaults have to be

@@ -18,6 +18,7 @@ import {
 import { BrowserSettingsReadError } from "~/browser/openFileInPreview";
 import { previewRuntimeFor } from "~/browser/previewRuntime";
 import { applyPreviewServerSnapshot, rememberPreviewUrl } from "~/previewStateStore";
+import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 interface OpenPreviewSessionInput<E> {
   openPreview: (input: {
@@ -46,10 +47,13 @@ export async function openPreviewSession<E>(
     return AsyncResult.failure(Cause.fail(defaults));
   }
   const runtime = input.runtime ?? previewRuntimeFor(input.threadRef.environmentId);
+  // Preview sessions are worktree-scoped: the wire call uses the worktree's
+  // canonical thread id so sibling threads share one set of tabs.
+  const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
   const result = await input.openPreview({
-    environmentId: input.threadRef.environmentId,
+    environmentId: canonicalRef.environmentId,
     input: {
-      threadId: input.threadRef.threadId,
+      threadId: canonicalRef.threadId,
       ...(input.url === undefined ? {} : { url: input.url }),
       viewport: input.viewport ?? browserDefaultOpenViewport(defaults),
       profileId: input.profileId ?? browserDefaultOpenProfileId(defaults),
