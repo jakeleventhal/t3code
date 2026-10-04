@@ -2492,4 +2492,37 @@ describe("mobile checkout groups", () => {
     expect(layout.workingCount).toBe(1);
     expect(layout.workingShelfHeaderIndex).toBe(2);
   });
+
+  it("marks a checkout pinned only while it sits in the pinned block", () => {
+    const pinnedAt = "2026-06-01T00:00:00.000Z";
+    const pinnedActive = makeThread({
+      id: ThreadId.make("pinned-active"),
+      title: "Pinned active",
+      worktreePath: "/wt/pinned",
+      pinnedAt,
+    });
+    const pinnedSnoozed = makeThread({
+      id: ThreadId.make("pinned-snoozed"),
+      title: "Pinned snoozed",
+      worktreePath: "/wt/parked",
+      pinnedAt,
+      snoozedAt: NOW,
+      snoozedUntil: "2026-07-01T00:00:00Z",
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [pinnedActive, pinnedSnoozed],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      snoozedShelfExpanded: true,
+    });
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(
+      rows.flatMap((row) => (row.type === "v2-worktree" ? [[row.thread.id, row.pinned]] : [])),
+    ).toEqual([
+      ["pinned-active", true],
+      ["pinned-snoozed", false],
+    ]);
+  });
 });
