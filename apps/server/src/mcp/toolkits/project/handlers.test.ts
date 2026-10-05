@@ -21,6 +21,7 @@ import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as ProjectHandlers from "./handlers.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 import { ProjectToolkit } from "./tools.ts";
 
 it.effect("attributes a launched thread's first message to the calling thread", () =>
@@ -72,6 +73,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
         },
       }),
       Layer.mock(Project.ProjectService)({}),
+      Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       NodeServices.layer,
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-source-link-" }).pipe(
@@ -138,6 +140,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
         },
       }),
       Layer.mock(Project.ProjectService)({}),
+      Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         ensureScratchProject: Effect.succeed({ projectId: scratchProjectId }),
@@ -228,6 +231,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
             projectId === createdProjectId ? Option.some(createdProject) : Option.none(),
           ),
       }),
+      Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         createNamedProject: (input) =>
@@ -324,6 +328,7 @@ const clientLaunchHarness = (input: {
         ),
     }),
     Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
+    Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({}),
     NodeServices.layer,
     ServerConfig.layerTest(process.cwd(), { prefix: "t3-client-launch-" }).pipe(
       Layer.provide(NodeServices.layer),

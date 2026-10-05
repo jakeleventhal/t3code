@@ -1,5 +1,6 @@
 import { McpAttachmentInput } from "../attachment/input.ts";
 import {
+  EnvironmentId,
   NonNegativeInt,
   ModelSelection,
   TrimmedNonEmptyString,
@@ -28,6 +29,7 @@ import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.t
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 
 const shared = {
   success: Project,
@@ -102,8 +104,12 @@ const ProjectCloneTool = Tool.make("t3_project_clone", {
 const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   ...shared,
   description:
-    'Create an ordinary TOP-LEVEL thread with an explicit workspace binding before its agent starts. Use this when the user requests independent work, a new thread, or a PR stack in its own worktree; use delegate_task for child subagents. Set workspaceStrategy to {type:"worktree",baseRef:"parent-branch",branch:"new-branch",startFromOrigin:false} for a new worktree based on local commits, or {type:"existing_worktree",worktreePath:"/absolute/path",branch:"existing-branch"} to use an existing checkout. For upstream commits, set startFromOrigin:true. Omitted workspaceStrategy means the project root, NOT the caller\'s worktree. Omit projectId/modelSelection/modes to inherit those settings from the calling thread; a caller outside a T3 thread must pass projectId and gets the project\'s default model. Set scratch:true instead of projectId for a thread without a project: it runs in a fresh folder of its own, outside any repository. Put the task in message. Do not ask the agent to create its own worktree via shell: that does not update the thread binding. Each call creates a new launch with no retry key; retain threadId and use t3_thread_read/t3_thread_wait to follow preparation. After errors or lost responses, inspect t3_thread_list before retrying. Attachments must be pending uploads. Requires a full-access/default calling thread; a caller outside a T3 thread launches up to its approved permission mode.',
+    'Create an ordinary TOP-LEVEL thread with an explicit workspace binding before its agent starts. Use this when the user requests independent work, a new thread, or a PR stack in its own worktree; use delegate_task for child subagents. Set workspaceStrategy to {type:"worktree",baseRef:"parent-branch",branch:"new-branch",startFromOrigin:false} for a new worktree based on local commits, or {type:"existing_worktree",worktreePath:"/absolute/path",branch:"existing-branch"} to use an existing checkout. For upstream commits, set startFromOrigin:true. Omitted workspaceStrategy means the project root, NOT the caller\'s worktree. Omit projectId/modelSelection/modes to inherit those settings from the calling thread; a caller outside a T3 thread must pass projectId and gets the project\'s default model. Set scratch:true instead of projectId for a thread without a project: it runs in a fresh folder of its own, outside any repository. Put the task in message. Do not ask the agent to create its own worktree via shell: that does not update the thread binding. Each call creates a new launch with no retry key; retain threadId and use t3_thread_read/t3_thread_wait to follow preparation. After errors or lost responses, inspect t3_thread_list before retrying. Attachments must be pending uploads. Requires a full-access/default calling thread; a caller outside a T3 thread launches up to its approved permission mode. Set environmentId to create the thread on another connected environment (another machine) instead: projectId and modelSelection are then required and must come from t3_environment_catalog for that environment, workspaceStrategy paths and branches refer to that machine, and scratch and attachments are not supported. Follow it with t3_thread_read/t3_thread_wait using the same environmentId.',
   parameters: Schema.Struct({
+    environmentId: Schema.optional(EnvironmentId).annotateKey({
+      description:
+        "Create the thread on this other connected environment (from t3_environment_list). Omit to launch here. Nothing is inherited across environments: supply projectId and modelSelection from t3_environment_catalog.",
+    }),
     projectId: Schema.optional(ProjectId),
     scratch: Schema.optional(
       Schema.Boolean.annotate({
@@ -142,6 +148,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ManagedProjectFolders.ManagedProjectFolders,
     FileSystem.FileSystem,
     ServerConfig.ServerConfig,
+    PeerEnvironmentService.PeerEnvironmentService,
   ],
 })
   .annotate(Tool.Destructive, true)

@@ -15,6 +15,8 @@ import {
   resolveProjectId,
   unavailable,
 } from "../../threadAccess.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 import { ProjectToolkit } from "./tools.ts";
 
 function projectFailure(error: Project.ProjectServiceError) {
@@ -41,6 +43,20 @@ const mutation = Effect.gen(function* () {
 export const layer = ProjectToolkit.toLayer({
   t3_thread_launch: (input) =>
     Effect.gen(function* () {
+      const invocation = yield* McpInvocationContext.McpInvocationContext;
+      if (PeerEnvironmentService.isPeerSelector(invocation, input.environmentId)) {
+        if (input.scratch === true || (input.attachments ?? []).length > 0)
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "scratch and attachments are not supported when launching on another environment.",
+          });
+        const peers = yield* PeerEnvironmentService.PeerEnvironmentService;
+        return yield* peers.launchThread(invocation, {
+          ...input,
+          environmentId: input.environmentId,
+        });
+      }
       const context = yield* readMutationCaller();
       const { caller, limits } = context;
       // A thread caller launches only as itself (full-access/default), as before. A client
