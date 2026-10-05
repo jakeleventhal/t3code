@@ -270,6 +270,11 @@ import {
   PreviewAutomationStreamEvent,
 } from "./previewAutomation.ts";
 import {
+  PeerEnvironmentHost,
+  PeerEnvironmentResponse,
+  PeerEnvironmentStreamEvent,
+} from "./peerEnvironment.ts";
+import {
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
   ServerConfig,
@@ -423,6 +428,8 @@ export const WS_METHODS = {
   previewAutomationConnect: "previewAutomation.connect",
   previewAutomationRespond: "previewAutomation.respond",
   previewAutomationFocusHost: "previewAutomation.focusHost",
+  peerEnvironmentsConnect: "peerEnvironments.connect",
+  peerEnvironmentsRespond: "peerEnvironments.respond",
 
   // Device methods
   deviceConfigure: "device.configure",
@@ -1437,6 +1444,18 @@ const WsPreviewAutomationFocusHostRpc = Rpc.make(WS_METHODS.previewAutomationFoc
   error: EnvironmentAuthorizationError,
 });
 
+const WsPeerEnvironmentsConnectRpc = Rpc.make(WS_METHODS.peerEnvironmentsConnect, {
+  payload: PeerEnvironmentHost,
+  success: PeerEnvironmentStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsPeerEnvironmentsRespondRpc = Rpc.make(WS_METHODS.peerEnvironmentsRespond, {
+  payload: PeerEnvironmentResponse,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewEvents, {
   payload: Schema.Struct({}),
   success: PreviewEvent,
@@ -1858,6 +1877,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewAutomationConnectRpc,
   WsPreviewAutomationRespondRpc,
   WsPreviewAutomationFocusHostRpc,
+  WsPeerEnvironmentsConnectRpc,
+  WsPeerEnvironmentsRespondRpc,
   WsSubscribePreviewEventsRpc,
   WsSubscribeDiscoveredLocalServersRpc,
   WsDeviceConfigureRpc,

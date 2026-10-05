@@ -4,6 +4,7 @@ import * as Environment from "../../../environment/ServerEnvironment.ts";
 import * as ThreadCommandExecutor from "../../../orchestration-v2/ThreadCommandExecutor.ts";
 import * as Settings from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 import { readCaller, readMutationCaller, unavailable } from "../../threadAccess.ts";
 import { EnvironmentToolkit } from "./tools.ts";
 
@@ -75,5 +76,23 @@ export const EnvironmentHandlersLive = EnvironmentToolkit.toLayer({
           );
         }),
       );
+    }),
+  t3_environment_list: () =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const peers = yield* PeerEnvironmentService.PeerEnvironmentService;
+      return yield* peers.list(scope);
+    }),
+  t3_environment_catalog: ({ environmentId }) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const peers = yield* PeerEnvironmentService.PeerEnvironmentService;
+      if (!PeerEnvironmentService.isPeerSelector(scope, environmentId))
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            "That is this environment. Use t3_project_list and orchestrator_capabilities for it.",
+        });
+      return yield* peers.catalog(scope, environmentId);
     }),
 });

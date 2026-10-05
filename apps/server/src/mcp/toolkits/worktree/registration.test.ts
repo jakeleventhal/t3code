@@ -24,6 +24,7 @@ import * as VcsStatusBroadcaster from "../../../vcs/VcsStatusBroadcaster.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
+import * as PeerEnvironmentBroker from "../../PeerEnvironmentBroker.ts";
 
 const StubServicesLive = Layer.mergeAll(
   Layer.mock(Orchestrator.OrchestratorV2)({}),
@@ -75,6 +76,7 @@ it.effect("production mcp layer lists worktree tools over http", () =>
           }),
         ),
         Layer.provide(PreviewAutomationBroker.layer),
+        Layer.provide(PeerEnvironmentBroker.layer),
         Layer.provide(StubServicesLive),
         Layer.build,
       );

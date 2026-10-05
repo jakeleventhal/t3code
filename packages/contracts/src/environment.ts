@@ -206,6 +206,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       desktop servers whose app predates the remote trigger, where clients
       must keep telling the user to update the app on that machine. */
   desktopAppUpdate: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `peerEnvironments.connect`, so a client connected to
+      several environments can carry this one's agent requests to the others.
+      Absent on older servers, where clients must not open that stream. */
+  peerEnvironments: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

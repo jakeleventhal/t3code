@@ -24,6 +24,26 @@ prove that a route works. In particular, a host's loopback address refers to a
 different machine when another device opens it. Endpoint selection must not
 silently fall back to loopback when a shareable endpoint is unavailable.
 
+## Agents reach other environments through a client
+
+Environments never connect to each other and hold no credentials for one
+another. When an agent asks its environment to act on a different one (launch,
+read, or wait on a thread there), the
+[peer broker](../../apps/server/src/mcp/PeerEnvironmentBroker.ts) hands the
+request to a connected client, and the
+[client host](../../packages/client-runtime/src/connection/peerHost.ts) runs it
+over the session that client already has with the target. The target therefore
+enforces that client's scopes, and switching an environment off in a client
+removes the route.
+
+The consequence is that these requests work only while a client connected to
+both environments is running. A stored server-to-server credential would lift
+that limit, but it would outlive the user's attention and widen what a
+compromised host can reach, and ordinary sessions cannot delegate one because
+minting pairing credentials requires `access:write`. Results are shaped on the
+requesting server from the same wire types clients read, so the target needs no
+agent-specific endpoint.
+
 ## Hosted web is a client
 
 The hosted web app stores its connection catalog in the browser and connects
