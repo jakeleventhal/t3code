@@ -665,6 +665,10 @@ function threadDetail(
     pendingRequestCount: projection.runtimeRequests.filter(
       (request) => request.status === "pending",
     ).length,
+    queuedRunCount: projection.runs.filter((run) => run.status === "queued").length,
+    heldQueuedRunCount: projection.runs.filter(
+      (run) => run.status === "queued" && run.queueHeld === true,
+    ).length,
     archived: projection.thread.archivedAt !== null,
     ...threadSettlement(projection.thread),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
@@ -1246,9 +1250,11 @@ const make = Effect.gen(function* () {
             )
           : workState === "result_available"
             ? taskStatusForRun(progress.resultRun ?? childRun)
-            : taskStatusForRun(childRun) === "queued"
-              ? "queued"
-              : "running";
+            : progress.pendingRun !== undefined
+              ? taskStatusForRun(progress.pendingRun)
+              : taskStatusForRun(childRun) === "queued"
+                ? "queued"
+                : "running";
       const derivedResult =
         task.result !== null
           ? task.result
@@ -1923,11 +1929,12 @@ const make = Effect.gen(function* () {
         const child = yield* loadProjection(current.childThreadId);
         if (
           current.workState !== "waiting_for_children" &&
-          ThreadManagementService.latestActiveRun(child) === undefined
+          ThreadManagementService.latestActiveRun(child) === undefined &&
+          !child.runs.some((run) => run.status === "queued")
         ) {
           return yield* failure(
             "task_not_cancellable",
-            `Delegated task ${input.taskId} has no interruptible child run.`,
+            `Delegated task ${input.taskId} has no interruptible or queued child run.`,
           );
         }
         yield* stopChild;
