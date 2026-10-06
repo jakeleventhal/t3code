@@ -53,7 +53,7 @@ it.effect.each([null, "/work/feature"])(
   "keeps sibling terminals and closes only the final checkout owner (%s)",
   (worktreePath) => {
     const closed: string[] = [];
-    const testLayer = ResourceCleanupService.live.pipe(
+    const testLayer = ResourceCleanupService.layer.pipe(
       Layer.provideMerge(ProjectionStore.layerMemory),
       Layer.provide(
         Layer.mock(TerminalManager.TerminalManager)({
