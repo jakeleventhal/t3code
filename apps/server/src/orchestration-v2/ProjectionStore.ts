@@ -5541,10 +5541,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ON r.run_id = i.run_id
             WHERE i.type IN ('command_execution', 'dynamic_tool', 'subagent')
               AND i.status NOT IN ('completed', 'interrupted', 'failed', 'cancelled')
-              -- A rolled-back run's items are abandoned, not pending. Without
-              -- this the shell reports Waiting for work no one will finish,
-              -- matching the item_count query's exclusion above.
+              -- Foreground tools on failed/stopped runs cannot finish. Commands
+              -- and native children can outlive their root; keep those visible.
               AND (i.run_id IS NULL OR r.status <> 'rolled_back')
+              AND (i.type <> 'dynamic_tool' OR r.status IS NULL
+                OR r.status NOT IN ('failed', 'interrupted', 'cancelled'))
           `
         : sql<PayloadRow & { readonly thread_id: string }>`
             SELECT i.thread_id, i.payload_json
@@ -5554,6 +5555,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             WHERE i.type IN ('command_execution', 'dynamic_tool', 'subagent')
               AND i.status NOT IN ('completed', 'interrupted', 'failed', 'cancelled')
               AND (i.run_id IS NULL OR r.status <> 'rolled_back')
+              AND (i.type <> 'dynamic_tool' OR r.status IS NULL
+                OR r.status NOT IN ('failed', 'interrupted', 'cancelled'))
               AND i.thread_id IN ${sql.in(threadIds)}
           `;
 
