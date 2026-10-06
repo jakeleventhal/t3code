@@ -85,6 +85,14 @@ function LinkRow({
 }) {
   const openPrLink = useOpenPrLink(threadRef);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const menuAnchor = useMemo(
+    () =>
+      menuPosition
+        ? { getBoundingClientRect: () => new DOMRect(menuPosition.x, menuPosition.y, 0, 0) }
+        : undefined,
+    [menuPosition],
+  );
   const { link, depth, stack } = line;
   const snapshot = link.snapshot;
   const open = snapshot === null || snapshot.state === "open";
@@ -95,6 +103,7 @@ function LinkRow({
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        setMenuPosition({ x: event.clientX, y: event.clientY });
         setMenuOpen(true);
       }}
       // Each layer steps in under the one it targets. The step is capped: beyond a few layers
@@ -227,7 +236,13 @@ function LinkRow({
         )}
       >
         <span aria-hidden className="absolute inset-0 bg-accent/60" />
-        <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+        <Menu
+          open={menuOpen}
+          onOpenChange={(open) => {
+            setMenuOpen(open);
+            if (!open) setMenuPosition(null);
+          }}
+        >
           <MenuTrigger
             render={
               <Button
@@ -240,7 +255,12 @@ function LinkRow({
               </Button>
             }
           />
-          <MenuPopup align="end" side="bottom">
+          <MenuPopup
+            anchor={menuAnchor}
+            align={menuPosition ? "start" : "end"}
+            side="bottom"
+            sideOffset={menuPosition ? 0 : 4}
+          >
             <MenuItem onClick={() => void writeTextToClipboard(link.url, "link")}>
               <LinkIcon className="size-3.5" />
               Copy link
