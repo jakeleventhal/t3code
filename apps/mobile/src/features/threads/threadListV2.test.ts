@@ -1023,6 +1023,71 @@ function makePendingTask(id: string): PendingNewTask {
 }
 
 describe("buildThreadListV2ListItems", () => {
+  it("keeps unpinned siblings inside the pinned section and separates active worktrees", () => {
+    const sibling = makeThread({
+      id: ThreadId.make("sibling"),
+      title: "Sibling",
+      worktreePath: "/pinned",
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    const pinned = makeThread({
+      id: ThreadId.make("pinned"),
+      title: "Pinned",
+      createdAt: NOW,
+      worktreePath: "/pinned",
+      pinnedAt: NOW,
+    });
+    const active = makeThread({
+      id: ThreadId.make("active"),
+      title: "Active",
+      worktreePath: "/active",
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [active, pinned, sibling],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+    });
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(
+      rows.map((row) =>
+        row.type === "v2-section"
+          ? row.label
+          : row.type === "v2-thread"
+            ? row.item.thread.id
+            : row.type,
+      ),
+    ).toEqual(["Pinned", "v2-worktree", sibling.id, pinned.id, "Active", "v2-worktree", active.id]);
+  });
+
+  it("does not add an empty active section between pinned and parked worktrees", () => {
+    const pinned = makeThread({
+      id: ThreadId.make("pinned"),
+      title: "Pinned",
+      createdAt: NOW,
+      worktreePath: "/pinned",
+      pinnedAt: NOW,
+    });
+    const settled = makeThread({
+      id: ThreadId.make("settled"),
+      title: "Settled",
+      worktreePath: "/settled",
+      settledOverride: "settled",
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [pinned, settled],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+    });
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(rows.filter((row) => row.type === "v2-section").map((row) => row.label)).toEqual([
+      "Pinned",
+    ]);
+  });
+
   const layout = buildThreadListV2Items({
     threads: [
       makeThread({ id: ThreadId.make("active"), title: "active" }),
@@ -2299,6 +2364,165 @@ describe("Working section beta", () => {
       "snoozed",
       "v2-settled-shelf",
       "settled",
+    ]);
+  });
+});
+
+describe("mobile checkout groups", () => {
+  it("keeps settled and snoozed siblings with active work on a collapsed shelf", () => {
+    const active = makeThread({
+      id: ThreadId.make("group-active"),
+      title: "Active",
+      worktreePath: "/wt/shared",
+    });
+    const settled = makeThread({
+      id: ThreadId.make("group-settled"),
+      title: "Settled",
+      worktreePath: "/wt/shared",
+      settledOverride: "settled",
+    });
+    const snoozed = makeThread({
+      id: ThreadId.make("group-snoozed"),
+      title: "Snoozed",
+      worktreePath: "/wt/shared",
+      snoozedAt: NOW,
+      snoozedUntil: "2026-07-01T00:00:00Z",
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [active, settled, snoozed],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      snoozedShelfExpanded: false,
+      settledShelfExpanded: false,
+    });
+    expect(layout.items.map((entry) => entry.thread.id).sort()).toEqual(
+      [active.id, settled.id, snoozed.id].sort(),
+    );
+    expect(layout.items.find((entry) => entry.thread.id === settled.id)?.variant).toBe("slim");
+    expect(layout.items.find((entry) => entry.thread.id === snoozed.id)?.snoozed).toBe(true);
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(rows.filter((row) => row.type === "v2-worktree")).toHaveLength(1);
+  });
+
+  it("separates environments and local checkouts, and searches every member", () => {
+    const first = makeThread({ id: ThreadId.make("local-1"), title: "First", worktreePath: null });
+    const second = makeThread({
+      id: ThreadId.make("local-2"),
+      title: "Find this",
+      worktreePath: null,
+    });
+    const remote = makeThread({
+      id: ThreadId.make("remote"),
+      title: "Remote",
+      environmentId: EnvironmentId.make("remote"),
+      worktreePath: null,
+    });
+    const input = {
+      groupWorktrees: true,
+      threads: [first, second, remote],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+    };
+    const layout = buildThreadListV2Items(input);
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(rows.filter((row) => row.type === "v2-worktree")).toHaveLength(2);
+    expect(
+      buildThreadListV2Items({ ...input, searchQuery: "Find this" }).items.map(
+        (entry) => entry.thread.id,
+      ),
+    ).toEqual([second.id]);
+  });
+
+  it("does not split a checkout at the settled page limit", () => {
+    const threads = ["a", "b", "c"].map((id) =>
+      makeThread({
+        id: ThreadId.make(id),
+        title: id,
+        worktreePath: "/wt/settled",
+        settledOverride: "settled",
+      }),
+    );
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads,
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      settledLimit: 1,
+    });
+    expect(layout.items).toHaveLength(3);
+    expect(layout.hiddenSettledCount).toBe(0);
+  });
+
+  it("folds only checkouts without an inbox thread into the Working shelf", () => {
+    const runtime = {
+      status: "running" as const,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      lastError: null,
+      updatedAt: NOW,
+    };
+    const inbox = makeThread({ id: ThreadId.make("inbox"), title: "inbox", worktreePath: "/wt/a" });
+    const riding = makeThread({
+      id: ThreadId.make("riding"),
+      title: "riding",
+      worktreePath: "/wt/a",
+      runtime,
+    });
+    const busy = makeThread({
+      id: ThreadId.make("busy"),
+      title: "busy",
+      worktreePath: "/wt/b",
+      runtime,
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [inbox, riding, busy],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      workingShelfEnabled: true,
+      workingShelfExpanded: true,
+    });
+    expect(layout.items.map((entry) => entry.thread.id)).toEqual(["inbox", "riding", "busy"]);
+    expect(layout.workingCount).toBe(1);
+    expect(layout.workingShelfHeaderIndex).toBe(2);
+  });
+
+  it("marks a checkout pinned only while it sits in the pinned block", () => {
+    const pinnedAt = "2026-06-01T00:00:00.000Z";
+    const pinnedActive = makeThread({
+      id: ThreadId.make("pinned-active"),
+      title: "Pinned active",
+      worktreePath: "/wt/pinned",
+      pinnedAt,
+    });
+    const pinnedSnoozed = makeThread({
+      id: ThreadId.make("pinned-snoozed"),
+      title: "Pinned snoozed",
+      worktreePath: "/wt/parked",
+      pinnedAt,
+      snoozedAt: NOW,
+      snoozedUntil: "2026-07-01T00:00:00Z",
+    });
+    const layout = buildThreadListV2Items({
+      groupWorktrees: true,
+      threads: [pinnedActive, pinnedSnoozed],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      snoozedShelfExpanded: true,
+    });
+    const rows = buildThreadListV2ListItems({ ...layout, groupWorktrees: true, pendingTasks: [] });
+    expect(
+      rows.flatMap((row) => (row.type === "v2-worktree" ? [[row.thread.id, row.pinned]] : [])),
+    ).toEqual([
+      ["pinned-active", true],
+      ["pinned-snoozed", false],
     ]);
   });
 });
