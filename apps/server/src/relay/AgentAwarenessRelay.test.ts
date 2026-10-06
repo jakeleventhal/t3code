@@ -1,3 +1,4 @@
+import { PersonalBackgroundConfig } from "./PersonalBackgroundConfig.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
@@ -307,6 +308,67 @@ describe("AgentAwarenessRelay", () => {
         url: "https://background.example.test",
         issuer: "https://background.example.test",
         environmentCredential: Redacted.make("background-credential"),
+      }),
+    ),
+  );
+
+  it("ignores transcript and tool updates but retains activity and metadata changes", () => {
+    for (const type of [
+      "message.updated",
+      "turn-item.updated",
+      "provider-turn.updated",
+      "thread.visited",
+      "thread.pinned",
+    ] as const) {
+      assert.isFalse(AgentAwarenessRelay.shouldPublishAgentAwarenessEvent({ type }));
+    }
+    for (const type of [
+      "run.created",
+      "run.updated",
+      "runtime-request.updated",
+      // Pending background work changes can release a held completion.
+      "subagent.updated",
+      "provider-thread.updated",
+      "thread.metadata-updated",
+      "thread.model-selection-updated",
+      "thread.provider-switched",
+      "thread.archived",
+      "thread.unarchived",
+      "thread.deleted",
+    ] as const) {
+      assert.isTrue(AgentAwarenessRelay.shouldPublishAgentAwarenessEvent({ type }));
+    }
+  });
+
+  it("does not publish imported thread creation as new agent activity", () => {
+    assert.isFalse(
+      AgentAwarenessRelay.shouldPublishAgentAwarenessEvent({
+        type: "thread.created",
+        payload: { historyOrigin: "v1_import" },
+      }),
+    );
+    assert.isTrue(
+      AgentAwarenessRelay.shouldPublishAgentAwarenessEvent({ type: "thread.created", payload: {} }),
+    );
+  });
+
+  it.effect("uses the personal publisher without changing public relay credentials", () =>
+    Effect.gen(function* () {
+      const { relay, secrets, publications } = yield* makeTestRelay();
+      yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, new TextEncoder().encode("false"));
+      yield* relay.publishThread(THREAD_ID);
+      assert.equal(publications.length, 1);
+      assert.isTrue(publications[0]?.url.startsWith("https://personal.example.test/") ?? false);
+      assert.equal(publications[0]?.authorization, "Bearer personal-credential");
+      const publicCredential = yield* secrets.get(RELAY_ENVIRONMENT_CREDENTIAL_SECRET);
+      assert.equal(
+        Option.getOrNull(Option.map(publicCredential, (bytes) => new TextDecoder().decode(bytes))),
+        "credential-1",
+      );
+    }).pipe(
+      Effect.provideService(PersonalBackgroundConfig, {
+        url: "https://personal.example.test",
+        environmentCredential: "personal-credential",
       }),
     ),
   );

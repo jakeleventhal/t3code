@@ -43,12 +43,17 @@ export class ApnsDeliveryQueueSendError extends Schema.TaggedError<ApnsDeliveryQ
 
 export type ApnsDeliveryQueueError = ApnsDeliveryQueueSendError;
 
+export class ApnsDeliveryQueueStorageError extends Schema.TaggedError<ApnsDeliveryQueueStorageError>()(
+  "ApnsDeliveryQueueStorageError",
+  { cause: Schema.Defect() },
+) {}
+
 export class ApnsDeliveryQueueSender extends Context.Service<
   ApnsDeliveryQueueSender,
   {
     readonly send: (
       body: SignedApnsDeliveryJob,
-    ) => Effect.Effect<void, Cloudflare.Queues.SendError>;
+    ) => Effect.Effect<void, Cloudflare.Queues.SendError | ApnsDeliveryQueueStorageError>;
   }
 >()("t3code-relay/agentActivity/ApnsDeliveryQueue/ApnsDeliveryQueueSender") {}
 

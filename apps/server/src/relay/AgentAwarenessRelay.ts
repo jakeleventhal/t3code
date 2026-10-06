@@ -38,6 +38,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
 
+import * as PersonalBackgroundConfig from "./PersonalBackgroundConfig.ts";
 import * as BackgroundRelayConfig from "./BackgroundRelayConfig.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import {
@@ -368,6 +369,7 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
+  const personalBackground = yield* PersonalBackgroundConfig.PersonalBackgroundConfig;
   const backgroundRelay = yield* BackgroundRelayConfig.BackgroundRelayConfig;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -392,6 +394,7 @@ export const make = Effect.gen(function* () {
       );
 
   const readRelayConfig = Effect.gen(function* () {
+    if (personalBackground) return { ...personalBackground, issuer: personalBackground.url };
     if (backgroundRelay) {
       return {
         ...backgroundRelay,
@@ -409,7 +412,9 @@ export const make = Effect.gen(function* () {
   });
 
   const readPublishAgentActivityEnabled = readSecretString(PUBLISH_AGENT_ACTIVITY_SECRET).pipe(
-    Effect.map(isAgentActivityPublishingEnabledValue),
+    Effect.map(
+      (value) => personalBackground !== null || isAgentActivityPublishingEnabledValue(value),
+    ),
   );
 
   const makeRelayClient = (relayConfig: {
@@ -856,5 +861,6 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(AgentAwarenessRelay, make).pipe(
+  Layer.provide(PersonalBackgroundConfig.layer),
   Layer.provide(BackgroundRelayConfig.layer),
 );

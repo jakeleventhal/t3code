@@ -45,6 +45,7 @@ import {
   publishAgentActivityWidget,
   startAgentLiveActivity,
 } from "./agentLiveActivity";
+import { personalBackgroundRelayUrl } from "../cloud/managedRelayLayer";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
 import { supportsAgentAwarenessPush, supportsAgentAwarenessLiveActivities } from "./capabilities";
 import {
@@ -186,7 +187,7 @@ export function mergeAgentAwarenessRegistrationPreferences(
 
 function readRelayConfig(): { readonly url: string } | null {
   const { url, backgroundUrl } = resolveCloudPublicConfig().relay;
-  const relayUrl = backgroundUrl ?? url;
+  const relayUrl = personalBackgroundRelayUrl() ?? backgroundUrl ?? url;
   if (!relayUrl) {
     logRegistrationDebug("relay registration skipped; relay config missing");
     return null;
