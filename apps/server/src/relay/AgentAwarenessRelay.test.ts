@@ -1,3 +1,4 @@
+import * as PersonalBackgroundConfig from "./PersonalBackgroundConfig.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
@@ -370,6 +371,22 @@ const makeTestRelay = Effect.fnUntraced(function* (
 });
 
 describe("AgentAwarenessRelay", () => {
+  it.effect("uses the personal publisher without changing public relay credentials", () =>
+    Effect.gen(function* () {
+      const { relay, secrets, publications } = yield* makeTestRelay();
+      yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, new TextEncoder().encode("false"));
+      yield* relay.publishThread(THREAD_ID);
+      assert.equal(publications.length, 1);
+      assert.isTrue(publications[0]?.url.startsWith("https://personal.example.test/") ?? false);
+      assert.equal(publications[0]?.authorization, "Bearer personal-credential");
+    }).pipe(
+      Effect.provideService(PersonalBackgroundConfig.PersonalBackgroundConfig, {
+        url: "https://personal.example.test",
+        environmentCredential: "personal-credential",
+      }),
+    ),
+  );
+
   it.effect("publishes only to the background relay and still honors the sharing switch", () =>
     Effect.gen(function* () {
       const { relay, secrets, publications } = yield* makeTestRelay();
