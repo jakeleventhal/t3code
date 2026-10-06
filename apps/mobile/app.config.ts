@@ -494,6 +494,9 @@ const config: ExpoConfig = {
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
     iosPersonalTeamPushNotifications,
     iosPersonalTeamLiveActivities,
+    personalBackgroundRelayUrl: isIosPersonalTeamBuild
+      ? (process.env.T3CODE_PERSONAL_BACKGROUND_RELAY_URL ?? null)
+      : null,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
     },

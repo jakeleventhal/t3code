@@ -187,6 +187,51 @@ describe("device listing compatibility", () => {
 });
 
 describe("relay client authentication", () => {
+  it.effect("pins the personal account and issuer without an OAuth fallback", () =>
+    Effect.gen(function* () {
+      const config = {
+        ...relaySettings,
+        clerkJwtPublicKey: "public-key",
+        clerkJwtIssuer: "https://clerk.example.test",
+        allowedUserIds: ["owner"],
+      };
+      for (const claims of [
+        { sub: "other", iss: config.clerkJwtIssuer },
+        { sub: "owner", iss: "https://other.example.test" },
+      ]) {
+        vi.mocked(verifyToken).mockResolvedValue({
+          ...claims,
+          aud: config.clerkJwtAudience,
+        } as never);
+        const result = yield* verifyRelayClientBearerToken(config, "session-token").pipe(
+          Effect.result,
+        );
+        expect(result._tag).toBe("Failure");
+      }
+      vi.mocked(verifyToken).mockResolvedValue({
+        sub: "owner",
+        iss: config.clerkJwtIssuer,
+        aud: config.clerkJwtAudience,
+      } as never);
+      expect(yield* verifyRelayClientBearerToken(config, "session-token")).toEqual({
+        sub: "owner",
+        mode: "clerk_session_bearer",
+      });
+      expect(verifyToken).toHaveBeenLastCalledWith("session-token", {
+        jwtKey: "public-key",
+        audience: config.clerkJwtAudience,
+      });
+      expect(createClerkClient).not.toHaveBeenCalled();
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          vi.mocked(verifyToken).mockReset();
+          vi.mocked(createClerkClient).mockReset();
+        }),
+      ),
+    ),
+  );
+
   it.effect("preserves the existing Clerk session JWT path", () =>
     Effect.gen(function* () {
       vi.mocked(verifyToken).mockResolvedValue({

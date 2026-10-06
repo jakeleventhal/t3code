@@ -1718,11 +1718,21 @@ function verifyClerkBearerToken(
   return Effect.tryPromise({
     try: () =>
       verifyToken(token, {
-        secretKey: Redacted.value(config.clerkSecretKey),
+        ...(config.clerkJwtPublicKey
+          ? { jwtKey: config.clerkJwtPublicKey }
+          : { secretKey: Redacted.value(config.clerkSecretKey) }),
         audience: config.clerkJwtAudience,
       }),
     catch: (cause) => new ClerkTokenVerificationFailed({ cause }),
   }).pipe(
+    Effect.flatMap((verified) =>
+      (config.clerkJwtIssuer && verified.iss !== config.clerkJwtIssuer) ||
+      (config.allowedUserIds && !config.allowedUserIds.includes(verified.sub))
+        ? Effect.fail(
+            new ClerkTokenVerificationFailed({ cause: "personal_account_not_authorized" }),
+          )
+        : Effect.succeed(verified),
+    ),
     Effect.withSpan("verify_clerk_bearer_token", {
       attributes: { "relay.auth.token_length": token.length },
     }),
@@ -1765,10 +1775,12 @@ export function verifyRelayClientBearerToken(
         ? Effect.succeed({ sub: verified.sub, mode: "clerk_session_bearer" as const })
         : Effect.fail(new ClerkTokenVerificationFailed({ cause: "missing_relay_audience" })),
     ),
-    Effect.catch(() =>
-      verifyClerkOAuthBearerToken(config, token).pipe(
-        Effect.map((verified) => ({ ...verified, mode: "clerk_oauth_bearer" as const })),
-      ),
+    Effect.catch((error) =>
+      config.clerkJwtPublicKey || config.allowedUserIds || config.clerkJwtIssuer
+        ? Effect.fail(error)
+        : verifyClerkOAuthBearerToken(config, token).pipe(
+            Effect.map((verified) => ({ ...verified, mode: "clerk_oauth_bearer" as const })),
+          ),
     ),
   );
 }

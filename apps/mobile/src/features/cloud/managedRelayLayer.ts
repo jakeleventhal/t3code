@@ -1,4 +1,5 @@
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
+import Constants from "expo-constants";
 import { RelayMobileClientId } from "@t3tools/contracts/relay";
 import * as Cache from "effect/Cache";
 import * as Crypto from "effect/Crypto";
@@ -64,9 +65,36 @@ const layerRelayDpopSigner = Layer.effect(
   }),
 );
 
+export function personalBackgroundRelayUrl(): string | null {
+  const value = Constants.expoConfig?.extra?.personalBackgroundRelayUrl;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export const layer = (relayUrl: string) =>
-  ManagedRelay.layer({
-    relayUrl,
-    clientId: RelayMobileClientId,
-    accessTokenStore: managedRelayAccessTokenStore,
-  }).pipe(Layer.provideMerge(layerRelayDpopSigner));
+  Layer.effect(
+    ManagedRelay.ManagedRelayClient,
+    Effect.gen(function* () {
+      const primary = yield* ManagedRelay.make({
+        relayUrl,
+        clientId: RelayMobileClientId,
+        accessTokenStore: managedRelayAccessTokenStore,
+      });
+      const backgroundUrl = personalBackgroundRelayUrl();
+      if (!backgroundUrl) return primary;
+      // Keep environment discovery and connections on the existing T3 Connect relay.
+      const background = yield* ManagedRelay.make({
+        relayUrl: backgroundUrl,
+        clientId: RelayMobileClientId,
+      });
+      return ManagedRelay.ManagedRelayClient.of({
+        ...primary,
+        registerDevice: background.registerDevice,
+        unregisterDevice: background.unregisterDevice,
+        registerLiveActivity: background.registerLiveActivity,
+        getAgentActivitySnapshot: background.getAgentActivitySnapshot,
+        resetTokenCache: Effect.all([primary.resetTokenCache, background.resetTokenCache], {
+          discard: true,
+        }),
+      });
+    }),
+  ).pipe(Layer.provideMerge(layerRelayDpopSigner));
