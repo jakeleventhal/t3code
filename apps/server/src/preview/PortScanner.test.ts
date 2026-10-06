@@ -422,7 +422,7 @@ effectIt.effect("replaces a discovered listener with its ngrok public URL", () =
     }
     return Promise.resolve(new Response("app", { headers: { "content-type": "text/html" } }));
   }) as typeof globalThis.fetch;
-  const layer = makeProbeFailureLayer(
+  const layer = layerProbeFailure(
     () =>
       Effect.succeed({
         stdout: `p1234\ncnode\nn*:${targetPort}\np5678\ncngrok\nn127.0.0.1:4040\n`,
@@ -467,7 +467,7 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
         ? new Response("app", { headers: { "content-type": "text/html" } })
         : new Response("not found", { status: 404 }),
     )) as typeof globalThis.fetch;
-  const layer = makeProbeFailureLayer((input) => {
+  const layer = layerProbeFailure((input) => {
     if (input.command === "tailscale") tailscaleStatusRuns += 1;
     return Effect.succeed({
       stdout:
@@ -522,7 +522,7 @@ effectIt.effect("keeps a non-ngrok web server on the default agent port", () => 
         ? Response.json({ tunnels: [] })
         : new Response("app", { headers: { "content-type": "text/html" } }),
     )) as typeof globalThis.fetch;
-  const layer = makeProbeFailureLayer(
+  const layer = layerProbeFailure(
     () =>
       Effect.succeed({
         stdout: "p1234\ncnode\nn*:4040\n",
@@ -726,7 +726,7 @@ effectIt.effect("does not duplicate configured paths across loopback aliases", (
     Promise.resolve(
       new Response(String(input), { headers: { "content-type": "text/html" } }),
     )) as typeof globalThis.fetch;
-  const layer = makeLsofScannerLayer({ pid: () => 1234, fetch: fetchFn });
+  const layer = layerLsofScanner({ pid: () => 1234, fetch: fetchFn });
 
   return Effect.gen(function* () {
     const scanner = yield* PortScanner.PortDiscovery;
