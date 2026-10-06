@@ -137,6 +137,10 @@ through the pages you have visited, like a browser's back and forward buttons.
 `chat.newLocal` skips that chooser. Both use your
 [new-thread defaults](./thread-sidebar.md#start-a-thread). `chat.newWithoutProject`
 (`mod+alt+n`) starts a thread [without a project](./thread-sidebar.md#start-without-a-project).
+`chat.newInWorktree` (`mod+shift+t`) skips those defaults and starts the thread
+in the current thread's worktree, or on its branch in the local checkout, like
+**New thread on {branch}** in the thread menu. Browsers keep `mod+shift+t` for
+reopening a closed tab, so rebind it to use it on the web.
 
 ## Reserved shortcuts
 
