@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_BROWSER_PROFILE_ID,
   FILL_PREVIEW_VIEWPORT,
+  type DiscoveredLocalServerUrlKind,
   type PreviewAnnotationPayload,
   type PreviewViewportSetting,
   type ScopedThreadRef,
@@ -266,13 +267,13 @@ export function PreviewView({
   );
 
   const handleOpenServerUrl = useCallback(
-    async (next: string) => {
+    async (next: string, targetPort?: number, urlKind?: DiscoveredLocalServerUrlKind) => {
       try {
         // A server tab's browser runs on the environment, where loopback is already right.
         const resolved =
           isServerTab || !previewBridge
             ? normalizePreviewUrl(next)
-            : resolveDiscoveredServerUrl(threadRef.environmentId, next);
+            : resolveDiscoveredServerUrl(threadRef.environmentId, next, targetPort, urlKind);
         if (await navigateToResolvedUrl(resolved)) {
           recordVisitForThread(threadRef, next);
         }
@@ -988,7 +989,9 @@ export function PreviewView({
             configuredUrls={configuredUrls}
             recentEntries={recentHistoryEntries}
             onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
-            onOpenUrl={(next) => void handleOpenServerUrl(next)}
+            onOpenUrl={(next, targetPort, urlKind) =>
+              void handleOpenServerUrl(next, targetPort, urlKind)
+            }
           />
         ) : null}
         {snapshot && desktopOverlay ? (
