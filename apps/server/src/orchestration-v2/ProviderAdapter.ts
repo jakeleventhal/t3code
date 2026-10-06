@@ -343,6 +343,17 @@ export class ProviderAdapterEventStreamError extends Schema.TaggedError<Provider
   }
 }
 
+/** The app deliberately closed an exclusive session to move its thread's workspace. */
+export class ProviderAdapterSessionDetached extends Schema.TaggedError<ProviderAdapterSessionDetached>()(
+  "ProviderAdapterSessionDetached",
+  {
+    driver: ProviderDriverKind,
+    providerSessionId: ProviderSessionId,
+    threadId: ThreadId,
+    reason: Schema.Literal("workspace_changed"),
+  },
+) {}
+
 export class ProviderAdapterProtocolError extends Schema.TaggedError<ProviderAdapterProtocolError>()(
   "ProviderAdapterProtocolError",
   {
@@ -372,6 +383,7 @@ export const ProviderAdapterV2Error = Schema.Union([
   ProviderAdapterInterruptError,
   ProviderAdapterRuntimeRequestResponseError,
   ProviderAdapterEventStreamError,
+  ProviderAdapterSessionDetached,
   ProviderAdapterProtocolError,
 ]);
 export type ProviderAdapterV2Error = typeof ProviderAdapterV2Error.Type;
