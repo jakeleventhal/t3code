@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { DesktopEnvironmentBootstrapSchema, DesktopPreviewAutomationStatusSchema } from "./ipc.ts";
+import { DesktopEnvironmentBootstrapSchema, DesktopPreviewCreateTabInputSchema } from "./ipc.ts";
 
 describe("DesktopEnvironmentBootstrapSchema", () => {
   const decode = Schema.decodeUnknownSync(DesktopEnvironmentBootstrapSchema);
@@ -37,8 +37,8 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
   });
 });
 
-describe("DesktopPreviewAutomationStatusSchema", () => {
-  const decode = Schema.decodeUnknownSync(DesktopPreviewAutomationStatusSchema);
+describe("DesktopPreviewCreateTabInputSchema", () => {
+  const decode = Schema.decodeUnknownSync(DesktopPreviewCreateTabInputSchema);
 
   it("accepts composite runtime tab ids longer than public preview tab ids", () => {
     const tabId = JSON.stringify([
@@ -49,16 +49,9 @@ describe("DesktopPreviewAutomationStatusSchema", () => {
       "8ede8f09-68f7-41ae-87e7-f226cea41a97",
       "tab_5",
     ]);
-    const status = {
-      available: true,
-      visible: false,
-      tabId,
-      url: "https://example.com",
-      title: "Example",
-      loading: false,
-    };
+    const input = { tabId };
 
     expect(tabId.length).toBeGreaterThan(128);
-    expect(decode(status)).toEqual(status);
+    expect(decode(input)).toEqual(input);
   });
 });

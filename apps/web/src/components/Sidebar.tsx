@@ -75,7 +75,6 @@ import {
   FolderIcon,
   GitBranchIcon,
   Globe2Icon,
-  MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
@@ -246,7 +245,7 @@ import {
   selectPreferredDiscoveredServer,
 } from "./preview/useDiscoveredLocalServers";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { Button, InlineButton } from "./ui/button";
+import { Button } from "./ui/button";
 import {
   Combobox,
   ComboboxEmpty,

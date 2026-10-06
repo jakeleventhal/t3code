@@ -93,7 +93,7 @@ describe("ManagedRelayClient", () => {
         expect(filtered.excludedEnvironmentIds).toEqual(
           legacy ? undefined : excludedEnvironmentIds,
         );
-      }).pipe(Effect.provide(managedRelayTestLayer(fetchFn)));
+      }).pipe(Effect.provide(layerManagedRelayTest(fetchFn)));
     },
   );
   it.effect("owns tracing at service and implementation boundaries", () => {

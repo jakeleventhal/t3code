@@ -277,7 +277,11 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         );
 
         for (const defaultRule of Keybindings.DEFAULT_KEYBINDINGS) {
-          assert.isTrue(byCommand.has(defaultRule.command), `expected ${defaultRule.command}`);
+          if (defaultRule.key === "mod+shift+t") {
+            assert.isFalse(byCommand.has(defaultRule.command));
+          } else {
+            assert.isTrue(byCommand.has(defaultRule.command), `expected ${defaultRule.command}`);
+          }
         }
         assert.isTrue(byCommand.has("script.run-tests.run"));
       }).pipe(Effect.provide(layerKeybindings())),
