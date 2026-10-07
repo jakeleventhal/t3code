@@ -22,6 +22,8 @@ export type ModelOption = {
   readonly isDefault: boolean;
   readonly isLegacy: boolean;
   readonly isUnavailable?: boolean;
+  readonly isHidden?: boolean;
+  readonly canHide?: boolean;
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
 };
@@ -159,6 +161,7 @@ export function buildModelOptions(
   config: T3ServerConfig | null | undefined,
   fallbackModelSelection: ModelSelection | null,
   providerInstanceId?: ModelSelection["instanceId"],
+  includeHidden = false,
 ): ReadonlyArray<ModelOption> {
   const options = new Map<string, ModelOption>();
 
@@ -174,7 +177,15 @@ export function buildModelOptions(
     }
 
     const providerLabel = providerDisplayLabel(provider);
-    for (const model of provider.models) {
+    const preferences = config?.settings?.providerModelPreferences?.[provider.instanceId];
+    const hiddenModels = new Set(preferences?.hiddenModels ?? []);
+    const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));
+    const models = provider.models.filter(
+      (model) => includeHidden || model.isCustom || !hiddenModels.has(model.slug),
+    );
+    if (order.size > 0)
+      models.sort((a, b) => (order.get(a.slug) ?? Infinity) - (order.get(b.slug) ?? Infinity));
+    for (const model of models) {
       const key = `${provider.instanceId}:${model.slug}`;
       options.set(key, {
         key,
@@ -187,6 +198,8 @@ export function buildModelOptions(
           ? {}
           : { supportedRuntimeModes: provider.supportedRuntimeModes }),
         ...(provider.iconUrl ? { providerIconUrl: provider.iconUrl } : {}),
+        isHidden: !model.isCustom && hiddenModels.has(model.slug),
+        canHide: !model.isCustom,
         isDefault: model.isDefault === true,
         isLegacy: model.isLegacy === true,
         capabilities: model.capabilities,
@@ -203,7 +216,14 @@ export function buildModelOptions(
 
   if (
     fallbackModelSelection &&
-    (providerInstanceId === undefined || fallbackModelSelection.instanceId === providerInstanceId)
+    (providerInstanceId === undefined ||
+      fallbackModelSelection.instanceId === providerInstanceId) &&
+    (!config?.settings?.providerModelPreferences?.[
+      fallbackModelSelection.instanceId
+    ]?.hiddenModels.includes(fallbackModelSelection.model) ||
+      config?.providers
+        .find((provider) => provider.instanceId === fallbackModelSelection.instanceId)
+        ?.models.find((model) => model.slug === fallbackModelSelection.model)?.isCustom)
   ) {
     const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
     const existing = options.get(key);
