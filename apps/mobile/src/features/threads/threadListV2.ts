@@ -946,6 +946,7 @@ export function buildThreadListV2Items(input: {
   const settledLimit = input.settledLimit ?? Number.POSITIVE_INFINITY;
   const limitedSettled =
     orderedSettled.length > settledLimit ? orderedSettled.slice(0, settledLimit) : orderedSettled;
+  const pagedSettled = [...limitedSettled];
   if (
     input.groupWorktrees &&
     pagedSettled.length > 0 &&
