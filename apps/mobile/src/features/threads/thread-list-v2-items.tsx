@@ -1440,12 +1440,12 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
     [thread, metadata],
   );
   const pr = useThreadPr(prThread);
-  const sessions = useKnownTerminalSessions({
+  const { sessions } = useKnownTerminalSessions({
     environmentId: thread.environmentId,
     threadId: worktreeResourceThreadId(thread.projectId, thread.worktreePath),
   });
   const terminalCount = useMemo(
-    () => selectRunningSubprocessTerminalIds(sessions).length,
+    () => selectRunningSubprocessTerminalIds(sessions ?? []).length,
     [sessions],
   );
   const checkout = thread.branch ?? thread.worktreePath?.split(/[\\/]/).at(-1) ?? "Local checkout";

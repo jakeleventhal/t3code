@@ -319,6 +319,7 @@ export function useThreadActions() {
   });
   const markThreadUnread = useMarkThreadUnread();
   const stopThreadSession = useOrchestrationCommand(threadEnvironment.stopSession);
+  const closeTerminal = useAtomCommand(terminalEnvironment.close, { reportFailure: false });
   const removeWorktree = useAtomCommand(vcsEnvironment.removeWorktree, {
     reportFailure: false,
   });
