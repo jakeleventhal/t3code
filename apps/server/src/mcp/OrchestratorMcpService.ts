@@ -1245,6 +1245,10 @@ const make = Effect.gen(function* () {
       const childRun = delegatedTaskRun(childControls, task);
       const terminalRun = latestTerminalResultRun(childControls, childRun);
       const progress = delegatedTaskProgress(childControls);
+      const pendingRuns = childControls.runs
+        .filter((run) => !ThreadManagementService.isTerminalRunStatus(run.status))
+        .toSorted((a, b) => b.ordinal - a.ordinal);
+      const pendingRun = pendingRuns.find((run) => run.status !== "queued") ?? pendingRuns[0];
       const resultRunIds = [
         ...new Set(
           [progress.resultRun?.id, terminalRun?.id].filter((id): id is RunId => id !== undefined),
@@ -1285,8 +1289,8 @@ const make = Effect.gen(function* () {
             )
           : workState === "result_available"
             ? taskStatusForRun(progress.resultRun ?? childRun)
-            : progress.pendingRun !== undefined
-              ? taskStatusForRun(progress.pendingRun)
+            : pendingRun !== undefined
+              ? taskStatusForRun(pendingRun)
               : taskStatusForRun(childRun) === "queued"
                 ? "queued"
                 : "running";
