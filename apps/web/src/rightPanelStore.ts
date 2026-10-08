@@ -448,7 +448,7 @@ const userAction = (
     ? {
         closeRevisionByThreadKey: {
           ...state.closeRevisionByThreadKey,
-          [worktreeStateKeysForThreadRef(ref).primaryKey]: (state.closeRevisionByThreadKey[worktreeStateKeysForThreadRef(ref).primaryKey] ?? 0) + 1,
+          [scopedThreadKey(ref)]: (state.closeRevisionByThreadKey[scopedThreadKey(ref)] ?? 0) + 1,
         },
       }
     : {}),
@@ -1086,8 +1086,9 @@ useRightPanelStore.subscribe((next, previous) => {
     if (revision === previous.closeRevisionByThreadKey[threadKey]) continue;
     const threadRef = parseScopedThreadKey(threadKey);
     if (!threadRef) continue;
-    const before = previous.byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
-    const after = next.byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
+    const resourceKey = worktreeStateKeysForThreadRef(threadRef).primaryKey;
+    const before = previous.byThreadKey[resourceKey] ?? EMPTY_THREAD_STATE;
+    const after = next.byThreadKey[resourceKey] ?? EMPTY_THREAD_STATE;
     const removed = before.surfaces.filter(
       (surface) => !after.surfaces.some((entry) => entry.id === surface.id),
     );
