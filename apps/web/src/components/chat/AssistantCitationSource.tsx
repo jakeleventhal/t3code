@@ -7,6 +7,8 @@ import {
 } from "~/lib/assistantTextSelection";
 import { toastManager } from "../ui/toast";
 import { observeResize } from "~/lib/observeResize";
+import { htmlSelectionCommand } from "~/lib/htmlRenderSelection";
+import { observeHtmlRenderCitationSource } from "./htmlRenderCitationSource";
 
 const CITATION_PULSE_DURATION_MS = 650;
 // The second pulse settles into a held highlight so late glances still find the quote.
@@ -29,6 +31,20 @@ export function observeAssistantCitationCommentSource({
   citation: AssistantCitation;
   onUnavailable: () => void;
 }): () => void {
+  if (anchor.htmlRender) {
+    const frame = anchor.htmlRender;
+    const validate = () => {
+      if (!anchor.source.isConnected || !anchor.viewport.contains(frame)) onUnavailable();
+    };
+    const observer = new MutationObserver(validate);
+    observer.observe(anchor.viewport, { childList: true, subtree: true });
+    htmlSelectionCommand(frame, "mark", citation);
+    validate();
+    return () => {
+      observer.disconnect();
+      htmlSelectionCommand(frame, "unmark");
+    };
+  }
   const { source, range, viewport } = anchor;
   const registry = typeof CSS !== "undefined" ? CSS.highlights : undefined;
   let highlight: Highlight | null = null;
@@ -114,6 +130,9 @@ export function observeAssistantCitationSource({
   request: AssistantCitationTarget;
   list: LegendListRef;
 }) {
+  if (root.dataset.htmlCitationSource === "true") {
+    return observeHtmlRenderCitationSource({ root, itemKey, request, list });
+  }
   const activation = request.activationRef.current;
   if (activation.dismissed) return;
   const scrollNode = list.getScrollableNode();
@@ -348,6 +367,7 @@ export function AssistantCitationSource({
   request,
   listRef,
   children,
+  htmlRender = false,
 }: {
   messageId: MessageId;
   threadRef?: ScopedThreadRef;
@@ -355,6 +375,7 @@ export function AssistantCitationSource({
   request: AssistantCitationTarget | null;
   listRef: RefObject<LegendListRef | null>;
   children: ReactNode;
+  htmlRender?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -368,6 +389,7 @@ export function AssistantCitationSource({
     <div
       ref={rootRef}
       data-assistant-citation-source={messageId}
+      data-html-citation-source={htmlRender || undefined}
       data-assistant-citation-environment={threadRef?.environmentId}
       data-assistant-citation-thread={threadRef?.threadId}
     >
