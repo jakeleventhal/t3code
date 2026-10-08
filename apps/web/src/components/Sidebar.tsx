@@ -3557,6 +3557,7 @@ export default function Sidebar() {
         reorderableKeys: section === "pinned" ? draggableThreadKeys : activeReorderableThreadKeys,
       });
       if (plan === null) return;
+      if (!checkThreadOperations(plan.assignments.flatMap(({ id }) => { const thread = threadByKey.get(id); return thread ? [thread] : []; }))) return;
       setPendingWorktreeReorder(plan);
       void (async () => {
         for (const assignment of plan.assignments) {
@@ -3593,6 +3594,7 @@ export default function Sidebar() {
       draggableThreadKeys,
       activeReorderableThreadKeys,
       threadByKey,
+      checkThreadOperations,
       reorderPinnedThread,
       reorderActiveThread,
     ],
@@ -3650,6 +3652,7 @@ export default function Sidebar() {
       const now = new Date().toISOString();
       if (action === "snooze" && !resolveWorktreeLifecycle(members, now).canSnoozeNow) return;
       const targets = worktreeLifecycleTargets(members, action, now);
+      if (!checkThreadOperations(targets)) return;
       if (action === "unpin" && confirmThreadUnpin) {
         const api = readLocalApi();
         if (!api) return;
