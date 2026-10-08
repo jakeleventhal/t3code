@@ -45,7 +45,7 @@ import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import { useEnvironmentScope } from "../../state/session";
+import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
 import { useSwipeRowDormant } from "../home/swipe-row-activation";
@@ -505,11 +505,14 @@ interface WorktreeActionProps {
 }
 
 function useWorktreeActions(props: WorktreeActionProps) {
+  const canOperate = useEnvironmentScope(props.threads[0]?.environmentId ?? null, AuthOrchestrationOperateScope);
+  const canOperateAll = () => props.threads.every(thread => readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope));
   const lifecycle = resolveWorktreeLifecycle(props.threads, new Date().toISOString());
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
   const presets = resolveSnoozePresets(new Date());
   const apply = useCallback(
     async (action: WorktreeLifecycleAction, until?: string) => {
+      if (!canOperateAll()) return false;
       if (
         action === "snooze" &&
         !resolveWorktreeLifecycle(props.threads, new Date().toISOString()).canSnoozeNow
@@ -619,6 +622,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
   }: {
     readonly nativeEvent: { readonly event: string };
   }) => {
+    if (!canOperateAll()) return;
     if (
       event === "pin" ||
       event === "unpin" ||
@@ -652,7 +656,7 @@ function useWorktreeActions(props: WorktreeActionProps) {
   return {
     lifecycle,
     apply,
-    actions,
+    actions: canOperate ? actions : [],
     handleMenuAction,
     customSnoozeSheet: customSnoozeOpen ? (
       <CustomSnoozeSheet

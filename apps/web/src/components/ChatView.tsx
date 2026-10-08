@@ -4997,7 +4997,7 @@ export default function ChatView(props: ChatViewProps) {
         rememberAsLastInvoked?: boolean;
       },
     ) => {
-      if (!hasTerminalWriteAccess() || 
+      if (!hasTerminalWriteAccess() ||
         !activeThreadId ||
         !terminalThreadId ||
         !activeProject ||
