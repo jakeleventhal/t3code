@@ -71,30 +71,9 @@ export function personalBackgroundRelayUrl(): string | null {
 }
 
 export const layer = (relayUrl: string) =>
-  Layer.effect(
-    ManagedRelay.ManagedRelayClient,
-    Effect.gen(function* () {
-      const primary = yield* ManagedRelay.make({
-        relayUrl,
-        clientId: RelayMobileClientId,
-        accessTokenStore: managedRelayAccessTokenStore,
-      });
-      const backgroundUrl = personalBackgroundRelayUrl();
-      if (!backgroundUrl) return primary;
-      // Keep environment discovery and connections on the existing T3 Connect relay.
-      const background = yield* ManagedRelay.make({
-        relayUrl: backgroundUrl,
-        clientId: RelayMobileClientId,
-      });
-      return ManagedRelay.ManagedRelayClient.of({
-        ...primary,
-        registerDevice: background.registerDevice,
-        unregisterDevice: background.unregisterDevice,
-        registerLiveActivity: background.registerLiveActivity,
-        getAgentActivitySnapshot: background.getAgentActivitySnapshot,
-        resetTokenCache: Effect.all([primary.resetTokenCache, background.resetTokenCache], {
-          discard: true,
-        }),
-      });
-    }),
-  ).pipe(Layer.provideMerge(layerRelayDpopSigner));
+  ManagedRelay.layer({
+    relayUrl,
+    backgroundRelayUrl: personalBackgroundRelayUrl() ?? resolveCloudPublicConfig().relay.backgroundUrl ?? undefined,
+    clientId: RelayMobileClientId,
+    accessTokenStore: managedRelayAccessTokenStore,
+  }).pipe(Layer.provideMerge(layerRelayDpopSigner));
