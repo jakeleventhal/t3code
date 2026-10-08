@@ -1087,7 +1087,7 @@ it.live.each(["before-detach", "after-detach"] as const)(
           closedSessionCount: 0,
           failedReplacementOpen: false,
         });
-        const registry = ProviderAdapterRegistry.makeSingleLayer(
+        const registry = ProviderAdapterRegistry.layerSingle(
           makeRestartAdapter(state, exclusiveCapabilities),
         );
         yield* Effect.gen(function* () {
@@ -1235,7 +1235,7 @@ it.live.each(["before-detach", "after-detach"] as const)(
           assert.equal(captured.closedSessionCount, 1);
         }).pipe(
           Effect.provide(
-            makeOrchestratorV2ReplayLayerWithRegistry({ name }, registry, {
+            ProviderReplayHarness.layerWithRegistry({ name }, registry, {
               runEffectWorker: false,
             }),
           ),
@@ -1260,7 +1260,7 @@ it.live("keeps a delegated workspace handoff pending until its atomic continuati
         closedSessionCount: 0,
         failedReplacementOpen: false,
       });
-      const registry = ProviderAdapterRegistry.makeSingleLayer(
+      const registry = ProviderAdapterRegistry.layerSingle(
         makeRestartAdapter(
           state,
           exclusiveCapabilities,
@@ -1429,7 +1429,7 @@ it.live("keeps a delegated workspace handoff pending until its atomic continuati
           (yield* Ref.get(state)).started.map((turn) => turn.cwd),
           [sourceCwd, sourceCwd, targetCwd],
         );
-      }).pipe(Effect.provide(makeOrchestratorV2ReplayLayerWithRegistry({ name }, registry)));
+      }).pipe(Effect.provide(ProviderReplayHarness.layerWithRegistry({ name }, registry)));
     }),
   ),
 );
@@ -1610,9 +1610,9 @@ it.live.each(["provider-crash", "explicit-stop"] as const)(
             );
         }).pipe(
           Effect.provide(
-            makeOrchestratorV2ReplayLayerWithRegistry(
+            ProviderReplayHarness.layerWithRegistry(
               { name },
-              ProviderAdapterRegistry.makeSingleLayer(adapter),
+              ProviderAdapterRegistry.layerSingle(adapter),
             ),
           ),
         );
