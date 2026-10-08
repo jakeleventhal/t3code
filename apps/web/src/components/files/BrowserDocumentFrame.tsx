@@ -9,7 +9,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useHtmlRenderTheme } from "~/hooks/useHtmlRenderTheme";
 import { cn } from "~/lib/utils";
-import { injectHtmlSelectionBridge } from "~/lib/htmlRenderSelection";
 
 /**
  * Chromium's viewer opens with its own toolbar, a thumbnail rail and a small
@@ -77,32 +76,12 @@ export function HtmlRenderDocument(props: {
 }) {
   const theme = useHtmlRenderTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const [src] = useState(() => `${props.src.split("#", 1)[0]}${htmlRenderThemeFragment(theme)}`);
+  const [src] = useState(() => {
+    const url = new URL(props.src, window.location.href);
+    if (props.selectionBridge) url.searchParams.set("t3-html-selection", "1");
+    return `${url.href.split("#", 1)[0]}${htmlRenderThemeFragment(theme)}`;
+  });
   const [loaded, setLoaded] = useState(false);
-  const [selectionSrc, setSelectionSrc] = useState<string>();
-  const [selectionError, setSelectionError] = useState(false);
-  useEffect(() => {
-    if (!props.selectionBridge) return;
-    const controller = new AbortController();
-    let blobUrl: string | undefined;
-    void fetch(src, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Could not load HTML render");
-        const html = await response.text();
-        if (controller.signal.aborted) return;
-        blobUrl = URL.createObjectURL(
-          new Blob([injectHtmlSelectionBridge(html)], { type: "text/html" }),
-        );
-        setSelectionSrc(`${blobUrl}${src.slice(src.indexOf("#"))}`);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setSelectionError(true);
-      });
-    return () => {
-      controller.abort();
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
-  }, [props.selectionBridge, src]);
   const postTheme = () => {
     frameRef.current?.contentWindow?.postMessage(htmlRenderThemeMessage(theme), "*");
   };
@@ -145,17 +124,10 @@ export function HtmlRenderDocument(props: {
     window.addEventListener("message", resize);
     return () => window.removeEventListener("message", resize);
   }, [onContentHeight]);
-  if (selectionError)
-    return (
-      <p data-html-render-error className="text-muted-foreground text-xs">
-        Unable to load {props.title}
-      </p>
-    );
-  if (props.selectionBridge && !selectionSrc) return null;
   return (
     <iframe
       ref={frameRef}
-      src={selectionSrc ?? src}
+      src={src}
       data-html-selection-bridge={props.selectionBridge || undefined}
       title={props.title}
       // Never allow-same-origin: the opaque origin keeps the page out of the app's session.
