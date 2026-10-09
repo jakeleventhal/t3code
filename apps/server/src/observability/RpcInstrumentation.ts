@@ -16,6 +16,8 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
  */
 const RPC_AGGREGATES = {
   [WS_METHODS.providerVoiceSession]: "provider",
+  [WS_METHODS.peerEnvironmentsConnect]: "peerEnvironments",
+  [WS_METHODS.peerEnvironmentsRespond]: "peerEnvironments",
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: "orchestrationV2",
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: "orchestration",
   [ORCHESTRATION_V2_WS_METHODS.getTurnItem]: "orchestration",
