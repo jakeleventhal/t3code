@@ -139,17 +139,6 @@ function ChatRouteGlobalShortcuts() {
         return;
       }
 
-      if (command === "chat.newInWorktree") {
-        event.preventDefault();
-        event.stopPropagation();
-        void startNewThreadInCurrentCheckout({
-          activeDraftThread,
-          activeThread: activeThread ?? undefined,
-          defaultProjectRef,
-          handleNewThread,
-        });
-        return;
-      }
 
       if (command === "chat.new") {
         event.preventDefault();
