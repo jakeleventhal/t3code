@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ServerConfig from "../config.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import * as PreviewManager from "../preview/Manager.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ResourceCleanupService from "./ResourceCleanupService.ts";
 
@@ -53,6 +54,7 @@ it.effect.each([null, "/work/feature"])(
   "keeps sibling terminals and closes only the final checkout owner (%s)",
   (worktreePath) => {
     const closed: string[] = [];
+    const closedPreviews: string[] = [];
     const testLayer = ResourceCleanupService.layer.pipe(
       Layer.provideMerge(ProjectionStore.layerMemory),
       Layer.provide(
@@ -63,6 +65,9 @@ it.effect.each([null, "/work/feature"])(
             }),
         }),
       ),
+      Layer.provide(Layer.mock(PreviewManager.PreviewManager)({
+        close: ({ threadId }) => Effect.sync(() => { closedPreviews.push(threadId); }),
+      })),
       Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "resource-cleanup-" })),
       Layer.provide(NodeServices.layer),
     );
@@ -82,7 +87,9 @@ it.effect.each([null, "/work/feature"])(
         payload: { ...first, archivedAt: now },
       });
       yield* cleanup.cleanupTerminals(first.id);
+      yield* cleanup.cleanupPreviews(first.id);
       assert.deepEqual(closed, [first.id]);
+      assert.deepEqual(closedPreviews, [first.id]);
       yield* projection.apply({
         id: EventId.make("delete:sibling"),
         type: "thread.deleted",
@@ -91,11 +98,13 @@ it.effect.each([null, "/work/feature"])(
         payload: { ...sibling, deletedAt: now },
       });
       yield* cleanup.cleanupTerminals(sibling.id);
+      yield* cleanup.cleanupPreviews(sibling.id);
       assert.deepEqual(closed, [
         first.id,
         sibling.id,
         worktreeResourceThreadId(projectId, worktreePath),
       ]);
+      assert.deepEqual(closedPreviews, closed);
     }).pipe(Effect.provide(testLayer));
   },
 );
