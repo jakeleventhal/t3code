@@ -873,7 +873,7 @@ effectIt.effect(
       )) as typeof globalThis.fetch;
     const layer = layerProbeFailure(
       (input) => {
-        lsofSpawns += 1;
+        if (input.command === "lsof") lsofSpawns += 1;
         return processProbeFailure(input);
       },
       fetchFn,
