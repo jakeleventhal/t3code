@@ -1237,7 +1237,7 @@ export const layer: Layer.Layer<
                             }
                           : state,
                       );
-                      return Stream.fromIterable<ProviderAdapterV2Event>([
+                      return Stream.fromIterable<ProviderAdapter.ProviderAdapterV2Event>([
                         ...(providerTurn?.status === "running" || providerTurn?.status === "pending"
                           ? [
                               {
