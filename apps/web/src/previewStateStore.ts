@@ -528,7 +528,7 @@ export function whenPreviewTabKnown(
   action: () => void,
   timeoutMs = 5_000,
 ): () => void {
-  const atom = previewStateAtom(scopedThreadKey(ref));
+  const atom = previewStateAtom(migratePreviewState(ref));
   if (appAtomRegistry.get(atom).sessions[tabId]) {
     action();
     return () => {};
