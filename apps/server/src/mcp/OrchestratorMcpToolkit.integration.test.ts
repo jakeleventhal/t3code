@@ -1,3 +1,4 @@
+import * as PeerEnvironmentService from "./PeerEnvironmentService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
@@ -681,6 +682,7 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(layerRegistry),
             Layer.provide(layerProviderRegistry),
             Layer.provide(layerScheduledTaskStub),
+            Layer.provide(Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({})),
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
@@ -3819,6 +3821,7 @@ describe("orchestrator MCP toolkit", () => {
           ),
           Layer.provide(layerProviderRegistry),
           Layer.provide(layerUnusedScheduledTaskStub),
+          Layer.provide(Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({})),
           Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
           Layer.provideMerge(
             SecretRequests.layer.pipe(

@@ -28,6 +28,7 @@ import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
+import { useAtomCommand } from "../state/use-atom-command";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
@@ -249,7 +250,10 @@ import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { previewEnvironment } from "../state/preview";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
-import { formatDiscoveredServerHost, selectPreferredDiscoveredServer } from "./preview/useDiscoveredLocalServers";
+import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button, InlineButton } from "./ui/button";
 import {
@@ -1507,18 +1511,32 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   });
   const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
-  const handleOpenDiscoveredPort = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (!preferredDiscoveredPort) return;
-    event.preventDefault();
-    event.stopPropagation();
-    props.onActivate(threadRef);
-    void (async () => {
-      const result = await openDiscoveredPort({ threadRef, port: preferredDiscoveredPort, openPreview });
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-      const error = squashAtomCommandFailure(result);
-      toastManager.add(stackedThreadToast({ type: "error", title: "Unable to open preview", description: error instanceof Error ? error.message : "The preview could not be opened." }));
-    })();
-  }, [props.onActivate, threadRef, preferredDiscoveredPort, openPreview]);
+  const handleOpenDiscoveredPort = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!preferredDiscoveredPort) return;
+      event.preventDefault();
+      event.stopPropagation();
+      props.onActivate(threadRef);
+      void (async () => {
+        const result = await openDiscoveredPort({
+          threadRef,
+          port: preferredDiscoveredPort,
+          openPreview,
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open preview",
+            description:
+              error instanceof Error ? error.message : "The preview could not be opened.",
+          }),
+        );
+      })();
+    },
+    [props.onActivate, threadRef, preferredDiscoveredPort, openPreview],
+  );
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const checkout =
     visibleGitStatus?.refName ??
@@ -1657,10 +1675,21 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           </Tooltip>
           {preferredDiscoveredPort ? (
             <Tooltip>
-              <TooltipTrigger render={<button type="button" aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`} onClick={handleOpenDiscoveredPort} className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-success-foreground outline-none hover:text-success-foreground/80 focus-visible:ring-2 focus-visible:ring-ring" />}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
+                    onClick={handleOpenDiscoveredPort}
+                    className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-success-foreground outline-none hover:text-success-foreground/80 focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                }
+              >
                 <Globe2Icon aria-hidden className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="top">Open {formatDiscoveredServerHost(preferredDiscoveredPort)}</TooltipPopup>
+              <TooltipPopup side="top">
+                Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
+              </TooltipPopup>
             </Tooltip>
           ) : null}
           {terminalStatus ? (
@@ -3251,7 +3280,15 @@ export default function Sidebar() {
         reorderableKeys: section === "pinned" ? draggableThreadKeys : activeReorderableThreadKeys,
       });
       if (plan === null) return;
-      if (!checkThreadOperations(plan.assignments.flatMap(({ id }) => { const thread = threadByKey.get(id); return thread ? [thread] : []; }))) return;
+      if (
+        !checkThreadOperations(
+          plan.assignments.flatMap(({ id }) => {
+            const thread = threadByKey.get(id);
+            return thread ? [thread] : [];
+          }),
+        )
+      )
+        return;
       setPendingWorktreeReorder(plan);
       void (async () => {
         for (const assignment of plan.assignments) {
@@ -3499,7 +3536,16 @@ export default function Sidebar() {
         api.contextMenu.show(
           [
             ...lifecycleMenu,
-            ...(titleRegenerationMenuItem ? [{ ...titleRegenerationMenuItem, disabled: titleRegenerationMenuItem.disabled || !canOperateThreads(regeneratableTitleThreads) }] : []),
+            ...(titleRegenerationMenuItem
+              ? [
+                  {
+                    ...titleRegenerationMenuItem,
+                    disabled:
+                      titleRegenerationMenuItem.disabled ||
+                      !canOperateThreads(regeneratableTitleThreads),
+                  },
+                ]
+              : []),
             { id: "mark-unread", label: `Mark unread (${count})` },
             {
               id: "delete",
@@ -3512,7 +3558,8 @@ export default function Sidebar() {
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
-      const actionTargets = clicked.value === "regenerate-title" ? regeneratableTitleThreads : lifecycleThreads;
+      const actionTargets =
+        clicked.value === "regenerate-title" ? regeneratableTitleThreads : lifecycleThreads;
       if (clicked.value !== "mark-unread" && !checkThreadOperations(actionTargets)) return;
       if (clicked.value?.startsWith("snooze:")) {
         const preset =

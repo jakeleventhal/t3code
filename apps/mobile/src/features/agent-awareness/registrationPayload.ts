@@ -30,8 +30,9 @@ export function makeRelayDeviceRegistrationRequest(
   ),
 ): RelayDeviceRegistrationRequest {
   const pushAvailable = supportsAgentAwarenessPush();
+  const liveActivitiesAvailable = supportsAgentAwarenessLiveActivities();
   const liveActivitiesEnabled =
-    supportsAgentAwarenessLiveActivities() && input.preferences.liveActivitiesEnabled !== false;
+    liveActivitiesAvailable && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,
     label: input.label,
@@ -43,7 +44,9 @@ export function makeRelayDeviceRegistrationRequest(
     ...(input.bundleId ? { bundleId: input.bundleId } : {}),
     ...(input.apsEnvironment ? { apsEnvironment: input.apsEnvironment } : {}),
     ...(input.pushToken ? { pushToken: input.pushToken } : {}),
-    ...(input.pushToStartToken ? { pushToStartToken: input.pushToStartToken } : {}),
+    ...(liveActivitiesAvailable && input.pushToStartToken
+      ? { pushToStartToken: input.pushToStartToken }
+      : {}),
     preferences: {
       liveActivitiesEnabled,
       notificationsEnabled: pushAvailable && input.notificationsEnabled,

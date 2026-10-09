@@ -506,8 +506,14 @@ interface WorktreeActionProps {
 }
 
 function useWorktreeActions(props: WorktreeActionProps) {
-  const canOperate = useEnvironmentScope(props.threads[0]?.environmentId ?? null, AuthOrchestrationOperateScope);
-  const canOperateAll = () => props.threads.every(thread => readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope));
+  const canOperate = useEnvironmentScope(
+    props.threads[0]?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
+  const canOperateAll = () =>
+    props.threads.every((thread) =>
+      readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope),
+    );
   const lifecycle = resolveWorktreeLifecycle(props.threads, new Date().toISOString());
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
   const presets = resolveSnoozePresets(new Date());
@@ -1027,8 +1033,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         : null,
     [handleMenuAction, snoozePresetActions, swipeActions.secondary, thread.title],
   );
-  const swipeAccessibilityHint = !canOperateThread ? "Opens the thread" :
-    secondaryAction === null
+  const swipeAccessibilityHint = !canOperateThread
+    ? "Opens the thread"
+    : secondaryAction === null
       ? `Opens the thread. Swipe left to ${primaryAction.label.toLowerCase()} the worktree.`
       : `Opens the thread. Swipe left for worktree ${primaryAction.label.toLowerCase()} and snooze actions.`;
 
@@ -1188,7 +1195,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : (
           <View className="flex-1" />
         )}
-        <ThreadDevServerIndicator environmentId={thread.environmentId} threadId={thread.id} />
         {pr ? (
           <View className="flex-row items-center gap-1" accessibilityLabel={pr.accessibilityLabel}>
             <SymbolView
@@ -1338,7 +1344,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
-          <ThreadDevServerIndicator environmentId={thread.environmentId} threadId={thread.id} />
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           <Text
             className={cn(
@@ -1495,6 +1500,10 @@ export const ThreadListV2WorktreeHeader = memo(function ThreadListV2WorktreeHead
               {checkout}
               {props.environmentLabel ? ` · ${props.environmentLabel}` : ""}
             </Text>
+            <ThreadDevServerIndicator
+              environmentId={thread.environmentId}
+              threadId={worktreeResourceThreadId(thread.projectId, thread.worktreePath)}
+            />
             {terminalCount > 0 ? (
               <View accessibilityLabel={`${terminalCount} running terminal processes`}>
                 <SymbolView
