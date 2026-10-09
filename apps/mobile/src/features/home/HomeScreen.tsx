@@ -1,4 +1,8 @@
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
+import {
+  indexWorktreeThreads,
+  sidebarThreadKey,
+} from "@t3tools/client-runtime/state/worktree-grouping";
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import { computeThreadMoveAvailability } from "../threads/threadOrder";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
@@ -45,6 +49,8 @@ import { threadListEnvironmentsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
+  ThreadListV2SectionDivider,
+  ThreadListV2WorktreeHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
@@ -416,7 +422,7 @@ export function HomeScreen(props: HomeScreenProps) {
           ),
     [v2ScopedProjectGroup],
   );
-  // Thread List v2 (beta): one flat list in creation order, no grouping.
+  // Thread List v2 groups conversations by checkout across connected environments.
   // Settled threads collapse into a recency tail below the card block.
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells — no snapshot merging or
@@ -424,19 +430,19 @@ export function HomeScreen(props: HomeScreenProps) {
   const handleSettleThread = props.onSettleThread;
   const handleSnoozeThread = useCallback(
     (thread: EnvironmentThreadShell, snoozedUntil: string) => {
-      void props.onSnoozeThread(thread, snoozedUntil);
+      return props.onSnoozeThread(thread, snoozedUntil);
     },
     [props.onSnoozeThread],
   );
   const handleUnsnoozeThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onUnsnoozeThread(thread);
+      return props.onUnsnoozeThread(thread);
     },
     [props.onUnsnoozeThread],
   );
   const handlePinThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onPinThread(thread);
+      return props.onPinThread(thread);
     },
     [props.onPinThread],
   );
@@ -448,7 +454,7 @@ export function HomeScreen(props: HomeScreenProps) {
   );
   const handleUnpinThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      void props.onUnpinThread(thread);
+      return props.onUnpinThread(thread);
     },
     [props.onUnpinThread],
   );
@@ -568,6 +574,7 @@ export function HomeScreen(props: HomeScreenProps) {
     // Settled threads are live shells; archived threads keep their original
     // "hidden from lists" meaning.
     return buildThreadListV2Items({
+      groupWorktrees: true,
       pendingOrder,
       threads: props.threads.filter((thread) => thread.archivedAt === null),
       environmentId: props.selectedEnvironmentId,
@@ -642,6 +649,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const threadListV2Items = useMemo(
     () =>
       buildThreadListV2ListItems({
+        groupWorktrees: true,
         items: threadListV2Layout.items,
         pendingTasks: v2PendingTasks,
         workingCount: threadListV2Layout.workingCount,
@@ -678,8 +686,40 @@ export function HomeScreen(props: HomeScreenProps) {
     if (swipeEnabled) activateVisibleRows(threadListV2Items);
   }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
 
+  const lifecycleMembersByKey = useMemo(() => indexWorktreeThreads(props.threads), [props.threads]);
   const renderV2Item = useCallback(
     ({ item }: { readonly item: ThreadListV2ListItem }) => {
+      if (item.type === "v2-worktree") {
+        const key = scopedProjectKey(item.thread.environmentId, item.thread.projectId);
+        return (
+          <ThreadListV2WorktreeHeader
+            pinned={item.pinned}
+            environmentMachine={machineByEnvironmentId.get(item.thread.environmentId)}
+            threads={lifecycleMembersByKey.get(sidebarThreadKey(item.thread)) ?? item.threads}
+            onSettleThread={handleSettleThread}
+            onUnsettleThread={handleUnsettleThread}
+            onSnoozeThread={handleSnoozeThread}
+            onUnsnoozeThread={handleUnsnoozeThread}
+            onPinThread={handlePinThread}
+            onUnpinThread={handleUnpinThread}
+            settlementSupported={settlementEnvironmentIds.has(item.thread.environmentId)}
+            snoozeSupported={snoozeEnvironmentIds.has(item.thread.environmentId)}
+            pinningSupported={pinningEnvironmentIds.has(item.thread.environmentId)}
+            autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(
+              item.thread.environmentId,
+            )}
+            onSetThreadAutoSettle={handleSetThreadAutoSettle}
+            project={projectByKey.get(key) ?? null}
+            count={item.count}
+            projectTitle={
+              v2ProjectTitleByProjectKey.get(key) ?? projectByKey.get(key)?.title ?? "Project"
+            }
+            environmentLabel={
+              props.savedConnectionsById[item.thread.environmentId]?.environmentLabel ?? null
+            }
+          />
+        );
+      }
       if (item.type === "v2-pending") {
         const pendingScopeKey = scopedProjectKey(
           item.pendingTask.environmentId,
@@ -714,6 +754,9 @@ export function HomeScreen(props: HomeScreenProps) {
           />
         );
       }
+      if (item.type === "v2-section") {
+        return <ThreadListV2SectionDivider label={item.label} />;
+      }
       if (item.type === "v2-snoozed-shelf") {
         return (
           <ThreadListV2SnoozedShelfHeader
@@ -742,6 +785,7 @@ export function HomeScreen(props: HomeScreenProps) {
           fullSwipeWidth={fullSwipeWidth}
           onNewThreadOnBranch={props.onNewThreadOnBranch}
           thread={thread}
+          worktreeThreads={lifecycleMembersByKey.get(sidebarThreadKey(thread))}
           variant={item.item.variant}
           hasQueuedMessages={item.hasQueuedMessages}
           snoozed={item.item.snoozed}
@@ -803,6 +847,7 @@ export function HomeScreen(props: HomeScreenProps) {
       );
     },
     [
+      lifecycleMembersByKey,
       handleDeleteThread,
       activeReorderEnvironmentIds,
       handleMoveThread,
