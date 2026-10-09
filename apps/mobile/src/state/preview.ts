@@ -4,6 +4,7 @@ import { PREVIEW_STREAM_BASE_PATH } from "@t3tools/client-runtime/preview/server
 import { createPreviewEnvironmentAtoms } from "@t3tools/client-runtime/state/preview";
 import { resolveDeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
 import type {
+  DiscoveredLocalServer,
   EnvironmentId,
   PreviewEvent,
   PreviewListResult,
@@ -163,4 +164,29 @@ export function usePreviewStreamAccess(environmentId: EnvironmentId) {
   const query = useEnvironmentQuery(previewStreamAccessAtom(environmentId));
   const access = query.data && query.error === null && Option.isSome(prepared) ? query.data : null;
   return { access, error: query.error, refresh: query.refresh };
+}
+const EMPTY_SERVERS: ReadonlyArray<DiscoveredLocalServer> = Object.freeze([]);
+
+/**
+ * Dev servers whose owning terminal belongs to the given thread. Subscribing
+ * retains the environment's port scanner, so only mounted thread screens
+ * should call this.
+ */
+export function useThreadDevServers(input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly threadId: ThreadId | null;
+}): ReadonlyArray<DiscoveredLocalServer> {
+  const query = useEnvironmentQuery(
+    input.environmentId === null
+      ? null
+      : previewEnvironment.discoveredServers({ environmentId: input.environmentId, input: {} }),
+  );
+  const servers = query.data?.servers ?? EMPTY_SERVERS;
+  return useMemo(
+    () =>
+      input.threadId === null
+        ? EMPTY_SERVERS
+        : servers.filter((server) => server.terminal?.threadId === input.threadId),
+    [input.threadId, servers],
+  );
 }

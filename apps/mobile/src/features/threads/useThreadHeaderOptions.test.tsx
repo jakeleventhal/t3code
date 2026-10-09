@@ -96,6 +96,8 @@ function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly ti
         canOperateTerminal: true,
         canOpenFiles: true,
         projectScripts,
+        devServers: [],
+        onOpenDevServer: async () => {},
         terminalSessions: [],
         onOpenTerminal: () => {},
         onOpenNewTerminal: () => {},
