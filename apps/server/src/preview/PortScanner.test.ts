@@ -1157,7 +1157,7 @@ effectIt.effect(
       )) as typeof globalThis.fetch;
     const layer = layerProbeFailure(
       (input) => {
-        lsofSpawns += 1;
+        if (input.command === "lsof") lsofSpawns += 1;
         return processProbeFailure(input);
       },
       fetchFn,
@@ -1183,7 +1183,7 @@ effectIt.effect(
 effectIt.effect("keeps spawning lsof after a spawn failure that is not a missing command", () => {
   let lsofSpawns = 0;
   const layer = layerProbeFailure((input) => {
-    lsofSpawns += 1;
+    if (input.command === "lsof") lsofSpawns += 1;
     return Effect.fail(
       new ProcessRunner.ProcessSpawnError({
         command: input.command,
