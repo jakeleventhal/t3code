@@ -45,6 +45,7 @@ export const make = Effect.gen(function* () {
     }
 
     const targets: Array<RemoteOpenTarget> = [];
+    const username = yield* HostProcess.Username;
 
     // Tailscale absent or down is the common case, not an error.
     const magicDnsName = yield* readTailscaleStatus.pipe(
@@ -53,7 +54,11 @@ export const make = Effect.gen(function* () {
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     if (magicDnsName !== null) {
-      targets.push({ kind: "tailscale", host: magicDnsName });
+      targets.push({
+        kind: "tailscale",
+        host: magicDnsName,
+        ...(username === null ? {} : { username }),
+      });
     }
 
     // os.hostname() may already be an FQDN (macOS often reports
@@ -61,7 +66,11 @@ export const make = Effect.gen(function* () {
     const hostname = yield* HostProcess.Hostname;
     const shortHostname = hostname.split(".")[0]?.trim();
     if (shortHostname !== undefined && shortHostname.length > 0) {
-      targets.push({ kind: "mdns", host: `${shortHostname}.local` });
+      targets.push({
+        kind: "mdns",
+        host: `${shortHostname}.local`,
+        ...(username === null ? {} : { username }),
+      });
     }
 
     return targets;
