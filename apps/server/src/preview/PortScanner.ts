@@ -763,6 +763,7 @@ const isCommandNotFound = (error: ProcessRunner.ProcessSpawnError): boolean =>
 
 /** @public */
 export const make = Effect.gen(function* PortDiscoveryMake() {
+  const net = yield* Net.NetService;
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const fileSystem = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcess.Platform;
@@ -1065,7 +1066,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     });
     return routes;
   });
-
 
   const probeWebUrl = Effect.fn("PortDiscovery.probeWebUrl")((url: string) =>
     httpClient.get(url).pipe(
@@ -1607,7 +1607,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   });
 }).pipe(Effect.withSpan("PortDiscovery.make"));
 
-export const layer = Layer.effect(PortDiscovery, make);
+export const layer = Layer.effect(PortDiscovery, make).pipe(Layer.provide(Net.layer));
 
 /** A scanner that tracks nothing, for tests that build provider runners without a host. */
 export const layerTest = Layer.mock(PortDiscovery)({ trackAgent: () => () => undefined });
