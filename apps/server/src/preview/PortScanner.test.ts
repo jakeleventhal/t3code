@@ -531,7 +531,7 @@ effectIt.effect("keeps a non-ngrok web server on the default agent port", () => 
   );
 
   return Effect.gen(function* () {
-    const scanner = yield* PortScanner.PortDiscovery;
+    const scanner = yield* ownedScanner();
     expect(yield* scanner.scan()).toMatchObject([{ port: 4040, url: "http://localhost:4040" }]);
   }).pipe(Effect.provide(layer));
 });
