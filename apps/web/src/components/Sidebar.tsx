@@ -16,6 +16,7 @@ import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullR
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
+import { useAtomCommand } from "../state/use-atom-command";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
