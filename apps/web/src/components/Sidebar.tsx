@@ -2155,7 +2155,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             type="button"
             aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
             onClick={handleOpenDiscoveredPort}
-            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-success-foreground outline-none hover:text-success-foreground/80 focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-success-foreground outline-none hover:text-success-foreground/80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           />
         }
       >
