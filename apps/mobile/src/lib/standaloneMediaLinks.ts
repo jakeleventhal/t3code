@@ -1,4 +1,7 @@
-import { classifyMarkdownImageSource, markdownLinkMediaKind } from "@t3tools/client-runtime/markdown-images";
+import {
+  classifyMarkdownImageSource,
+  markdownLinkMediaKind,
+} from "@t3tools/client-runtime/markdown-images";
 import type { PhrasingContent } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -13,7 +16,10 @@ function label(node: PhrasingContent): string {
 }
 
 /** Embed image links that occupy a line of a top-level paragraph in native Markdown. */
-export function markdownWithStandaloneMediaLinks(markdown: string, workspaceRoot?: string | null): string {
+export function markdownWithStandaloneMediaLinks(
+  markdown: string,
+  workspaceRoot?: string | null,
+): string {
   const root = parser.parse(markdown);
   const edits: Array<{ start: number; end: number; content: string }> = [];
   for (const paragraph of root.children) {
@@ -24,7 +30,8 @@ export function markdownWithStandaloneMediaLinks(markdown: string, workspaceRoot
       if (source._tag === "Blocked") continue;
       const previous = paragraph.children[index - 1];
       const next = paragraph.children[index + 1];
-      if (previous && (previous.type !== "text" || !/(?:^|\n)[ \t]*$/.test(previous.value))) continue;
+      if (previous && (previous.type !== "text" || !/(?:^|\n)[ \t]*$/.test(previous.value)))
+        continue;
       if (next && (next.type !== "text" || !/^[ \t]*(?:\n|$)/.test(next.value))) continue;
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
@@ -36,6 +43,7 @@ export function markdownWithStandaloneMediaLinks(markdown: string, workspaceRoot
       edits.push({ start, end, content: `![${alt}](<${href}>${title})` });
     }
   }
-  for (const edit of edits.toReversed()) markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
+  for (const edit of [...edits].reverse())
+    markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
   return markdown;
 }
