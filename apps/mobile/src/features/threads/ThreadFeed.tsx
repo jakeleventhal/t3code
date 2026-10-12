@@ -815,6 +815,7 @@ function ArtifactTemplateCard(props: {
 
 const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly markdown: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly markdownStyles: MarkdownStyleSet;
   readonly linkHandlers: MarkdownLinkHandlers;
@@ -1300,6 +1301,7 @@ function renderFeedEntry(
                 value={props.userBubbleMaxWidth - USER_BUBBLE_HORIZONTAL_PADDING * 2}
               >
                 <UserMessageContent
+                  workspaceRoot={props.workspaceRoot}
                   text={renderedText}
                   environmentId={props.environmentId}
                   context={message.context}
@@ -1406,6 +1408,7 @@ function renderFeedEntry(
         {renderedText.trim().length > 0 ? (
           <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
             <AssistantMarkdownContent
+              workspaceRoot={props.workspaceRoot}
               markdown={renderedText}
               environmentId={props.environmentId}
               markdownStyles={styles}
@@ -1492,6 +1495,7 @@ function renderFeedEntry(
 
 type UserMessageContentProps = {
   readonly text: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly context?: OrchestrationMessageContext;
   readonly markdownStyles: MarkdownStyleSet;
@@ -2021,8 +2025,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const renderReasoning = useCallback(
     (text: string) => (
       <AssistantMarkdownContent
+              workspaceRoot={props.workspaceRoot}
         markdown={text}
-        workspaceRoot={props.workspaceRoot}
         environmentId={props.environmentId}
         markdownStyles={markdownStyles.assistant}
         linkHandlers={markdownLinkHandlers}
