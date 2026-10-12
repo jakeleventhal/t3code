@@ -1,3 +1,4 @@
+import { indexWorktreeThreads, sidebarThreadKey } from "@t3tools/client-runtime/state/worktree-grouping";
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
 import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
