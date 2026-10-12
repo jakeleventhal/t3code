@@ -75,7 +75,6 @@ export class PortDiscovery extends Context.Service<
   }
 >()("t3/preview/PortScanner/PortDiscovery") {}
 
-
 const POLL_INTERVAL = Duration.seconds(3);
 const LSOF_TIMEOUT_MS = 5_000;
 /** File descriptors one `/proc` walk may read before it stops looking for socket owners. */
@@ -615,6 +614,7 @@ const isCommandNotFound = (error: ProcessRunner.ProcessSpawnError): boolean =>
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* PortDiscoveryMake() {
+  const net = yield* Net.NetService;
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const fileSystem = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcess.Platform;
@@ -857,7 +857,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     return routes;
   });
 
-
   const probeWebUrl = Effect.fn("PortDiscovery.probeWebUrl")((url: string) =>
     httpClient.get(url).pipe(
       Effect.map((response) => {
@@ -1069,10 +1068,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
             ProcessTimeoutError: recoverWindowsProbeFailure,
           }),
         );
-      return yield* probeAndEnrichWebServers(
-        listeners ?? [],
-        configuredUrls,
-      );
+      return yield* probeAndEnrichWebServers(listeners ?? [], configuredUrls);
     }
     const recoverLsofProbeFailure = recoverProcessProbeFailure("lsof");
     if (yield* Ref.get(lsofMissingRef)) {
@@ -1234,7 +1230,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   });
 }).pipe(Effect.withSpan("PortDiscovery.make"));
 
-export const layer = Layer.effect(PortDiscovery, make);
+export const layer = Layer.effect(PortDiscovery, make).pipe(Layer.provide(Net.layer));
 
 export const __testing = {
   applyNamedRoutes,
