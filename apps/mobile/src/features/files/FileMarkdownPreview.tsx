@@ -199,6 +199,7 @@ export function FileMarkdownPreview(props: {
       <View className="mx-auto w-full max-w-[760px]">
         <SelectableMarkdownText
           markdown={props.markdown}
+          workspaceRoot={markdownDirectory}
           onLinkPress={onLinkPress}
           renderImage={renderImage}
           resolveImageSource={resolveImageSource}
