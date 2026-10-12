@@ -54,7 +54,6 @@ export class PortDiscovery extends Context.Service<
   }
 >()("t3/preview/PortScanner/PortDiscovery") {}
 
-
 const POLL_INTERVAL = Duration.seconds(3);
 const LSOF_TIMEOUT_MS = 5_000;
 const PROC_FD_WALK_LIMIT = 50_000;
@@ -641,6 +640,7 @@ const isCommandNotFound = (error: ProcessRunner.ProcessSpawnError): boolean =>
 
 /** @public */
 export const make = Effect.gen(function* PortDiscoveryMake() {
+  const net = yield* Net.NetService;
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const fileSystem = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcess.Platform;
@@ -874,7 +874,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     });
     return routes;
   });
-
 
   const probeWebUrl = Effect.fn("PortDiscovery.probeWebUrl")((url: string) =>
     httpClient.get(url).pipe(
@@ -1302,7 +1301,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   });
 }).pipe(Effect.withSpan("PortDiscovery.make"));
 
-export const layer = Layer.effect(PortDiscovery, make);
+export const layer = Layer.effect(PortDiscovery, make).pipe(Layer.provide(Net.layer));
 
 export const __testing = {
   applyNamedRoutes,
