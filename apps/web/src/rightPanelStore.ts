@@ -939,7 +939,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       // user-action revision alone and proactive opens still apply.
       moveSurface: (ref, surfaceId, toIndex) =>
         set((state) =>
-          updateThread(state, scopedThreadKey(ref), (current) => {
+          updateThread(state, ref, (current) => {
             const fromIndex = current.surfaces.findIndex((surface) => surface.id === surfaceId);
             if (fromIndex < 0 || fromIndex === toIndex) return current;
             const surfaces = [...current.surfaces];
@@ -1013,7 +1013,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       // Layout only: it changes no surface, so proactive panels still apply.
       setMaximized: (ref, maximized) =>
         set((state) =>
-          automaticUpdate(state, scopedThreadKey(ref), (current) => {
+          automaticUpdate(state, ref, (current) => {
             if ((current.maximized ?? false) === maximized) return current;
             const { maximized: _maximized, ...rest } = current;
             return maximized ? { ...rest, maximized: true } : rest;
