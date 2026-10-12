@@ -768,7 +768,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   const hostPlatform = yield* HostProcess.Platform;
   const hostEnvironment = yield* HostProcess.Environment;
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope);
-  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const stateRef = yield* Ref.make<ScannerState>({
     listeners: new Map(),
