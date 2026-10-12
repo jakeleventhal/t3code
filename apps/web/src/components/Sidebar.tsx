@@ -1391,7 +1391,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     aria-label="Dismiss Woke notification"
                     onClick={handleAcknowledgeWokeClick}
                     className={cn(
-                      "shrink-0 rounded-sm text-xs hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+                      "shrink-0 rounded-sm text-xs hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                       topStatus.className,
                     )}
                   >
@@ -3288,7 +3288,15 @@ export default function Sidebar() {
         reorderableKeys: section === "pinned" ? draggableThreadKeys : activeReorderableThreadKeys,
       });
       if (plan === null) return;
-      if (!checkThreadOperations(plan.assignments.flatMap(({ id }) => { const thread = threadByKey.get(id); return thread ? [thread] : []; }))) return;
+      if (
+        !checkThreadOperations(
+          plan.assignments.flatMap(({ id }) => {
+            const thread = threadByKey.get(id);
+            return thread ? [thread] : [];
+          }),
+        )
+      )
+        return;
       setPendingWorktreeReorder(plan);
       void (async () => {
         for (const assignment of plan.assignments) {
@@ -3536,7 +3544,16 @@ export default function Sidebar() {
         api.contextMenu.show(
           [
             ...lifecycleMenu,
-            ...(titleRegenerationMenuItem ? [{ ...titleRegenerationMenuItem, disabled: titleRegenerationMenuItem.disabled || !canOperateThreads(regeneratableTitleThreads) }] : []),
+            ...(titleRegenerationMenuItem
+              ? [
+                  {
+                    ...titleRegenerationMenuItem,
+                    disabled:
+                      titleRegenerationMenuItem.disabled ||
+                      !canOperateThreads(regeneratableTitleThreads),
+                  },
+                ]
+              : []),
             { id: "mark-unread", label: `Mark unread (${count})` },
             {
               id: "delete",
@@ -3549,7 +3566,8 @@ export default function Sidebar() {
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
-      const actionTargets = clicked.value === "regenerate-title" ? regeneratableTitleThreads : lifecycleThreads;
+      const actionTargets =
+        clicked.value === "regenerate-title" ? regeneratableTitleThreads : lifecycleThreads;
       if (clicked.value !== "mark-unread" && !checkThreadOperations(actionTargets)) return;
       if (clicked.value?.startsWith("snooze:")) {
         const preset =
