@@ -932,6 +932,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
       <SelectableMarkdownText
         key={`markdown:${segment.sourceOffset}`}
         markdown={markdown}
+        workspaceRoot={props.workspaceRoot}
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
         {...linkHandlers}
@@ -2052,6 +2053,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
     return (
       <SelectableMarkdownText
         markdown={text}
+        workspaceRoot={props.workspaceRoot}
         contextClipboardFragment={contextClipboardFragment}
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
@@ -2084,6 +2086,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
           <SelectableMarkdownText
             key={segment.id}
             markdown={text}
+        workspaceRoot={props.workspaceRoot}
             contextClipboardFragment={contextClipboardFragment}
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
