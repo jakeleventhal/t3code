@@ -72,10 +72,6 @@ export class PortDiscovery extends Context.Service<
  * server stays attributed after its launching shell exits or the agent settles.
  */
 export const AGENT_THREAD_ENV = "T3CODE_THREAD_ID";
-export const COMMON_DEV_PORTS: ReadonlyArray<number> = Object.freeze([
-  3000, 3001, 3333, 4040, 4173, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 8000, 8080, 8081, 8888,
-  9000,
-]);
 
 const POLL_INTERVAL = Duration.seconds(3);
 const LSOF_TIMEOUT_MS = 5_000;
@@ -1071,29 +1067,6 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     return routes;
   });
 
-  const probeCommonPorts = Effect.fn("PortDiscovery.probeCommonPorts")(function* () {
-    const results = yield* Effect.forEach(
-      COMMON_DEV_PORTS,
-      (port) =>
-        net.isPortAvailableOnLoopback(port).pipe(
-          Effect.map((available) => ({
-            port,
-            listening: !available,
-          })),
-        ),
-      { concurrency: "unbounded" },
-    );
-    return results
-      .filter((result) => result.listening)
-      .map<DiscoveredLocalServer>((result) => ({
-        host: "localhost",
-        port: result.port,
-        url: `http://localhost:${result.port}`,
-        processName: null,
-        pid: null,
-        terminal: null,
-      }));
-  });
 
   const probeWebUrl = Effect.fn("PortDiscovery.probeWebUrl")((url: string) =>
     httpClient.get(url).pipe(
@@ -1378,7 +1351,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const recoverLsofProbeFailure = recoverProcessProbeFailure("lsof");
     if (yield* Ref.get(lsofMissingRef)) {
       const fromProc = yield* scanProcListeners(resolveOwners);
-      return yield* probeAndEnrichWebServers(fromProc ?? (yield* probeCommonPorts()), configuredUrls);
+      return yield* probeAndEnrichWebServers(fromProc ?? [], configuredUrls);
     }
     const lsofResult = yield* processRunner
       .run({
@@ -1407,7 +1380,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       );
     if (lsofResult !== null) return yield* probeAndEnrichWebServers(lsofResult, configuredUrls);
     const fromProc = yield* scanProcListeners(resolveOwners);
-    return yield* probeAndEnrichWebServers(fromProc ?? (yield* probeCommonPorts()), configuredUrls);
+    return yield* probeAndEnrichWebServers(fromProc ?? [], configuredUrls);
   });
 
   const scanSnapshot = Effect.fn("PortDiscovery.scanSnapshot")(
