@@ -54,7 +54,11 @@ import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
+import { WorkingChangesReview } from "./diffs/WorkingChangesReview";
 import { DiffFileTree } from "./diffs/DiffFileTree";
+import { compareReviewFilePaths } from "@t3tools/client-runtime/review-workspace";
+import { useResizableWidth } from "~/hooks/useResizableWidth";
+import { RightPanelResizeHandle } from "./preview/RightPanelResizeHandle";
 import { diffFileTreeEntries } from "./diffs/diffFileTree.logic";
 import { Button } from "./ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -202,13 +206,20 @@ export default function DiffPanel({
   const settings = useClientSettings();
   const diffLayout = settings.diffLayout;
   const updateClientSettings = useUpdateClientSettings();
-  const [wordWrap, setWordWrap] = useState(settings.wordWrap);
-  const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
+  const wordWrap = settings.wordWrap;
+  const diffIgnoreWhitespace = settings.diffIgnoreWhitespace;
   const [fileTreeOpen, setFileTreeOpen] = useLocalStorage(
     DIFF_FILE_TREE_STORAGE_KEY,
     false,
     Schema.Boolean,
   );
+  const treeWidth = useResizableWidth({
+    storageKey: "t3code:working-diff-tree-width",
+    defaultWidth: 320,
+    minWidth: 192,
+    maxWidth: 640,
+    edge: "left",
+  });
   const [baseRefQuery, setBaseRefQuery] = useState("");
   const [collapsedDiffFiles, setCollapsedDiffFiles] = useState<CollapsedDiffFilesState>(() => ({
     scopeKey: null,
@@ -361,7 +372,11 @@ export default function DiffPanel({
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
   );
   const refreshPreviewQuery = branchDiffPreview.refresh;
-  const refreshDiffFromUserAction = refreshPreviewQuery;
+  const [workingRefresh, setWorkingRefresh] = useState(0);
+  const refreshDiffFromUserAction = useCallback(() => {
+    setWorkingRefresh((value) => value + 1);
+    refreshPreviewQuery();
+  }, [refreshPreviewQuery]);
 
   const currentLoadDiffFiles = useMemo<FileDiffContentsLoader | undefined>(() => {
     const preview = branchDiffPreview.data;
@@ -475,7 +490,7 @@ export default function DiffPanel({
     retry,
     requestFile,
     readyFilePaths,
-    renderableFiles,
+    renderableFiles: unorderedFiles,
     settledFileCount,
     loadNextFiles,
   } = useReviewFilePatches({
@@ -490,7 +505,14 @@ export default function DiffPanel({
       : undefined,
     preview: renderablePatch,
   });
-  const refreshBranchDiffPreview = refreshPreviewQuery;
+  const renderableFiles = useMemo(
+    () =>
+      unorderedFiles.toSorted((left, right) =>
+        compareReviewFilePaths(resolveFileDiffPath(left), resolveFileDiffPath(right)),
+      ),
+    [unorderedFiles],
+  );
+  const refreshBranchDiffPreview = refreshDiffFromUserAction;
 
   useEffect(() => {
     if (!canRefreshGitDiff) return;
@@ -983,7 +1005,7 @@ export default function DiffPanel({
                 size="sm"
                 pressed={wordWrap}
                 onPressedChange={(pressed) => {
-                  setWordWrap(Boolean(pressed));
+                  updateClientSettings({ wordWrap: Boolean(pressed) });
                 }}
               />
             }
@@ -1005,7 +1027,7 @@ export default function DiffPanel({
                 size="sm"
                 pressed={diffIgnoreWhitespace}
                 onPressedChange={(pressed) => {
-                  setDiffIgnoreWhitespace(Boolean(pressed));
+                  updateClientSettings({ diffIgnoreWhitespace: Boolean(pressed) });
                 }}
               />
             }
@@ -1062,6 +1084,18 @@ export default function DiffPanel({
             {fileAccess.error ?? "This connection cannot read local diffs."}
           </div>
         )
+      ) : selectedRunId === null && selectedGitScope === "unstaged" && activeCwd ? (
+        <WorkingChangesReview
+          key={`${activeThread.environmentId}:${activeCwd}`}
+          environmentId={activeThread.environmentId}
+          cwd={activeCwd}
+          composerDraftTarget={composerDraftTarget}
+          wordWrap={wordWrap}
+          split={diffLayout === "split"}
+          fileTreeOpen={fileTreeOpen}
+          revision={`${workspaceMutationId ?? ""}:${workingRefresh}`}
+          onChanged={refreshBranchDiffPreview}
+        />
       ) : (
         <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -1154,7 +1188,7 @@ export default function DiffPanel({
                   <AnnotatableCodeView
                     key={collapseScopeKey ?? reviewSectionId}
                     viewerRef={setCodeView}
-                    codeViewKey={`${codeViewMountKey}:${lazySource ? filePatchScope : "preview"}`}
+                    codeViewKey={codeViewMountKey}
                     className="h-full min-h-0 overflow-auto"
                     files={codeViewFiles}
                     renderCodeViewFooter={renderLoadingBoundary}
@@ -1165,13 +1199,15 @@ export default function DiffPanel({
                       const path = resolveFileDiffPath(fileDiff);
                       const state = fileStates.get(path);
                       return (
-                        <DiffFileHeaderSuffix
-                          filePath={path}
-                          hasStat={fileStats.has(path)}
-                          error={state?.error ?? false}
-                          truncated={state?.truncated ?? false}
-                          onRetry={retry}
-                        />
+                        <>
+                          <DiffFileHeaderSuffix
+                            filePath={path}
+                            hasStat={fileStats.has(path)}
+                            error={state?.error ?? false}
+                            truncated={state?.truncated ?? false}
+                            onRetry={retry}
+                          />
+                        </>
                       );
                     }}
                     {...(lazySource
@@ -1216,7 +1252,11 @@ export default function DiffPanel({
                   />
                 </div>
                 {fileTreeOpen ? (
-                  <aside className="flex w-[min(16rem,40%)] min-w-40 shrink-0 border-l border-border/60">
+                  <aside
+                    className="relative flex w-(--resizable-width) max-w-[60%] min-w-48 shrink-0 flex-col border-l border-border/60"
+                    style={{ "--resizable-width": `${treeWidth.width}px` } as React.CSSProperties}
+                  >
+                    <RightPanelResizeHandle handlers={treeWidth.handlers} />
                     <DiffFileTree
                       ariaLabel={`${reviewSectionTitle} files`}
                       entries={fileTreeEntries}

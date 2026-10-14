@@ -7,7 +7,8 @@ import { FileDiff } from "@pierre/diffs/react";
 import { useMemo } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import { resolveDiffThemeName } from "~/lib/diffRendering";
+import { useClientSettings } from "~/hooks/useSettings";
+import { hideWhitespaceChanges, resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 
 import { DIFF_VIEW_UNSAFE_CSS } from "../../diffs/StyledDiffCodeView";
@@ -25,14 +26,18 @@ export function GuideFileDiff({
   loadDiffFiles: FileDiffContentsLoader;
 }) {
   const { resolvedTheme } = useTheme();
+  const settings = useClientSettings();
   // Loading the unchanged lines rewrites the diff it is given; the excerpts read the same file
   // as a patch, so this view expands a copy of its own.
-  const expandable = useMemo(() => cloneFileDiffMetadata(file), [file]);
+  const expandable = useMemo(
+    () => cloneFileDiffMetadata(settings.diffIgnoreWhitespace ? hideWhitespaceChanges(file) : file),
+    [file, settings.diffIgnoreWhitespace],
+  );
   const options = useMemo(
     () => ({
-      diffStyle: "unified" as const,
+      diffStyle: settings.diffLayout === "split" ? ("split" as const) : ("unified" as const),
       lineDiffType: "none" as const,
-      overflow: "scroll" as const,
+      overflow: settings.wordWrap ? ("wrap" as const) : ("scroll" as const),
       disableFileHeader: true,
       theme: resolveDiffThemeName(resolvedTheme),
       themeType: resolvedTheme,
@@ -40,7 +45,7 @@ export function GuideFileDiff({
       unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
       loadDiffFiles,
     }),
-    [loadDiffFiles, resolvedTheme],
+    [loadDiffFiles, resolvedTheme, settings.diffLayout, settings.wordWrap],
   );
   return (
     <div className="border-t border-border/60">

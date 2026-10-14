@@ -1,6 +1,11 @@
-import type { EnvironmentId, PullRequestRef, PullRequestReviewGuideStop } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestDetailView,
+  PullRequestRef,
+  PullRequestReviewGuideStop,
+} from "@t3tools/contracts";
 import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef } from "react";
 
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -8,6 +13,7 @@ import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import type { ExcerptCommenting } from "./guide/GuideExcerpt";
+import { PullRequestAttachments } from "./PullRequestAttachments";
 import { guideRunKey, useGuideRunStore } from "./guide/guideRunStore";
 import { GuideProseContext } from "./guide/GuideProse";
 import { GuideTour } from "./guide/GuideTour";
@@ -28,9 +34,11 @@ export function PullRequestGuideTab({
   environmentId,
   reference,
   title,
+  detail,
   workspaceRoot,
   active,
   canComment,
+  canCommentRanges = false,
   onAskAboutLines,
   onAskAboutStop,
   onFinishReview,
@@ -41,12 +49,14 @@ export function PullRequestGuideTab({
   reference: PullRequestRef;
   /** The pull request's title for the notice when a guide is ready, null until the detail loads. */
   title: string | null;
+  detail: Pick<PullRequestDetailView, "capabilities" | "reviewThreads">;
   /** The checkout the guide's prose renders against, as the description does. */
   workspaceRoot: string;
   /** Whether this is the tab on screen. */
   active: boolean;
   /** Whether this reader may queue line comments for a review on this host. */
   canComment: boolean;
+  canCommentRanges?: boolean;
   /** Opens an agent thread about lines of the change. Null where no thread can be opened. */
   onAskAboutLines: ((comment: ReviewCommentContext, request: string) => void) | null;
   onAskAboutStop:
@@ -67,7 +77,7 @@ export function PullRequestGuideTab({
   const runKey = guideRunKey(environmentId, reference);
   // Line comments join the review the Code tab collects, so either place shows and sends them.
   const reviewKey = pullRequestReviewKey(reference);
-  const pending = usePendingReviewComments(reference);
+  const pending = usePendingReviewComments(reference, detail.reviewThreads);
   const addComment = usePullRequestReviewStore((store) => store.addComment);
   const removeComment = usePullRequestReviewStore((store) => store.removeComment);
   const commenting = useMemo<ExcerptCommenting | null>(
@@ -76,7 +86,22 @@ export function PullRequestGuideTab({
         ? null
         : {
             canComment,
+            canCommentRanges,
+            renderAttachments: (onTextChange, onBusyChange, textareaRef) => (
+              <PullRequestAttachments
+                environmentId={environmentId}
+                reference={reference}
+                onTextChange={onTextChange}
+                textareaRef={textareaRef}
+                onBusyChange={onBusyChange}
+              />
+            ),
             pending,
+            pendingCommentTarget: {
+              environmentId,
+              reference,
+              canCopyLink: detail.capabilities.review.draftComment === true,
+            },
             onComment: ({ path, oldPath, position, body }) =>
               addComment(reviewKey, {
                 id: nextPendingReviewCommentId(),
@@ -88,7 +113,18 @@ export function PullRequestGuideTab({
             onRemove: (commentId) => removeComment(reviewKey, commentId),
             onAskAgent: onAskAboutLines,
           },
-    [addComment, canComment, onAskAboutLines, pending, removeComment, reviewKey],
+    [
+      addComment,
+      canComment,
+      canCommentRanges,
+      detail,
+      environmentId,
+      reference,
+      onAskAboutLines,
+      pending,
+      removeComment,
+      reviewKey,
+    ],
   );
   useEffect(() => {
     if (!active) return;
@@ -111,6 +147,22 @@ export function PullRequestGuideTab({
   // A failure is shown only while it is about the head the reader is looking at.
   const failure =
     runState?._tag === "Failed" && runState.headSha === currentHeadSha ? runState.detail : null;
+  const attemptedGuide = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !active ||
+      data === null ||
+      data === undefined ||
+      guide !== null ||
+      running ||
+      !canWrite ||
+      failure !== null ||
+      attemptedGuide.current === runKey
+    )
+      return;
+    attemptedGuide.current = runKey;
+    void write();
+  }, [active, data, guide, running, canWrite, failure, runKey, write]);
   const writeButton = (label: string, size: "sm" | "xs") =>
     canWrite ? (
       <Button size={size} variant="outline" disabled={running} onClick={() => void write()}>

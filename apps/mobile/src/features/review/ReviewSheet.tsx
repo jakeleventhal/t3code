@@ -1,3 +1,4 @@
+import { WorkingChangesReview } from "./WorkingChangesReview";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -472,6 +473,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
 
   useEffect(() => {
     showAuxiliaryPane("inspector");
+    // eslint-disable-next-line react/exhaustive-effect-dependencies -- Entering another thread must reopen its review inspector.
   }, [environmentId, showAuxiliaryPane, threadId]);
   const {
     error,
@@ -503,7 +505,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     threadKey: reviewCache.threadKey,
     environmentId,
     cwd: selectedThreadCwd,
-    selectedSection,
+    selectedSection: selectedSection?.kind === "working-tree" ? null : selectedSection,
     revision: diffPreviewRevision,
     draftMessage,
   });
@@ -511,19 +513,19 @@ export function ReviewSheet(props: ReviewSheetProps) {
   // when the binary lacks it). Rendering a null component type crashes the
   // app, so callers must fall back — ThreadFeed's ReviewCommentCard does the
   // same check.
-  const NativeReviewDiffView = resolveNativeReviewDiffView();
+  const [NativeReviewDiffView] = useState(() => resolveNativeReviewDiffView());
   const nativeReviewDiffViewRef = useRef<NativeReviewDiffViewHandle>(null);
   const showcasedReviewDrawRef = useRef<string | null>(null);
   // Native pull-to-refresh on the diff surface (replaces the old Refresh menu item).
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const handlePullToRefresh = useCallback(async () => {
+  const handlePullToRefresh = async () => {
     setIsPullRefreshing(true);
     try {
       await refreshSelectedSection();
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [refreshSelectedSection]);
+  };
   const reviewFileNavigatorRef = useRef<ReviewFileNavigatorHandle>(null);
   const reviewFiles = parsedDiff.kind === "files" ? parsedDiff.files : [];
   const fileVisibility = useReviewFileVisibility({
@@ -558,9 +560,10 @@ export function ReviewSheet(props: ReviewSheetProps) {
     SHOWCASE_ENABLED && parsedDiff.kind === "files" && selectedSection
       ? `${reviewCache.threadKey}:${selectedSection.id}:${nativeBridge.tokensResetKey}:${nativeBridge.themeId}`
       : null;
+  const { onDebug: onNativeDebug, themeId: nativeThemeId } = nativeBridge;
   const handleNativeDebug = useCallback(
     (event: NativeSyntheticEvent<Record<string, unknown>>) => {
-      nativeBridge.onDebug(event);
+      onNativeDebug(event);
       if (
         showcaseReviewKey === null ||
         showcasedReviewDrawRef.current === showcaseReviewKey ||
@@ -569,9 +572,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
         return;
       }
       showcasedReviewDrawRef.current = showcaseReviewKey;
-      reportShowcaseSceneRendered({ scene: "review", themeId: nativeBridge.themeId });
+      reportShowcaseSceneRendered({ scene: "review", themeId: nativeThemeId });
     },
-    [nativeBridge.onDebug, nativeBridge.themeId, showcaseReviewKey],
+    [onNativeDebug, nativeThemeId, showcaseReviewKey],
   );
 
   const handleSelectFile = useCallback(
@@ -755,6 +758,21 @@ export function ReviewSheet(props: ReviewSheetProps) {
                 onRetry={handleRetryEnvironment}
               />
             </View>
+          ) : selectedSection?.kind === "working-tree" && selectedThreadCwd ? (
+            <View
+              className="flex-1"
+              style={{ paddingTop: topContentInset, paddingBottom: bottomContentInset }}
+            >
+              <WorkingChangesReview
+                key={`${environmentId}:${selectedThreadCwd}`}
+                environmentId={environmentId}
+                threadId={threadId}
+                cwd={selectedThreadCwd}
+                draftMessage={draftMessage}
+                revision={diffPreviewRevision}
+                onChanged={refreshSelectedSection}
+              />
+            </View>
           ) : selectedSection && parsedDiff.kind === "files" && NativeReviewDiffView ? (
             <View
               className="flex-1"
@@ -794,6 +812,8 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     viewedFileIdsJson={nativeBridge.viewedFileIdsJson}
                     onDebug={handleNativeDebug}
                     onPressLine={commentSelection.onPressLine}
+                    enableLineRangeSelection
+                    onSelectLineRange={commentSelection.onSelectLineRange}
                     onVisibleFileChange={handleVisibleFileChange}
                     onToggleComment={nativeBridge.onToggleComment}
                     onToggleFile={handleNativeToggleFile}
