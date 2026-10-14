@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { hydratePartialDiff } from "@pierre/diffs";
-import { reviewPatchHunks } from "@t3tools/client-runtime/review-workspace";
+import {
+  reviewPatchHunks,
+  reviewSelectedLinesPatch,
+} from "@t3tools/client-runtime/review-workspace";
 import { reviewDiffEdits } from "@t3tools/client-runtime/review-diff-context";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import {
@@ -43,6 +46,112 @@ const unstagedGamma = snapshot("@@ -1,3 +1,3 @@\n ALPHA\n beta\n-gamma\n+GAMMA\n
 const combined = snapshot("@@ -1,3 +1,3 @@\n-alpha\n+ALPHA\n beta\n-gamma\n+GAMMA\n");
 
 describe("optimistic working changes", () => {
+  it("reverts one selected added line while preserving staged and neighboring unstaged changes", () => {
+    const unstaged = snapshot("@@ -1,3 +1,4 @@\n ALPHA\n-beta\n+BETA\n+extra\n gamma\n");
+    const patch = reviewSelectedLinesPatch(
+      unstaged.hunksByPath.get("file.txt")!,
+      { start: 3, end: 3, side: "additions" },
+      true,
+    )!;
+    const next = applyWorkingChangesMutation({ staged: stagedAlpha, unstaged }, unstaged, {
+      scope: "unstaged",
+      paths: ["file.txt"],
+      patch,
+      revert: true,
+    });
+    expect(edits(next.unstaged)).toEqual(["-beta", "+BETA"]);
+    expect(edits(next.staged)).toEqual(["-alpha", "+ALPHA"]);
+    expect(next.staged.hunksByPath.get("file.txt")).toEqual(
+      stagedAlpha.hunksByPath.get("file.txt"),
+    );
+  });
+
+  it("removes a completed hunk from the all-files render but retains it as context in a selected file", () => {
+    const unstaged = snapshot(
+      "@@ -1,3 +1,3 @@\n-old\n+new\n context\n end\n@@ -20,1 +20,1 @@\n-other old\n+other new\n",
+    );
+    const patch = unstaged.hunksByPath.get("file.txt")![0]!;
+    const mutation = { scope: "unstaged" as const, paths: ["file.txt"], patch, revert: true };
+    const allFiles = applyWorkingChangesMutation({ staged: snapshot(""), unstaged }, unstaged, {
+      ...mutation,
+      retainContext: false,
+    });
+    const singleFile = applyWorkingChangesMutation({ staged: snapshot(""), unstaged }, unstaged, {
+      ...mutation,
+      retainContext: true,
+    });
+    expect(edits(allFiles.unstaged)).toEqual(["-other old", "+other new"]);
+    expect(allFiles.unstaged.files[0]!.hunks).toHaveLength(1);
+    expect(allFiles.unstaged.files[0]!.hunks[0]!.additionStart).toBe(20);
+    expect(singleFile.unstaged.files[0]!.hunks).toHaveLength(2);
+    const final = applyWorkingChangesMutation(singleFile, unstaged, {
+      ...mutation,
+      patch: singleFile.unstaged.hunksByPath.get("file.txt")![0]!,
+      retainContext: true,
+    });
+    expect(final.unstaged.files).toEqual([]);
+    expect(final.unstaged.retainedFiles).toHaveLength(1);
+    expect(reviewDiffEdits(final.unstaged.retainedFiles![0]!)).toBe("[]");
+    expect(final.staged.files).toEqual([]);
+  });
+
+  it("retains a fully reverted file as context for the single-file reader", () => {
+    const next = applyWorkingChangesMutation(
+      { staged: stagedAlpha, unstaged: unstagedGamma },
+      combined,
+      { scope: "unstaged", paths: ["file.txt"], revert: true },
+    );
+    expect(next.unstaged.files).toEqual([]);
+    expect(next.unstaged.retainedFiles).toHaveLength(1);
+    expect(reviewDiffEdits(next.unstaged.retainedFiles![0]!)).toBe("[]");
+    expect(edits(next.staged)).toEqual(["-alpha", "+ALPHA"]);
+  });
+
+  it("keeps a restored line visible after reverting an addition and then its remaining deletion", () => {
+    const unstaged = snapshot("@@ -1,3 +1,3 @@\n ALPHA\n-beta\n+BETA\n gamma\n");
+    const patch = reviewSelectedLinesPatch(
+      unstaged.hunksByPath.get("file.txt")!,
+      { start: 2, end: 2, side: "additions" },
+      true,
+    )!;
+    const partial = applyWorkingChangesMutation({ staged: stagedAlpha, unstaged }, unstaged, {
+      scope: "unstaged",
+      paths: ["file.txt"],
+      patch,
+      revert: true,
+    });
+    const cleared = applyWorkingChangesMutation(partial, unstaged, {
+      scope: "unstaged",
+      paths: ["file.txt"],
+      patch: partial.unstaged.hunksByPath.get("file.txt")![0]!,
+      revert: true,
+    });
+    expect(cleared.unstaged.files).toEqual([]);
+    expect(cleared.unstaged.retainedFiles![0]!.additionLines).toContain("beta\n");
+  });
+
+  it.each(["staged", "unstaged"] as const)(
+    "drops cleared hunks from the %s all-files view",
+    (scope) => {
+      const changes = snapshot(
+        "@@ -1,1 +1,1 @@\n-old\n+new\n@@ -20,1 +20,1 @@\n-other old\n+other new\n",
+      );
+      const empty = snapshot("");
+      const current = {
+        staged: scope === "staged" ? changes : empty,
+        unstaged: scope === "unstaged" ? changes : empty,
+      };
+      const next = applyWorkingChangesMutation(current, changes, {
+        scope,
+        paths: ["file.txt"],
+        patch: changes.hunksByPath.get("file.txt")![0]!,
+        retainContext: false,
+      });
+      expect(next[scope].files[0]!.hunks).toHaveLength(1);
+      expect(edits(next[scope])).toEqual(["-other old", "+other new"]);
+    },
+  );
+
   it("composes overlapping context when a hunk moves into an already-staged file", () => {
     const current = { staged: stagedAlpha, unstaged: unstagedGamma };
     const next = applyWorkingChangesMutation(current, combined, {

@@ -25,7 +25,18 @@ import {
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "~/lib/diffRendering";
-import { Files, GitBranch, ChevronDown, GitCommitHorizontal, Sparkles } from "lucide";
+import {
+  Files,
+  GitBranch,
+  ChevronDown,
+  GitCommitHorizontal,
+  Sparkles,
+  FilePlus,
+  FileMinus,
+  Plus,
+  Minus,
+  Undo2,
+} from "lucide";
 import { WorkingChangesTree } from "./WorkingChangesTree";
 import { Badge } from "../ui/badge";
 import { DiffStatLabel } from "../chat/DiffStatLabel";
@@ -70,6 +81,7 @@ interface WorkingReviewProps {
 }
 
 type WorkingScope = "staged" | "unstaged";
+
 type WorkingSelection = { scope: WorkingScope; path: string | null };
 type WorkingNavigation = {
   view: "files" | "git";
@@ -172,6 +184,8 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     scope: WorkingScope;
     paths: string[];
     patch?: string;
+    revert?: boolean;
+    retainContext: boolean;
     combined: WorkingChangesState["staged"];
   };
   const stagingQueue = useRef<OptimisticReviewMutationQueue<
@@ -185,7 +199,11 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     remembered?.workspacePath ?? null,
   );
   const [generatingMessage, setGeneratingMessage] = useState(false);
-  const [reverting, setReverting] = useState<{ paths: string[]; label: string } | null>(null);
+  const [reverting, setReverting] = useState<{
+    paths: string[];
+    label: string;
+    patch?: string;
+  } | null>(null);
   const all = useWorkingChanges(props, undefined, generation);
   const staged = useWorkingChanges(props, "staged", generation);
   const unstaged = useWorkingChanges(props, "unstaged", generation);
@@ -283,7 +301,9 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   };
   const scope = selection.scope;
   const retained =
-    view === "git" && readerContext?.selection === selection ? readerContext.state[scope] : null;
+    view === "git" && selection.path !== null && readerContext?.selection === selection
+      ? readerContext.state[scope]
+      : null;
   const authoritativeReaderFiles = (view === "files" ? all : scopes[scope]).files;
   const readerFiles = useMemo(() => {
     const actual = authoritativeReaderFiles;
@@ -415,6 +435,11 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     }
   };
   const runRevert = async () => {
+    if (reverting?.patch) {
+      updateStaging("unstaged", reverting.paths, reverting.patch, true);
+      setReverting(null);
+      return;
+    }
     if (busy.current || pending || stagingCountRef.current > 0 || !canRevert || !reverting) return;
     busy.current = true;
     refreshedScopes.current = { staged: false, unstaged: false };
@@ -461,8 +486,13 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   };
   const canStage = useAtomValue(reviewEnvironment.setStaged.permissionAtom(environmentId));
   const stage = useAtomCommand(reviewEnvironment.setStaged, { reportFailure: false });
-  const updateStaging = (scope: WorkingScope, paths: string[], patch?: string) => {
-    if (pending || !canStage || paths.length === 0) return;
+  const updateStaging = (
+    scope: WorkingScope,
+    paths: string[],
+    patch?: string,
+    revertingPatch = false,
+  ) => {
+    if (pending || !(revertingPatch ? canRevert : canStage) || paths.length === 0) return;
     const current = stagingState.current ?? scopes;
     const displayed = {
       ...current,
@@ -479,16 +509,23 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     if (stagingCountRef.current === 0) {
       stagingQueue.current = new OptimisticReviewMutationQueue(displayed, {
         apply: (state, mutation) => applyWorkingChangesMutation(state, mutation.combined, mutation),
-        send: async ({ scope, paths, patch }) => {
-          const result = await stage({
-            environmentId,
-            input: {
-              cwd,
-              paths: [...new Set(paths)],
-              staged: scope === "unstaged",
-              ...(patch ? { patch } : {}),
-            },
-          });
+        send: async ({ scope, paths, patch, revert: revertingPatch }) => {
+          const result = revertingPatch
+            ? await revert({
+                environmentId,
+                // Older servers reject an empty selection instead of ignoring the patch
+                // and reverting a whole file. The patch supplies its own file paths.
+                input: { cwd, paths: [], ...(patch ? { patch } : {}) },
+              })
+            : await stage({
+                environmentId,
+                input: {
+                  cwd,
+                  paths: [...new Set(paths)],
+                  staged: scope === "unstaged",
+                  ...(patch ? { patch } : {}),
+                },
+              });
           return result._tag === "Success";
         },
         onSnapshot: (state, pendingCount) => {
@@ -513,14 +550,20 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
         onFailure: () =>
           toastManager.add({
             type: "error",
-            title: "Could not update staging",
-            description:
-              "The failed action was rolled back. Your other staging actions have been kept.",
+            title: "Could not update changes",
+            description: "The failed action was rolled back. Your other changes have been kept.",
           }),
       });
     }
     setReaderContext({ selection, state: displayed });
-    stagingQueue.current!.enqueue({ scope, paths, ...(patch ? { patch } : {}), combined: all });
+    stagingQueue.current!.enqueue({
+      scope,
+      paths,
+      ...(patch ? { patch } : {}),
+      revert: revertingPatch,
+      retainContext: view === "git" && selection.path !== null,
+      combined: all,
+    });
   };
   const stagingPaths = (scope: WorkingScope, path: string) =>
     scopes[scope].files.flatMap((file) =>
@@ -576,6 +619,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
           aria-label={`${scope === "unstaged" ? "Stage" : "Unstage"} ${path}`}
           onClick={() => void updateStaging(scope, stagingPaths(scope, path))}
         >
+          <MorphIcon icon={scope === "unstaged" ? FilePlus : FileMinus} />
           {scope === "unstaged" ? "Stage file" : "Unstage file"}
         </Button>
       </>
@@ -695,6 +739,37 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                         }
                       : undefined
                   }
+                  canRevertLines={(file, range) =>
+                    canRevert &&
+                    !pending &&
+                    Boolean(
+                      reviewSelectedLinesPatch(
+                        data.hunksByPath.get(resolveFileDiffPath(file)) ?? [],
+                        range,
+                        true,
+                        props.split ? "split" : "unified",
+                      ),
+                    )
+                  }
+                  onRevertLines={
+                    view === "git" && scope === "unstaged"
+                      ? (file, range) => {
+                          const path = resolveFileDiffPath(file);
+                          const patch = reviewSelectedLinesPatch(
+                            data.hunksByPath.get(path) ?? [],
+                            range,
+                            true,
+                            props.split ? "split" : "unified",
+                          );
+                          if (patch)
+                            setReverting({
+                              paths: stagingPaths(scope, path),
+                              patch,
+                              label: `the selected ${range.start === range.end ? "line" : "lines"} in ${path}`,
+                            });
+                        }
+                      : undefined
+                  }
                   renderHunkAction={
                     view === "git"
                       ? (file, index) => {
@@ -704,16 +779,35 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                             file.hunks[index]?.hunkSpecs ?? "",
                           );
                           return patch ? (
-                            <div className="flex justify-end px-3 py-0.5 font-sans">
+                            <div className="flex justify-end gap-1 px-3 py-0.5 font-sans">
+                              {scope === "unstaged" ? (
+                                <Button
+                                  size="xs"
+                                  variant="ghost-muted"
+                                  disabled={!canRevert || pending}
+                                  aria-label={`Revert hunk ${index + 1} in ${path}`}
+                                  onClick={() =>
+                                    setReverting({
+                                      paths: stagingPaths(scope, path),
+                                      patch,
+                                      label: `hunk ${index + 1} in ${path}`,
+                                    })
+                                  }
+                                >
+                                  <MorphIcon icon={Undo2} />
+                                  Revert hunk
+                                </Button>
+                              ) : null}
                               <Button
                                 size="xs"
-                                variant="outline"
+                                variant="ghost"
                                 disabled={!canStage || pending}
                                 aria-label={`${scope === "unstaged" ? "Stage" : "Unstage"} hunk ${index + 1} in ${path}`}
                                 onClick={() =>
                                   void updateStaging(scope, stagingPaths(scope, path), patch)
                                 }
                               >
+                                <MorphIcon icon={scope === "unstaged" ? Plus : Minus} />
                                 {scope === "unstaged" ? "Stage hunk" : "Unstage hunk"}
                               </Button>
                             </div>
@@ -951,8 +1045,9 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
           <DialogHeader>
             <DialogTitle>Revert unstaged changes?</DialogTitle>
             <DialogDescription>
-              This discards unstaged edits in {reverting?.label}. Staged changes are kept. Selected
-              new, untracked files will be deleted.
+              This reverts {reverting?.patch ? "only " : "unstaged edits in "}
+              {reverting?.label}. Staged changes are kept.
+              {!reverting?.patch ? " Selected new, untracked files will be deleted." : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

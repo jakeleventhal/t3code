@@ -67,6 +67,7 @@ function optimisticFile(
   fallback: FileDiffMetadata,
   header: string,
   anchorSide: "additions" | "deletions",
+  retainContext = true,
 ) {
   const contextFile = projectReviewDiffContext(before, after, fallback, anchorSide);
   if (before.join("") === after.join("")) return { file: null, hunks: [], contextFile };
@@ -103,7 +104,7 @@ function optimisticFile(
   const file = parsePatchFiles(patch, `optimistic:${Hash.string(patch)}`)[0]?.files[0];
   return file
     ? {
-        file: contextFile,
+        file: retainContext ? contextFile : file,
         hunks,
         contextFile,
       }
@@ -116,6 +117,8 @@ function stagePatch(
   patch: string,
   scope: Scope,
   fallback: FileDiffMetadata,
+  revert = false,
+  retainContext = true,
 ) {
   const staged = current.staged.hunksByPath.get(path) ?? [];
   const unstaged = current.unstaged.hunksByPath.get(path) ?? [];
@@ -154,7 +157,8 @@ function stagePatch(
   );
   const head = applyPatch(index, staged, true);
   const working = applyPatch(index, unstaged);
-  const nextIndex = applyPatch(index, [patch], scope === "staged");
+  const nextIndex = revert ? index : applyPatch(index, [patch], scope === "staged");
+  const nextWorking = revert ? applyPatch(working, [patch], true) : working;
   const header = patch.split(/(?=^@@ )/m)[0]!;
   return {
     staged: optimisticFile(
@@ -163,13 +167,15 @@ function stagePatch(
       current.staged.files.find((file) => resolveFileDiffPath(file) === path) ?? fallback,
       header,
       scope === "staged" ? "deletions" : "additions",
+      retainContext,
     ),
     unstaged: optimisticFile(
       nextIndex,
-      working,
+      nextWorking,
       current.unstaged.files.find((file) => resolveFileDiffPath(file) === path) ?? fallback,
       header,
-      "additions",
+      revert ? "deletions" : "additions",
+      retainContext,
     ),
   };
 }
@@ -178,7 +184,13 @@ function stagePatch(
 export function applyWorkingChangesMutation(
   current: WorkingChangesState,
   combined: WorkingChangesSnapshot,
-  mutation: { scope: Scope; paths: ReadonlyArray<string>; patch?: string; revert?: boolean },
+  mutation: {
+    scope: Scope;
+    paths: ReadonlyArray<string>;
+    patch?: string;
+    revert?: boolean;
+    retainContext?: boolean;
+  },
 ): WorkingChangesState {
   const destination = mutation.scope === "staged" ? "unstaged" : "staged";
   const paths = new Set(mutation.paths);
@@ -199,33 +211,45 @@ export function applyWorkingChangesMutation(
   for (const file of affected) {
     const path = resolveFileDiffPath(file);
     if (mutation.patch) {
-      const changed = stagePatch(current, path, mutation.patch, mutation.scope, file);
+      const changed = stagePatch(
+        current,
+        path,
+        mutation.patch,
+        mutation.scope,
+        file,
+        mutation.revert,
+        mutation.retainContext,
+      );
       const source = changed[mutation.scope];
       const target = changed[destination];
       if (source?.file) sourceFiles.set(path, source.file);
       else sourceFiles.delete(path);
       if (source) retainedFiles.set(path, source.contextFile);
       sourceHunks.set(path, source?.hunks ?? []);
-      if (target?.file) destinationFiles.set(path, target.file);
-      else destinationFiles.delete(path);
-      destinationHunks.set(path, target?.hunks ?? []);
+      if (!mutation.revert) {
+        if (target?.file) destinationFiles.set(path, target.file);
+        else destinationFiles.delete(path);
+        destinationHunks.set(path, target?.hunks ?? []);
+      }
     } else {
       sourceFiles.delete(path);
       sourceHunks.delete(path);
+      const raw = current[mutation.scope].hunksByPath.get(path) ?? [];
+      const header = raw[0]?.split(/(?=^@@ )/m)[0];
+      const changed = header
+        ? stagePatch(
+            current,
+            path,
+            header + raw.map((hunk) => hunk.slice(hunk.indexOf("@@ "))).join(""),
+            mutation.scope,
+            file,
+            mutation.revert,
+            mutation.retainContext,
+          )
+        : null;
+      const cleared = changed?.[mutation.scope]?.contextFile;
+      if (cleared) retainedFiles.set(path, cleared);
       if (!mutation.revert) {
-        const raw = current[mutation.scope].hunksByPath.get(path) ?? [];
-        const header = raw[0]?.split(/(?=^@@ )/m)[0];
-        const changed = header
-          ? stagePatch(
-              current,
-              path,
-              header + raw.map((hunk) => hunk.slice(hunk.indexOf("@@ "))).join(""),
-              mutation.scope,
-              file,
-            )
-          : null;
-        const cleared = changed?.[mutation.scope]?.contextFile;
-        if (cleared) retainedFiles.set(path, cleared);
         const complete = combined.files.find(
           (candidate) =>
             resolveFileDiffPath(candidate) === path && !candidate.cacheKey?.endsWith(":pending"),
