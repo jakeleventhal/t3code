@@ -15,6 +15,7 @@ import {
 } from "@t3tools/shared/filePreview";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 
+import { AppTextInput } from "../../components/AppText";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { AudioFilePreview } from "../../components/AudioFilePreview";
 import { EmptyState } from "../../components/EmptyState";
@@ -426,7 +427,10 @@ function FilesToolbarBottomFade() {
 }
 
 export function ThreadFilesTreeScreen(
-  props: ThreadFilesRouteScreenProps & { readonly workspaceTabs?: ReactNode },
+  props: ThreadFilesRouteScreenProps & {
+    readonly workspaceTabs?: ReactNode;
+    readonly workspaceHeader?: ReactNode;
+  },
 ) {
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
@@ -562,13 +566,15 @@ export function ThreadFilesTreeScreen(
 
   const content = (
     <>
-      <FilesBrowserHeader
-        projectName={projectName}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        onRefresh={entriesQuery.refresh}
-        onBack={handleReturnToThread}
-      />
+      {props.workspaceHeader ?? (
+        <FilesBrowserHeader
+          projectName={projectName}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onRefresh={entriesQuery.refresh}
+          onBack={handleReturnToThread}
+        />
+      )}
       <MaterialScreenContent insetHorizontal={layout.usesSplitView}>
         <FileTreeBrowser
           key={JSON.stringify([environmentId, cwd])}
@@ -584,7 +590,27 @@ export function ThreadFilesTreeScreen(
           onPreviewFile={handlePreviewFile}
           onRefresh={entriesQuery.refresh}
           onSelectFile={handleSelectFile}
-          toolbar={props.workspaceTabs}
+          pinnedToolbar={props.workspaceHeader !== undefined}
+          toolbar={
+            props.workspaceHeader ? (
+              <>
+                {props.workspaceTabs}
+                <View className="px-3 py-2">
+                  <AppTextInput
+                    accessibilityLabel="Search files"
+                    placeholder="Search files"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    className="min-h-9 py-2 text-sm"
+                  />
+                </View>
+              </>
+            ) : (
+              props.workspaceTabs
+            )
+          }
         />
         <FilesToolbarBottomFade />
       </MaterialScreenContent>

@@ -1,6 +1,7 @@
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import {
   AuthFilesystemReadScope,
+  AuthOrchestrationReadScope,
   CheckpointRef,
   EnvironmentId,
   MessageId,
@@ -11,7 +12,7 @@ import {
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
-  session: null as Pick<AuthSessionState, "authenticated" | "scopes"> | null,
+  session: null as Pick<AuthSessionState, "authenticated" | "scopes" | "permissions"> | null,
   sessionError: null as string | null,
   sessionAtom: {},
   effects: [] as Array<() => void>,
@@ -222,4 +223,16 @@ it("does not expose a forced local comparison after filesystem access is denied"
   const opened = renderSections({ ...makeInput(), selectedSectionId: "git:working-tree" });
   expect(opened.selectedSection?.diff).toBe(checkpointDiff);
   expect(opened.reviewSections.some((section) => section.kind === "working-tree")).toBe(false);
+});
+
+it("explains old connection permissions even when a recorded turn remains readable", () => {
+  state.session = {
+    authenticated: true,
+    scopes: [AuthOrchestrationReadScope],
+    permissions: [AuthOrchestrationReadScope],
+  };
+  const review = renderSections(makeInput());
+  expect(review.selectedSection?.diff).toBe(checkpointDiff);
+  expect(review.reviewSections.map((section) => section.id)).toEqual(["turn:1"]);
+  expect(review.liveGitUnavailableReason).toContain("Pair again with Read files access");
 });

@@ -1,4 +1,3 @@
-import { ReviewFileTree } from "../review/ReviewFileTree";
 import { PullRequestCommitPicker } from "./PullRequestCommitPicker";
 import { ReviewChapterNavigation } from "../review/ReviewChapterNavigation";
 import {
@@ -62,7 +61,6 @@ import {
   ActivityIndicator,
   Linking,
   Platform,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -71,7 +69,7 @@ import {
   View,
 } from "react-native";
 import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
@@ -511,10 +509,19 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                   >
                     <View className="px-4 py-3">
                       <SegmentedControl
+                        variant="tabs"
                         options={[
-                          { value: "overview", label: "Overview" },
-                          ...(guidesEnabled ? [{ value: "guide" as const, label: "Guide" }] : []),
-                          { value: "diff", label: "Diff" },
+                          { value: "overview", label: "Overview", icon: "doc.text" },
+                          ...(guidesEnabled
+                            ? [
+                                {
+                                  value: "guide" as const,
+                                  label: "Guide",
+                                  icon: "list.number" as const,
+                                },
+                              ]
+                            : []),
+                          { value: "diff", label: "Diff", icon: "plusminus" },
                         ]}
                         selected={section}
                         onSelect={selectSection}
@@ -688,13 +695,19 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                           >
                             <PullRequestIdentity pr={identity} params={params} />
                             <SegmentedControl
-                              className={Platform.OS === "android" ? undefined : "bg-grouped-card"}
+                              variant="tabs"
                               options={[
-                                { value: "overview", label: "Overview" },
+                                { value: "overview", label: "Overview", icon: "doc.text" },
                                 ...(guidesEnabled
-                                  ? [{ value: "guide" as const, label: "Guide" }]
+                                  ? [
+                                      {
+                                        value: "guide" as const,
+                                        label: "Guide",
+                                        icon: "list.number" as const,
+                                      },
+                                    ]
                                   : []),
-                                { value: "diff", label: "Diff" },
+                                { value: "diff", label: "Diff", icon: "plusminus" },
                               ]}
                               selected={section}
                               onSelect={selectSection}
@@ -797,7 +810,6 @@ export function PullRequestDiffContent({
     !result.isPending &&
     !result.error;
   const activity = useEnvironmentQuery(composerPullRequests.activity(requestTarget(params)));
-  const [showFiles, setShowFiles] = useState(false);
   const { preferences: viewingPreferences, update: updateViewingPreferences } =
     usePullRequestViewingPreferences();
   const { commentsOnly, hideReviewed, groupByType } = viewingPreferences;
@@ -1095,84 +1107,42 @@ export function PullRequestDiffContent({
     setRangeEndRowId(null);
     setCommit(scope);
   };
-  const viewingActions = [
-    { id: "files", title: "Open file list", state: "off" as const },
-    ...(!isGuideChapter
-      ? [
-          {
-            id: "comments-only",
-            title: "Files with unresolved comments",
-            state: commentsOnly ? ("on" as const) : ("off" as const),
-          },
-          {
-            id: "hide-reviewed",
-            title: "Hide reviewed files",
-            state: hideReviewed ? ("on" as const) : ("off" as const),
-            attributes: { disabled: !viewed.supported },
-          },
-          {
-            id: "group-files",
-            title: "Group by file type",
-            state: groupByType ? ("on" as const) : ("off" as const),
-          },
-          { id: "expand-all", title: "Expand all files", state: "off" as const },
-          { id: "collapse-all", title: "Collapse all files", state: "off" as const },
-        ]
-      : []),
-  ];
+  const viewingActions = !isGuideChapter
+    ? [
+        {
+          id: "comments-only",
+          title: "Files with unresolved comments",
+          state: commentsOnly ? ("on" as const) : ("off" as const),
+        },
+        {
+          id: "hide-reviewed",
+          title: "Hide reviewed files",
+          state: hideReviewed ? ("on" as const) : ("off" as const),
+          attributes: { disabled: !viewed.supported },
+        },
+        {
+          id: "group-files",
+          title: "Group by file type",
+          state: groupByType ? ("on" as const) : ("off" as const),
+        },
+      ]
+    : [];
+  const expandAllFiles = () => {
+    setCollapsedIds(EMPTY_IDS);
+    setExpandedViewed(new Set(viewedIds));
+  };
+  const collapseAllFiles = () => {
+    setCollapsedIds(data.files.map((file) => file.id));
+    setExpandedViewed(new Set());
+  };
   const changeViewingOption = (id: string) => {
-    if (id === "expand-all") {
-      setCollapsedIds(EMPTY_IDS);
-      setExpandedViewed(new Set(viewedIds));
-      return;
-    }
-    if (id === "collapse-all") {
-      setCollapsedIds(data.files.map((file) => file.id));
-      setExpandedViewed(new Set());
-      return;
-    }
     setJumpPath("");
     setSelectedRowId(null);
     setRangeEndRowId(null);
-    if (id === "files") setShowFiles(true);
-    else if (id === "comments-only") updateViewingPreferences({ commentsOnly: !commentsOnly });
+    if (id === "comments-only") updateViewingPreferences({ commentsOnly: !commentsOnly });
     else if (id === "hide-reviewed" && viewed.supported)
       updateViewingPreferences({ hideReviewed: !hideReviewed });
     else if (id === "group-files") updateViewingPreferences({ groupByType: !groupByType });
-  };
-  const treeItems = useMemo(() => {
-    const counts = reviewCommentCounts(
-      result.parsed.kind === "files" ? result.parsed.files : [],
-      activity.data?.reviewThreads ?? [],
-    );
-    return parsed.kind === "files"
-      ? parsed.files.map((file) => ({
-          ...file,
-          reviewed: isViewed(file.path),
-          unresolved: counts.get(file.path)?.unresolved ?? 0,
-        }))
-      : [];
-  }, [result.parsed, parsed, activity.data, isViewed]);
-  const reviewFiles = useMemo(
-    () =>
-      result.parsed.kind === "files"
-        ? result.parsed.files.map((file) => ({
-            ...file,
-            reviewed: isViewed(file.path),
-          }))
-        : [],
-    [result.parsed, isViewed],
-  );
-  const openFile = (path: string) => {
-    setShowFiles(false);
-    setJumpPath(path);
-    setSelectedRowId(null);
-    setRangeEndRowId(null);
-    const file = data.files.find((file) => file.path === path);
-    if (file) {
-      setCollapsedIds((current) => current.filter((id) => id !== file.id));
-      void nativeView.current?.scrollToFile(file.id, false);
-    }
   };
   const selectChapter = (position: number) => {
     const chapter = chapters[position];
@@ -1260,11 +1230,25 @@ export function PullRequestDiffContent({
         <NativeHeaderToolbar placement="right">
           {commits.length > 0 ? (
             <NativeHeaderToolbar.Button
-              label={commit === null ? "All commits" : `${selectedCommits.length} commits`}
+              label={commit === null ? "All" : `${selectedCommits.length} commits`}
               accessibilityLabel="Commit range"
               icon="arrow.triangle.branch"
               onPress={() => setCommitPickerOpen(true)}
             />
+          ) : null}
+          {!isGuideChapter ? (
+            <>
+              <NativeHeaderToolbar.Button
+                accessibilityLabel="Expand all files"
+                icon="chevron.down"
+                onPress={expandAllFiles}
+              />
+              <NativeHeaderToolbar.Button
+                accessibilityLabel="Collapse all files"
+                icon="chevron.up"
+                onPress={collapseAllFiles}
+              />
+            </>
           ) : null}
           <NativeHeaderToolbar.Menu
             title="Diff options"
@@ -1333,16 +1317,25 @@ export function PullRequestDiffContent({
           </NativeHeaderToolbar.Menu>
         </NativeHeaderToolbar>
       ) : null}
+      {!embedded && !isGuideChapter && Platform.OS === "android" ? (
+        <View className="flex-row justify-end px-4">
+          <PullRequestFileExpansionActions
+            onExpand={expandAllFiles}
+            onCollapse={collapseAllFiles}
+          />
+        </View>
+      ) : null}
       {embedded ? (
-        <View className="flex-row items-center justify-end gap-2 px-4 py-2">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open changed files"
-            className="mr-auto min-h-11 justify-center"
-            onPress={() => setShowFiles(true)}
-          >
-            <Text className="text-xs text-foreground-muted">{data.files.length} files changed</Text>
-          </Pressable>
+        <View className="flex-row items-center justify-end gap-1 px-4 py-2">
+          <Text numberOfLines={1} className="min-w-0 flex-1 text-xs text-foreground-muted">
+            {data.files.length} files
+          </Text>
+          {!isGuideChapter ? (
+            <PullRequestFileExpansionActions
+              onExpand={expandAllFiles}
+              onCollapse={collapseAllFiles}
+            />
+          ) : null}
           {!isGuideChapter && commits.length > 0 ? (
             <Pressable
               accessibilityRole="button"
@@ -1351,7 +1344,7 @@ export function PullRequestDiffContent({
               onPress={() => setCommitPickerOpen(true)}
             >
               <Text numberOfLines={1} className="min-w-0 shrink text-xs">
-                {commit === null ? "All commits" : `${selectedCommits.length} commits`}
+                {commit === null ? "All" : `${selectedCommits.length} commits`}
               </Text>
               <SymbolView name="chevron.down" size={10} tintColorClassName="accent-icon-muted" />
             </Pressable>
@@ -1412,40 +1405,6 @@ export function PullRequestDiffContent({
           />
         </View>
       ) : null}
-      <Modal
-        visible={showFiles}
-        presentationStyle="pageSheet"
-        animationType="slide"
-        onRequestClose={() => setShowFiles(false)}
-      >
-        <SafeAreaView style={{ flex: 1 }} className="flex-1 bg-screen px-3 pt-6">
-          <View className="flex-row items-center gap-2 px-1 pb-3">
-            <Text className="flex-1 text-lg font-t3-semibold">
-              {activeChapter?.title ?? "Changed files"}
-            </Text>
-            <MaterialButton label="Close" onPress={() => setShowFiles(false)} />
-          </View>
-          <ReviewFileTree
-            files={treeItems}
-            reviewFiles={
-              activeChapter
-                ? reviewFiles.filter((file) => reviewFileGroup(file.path) === activeChapter.id)
-                : onlyPaths !== undefined
-                  ? reviewFiles.filter((file) => onlyPaths.includes(file.path))
-                  : reviewFiles
-            }
-            onSelectFile={openFile}
-            onSetViewed={viewed.canToggle ? viewed.setManyViewed : undefined}
-          />
-          {result.nextCursor ? (
-            <MaterialButton
-              label={result.isPending ? "Loading…" : "Load more files"}
-              disabled={result.isPending}
-              onPress={result.loadMore}
-            />
-          ) : null}
-        </SafeAreaView>
-      </Modal>
       {params.replacingDraftId ? (
         <Text className="px-4 py-2 text-xs text-foreground-muted">
           Select a current line, then choose “Move draft to this line” from its menu.
@@ -1690,10 +1649,36 @@ export function PullRequestDiffContent({
           pr={detail.data}
           params={params}
           filePath={visibleFile?.path}
-          onOpenFiles={() => setShowFiles(true)}
+          showFiles={false}
           onHeightChange={setToolbarHeight}
         />
       ) : null}
+    </View>
+  );
+}
+
+function PullRequestFileExpansionActions(props: {
+  readonly onExpand: () => void;
+  readonly onCollapse: () => void;
+}) {
+  return (
+    <View className="flex-row">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Expand all files"
+        className="min-h-11 min-w-11 items-center justify-center"
+        onPress={props.onExpand}
+      >
+        <SymbolView name="chevron.down" size={16} tintColorClassName="accent-icon-muted" />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Collapse all files"
+        className="min-h-11 min-w-11 items-center justify-center"
+        onPress={props.onCollapse}
+      >
+        <SymbolView name="chevron.up" size={16} tintColorClassName="accent-icon-muted" />
+      </Pressable>
     </View>
   );
 }
