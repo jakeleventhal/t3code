@@ -1,5 +1,5 @@
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
-import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
+import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideChapterScreen";
 import { PullRequestInlineCommentScreen } from "./features/pull-requests/PullRequestInlineCommentScreen";
 import { PullRequestDiscussionScreen } from "./features/pull-requests/PullRequestDiscussionScreen";
 import {
@@ -754,10 +754,8 @@ const RootStackConfig = createWorkspaceStackNavigator({
     PullRequestInlineComment: createNativeStackScreen({
       screen: PullRequestInlineCommentScreen,
       options: {
-        ...(Platform.OS === "android"
-          ? { presentation: "fullScreenModal" as const }
-          : FORM_SHEET_PRESENTATION_OPTIONS),
-        sheetAllowedDetents: Platform.OS === "android" ? undefined : [0.75, 0.92],
+        ...FORM_SHEET_PRESENTATION_OPTIONS,
+        sheetAllowedDetents: Platform.OS === "android" ? "fitToContents" : [0.5],
         sheetGrabberVisible: Platform.OS !== "android",
         headerShown: false,
       },

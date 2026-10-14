@@ -372,6 +372,8 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsFilesViewed,
       execute: (input) => routedRequest(WS_METHODS.pullRequestsFilesViewed, input),
       staleTimeMs: 15_000,
+      // GitHub can change these marks outside T3; refresh while a review is being read.
+      refreshIntervalMs: 15_000,
     }),
     changeBreakdown: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:change-breakdown",
@@ -415,6 +417,10 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
     }),
+    uploadAttachment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:upload-attachment",
+      tag: WS_METHODS.pullRequestsUploadAttachment,
+    }),
     comment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:comment",
       tag: WS_METHODS.pullRequestsComment,
@@ -437,6 +443,20 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             }),
           ),
         ),
+    }),
+    saveDraftComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:save-draft-comment",
+      tag: WS_METHODS.pullRequestsSaveDraftComment,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsSaveDraftComment, input),
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    discardDraftComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:discard-draft-comment",
+      tag: WS_METHODS.pullRequestsDiscardDraftComment,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsDiscardDraftComment, input),
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
     }),
     submitReview: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:submit-review",

@@ -1,3 +1,6 @@
+import { resolvedReviewCommentsLabel } from "@t3tools/client-runtime/review-editing";
+import { PullRequestCommentControls } from "./PullRequestCommentControls";
+import { PullRequestPendingBadge } from "./PullRequestPendingComment";
 import { PullRequestEntryRow } from "./PullRequestEntryRow";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -57,7 +60,13 @@ function TimelineEvent(props: {
   );
 }
 
-function TimelineComment({ comment }: { comment: PullRequestComment }) {
+function TimelineComment({
+  comment,
+  params,
+}: {
+  comment: PullRequestComment;
+  params: PullRequestParams;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { themeVariables: colors } = useAppearancePreferences();
   const long = comment.body.length > 450 || comment.body.split("\n").length > 8;
@@ -83,6 +92,7 @@ function TimelineComment({ comment }: { comment: PullRequestComment }) {
             </Text>
           </Text>
         </View>
+        {comment.pendingReviewId ? <PullRequestPendingBadge /> : null}
         <Text className="text-2xs text-foreground-tertiary">{relativeTime(comment.createdAt)}</Text>
       </View>
       {comment.path ? (
@@ -169,6 +179,10 @@ function TimelineComment({ comment }: { comment: PullRequestComment }) {
           ) : null}
         </View>
       ) : null}
+      <PullRequestCommentControls
+        params={params}
+        comment={{ ...comment, url: comment.url ?? null }}
+      />
     </TimelineEvent>
   );
 }
@@ -187,7 +201,7 @@ export function pullRequestTimelineRows(
       .map((comment) => ({
         key: `comment:${comment.id}`,
         date: comment.createdAt,
-        content: <TimelineComment comment={comment} />,
+        content: <TimelineComment comment={comment} params={params} />,
       })),
     ...activity.reviewThreads.map((thread) => ({
       key: `discussion:${thread.id}`,
@@ -224,8 +238,19 @@ export function pullRequestTimelineRows(
               </Text>
               <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-muted" />
             </View>
+            {thread.comments.some((comment) => comment.pendingReviewId) ? (
+              <PullRequestPendingBadge />
+            ) : null}
             <Text className="text-xs text-foreground-muted">
-              {thread.isResolved ? "Resolved" : "Unresolved"}
+              {thread.isResolved
+                ? resolvedReviewCommentsLabel(
+                    thread.commentCount ?? thread.comments.length,
+                    thread.comments.map(
+                      (comment) =>
+                        comment.author?.name ?? comment.author?.login ?? "Unknown author",
+                    ),
+                  )
+                : "Unresolved"}
               {thread.isOutdated ? " · Outdated" : ""} ·{" "}
               {thread.commentCount ?? thread.comments.length} comments
             </Text>

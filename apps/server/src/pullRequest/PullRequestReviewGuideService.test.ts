@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -894,6 +894,53 @@ it.layer(layerBase, { excludeTestServices: true })("PullRequestReviewGuideServic
         );
         const result = yield* Effect.flip(service.generate(reference));
         assert.include(result.message, "in another repository");
+      }),
+    ),
+  );
+  it.effect("uses the repository's remote when origin is a fork with an older base", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repositories = yield* makeRepositories;
+        const fork = `${repositories.root}/fork`;
+        yield* git(repositories.root, ["clone", "--quiet", `${repositories.root}/remote`, fork]);
+        yield* git(fork, ["update-ref", "refs/heads/stack-base", `${repositories.lowerSha}^`]);
+        yield* git(repositories.workspace, ["remote", "set-url", "origin", fork]);
+        yield* git(repositories.workspace, [
+          "remote",
+          "add",
+          "upstream",
+          `${repositories.root}/remote`,
+        ]);
+        const stored = yield* Deferred.make<void>();
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        let changed = "";
+        const context = yield* Layer.build(
+          makeLayer({
+            ...repositories,
+            stored,
+            identity: { ...ACME_APP, locator: { ...ACME_APP.locator, remoteName: "upstream" } },
+            generate: (input) =>
+              Effect.gen(function* () {
+                changed = yield* git(input.cwd, [
+                  "diff",
+                  "--name-only",
+                  `${input.baseCommit}...HEAD`,
+                ]).pipe(Effect.provideService(GitVcsDriver.GitVcsDriver, driver), Effect.orDie);
+                return { stops: [] };
+              }),
+          }),
+        );
+        const service = Context.get(
+          context,
+          PullRequestReviewGuideService.PullRequestReviewGuideService,
+        );
+        yield* service.generate(reference);
+        yield* Deferred.await(stored);
+        expect(changed).toBe("feature.txt");
+        const result = yield* service.get(reference);
+        expect(
+          result.guide?.stops.flatMap((chapter) => chapter.files.map((file) => file.path)),
+        ).toEqual(["feature.txt"]);
       }),
     ),
   );

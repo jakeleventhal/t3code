@@ -48,6 +48,7 @@ import { makeProcessProbe, processProbeSource } from "../testUtils/processProbe.
 const encodeGitCommandError = Schema.encodeEffect(Schema.fromJsonString(GitCommandError));
 const decodeVcsRef = Schema.decodeUnknownSync(VcsRef);
 const decodeVcsListRefsResult = Schema.decodeUnknownSync(VcsListRefsResult);
+const decodeReviewDiffPreviewInput = Schema.decodeEffect(ReviewDiffPreviewInput);
 
 const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-git-vcs-driver-test-",
@@ -2118,6 +2119,47 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    it.effect("separates staged and unstaged edits without changing the real index", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "tracked.txt", "initial\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "tracked"]);
+        yield* writeTextFile(cwd, "tracked.txt", "initial\nstaged\n");
+        yield* git(cwd, ["add", "tracked.txt"]);
+        yield* writeTextFile(cwd, "tracked.txt", "initial\nstaged\nunstaged\n");
+        yield* writeTextFile(cwd, "new.txt", "untracked\n");
+        const before = yield* git(cwd, ["diff", "--cached"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const staged = yield* driver.getReviewDiffPreview({ cwd, workingTreeScope: "staged" });
+        const unstaged = yield* driver.getReviewDiffPreview({ cwd, workingTreeScope: "unstaged" });
+        const stagedPatch = staged.sources.find((source) => source.kind === "working-tree")!.diff;
+        const unstagedPatch = unstaged.sources.find(
+          (source) => source.kind === "working-tree",
+        )!.diff;
+        assert.include(stagedPatch, "+staged");
+        assert.notInclude(stagedPatch, "+unstaged");
+        assert.notInclude(stagedPatch, "new.txt");
+        assert.include(unstagedPatch, "+unstaged");
+        assert.include(unstagedPatch, "+untracked");
+        assert.notInclude(unstagedPatch, "+staged");
+        const contents = yield* driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "working-tree",
+          workingTreeScope: "unstaged",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "tracked.txt",
+          newPath: "tracked.txt",
+        });
+        assert.equal(contents.oldContents, "initial\nstaged\n");
+        assert.equal(contents.newContents, "initial\nstaged\nunstaged\n");
+        assert.equal(yield* git(cwd, ["diff", "--cached"]), before);
+      }),
+    );
+
     it.effect("loads repository-relative files from a nested project directory", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -2622,6 +2664,9 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           yield* writeTextFile(cwd, "tab\tand\nnewline.txt", "unusual path\n");
         }
         yield* git(cwd, ["add", "."]);
+        // Keep the working file consistent with the executable mode committed below.
+        if ((yield* HostProcess.Platform) !== "win32")
+          yield* (yield* FileSystem.FileSystem).chmod(`${cwd}/mode-only.sh`, 0o755);
         yield* git(cwd, ["update-index", "--chmod=+x", "mode-only.sh"]);
         yield* git(cwd, ["commit", "-m", "rename and add files"]);
         const preview = yield* driver.getReviewDiffPreview({
@@ -2631,7 +2676,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const branch = preview.sources.find((source) => source.kind === "branch-range")!;
         for (const path of ["renamed.md", "[literal].txt", " leading.txt", "mode-only.sh"]) {
           const stat = branch.files!.find((file) => file.path === path)!;
-          const request = yield* Schema.decodeEffect(ReviewDiffPreviewInput)({
+          const request = yield* decodeReviewDiffPreviewInput({
             cwd,
             baseRef: initialBranch,
             file: { path, previousPath: stat.previousPath, sourceKind: "branch-range" },

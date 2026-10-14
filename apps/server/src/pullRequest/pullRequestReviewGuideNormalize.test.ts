@@ -54,6 +54,52 @@ const excerpt = (path: string, start: number, end: number, side: "new" | "old" =
   caption: "",
 });
 
+describe("generated chapters", () => {
+  it("separates generated files in mixed chapters and includes omitted lockfiles", () => {
+    const result = normalizeReviewGuide(
+      guide({
+        stops: [
+          stop({
+            title: "Source changes",
+            files: [{ path: "src/main.ts" }, { path: "src/_generated/sdk.ts" }],
+          }),
+        ],
+      }),
+      { files: ["src/main.ts", "src/_generated/sdk.ts", "pnpm-lock.yaml"], hunks: new Map() },
+    );
+    expect(
+      result.stops.map((chapter) => [chapter.title, chapter.files.map((file) => file.path)]),
+    ).toEqual([
+      ["Source changes", ["src/main.ts"]],
+      ["Generated files", ["src/_generated/sdk.ts", "pnpm-lock.yaml"]],
+    ]);
+  });
+
+  it("retains the model's useful descriptions for chapters that only contain generated output", () => {
+    const result = normalizeReviewGuide(
+      guide({
+        stops: [
+          stop({
+            title: "Refresh generated API",
+            summary: "SDK regenerated after adding the field.",
+            files: [{ path: "src/_generated/sdk.ts" }],
+          }),
+          stop({ title: "Add the field", files: [{ path: "src/main.ts" }] }),
+        ],
+      }),
+      {
+        files: ["src/main.ts", "src/_generated/sdk.ts"],
+        hunks: new Map(),
+      },
+    );
+    expect(result.stops.map((chapter) => chapter.title)).toEqual([
+      "Add the field",
+      "Refresh generated API",
+    ]);
+    expect(result.stops[1]?.summary).toBe("SDK regenerated after adding the field.");
+  });
+});
+
 describe("parseReviewGuideChange", () => {
   it("reads a removed or added line that looks like a file header as a source line", () => {
     const tricky = [

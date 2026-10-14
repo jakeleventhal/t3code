@@ -1,3 +1,4 @@
+import { PullRequestCommentActions } from "./PullRequestCommentActions";
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
   EnvironmentId,
@@ -37,7 +38,7 @@ import {
   type PullRequestTimelineEvent,
   type PullRequestTimelineThread,
 } from "./pullRequestDetail.logic";
-import { canEditPullRequestComment } from "./pullRequestEditing.logic";
+import { canEditPullRequestComment } from "@t3tools/client-runtime/review-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
@@ -236,6 +237,11 @@ function ConversationCard({
               ) : null}
             </PullRequestMetaLine>
           </div>
+          <PullRequestCommentActions
+            body={event.body ?? ""}
+            url={event.url}
+            onEdit={editable !== null && !editing ? () => setEditing(true) : undefined}
+          />
           {editable !== null && !editing ? (
             <PullRequestEditButton
               className="-mt-1"
@@ -636,6 +642,7 @@ export function PullRequestTimelineTab({
   order,
   onOpenCommit,
   onRefresh,
+  embedded = false,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   detail: PullRequestDetailView;
@@ -645,6 +652,7 @@ export function PullRequestTimelineTab({
   order: "newest" | "oldest";
   onOpenCommit: (oid: string) => void;
   onRefresh: () => void;
+  embedded?: boolean;
 }) {
   const events = buildPullRequestTimeline(detail);
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
@@ -669,7 +677,13 @@ export function PullRequestTimelineTab({
   };
 
   return (
-    <div ref={scrollerRef} className="scrollbar-gutter-both h-full overflow-y-auto px-4 py-5">
+    <div
+      ref={scrollerRef}
+      className={cn(
+        "scrollbar-gutter-both",
+        embedded ? "py-2" : "h-full overflow-y-auto px-4 py-5",
+      )}
+    >
       <div className="mx-auto max-w-3xl">
         <div className="relative">
           <span aria-hidden className="absolute bottom-5 left-[15px] top-1 w-px bg-border/45" />

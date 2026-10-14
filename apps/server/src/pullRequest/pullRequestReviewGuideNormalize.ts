@@ -1,5 +1,6 @@
 import type { PullRequestReviewGuideExcerpt, PullRequestReviewGuideStop } from "@t3tools/contracts";
 import type { ReviewGuideGenerationResult } from "@t3tools/provider-core/server/textGeneration";
+import { reviewFileGroup } from "@t3tools/shared/reviewFileClassification";
 
 const MAX_EXCERPT_LINES = 25;
 
@@ -147,17 +148,61 @@ export function normalizeReviewGuide(
     return { ...stop, files };
   });
   const unplaced = change.files.filter((path) => !placed.has(path));
-  if (unplaced.length > 0) {
+  const unplacedSource = unplaced.filter((path) => reviewFileGroup(path) !== "generated");
+  if (unplacedSource.length > 0) {
     stops.push({
       title: "Other files",
       summary: "Changed files the tour does not otherwise cover.",
       attention: null,
       excerpts: [],
-      files: unplaced.map((path) => ({ path })),
+      files: unplacedSource.map((path) => ({ path })),
       notes: [],
       questions: [],
     });
   }
-
-  return { ...guide, stops };
+  // Keep generated output apart even when a model mixes it into a chapter or omits it.
+  const generatedPaths = change.files.filter((path) => reviewFileGroup(path) === "generated");
+  if (generatedPaths.length === 0) return { ...guide, stops };
+  const generated = new Set(generatedPaths);
+  const generatedOnly = (stop: PullRequestReviewGuideStop) => {
+    const paths = [
+      ...stop.files.map((file) => file.path),
+      ...stop.excerpts.map((excerpt) => excerpt.path),
+    ];
+    return paths.length > 0 && paths.every((path) => generated.has(path));
+  };
+  const chapters = stops
+    .filter((stop) => !generatedOnly(stop))
+    .map((stop) => ({
+      ...stop,
+      files: stop.files.filter((file) => !generated.has(file.path)),
+      excerpts: stop.excerpts.filter((excerpt) => !generated.has(excerpt.path)),
+      notes: stop.notes.filter((note) => !generated.has(note.path)),
+    }));
+  const generatedChapters = stops.filter(generatedOnly);
+  const covered = new Set(
+    generatedChapters.flatMap((stop) => [
+      ...stop.files.map((file) => file.path),
+      ...stop.excerpts.map((excerpt) => excerpt.path),
+    ]),
+  );
+  const missing = generatedPaths.filter((path) => !covered.has(path));
+  if (missing.length > 0) {
+    const missingSet = new Set(missing);
+    const excerpts = stops.flatMap((stop) =>
+      stop.excerpts.filter((excerpt) => missingSet.has(excerpt.path)),
+    );
+    const excerpted = new Set(excerpts.map((excerpt) => excerpt.path));
+    generatedChapters.push({
+      title: "Generated files",
+      summary:
+        "Generated output and lockfiles. Review these alongside the source changes that produce them.",
+      attention: null,
+      excerpts,
+      files: missing.filter((path) => !excerpted.has(path)).map((path) => ({ path })),
+      notes: stops.flatMap((stop) => stop.notes.filter((note) => missingSet.has(note.path))),
+      questions: [],
+    });
+  }
+  return { ...guide, stops: [...chapters, ...generatedChapters] };
 }

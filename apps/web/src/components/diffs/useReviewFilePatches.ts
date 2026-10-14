@@ -1,3 +1,4 @@
+import { orderReviewFiles } from "@t3tools/client-runtime/review-workspace";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { EnvironmentId, ReviewDiffPreviewSource } from "@t3tools/contracts";
@@ -8,12 +9,6 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { getRenderablePatch, resolveFileDiffPath, type RenderablePatch } from "~/lib/diffRendering";
 import { reviewEnvironment } from "~/state/review";
 
-const filePathCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
-const DEFAULT_INDICES = [0, 1, 2, 3];
-
 export function useReviewFilePatches({
   environmentId,
   cwd,
@@ -23,6 +18,7 @@ export function useReviewFilePatches({
   theme,
   revision,
   preview,
+  workingTreeScope,
 }: {
   environmentId: EnvironmentId | undefined;
   cwd: string | undefined;
@@ -32,6 +28,7 @@ export function useReviewFilePatches({
   theme: "light" | "dark";
   revision: string | undefined;
   preview: RenderablePatch | null;
+  workingTreeScope?: "staged" | "unstaged" | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const scope = JSON.stringify([
@@ -41,19 +38,57 @@ export function useReviewFilePatches({
     source?.diffHash,
     baseRef,
     ignoreWhitespace,
+    workingTreeScope,
   ]);
-  const [requested, setRequested] = useState(() => ({ scope, indices: DEFAULT_INDICES }));
-  const queries = reviewFileQueries({
-    environmentId,
-    cwd,
-    source,
-    baseRef,
-    ignoreWhitespace,
-    scope,
-    requested,
-  });
-  const queriedPatchesAtom = reviewPatchesAtom(
-    JSON.stringify([theme, queries.map(({ index, target }) => [index, target])]),
+  const [requested, setRequested] = useState({ scope, indices: [0, 1, 2, 3] });
+  const indices = useMemo(
+    () => (requested.scope === scope ? requested.indices : [0, 1, 2, 3]),
+    [requested, scope],
+  );
+  const files = useMemo(
+    () => orderReviewFiles(source?.files ?? [], (file) => file.path),
+    [source?.files],
+  );
+  const queries = useMemo(
+    () =>
+      !environmentId || !cwd || !source
+        ? []
+        : indices
+            .filter((index) => index < files.length)
+            .map((index) => {
+              const file = files[index]!;
+              return {
+                index,
+                query: reviewEnvironment.diffFilePatch({
+                  environmentId,
+                  input: {
+                    cacheKey: scope,
+                    request: {
+                      cwd,
+                      ...(baseRef ? { baseRef } : {}),
+                      ignoreWhitespace,
+                      ...(workingTreeScope ? { workingTreeScope } : {}),
+                      file: {
+                        path: file.path,
+                        previousPath: file.previousPath,
+                        sourceKind: source.kind,
+                      },
+                    },
+                  },
+                }),
+              };
+            }),
+    [
+      environmentId,
+      cwd,
+      source,
+      files,
+      indices,
+      scope,
+      baseRef,
+      ignoreWhitespace,
+      workingTreeScope,
+    ],
   );
   const previousPreview = useRef({ scope, revision, queries: [] as typeof queries });
   useEffect(() => {
@@ -138,15 +173,93 @@ export function useReviewFilePatches({
       ] as const;
     }),
   );
-  const readyFilePaths = new Set(
-    files
-      .filter((_, index) => {
-        const patch = patches.get(index);
-        return patch && patch._tag !== "Initial";
-      })
-      .map((file) => file.path),
+  const loadNextFiles = useCallback(
+    () => requestFiles(Array.from({ length: 4 }, (_, index) => settledFileCount + index)),
+    [requestFiles, settledFileCount],
+  );
+  const requestFile = useCallback((index: number) => requestFiles([index]), [requestFiles]);
+  const retryInputsRef = useRef({ queries, files });
+  useLayoutEffect(() => {
+    retryInputsRef.current = { queries, files };
+  }, [queries, files]);
+  const retry = useCallback(
+    (path: string) => {
+      const { queries, files } = retryInputsRef.current;
+      const query = queries.find(({ index }) => files[index]?.path === path)?.query;
+      if (query) registry.refresh(query);
+    },
+    [registry],
+  );
+  const renderableFiles = useMemo(
+    () =>
+      source
+        ? files.map((file, index): FileDiffMetadata => {
+            const result = patches.get(index);
+            if (result?._tag === "Success" && result.value.patch?.kind === "files") {
+              const loaded = result.value.patch.files.find(
+                (candidate) => resolveFileDiffPath(candidate) === file.path,
+              );
+              if (loaded) return loaded;
+            }
+            return {
+              name: file.path,
+              ...(file.previousPath ? { prevName: file.previousPath } : {}),
+              type: file.previousPath ? "rename-changed" : "change",
+              hunks: [],
+              additionLines: [],
+              deletionLines: [],
+              splitLineCount: 0,
+              unifiedLineCount: 0,
+              isPartial: true,
+              cacheKey: `${scope}:${file.path}:pending`,
+            };
+          })
+        : orderReviewFiles(preview?.kind === "files" ? preview.files : [], resolveFileDiffPath),
+    [source, files, patches, scope, preview],
+  );
+  const fileStates = useMemo(
+    () =>
+      new Map(
+        files.map((file, index) => {
+          const patch = patches.get(index);
+          return [
+            file.path,
+            {
+              error:
+                patch?._tag === "Failure" ||
+                (patch?._tag === "Success" &&
+                  (patch.value.patch?.kind !== "files" ||
+                    !patch.value.patch.files.some(
+                      (candidate) => resolveFileDiffPath(candidate) === file.path,
+                    ))),
+              truncated: patch?._tag === "Success" && patch.value.source.truncated,
+            },
+          ] as const;
+        }),
+      ),
+    [files, patches],
+  );
+  const readyFilePaths = useMemo(
+    () =>
+      new Set(
+        files
+          .filter((_, index) => {
+            const patch = patches.get(index);
+            return patch && patch._tag !== "Initial";
+          })
+          .map((file) => file.path),
+      ),
+    [files, patches],
+  );
+  const rawPatches = useMemo(
+    () =>
+      [...patches.values()].flatMap((result) =>
+        result._tag === "Success" ? [result.value.source.diff] : [],
+      ),
+    [patches],
   );
   return {
+    rawPatches,
     scope,
     fileStates,
     isPending: [...patches.values()].some((patch) => patch._tag === "Initial" || patch.waiting),

@@ -1,6 +1,11 @@
-import type { EnvironmentId, PullRequestRef, PullRequestReviewGuideStop } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestDetailView,
+  PullRequestRef,
+  PullRequestReviewGuideStop,
+} from "@t3tools/contracts";
 import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef } from "react";
 
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -8,6 +13,7 @@ import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import type { ExcerptCommenting } from "./guide/GuideExcerpt";
+import { PullRequestAttachments } from "./PullRequestAttachments";
 import { guideRunKey, useGuideRunStore } from "./guide/guideRunStore";
 import { GuideProseContext } from "./guide/GuideProse";
 import { GuideTour } from "./guide/GuideTour";
@@ -23,9 +29,11 @@ export function PullRequestGuideTab({
   environmentId,
   reference,
   title,
+  detail,
   workspaceRoot,
   active,
   canComment,
+  canCommentRanges = false,
   onAskAboutLines,
   onAskAboutStop,
   onFinishReview,
@@ -35,9 +43,13 @@ export function PullRequestGuideTab({
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   title: string | null;
+  detail: Pick<PullRequestDetailView, "capabilities" | "reviewThreads">;
+  /** The checkout the guide's prose renders against, as the description does. */
   workspaceRoot: string;
   active: boolean;
   canComment: boolean;
+  canCommentRanges?: boolean;
+  /** Opens an agent thread about lines of the change. Null where no thread can be opened. */
   onAskAboutLines: ((comment: ReviewCommentContext, request: string) => void) | null;
   onAskAboutStop:
     | ((stop: PullRequestReviewGuideStop, index: number, question: string) => void)
@@ -53,26 +65,55 @@ export function PullRequestGuideTab({
   });
   const runKey = guideRunKey(environmentId, reference);
   const reviewKey = pullRequestReviewKey(reference);
-  const pending = usePendingReviewComments(reference);
+  const pending = usePendingReviewComments(reference, detail.reviewThreads);
   const addComment = usePullRequestReviewStore((store) => store.addComment);
   const removeComment = usePullRequestReviewStore((store) => store.removeComment);
-  const commenting: ExcerptCommenting | null =
-    !canComment && onAskAboutLines === null
-      ? null
-      : {
-          canComment,
-          pending,
-          onComment: ({ path, oldPath, position, body }) =>
-            addComment(reviewKey, {
-              id: nextPendingReviewCommentId(),
-              path,
-              ...(oldPath === null ? {} : { oldPath }),
-              position,
-              body,
-            }),
-          onRemove: (commentId) => removeComment(reviewKey, commentId),
-          onAskAgent: onAskAboutLines,
-        };
+  const commenting = useMemo<ExcerptCommenting | null>(
+    () =>
+      !canComment && onAskAboutLines === null
+        ? null
+        : {
+            canComment,
+            canCommentRanges,
+            renderAttachments: (onTextChange, onBusyChange, textareaRef) => (
+              <PullRequestAttachments
+                environmentId={environmentId}
+                reference={reference}
+                onTextChange={onTextChange}
+                textareaRef={textareaRef}
+                onBusyChange={onBusyChange}
+              />
+            ),
+            pending,
+            pendingCommentTarget: {
+              environmentId,
+              reference,
+              canCopyLink: detail.capabilities.review.draftComment === true,
+            },
+            onComment: ({ path, oldPath, position, body }) =>
+              addComment(reviewKey, {
+                id: nextPendingReviewCommentId(),
+                path,
+                ...(oldPath === null ? {} : { oldPath }),
+                position,
+                body,
+              }),
+            onRemove: (commentId) => removeComment(reviewKey, commentId),
+            onAskAgent: onAskAboutLines,
+          },
+    [
+      addComment,
+      canComment,
+      canCommentRanges,
+      detail,
+      environmentId,
+      reference,
+      onAskAboutLines,
+      pending,
+      removeComment,
+      reviewKey,
+    ],
+  );
   useEffect(() => {
     if (!active) return;
     useGuideRunStore.getState().setShown(runKey);
@@ -93,6 +134,22 @@ export function PullRequestGuideTab({
   const stale = guide !== null && currentHeadSha !== null && currentHeadSha !== guide.headSha;
   const failure =
     runState?._tag === "Failed" && runState.headSha === currentHeadSha ? runState.detail : null;
+  const attemptedGuide = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !active ||
+      data === null ||
+      data === undefined ||
+      guide !== null ||
+      running ||
+      !canWrite ||
+      failure !== null ||
+      attemptedGuide.current === runKey
+    )
+      return;
+    attemptedGuide.current = runKey;
+    void write();
+  }, [active, data, guide, running, canWrite, failure, runKey, write]);
   const writeButton = (label: string, size: "sm" | "xs") =>
     canWrite ? (
       <Button size={size} variant="outline" disabled={running} onClick={() => void write()}>

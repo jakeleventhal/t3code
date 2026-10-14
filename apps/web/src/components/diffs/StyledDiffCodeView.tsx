@@ -7,10 +7,11 @@ import {
   type UncontrolledCodeViewProps,
 } from "@pierre/diffs/react";
 /* oxlint-enable eslint/no-restricted-imports */
-import type { Ref } from "react";
+import { useCallback, type Ref } from "react";
 
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
+import { DiffFileRename } from "./DiffFileRename";
 
 export const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 /* A 1fr track's automatic minimum grows with the currently mounted lines. In split
@@ -203,6 +204,29 @@ export const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 }
 `;
 
+export const INLINE_RENAME_HEADER_CSS = `[data-diffs-header] [data-prev-name] {
+  display: none;
+}
+[data-diffs-header]:has([data-prev-name]) :is([data-title], [data-rename-icon]) {
+  display: none !important;
+}
+[data-diffs-header]:has([data-prev-name]) slot[name="header-filename-suffix"] {
+  min-width: 0;
+  flex: 1;
+}
+[data-diffs-header]:has([data-prev-name]) [data-header-content] {
+  flex: 1;
+  overflow: hidden;
+}
+[data-diffs-header]:has([data-prev-name]) slot[name="header-filename-suffix"]::slotted(*) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+`;
+
 export type StyledDiffCodeViewOptions<LAnnotation> = Omit<
   NonNullable<CodeViewProps<LAnnotation, undefined>["options"]>,
   "unsafeCSS" | "itemMetrics" | "layout"
@@ -222,12 +246,25 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
   viewerRef,
   className,
   unsafeCSSExtra,
+  renderHeaderFilenameSuffix,
   ...props
 }: StyledDiffCodeViewProps<LAnnotation>) {
+  const filenameSuffix = useCallback<
+    NonNullable<CodeViewProps<LAnnotation, undefined>["renderHeaderFilenameSuffix"]>
+  >(
+    (item) => (
+      <>
+        {item.type === "diff" ? <DiffFileRename file={item.fileDiff} /> : null}
+        {renderHeaderFilenameSuffix?.(item)}
+      </>
+    ),
+    [renderHeaderFilenameSuffix],
+  );
   return (
     <DiffWorkerPoolProvider>
       <CodeView<LAnnotation>
         {...props}
+        renderHeaderFilenameSuffix={filenameSuffix}
         {...(viewerRef ? { ref: viewerRef } : {})}
         className={
           className
@@ -237,8 +274,8 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
         options={{
           ...options,
           unsafeCSS: unsafeCSSExtra
-            ? `${DIFF_VIEW_UNSAFE_CSS}\n${unsafeCSSExtra}`
-            : DIFF_VIEW_UNSAFE_CSS,
+            ? `${DIFF_VIEW_UNSAFE_CSS}\n${INLINE_RENAME_HEADER_CSS}\n${unsafeCSSExtra}`
+            : `${DIFF_VIEW_UNSAFE_CSS}\n${INLINE_RENAME_HEADER_CSS}`,
           itemMetrics: {
             diffHeaderHeight: 32,
             hunkSeparatorHeight: 24,

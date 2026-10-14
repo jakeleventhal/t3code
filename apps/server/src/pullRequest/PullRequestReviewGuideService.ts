@@ -159,6 +159,7 @@ const make = Effect.gen(function* () {
     headSha: string,
     stack: PullRequestStack | null,
     runId: string,
+    repositoryRemote: string | null | undefined,
   ) {
     // Identity names can be stale; match effective fetch URLs, including insteadOf rewrites.
     const names = yield* git
@@ -366,6 +367,7 @@ const make = Effect.gen(function* () {
     headSha: string,
     runId: string,
     owns: Effect.Effect<boolean>,
+    repositoryRemote: string | null | undefined,
   ) {
     const [activity, settings, providers, stack] = yield* Effect.all(
       [
@@ -389,6 +391,7 @@ const make = Effect.gen(function* () {
       headSha,
       stack,
       runId,
+      repositoryRemote,
     ).pipe(
       Effect.flatMap((checkout) =>
         Effect.all(

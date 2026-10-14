@@ -12,6 +12,18 @@ export const PIERRE_TREE_UNSAFE_CSS = `
   [data-truncate-content='visible'] { overflow: hidden; text-overflow: ellipsis; }
   [data-truncate-marker] { display: none; }
   button[data-type='item'], button[data-type='item']::before { border-radius: var(--radius-md); }
+  /* Deep indentation must leave room for a readable, ellipsized name. */
+  [data-item-section='spacing'] { max-width: max(0px, calc(100% - 180px)); flex-shrink: 0; overflow: hidden; }
+  /* Keep path labels in one text lane; Pierre's segment truncation overlaps at narrow widths. */
+  [data-item-section='content'] { flex: 1 1 0; white-space: nowrap; text-overflow: ellipsis; }
+  [data-item-section='content'] div, [data-item-section='content'] span {
+    display: inline;
+    direction: ltr;
+  }
+  [data-item-section='content'] [data-truncate-content='overflow'],
+  [data-item-section='content'] [data-truncate-marker-cell],
+  [data-item-section='content'] [data-truncate-fill] { display: none; }
+  [data-item-section='decoration'] { flex: 0 0 auto; }
   svg[data-icon-name='t3-tree-icon-loading'] { opacity: 0.6; }
   @media (prefers-reduced-motion: no-preference) {
     svg[data-icon-name='t3-tree-icon-loading'] { animation: t3-tree-spin 1s linear infinite; }

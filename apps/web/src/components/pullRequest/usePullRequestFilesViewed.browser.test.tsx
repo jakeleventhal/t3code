@@ -178,3 +178,14 @@ describe("a failed batch that the host partly applied", () => {
     expect(view().isViewed("b.ts")).toBe(false);
   });
 });
+
+it("follows GitHub marks and unmarks without writing them back", async () => {
+  await reads("viewed");
+  expect(view().isViewed("a.ts")).toBe(true);
+  expect(view().viewedCount).toBe(1);
+
+  await reads("unviewed");
+  expect(view().isViewed("a.ts")).toBe(false);
+  expect(view().viewedCount).toBe(0);
+  expect(setFilesViewed).not.toHaveBeenCalled();
+});

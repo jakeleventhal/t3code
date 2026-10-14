@@ -84,7 +84,7 @@ interface RenderablePatchOptions {
   compactPartialHunkOffsets?: boolean;
 }
 
-function hideWhitespaceChanges(file: FileDiffMetadata): FileDiffMetadata {
+export function hideWhitespaceChanges(file: FileDiffMetadata): FileDiffMetadata {
   let splitDelta = 0;
   let unifiedDelta = 0;
   const hunks = file.hunks.map((hunk) => {

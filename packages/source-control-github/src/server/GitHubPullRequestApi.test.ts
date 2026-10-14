@@ -10,6 +10,8 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import * as Redacted from "effect/Redacted";
+import * as FileSystem from "effect/FileSystem";
+import * as Stream from "effect/Stream";
 
 import { HttpClient, HttpClientResponse } from "effect/http";
 
@@ -724,6 +726,64 @@ it.effect(
 );
 
 layer("GitHubPullRequestApi.layer", (it) => {
+  it.effect("uploads local media against the selected repository and reads its hosted URL", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const path = `${dir}/review.png`;
+      const bytes = new Uint8Array([137, 80, 78, 71]);
+      yield* fs.writeFile(path, bytes);
+      mockedExecute.mockImplementation((input) =>
+        Effect.gen(function* () {
+          if (input.kind !== "rest") throw new Error("Expected REST upload");
+          if (input.path === "repos/acme/web") return output('{"id":42}');
+          expect(input.upload?.repositoryId).toBe(42);
+          expect(input.upload?.name).toBe("review.png");
+          expect(input.upload?.sizeBytes).toBe(bytes.length);
+          if (!input.upload) throw new Error("Missing stream");
+          expect(
+            Array.from(yield* Stream.runCollect(input.upload.stream).pipe(Effect.orDie)).flatMap(
+              (chunk) => Array.from(chunk),
+            ),
+          ).toEqual(Array.from(bytes));
+          return output('{"url":"https://github.com/user-attachments/assets/review"}');
+        }),
+      );
+      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      expect(
+        yield* api.uploadAttachment({
+          cwd: dir,
+          repository: "acme/web",
+          host: "github.com",
+          path,
+          name: "review.png",
+          mimeType: "image/png",
+          sizeBytes: bytes.length,
+        }),
+      ).toEqual({ url: "https://github.com/user-attachments/assets/review" });
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("refuses a hosted attachment URL on an unrelated host", () =>
+    Effect.gen(function* () {
+      mockedExecute
+        .mockReturnValueOnce(Effect.succeed(output('{"id":42}')))
+        .mockReturnValueOnce(Effect.succeed(output('{"url":"https://other.example/review.png"}')));
+      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const error = yield* Effect.flip(
+        api.uploadAttachment({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          path: "/unused",
+          name: "review.png",
+          mimeType: "image/png",
+          sizeBytes: 4,
+        }),
+      );
+      expect(error._tag).toBe("GitHubPullRequestReadError");
+    }),
+  );
   it.effect("holds background previews once an answer reports the reserve, until it resets", () =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
@@ -2790,6 +2850,28 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect("admin override merges immediately instead of entering the merge queue", () =>
+    Effect.gen(function* () {
+      route([
+        "query PullRequestActionState",
+        actionState({ isMergeQueueEnabled: true, mergeStateStatus: "BLOCKED" }),
+      ]);
+      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      yield* api.runPullRequestAction({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        action: "merge",
+        adminOverride: true,
+      });
+      expect(variablesOf("mergePullRequest(")).toEqual([
+        { input: { pullRequestId: "PR_7", mergeMethod: "MERGE" } },
+      ]);
+      expect(variablesOf("enablePullRequestAutoMerge(")).toEqual([]);
+    }),
+  );
+
   it.effect("passes an explicitly empty body when the proposed message only credits an agent", () =>
     Effect.gen(function* () {
       route(
@@ -3440,6 +3522,29 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect("compares the first selected commit's parent against the last selected commit", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(output(JSON.stringify({ sha: "aaaa1111", parents: [{ sha: "cccc3333" }] }))),
+      );
+      const patch =
+        "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-before\n+after\n";
+      mockedExecute.mockReturnValueOnce(Effect.succeed(output(patch)));
+      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const result = yield* api.getPullRequestDiff({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        commit: "aaaa1111..bbbb2222",
+      });
+      expect(result.patch).toBe(patch);
+      expect(pathAt(0)).toBe("repos/acme/web/commits/aaaa1111");
+      expect(pathAt(1)).toBe("repos/acme/web/compare/cccc3333...bbbb2222");
+      expect(result.nextCursor).toBeNull();
+    }),
+  );
+
   it.effect("reads a named commit from the commit endpoint rather than the whole diff", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValueOnce(
@@ -3918,6 +4023,286 @@ layer("GitHubPullRequestApi.layer", (it) => {
         accountId: "456",
         viewer: "maria-rcks",
       });
+    }),
+  );
+
+  it.effect("saves a range in a private pending review and returns its actual comment link", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    id: "PR_7",
+                    reviews: { nodes: [] },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                addPullRequestReview: {
+                  pullRequestReview: {
+                    id: "PRR_1",
+                    comments: {
+                      nodes: [
+                        { id: "PRRC_1", url: "https://github.com/acme/web/pull/7#discussion_r91" },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const result = yield* cli.saveDraftComment({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        comment: {
+          path: "src/a.ts",
+          body: "Review this range",
+          position: { kind: "added", newLine: 5, startLine: 3, startSide: "right" },
+        },
+      });
+      expect(result).toEqual({
+        reviewId: "PRR_1",
+        commentId: "PRRC_1",
+        url: "https://github.com/acme/web/pull/7/changes#r91",
+      });
+      expect(variablesOf("addPullRequestReview(")).toEqual([
+        {
+          input: {
+            pullRequestId: "PR_7",
+            threads: [
+              {
+                path: "src/a.ts",
+                body: "Review this range",
+                line: 5,
+                side: "RIGHT",
+                startLine: 3,
+                startSide: "RIGHT",
+              },
+            ],
+          },
+        },
+      ]);
+      expect(variablesOf("submitPullRequestReview(")).toEqual([]);
+    }),
+  );
+
+  it.effect("discards a private draft when REST omits its positions", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    id: "PR_7",
+                    reviews: {
+                      nodes: [
+                        { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson([
+              {
+                id: 91,
+                node_id: "PRRC_1",
+                html_url: "https://github.com/acme/web/pull/7#discussion_r91",
+                body: "nit",
+                path: "src/a.ts",
+              },
+            ]),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                      nodes: [
+                        {
+                          line: 5,
+                          diffSide: "RIGHT",
+                          startLine: 3,
+                          startDiffSide: "RIGHT",
+                          comments: { nodes: [{ id: "PRRC_1" }] },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(Effect.succeed(output("{}")));
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      yield* cli.discardDraftComment({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        reviewId: "PRR_1",
+        commentId: "PRRC_1",
+        url: "https://github.com/acme/web/pull/7#discussion_r91",
+      });
+      expect(variablesOf("deletePullRequestReview(")).toEqual([{ id: "PRR_1" }]);
+      expect(variablesOf("submitPullRequestReview(")).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses to discard a comment from a different pending review", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    id: "PR_7",
+                    reviews: {
+                      nodes: [
+                        { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson([
+              {
+                id: 91,
+                node_id: "PRRC_1",
+                html_url: "https://github.com/acme/web/pull/7#discussion_r91",
+                body: "nit",
+                path: "src/a.ts",
+                line: 4,
+                side: "RIGHT",
+              },
+            ]),
+          ),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      yield* cli
+        .discardDraftComment({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          reviewId: "PRR_other",
+          commentId: "PRRC_1",
+          url: "https://github.com/acme/web/pull/7#discussion_r91",
+        })
+        .pipe(Effect.flip);
+      expect(variablesOf("deletePullRequestReview(")).toEqual([]);
+      expect(variablesOf("deletePullRequestReviewComment(")).toEqual([]);
+    }),
+  );
+
+  it.effect("submits the saved review without duplicating its hosted comment", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    id: "PR_7",
+                    reviews: {
+                      nodes: [
+                        { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            encodeJson([
+              {
+                id: 91,
+                node_id: "PRRC_1",
+                html_url: "https://github.com/acme/web/pull/7#discussion_r91",
+                body: "nit",
+                path: "src/a.ts",
+                line: 4,
+                side: "RIGHT",
+              },
+            ]),
+          ),
+        ),
+      );
+      mockedExecute.mockReturnValueOnce(Effect.succeed(output("{}")));
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      yield* cli.submitReview({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        verdict: "comment",
+        body: "Review complete",
+        comments: [
+          {
+            path: "src/a.ts",
+            body: "nit",
+            position: { kind: "added", newLine: 4 },
+            hostedComment: {
+              reviewId: "PRR_1",
+              commentId: "PRRC_1",
+              url: "https://github.com/acme/web/pull/7#discussion_r91",
+            },
+          },
+        ],
+      });
+      expect(variablesOf("addPullRequestReviewThread(")).toEqual([]);
+      expect(restCallsTo("/reviews").filter((call) => call.method === "POST")).toEqual([]);
+      expect(variablesOf("submitPullRequestReview(")).toEqual([
+        { input: { pullRequestReviewId: "PRR_1", body: "Review complete", event: "COMMENT" } },
+      ]);
     }),
   );
 

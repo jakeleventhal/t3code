@@ -12,6 +12,7 @@ import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "../files/f
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Menu, MenuItem, MenuPopup } from "../ui/menu";
 import {
   buildDiffFileTreeUpdates,
   compareDiffFileTreeEntries,
@@ -25,6 +26,9 @@ export type { DiffFileTreeEntry } from "./diffFileTree.logic";
 
 interface DiffFileTreeProps {
   readonly entries: ReadonlyArray<DiffFileTreeEntry>;
+  /** All files affected by a folder review action, including files hidden by filters. */
+  readonly reviewEntries?: ReadonlyArray<DiffFileTreeEntry>;
+  /** Called with the file's path when the reader picks a file row. */
   readonly onSelectFile: (path: string) => void;
   readonly selectedPath?: string | null;
   readonly revealRequestId?: number;
@@ -32,10 +36,13 @@ interface DiffFileTreeProps {
   readonly headerAccessory?: ReactNode;
   readonly footer?: ReactNode;
   readonly className?: string;
+  readonly headerLabel?: string;
+  readonly onReviewFolder?: ((path: string, reviewed: boolean) => void) | undefined;
 }
 
 export function DiffFileTree({
   entries,
+  reviewEntries = entries,
   onSelectFile,
   selectedPath = null,
   revealRequestId = 0,
@@ -43,6 +50,8 @@ export function DiffFileTree({
   headerAccessory,
   footer,
   className,
+  headerLabel = "Files",
+  onReviewFolder,
 }: DiffFileTreeProps) {
   const { resolvedTheme } = useTheme();
   const paths = entries.map((entry) => entry.path);
@@ -70,6 +79,10 @@ export function DiffFileTree({
     revealRequestId: number;
   } | null>(null);
   const mountedPresentationRef = useRef<ReturnType<typeof diffFileTreeModel> | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const reviewEntriesRef = useRef(reviewEntries);
+  reviewEntriesRef.current = reviewEntries;
 
   // The tree model keeps the first selection handler it was given.
   const handleSelectionChange = useStableCallback((selectedPaths: ReadonlyArray<string>) => {
@@ -89,7 +102,28 @@ export function DiffFileTree({
     paths: [],
     search: false,
     sort: ordering.sort,
-    unsafeCSS: PIERRE_TREE_UNSAFE_CSS,
+    unsafeCSS: `${PIERRE_TREE_UNSAFE_CSS}
+      /* Preserve both the review check and count in Pierre's custom decoration lane. */
+      [data-item-section='decoration'] { min-width: max-content; }
+      [data-item-section='decoration'] > span { flex: none; max-width: none; }
+    `,
+    composition: {
+      contextMenu: { enabled: false, triggerMode: "right-click" },
+    },
+    renderRowDecoration: ({ item }) => {
+      const matches = entriesRef.current.filter((entry) =>
+        item.kind === "directory"
+          ? entry.path.startsWith(item.path.endsWith("/") ? item.path : `${item.path}/`)
+          : entry.path === item.path,
+      );
+      const count = matches.reduce((total, entry) => total + (entry.unresolvedComments ?? 0), 0);
+      const reviewed = matches.length > 0 && matches.every((entry) => entry.reviewed);
+      if (!reviewed && count === 0) return null;
+      return {
+        text: `${reviewed ? "✓" : ""}${count > 0 ? ` ${count}` : ""}`.trim(),
+        title: `${reviewed ? "Reviewed. " : ""}${count > 0 ? `${count} unresolved comments` : ""}`,
+      };
+    },
   });
   const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
     areAllDirectoriesExpanded(currentModel, directoryPaths),
@@ -145,6 +179,12 @@ export function DiffFileTree({
   }, [directoryPaths, gitStatus, model, modelPaths, ordering, positions, presented]);
 
   useEffect(() => {
+    // Pierre ignores unchanged git statuses, so reviewed/comment-only updates need a render
+    // of the existing tree. This preserves its scroll, selection, and folder expansion.
+    if (model.getFileTreeContainer()) model.render({});
+  }, [entries, model]);
+
+  useEffect(() => {
     if (selectedPath === null) {
       handledRevealRef.current = null;
       return;
@@ -183,7 +223,7 @@ export function DiffFileTree({
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 text-xs text-muted-foreground in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
-        <span className="px-1 font-medium text-foreground">Files</span>
+        <span className="px-1 font-medium text-foreground">{headerLabel}</span>
         <span className="ml-auto tabular-nums">{entries.length}</span>
         {headerAccessory}
         {directoryPaths.length > 0 ? (
@@ -242,6 +282,58 @@ export function DiffFileTree({
         }}
         className="min-h-0 flex-1 overflow-hidden"
         style={pierreTreeStyle(resolvedTheme)}
+        {...(onReviewFolder
+          ? {
+              renderContextMenu: (item, context) => {
+                if (item.kind !== "directory" || !onReviewFolder) return null;
+                const prefix = item.path.endsWith("/") ? item.path : `${item.path}/`;
+                const descendants = reviewEntriesRef.current.filter((entry) =>
+                  entry.path.startsWith(prefix),
+                );
+                const canMarkReviewed = descendants.some((entry) => !entry.reviewed);
+                const canMarkUnreviewed = descendants.some((entry) => entry.reviewed);
+                return (
+                  <Menu
+                    open
+                    onOpenChange={(open) => {
+                      if (!open) context.close();
+                    }}
+                  >
+                    <MenuPopup
+                      anchor={context.anchorElement}
+                      data-file-tree-context-menu-root="true"
+                      align="start"
+                    >
+                      {onReviewFolder ? (
+                        <>
+                          {canMarkReviewed ? (
+                            <MenuItem
+                              onClick={() => {
+                                onReviewFolder(item.path, true);
+                                context.close();
+                              }}
+                            >
+                              Mark as reviewed
+                            </MenuItem>
+                          ) : null}
+                          {canMarkUnreviewed ? (
+                            <MenuItem
+                              onClick={() => {
+                                onReviewFolder(item.path, false);
+                                context.close();
+                              }}
+                            >
+                              Mark as unreviewed
+                            </MenuItem>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </MenuPopup>
+                  </Menu>
+                );
+              },
+            }
+          : {})}
       />
       {footer}
     </div>

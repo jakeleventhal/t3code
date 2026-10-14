@@ -1,5 +1,7 @@
-import { Toolbar } from "../../components/ui/Toolbar";
-import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import { resolvedReviewCommentsLabel } from "@t3tools/client-runtime/review-editing";
+import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
+import { PullRequestCommentComposer } from "./PullRequestCommentComposer";
+import { PullRequestCommentControls } from "./PullRequestCommentControls";
 import { useAtomRefresh } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
@@ -9,14 +11,16 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import type { PullRequestThreadComment } from "@t3tools/contracts";
 import { useRef, useState } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
-import { Button } from "../../components/ui/Button";
-import { GlassSurface } from "../../components/ui/GlassSurface";
+import { AppText as Text } from "../../components/AppText";
+import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
+import { MaterialButton } from "../../components/MaterialButton";
+import { ControlPill } from "../../components/ControlPill";
+import { SymbolView } from "../../components/AppSymbol";
+import { PullRequestPendingBadge } from "./PullRequestPendingComment";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { relativeTime } from "../../lib/time";
 import { composerPullRequests } from "../../state/pull-requests";
@@ -55,15 +59,22 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   });
   const loadMore = useAtomCommand(composerPullRequests.threadComments, { reportFailure: false });
   const thread = activity.data?.reviewThreads.find((thread) => thread.id === params.discussionId);
+  const [uploading, setUploading] = useState(false);
   const [body, setBody] = useState("");
+  const resolved = thread?.isResolved ?? false;
+  const [lastResolved, setLastResolved] = useState(resolved);
+  const [expanded, setExpanded] = useState(!resolved);
+  if (lastResolved !== resolved) {
+    setLastResolved(resolved);
+    setExpanded(!resolved);
+  }
   const [extra, setExtra] = useState<readonly PullRequestThreadComment[]>([]);
   const [cursor, setCursor] = useState<string | null | undefined>();
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [composerHeight, setComposerHeight] = useState(64);
-  const operation = async (run: () => Promise<AtomCommandResult<unknown, unknown> | undefined>) => {
+  const operation = async (run: () => Promise<void>) => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
@@ -81,7 +92,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   };
   const post = () =>
     operation(async () => {
-      if (!permissions.canReply || !body.trim() || !thread) return undefined;
+      if (uploading || !permissions.canReply || !body.trim() || !thread) return;
       const submitted = body;
       const response = await reply({
         ...target,
@@ -95,7 +106,13 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
     });
   const toggleResolved = () =>
     operation(async () => {
-      if (!thread || !permissions.canResolve) return undefined;
+      if (
+        !thread ||
+        !permissions.canResolve ||
+        thread.canResolve === false ||
+        thread.comments.some((comment) => comment.pendingReviewId)
+      )
+        return;
       const response = await resolve({
         ...target,
         input: { ...target.input, threadId: thread.id, resolved: !thread.isResolved },
@@ -121,8 +138,18 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
       [...extra, ...(thread?.comments ?? [])].map((comment) => [comment.id, comment]),
     ).values(),
   ].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  const canReply = permissions.canReply && Boolean(thread);
-  const resolveLabel = thread?.isResolved ? "Unresolve" : "Resolve";
+  const canReply =
+    permissions.canReply &&
+    Boolean(thread) &&
+    expanded &&
+    !thread?.comments.some((comment) => comment.pendingReviewId);
+  const canResolve =
+    permissions.canResolve &&
+    thread?.canResolve !== false &&
+    !thread?.comments.some((comment) => comment.pendingReviewId);
+  const participants = comments.map(
+    (comment) => comment.author?.name ?? comment.author?.login ?? "Unknown author",
+  );
   return (
     <PullRequestMarkdownRepository
       params={params}
@@ -137,28 +164,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
             title="Discussion"
             subtitle={`#${params.number}`}
             onBack={() => navigation.goBack()}
-            actions={
-              permissions.canResolve && thread
-                ? [
-                    {
-                      accessibilityLabel: resolveLabel,
-                      icon: thread.isResolved ? "arrow.uturn.backward" : "checkmark",
-                      disabled: busy || activity.isPending,
-                      onPress: () => void toggleResolved(),
-                    },
-                  ]
-                : []
-            }
           />
-        ) : null}
-        {permissions.canResolve && thread ? (
-          <Toolbar placement="right">
-            <Toolbar.Button
-              label={resolveLabel}
-              disabled={busy || activity.isPending}
-              onPress={() => void toggleResolved()}
-            />
-          </Toolbar>
         ) : null}
         <ScrollViewMarker style={{ flex: 1 }}>
           <ScrollView
@@ -167,7 +173,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               padding: 20,
-              paddingBottom: canReply ? composerHeight + bottomInset + 24 : 24,
+              paddingBottom: 24,
             }}
           >
             {activity.isPending && !thread ? <AppActivityIndicator /> : null}
@@ -175,7 +181,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
               <View className="gap-2 pb-4">
                 <Text selectable className="font-mono text-xs text-foreground-muted">
                   {thread.path}
-                  {thread.line ? `:${thread.line}` : ""}
+                  {` · ${reviewLineRangeLabel(thread)}`}
                 </Text>
                 <Text className="text-xs text-foreground-muted">
                   {thread.isResolved ? "Resolved" : "Unresolved"}
@@ -191,22 +197,86 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
             ) : !activity.isPending ? (
               <Text>This discussion is no longer available.</Text>
             ) : null}
-            {comments.map((comment) => (
-              <View key={comment.id} className="gap-3 border-b border-border-subtle py-4">
-                <View className="flex-row items-center gap-2">
-                  <PullRequestAvatar actor={comment.author} size={28} />
-                  <Text className="min-w-0 flex-1 text-sm font-t3-medium">
-                    {comment.author?.login ?? "Unknown author"}
+            {resolved ? (
+              <View className="flex-row items-center gap-2 rounded-xl border border-border-subtle bg-grouped-card px-3">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded }}
+                  className="min-h-12 min-w-0 flex-1 flex-row items-center gap-2"
+                  onPress={() => setExpanded(!expanded)}
+                >
+                  <SymbolView
+                    name="checkmark.circle"
+                    size={16}
+                    tintColorClassName="accent-icon-muted"
+                  />
+                  <Text className="min-w-0 flex-1 text-sm text-foreground-muted">
+                    {expanded
+                      ? "Collapse"
+                      : resolvedReviewCommentsLabel(
+                          thread?.commentCount ?? comments.length,
+                          participants,
+                        )}
                   </Text>
-                  <Text className="text-2xs text-foreground-muted">
-                    {relativeTime(comment.createdAt)}
-                  </Text>
-                </View>
-                <PullRequestMarkdown markdown={comment.body} />
+                  <SymbolView
+                    name={expanded ? "chevron.up" : "chevron.down"}
+                    size={12}
+                    tintColorClassName="accent-icon-muted"
+                  />
+                </Pressable>
+                {!expanded && comments[0] ? (
+                  <PullRequestCommentControls
+                    params={params}
+                    comment={{ ...comments[0], url: comments[0].url ?? null }}
+                    onUnresolve={canResolve ? () => void toggleResolved() : undefined}
+                    disabled={busy}
+                    render={({ actions }) => actions}
+                  />
+                ) : null}
               </View>
-            ))}
-            {nextCursor ? (
-              <Button
+            ) : null}
+            {expanded
+              ? comments.map((comment, index) => (
+                  <View key={comment.id} className="gap-3 border-b border-border-subtle py-4">
+                    <PullRequestCommentControls
+                      params={params}
+                      comment={{ ...comment, url: comment.url ?? null }}
+                      onUnresolve={resolved && canResolve ? () => void toggleResolved() : undefined}
+                      disabled={busy}
+                      render={({ actions, reactions }) => (
+                        <>
+                          <View className="flex-row items-center gap-2">
+                            <PullRequestAvatar actor={comment.author} size={28} />
+                            <Text
+                              className="min-w-0 flex-1 text-sm font-t3-medium"
+                              numberOfLines={1}
+                            >
+                              {comment.author?.name ?? comment.author?.login ?? "Unknown author"}
+                            </Text>
+                            <Text className="text-2xs text-foreground-muted">
+                              {relativeTime(comment.createdAt)}
+                            </Text>
+                            {comment.pendingReviewId ? <PullRequestPendingBadge /> : null}
+                            {index === 0 && !resolved && canResolve ? (
+                              <ControlPill
+                                icon="checkmark"
+                                accessibilityLabel="Resolve thread"
+                                disabled={busy || activity.isPending}
+                                onPress={() => void toggleResolved()}
+                              />
+                            ) : null}
+                            {actions}
+                          </View>
+                          <PullRequestMarkdown markdown={comment.body} />
+                          {reactions}
+                        </>
+                      )}
+                    />
+                  </View>
+                ))
+              : null}
+            {expanded && nextCursor ? (
+              <MaterialButton
                 label={busy ? "Loading…" : "Load more replies"}
                 disabled={busy}
                 onPress={() => void more()}
@@ -221,32 +291,21 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           </ScrollView>
         </ScrollViewMarker>
         {canReply ? (
-          <View className="absolute inset-x-4 bottom-0" style={{ paddingBottom: bottomInset }}>
-            <GlassSurface
-              chrome="none"
-              onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
-              className="flex-row items-end gap-1 p-1"
-            >
-              <TextInput
-                accessibilityLabel="Discussion reply"
-                multiline
-                maxLength={65536}
-                placeholder="Reply…"
-                placeholderTextColorClassName="accent-foreground-muted"
-                value={body}
-                onChangeText={setBody}
-                editable={!busy}
-                className="max-h-36 min-h-12 min-w-0 flex-1 rounded-[24px] border-0 bg-transparent px-4 py-3 text-base text-foreground"
-              />
-              <View>
-                <Button
-                  label={busy ? "Posting…" : "Reply"}
-                  tone="contrast"
-                  disabled={busy || !body.trim()}
-                  onPress={() => void post()}
-                />
-              </View>
-            </GlassSurface>
+          <View className="px-4" style={{ paddingBottom: bottomInset }}>
+            <PullRequestCommentComposer
+              params={params}
+              label="Discussion reply"
+              placeholder="Leave a reply…"
+              value={body}
+              onChangeText={setBody}
+              editable={!busy}
+              busy={busy}
+              canSubmit={!busy && !uploading && Boolean(body.trim())}
+              submitLabel={busy ? "Posting…" : "Send reply"}
+              onSubmit={() => void post()}
+              onBusyChange={setUploading}
+              minimumHeight={56}
+            />
           </View>
         ) : null}
       </KeyboardAvoidingView>

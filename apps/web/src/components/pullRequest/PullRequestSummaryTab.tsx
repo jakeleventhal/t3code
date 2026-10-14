@@ -1,3 +1,5 @@
+import { PullRequestCommentActions } from "./PullRequestCommentActions";
+import { filterPullRequestActivity } from "@t3tools/client-runtime/review-activity";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
@@ -69,7 +71,7 @@ import {
 import {
   canEditPullRequestChangeRequest,
   canEditPullRequestComment,
-} from "./pullRequestEditing.logic";
+} from "@t3tools/client-runtime/review-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
@@ -120,6 +122,7 @@ function CommentIdentity({
           {comment.url ? " · Open comment on host" : ""}
         </TooltipPopup>
       </Tooltip>
+      <PullRequestCommentActions body={comment.body} url={comment.url} />
     </div>
   );
 }
@@ -388,6 +391,7 @@ export function PullRequestSummaryTab({
   onFixFinding,
   onRefresh,
   onRefreshChecks = onRefresh,
+  activityContent,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
@@ -403,6 +407,7 @@ export function PullRequestSummaryTab({
   onFixFinding?: (finding: PullRequestFinding) => void;
   onRefresh: () => void;
   onRefreshChecks?: () => void;
+  activityContent?: (activity: PullRequestDetailView, order: "newest" | "oldest") => ReactNode;
 }) {
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
   const shownConversations = shown.url === detail.url ? shown.count : COMMENT_PAGE;
@@ -660,7 +665,8 @@ export function PullRequestSummaryTab({
 
   return (
     <div ref={scrollerRef} className="h-full overflow-y-auto" data-pull-request-summary-scroll>
-      <section className="px-4 pt-2.5 pb-1">
+      <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_16rem]">
+        <section className="px-4 pt-2.5 pb-1 xl:col-start-2 xl:row-start-1 xl:border-l xl:border-border/60">
         <div className="space-y-2">
           <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -676,11 +682,20 @@ export function PullRequestSummaryTab({
                         : login;
                     return (
                       <Tooltip key={entry.key}>
+                          {/* A verdict rides the face that earned it rather than a row of its own:
+                            the ring sits outside the one that separates overlapping avatars, so
+                            it reads at a glance without adding anything to scroll past. */}
                         <TooltipTrigger
                           render={
                             <span
                               className={cn(
                                 "relative rounded-full hover:z-10",
+                                  // The verdict replaces the separator rather than ringing it. Both
+                                  // occupy the same 2px immediately outside a 16px avatar, so the
+                                  // colour costs no size: anything drawn further out would be a
+                                  // halo wide enough to eclipse the neighbour this stack overlaps
+                                  // by 4px. Painted by this wrapper because a child's box-shadow
+                                  // covers its parent's, never the other way round.
                                 entry.outcome
                                   ? pullRequestReviewOutcomeRingClassName(
                                       entry.outcome,
@@ -696,6 +711,8 @@ export function PullRequestSummaryTab({
                             tooltip={false}
                             variant="avatar"
                           />
+                            {/* Colour alone says nothing to a reader who cannot see it, and the
+                              login beside this is already in the accessible name. */}
                           {entry.outcome ? (
                             <span className="sr-only">
                               {entry.stale
@@ -718,10 +735,11 @@ export function PullRequestSummaryTab({
                   })}
                 </span>
               )}
-              {/*
-               * Azure DevOps is the exception — it takes a reviewer but will not
-                  say who could be one, so there is nothing to open.
-               */}
+                {/* Shown wherever the host can take a review request at all, and disabled with the
+                  reason where this account may not make one: a control that vanishes teaches
+                  nobody why, and "you need write access" is the answer to the question a reader
+                  actually has. Azure DevOps is the exception — it takes a reviewer but will not
+                  say who could be one, so there is nothing to open. */}
               {detail.capabilities.reviewers.request &&
               detail.capabilities.reviewers.listCandidates ? (
                 <PullRequestReviewerPicker
@@ -732,6 +750,8 @@ export function PullRequestSummaryTab({
               ) : null}
             </span>
           </MetaRow>
+            {/* The row is shown empty only where a label could be put on it from here; on a host
+              with none to offer, an empty row is a row about nothing. */}
           {detail.labels.length > 0 || detail.capabilities.labels === true ? (
             <MetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
               <span className="flex min-w-0 flex-wrap items-center gap-1">
@@ -759,11 +779,12 @@ export function PullRequestSummaryTab({
           ) : null}
         </div>
       </section>
-
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
       <Section key={`description:${detail.url}`} title="Description" keepMounted>
         <div className="group">
           {bodyScope === detail.url ? (
             <PullRequestMarkdownEditor
+                  // Empty is a real answer here: saving nothing is how a description is cleared.
               allowEmpty
               value={detail.body}
               cwd={detail.workspaceRoot}
@@ -779,7 +800,9 @@ export function PullRequestSummaryTab({
             <div className="flex items-start gap-1">
               <PullRequestMarkdown
                 className="min-w-0 flex-1"
-                text={detail.body.trim().length > 0 ? detail.body : "_No description provided._"}
+                    text={
+                      detail.body.trim().length > 0 ? detail.body : "_No description provided._"
+                    }
                 cwd={detail.workspaceRoot}
                 environmentId={environmentId}
                 threadRef={threadRef}
@@ -811,6 +834,8 @@ export function PullRequestSummaryTab({
             const failing = check.status === "failure" || check.status === "cancelled";
             return (
               <div
+                    // Position too: the host decides how many runs share a name, and a repeated
+                    // key would be a rendering fault on top of whatever the list already says.
                 key={`${index}:${check.name}:${check.url ?? ""}`}
                 className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
               >
@@ -829,6 +854,8 @@ export function PullRequestSummaryTab({
                     {pullRequestCheckStatusLabel(check)}
                   </span>
                 </button>
+                    {/* Only where there is something to fix. A passing check has no failure to
+                      reproduce, and the button would be an invitation to waste a thread. */}
                 {onFixFinding && failing ? (
                   <Button
                     size="xs"
@@ -850,7 +877,7 @@ export function PullRequestSummaryTab({
       </Section>
 
       <Section
-        title={`Comments (${detail.commentCount})`}
+            title={activityContent ? "Activity" : `Comments (${detail.commentCount})`}
         actions={
           <div className="flex shrink-0 items-center gap-1">
             <Menu>
@@ -867,7 +894,9 @@ export function PullRequestSummaryTab({
                   <MenuCheckboxItem
                     checked={commentFilter.bots}
                     closeOnClick={false}
-                    onCheckedChange={(bots) => setCommentFilter((value) => ({ ...value, bots }))}
+                        onCheckedChange={(bots) =>
+                          setCommentFilter((value) => ({ ...value, bots }))
+                        }
                   >
                     Bot comments
                   </MenuCheckboxItem>
@@ -891,7 +920,9 @@ export function PullRequestSummaryTab({
                   ? "Show oldest comments first"
                   : "Show newest comments first"
               }
-              onClick={() => setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))}
+                  onClick={() =>
+                    setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))
+                  }
             >
               <ArrowDownUpIcon aria-hidden className="size-3" />
               {commentOrder === "newest" ? "Newest first" : "Oldest first"}
@@ -902,8 +933,21 @@ export function PullRequestSummaryTab({
         {activityPending ? (
           <PullRequestConversationGhost />
         ) : activityError ? (
-          <PullRequestActivityUnavailableState compact error={activityError} onRetry={onRefresh} />
+              <PullRequestActivityUnavailableState
+                compact
+                error={activityError}
+                onRetry={onRefresh}
+              />
         ) : (
+              (activityContent?.(
+                filterPullRequestActivity(detail, {
+                  kind: "all",
+                  bots: commentFilter.bots,
+                  resolved: commentFilter.resolved,
+                  newestFirst: commentOrder === "newest",
+                }).activity,
+                commentOrder,
+              ) ?? (
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">
@@ -937,8 +981,11 @@ export function PullRequestSummaryTab({
               </div>
             )}
           </>
+              ))
         )}
       </Section>
+    </div>
+      </div>
     </div>
   );
 }
