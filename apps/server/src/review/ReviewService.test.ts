@@ -270,6 +270,63 @@ describe("ReviewService", () => {
       }).pipe(Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("reverts a hunk or selected addition without changing the index or other edits", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-review-partial-revert-",
+      });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-state-" });
+      yield* Effect.gen(function* () {
+        const git = yield* GitVcsDriver.GitVcsDriver;
+        const service = yield* ReviewService.ReviewService;
+        const run = (args: string[]) =>
+          git
+            .execute({ operation: "review.test", cwd: workspaceRoot, args })
+            .pipe(Effect.map((result) => result.stdout));
+        yield* run(["init"]);
+        yield* run(["config", "user.name", "Test"]);
+        yield* run(["config", "user.email", "test@example.com"]);
+        yield* fs.writeFileString(`${workspaceRoot}/file.txt`, "alpha\nbeta\ngamma\ndelta\n");
+        yield* run(["add", "."]);
+        yield* run(["commit", "-m", "initial"]);
+        const index = "ALPHA\nbeta\ngamma\ndelta\n";
+        yield* fs.writeFileString(`${workspaceRoot}/file.txt`, index);
+        yield* run(["add", "."]);
+        yield* fs.writeFileString(
+          `${workspaceRoot}/file.txt`,
+          "ALPHA\nBETA\nextra\nGAMMA\ndelta\n",
+        );
+        const header = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n";
+        yield* service.revert({
+          cwd: workspaceRoot,
+          paths: [],
+          patch: header + "@@ -3,0 +3,1 @@\n+extra\n",
+        });
+        assert.strictEqual(
+          yield* fs.readFileString(`${workspaceRoot}/file.txt`),
+          "ALPHA\nBETA\nGAMMA\ndelta\n",
+        );
+        const hunk = header + "@@ -2,1 +2,1 @@\n-beta\n+BETA\n";
+        yield* service.revert({ cwd: workspaceRoot, paths: [], patch: hunk });
+        assert.strictEqual(
+          yield* fs.readFileString(`${workspaceRoot}/file.txt`),
+          "ALPHA\nbeta\nGAMMA\ndelta\n",
+        );
+        assert.strictEqual(yield* run(["show", ":file.txt"]), index);
+        const stale = yield* service
+          .revert({ cwd: workspaceRoot, paths: [], patch: hunk })
+          .pipe(Effect.flip);
+        assert.strictEqual(stale._tag, "GitCommandError");
+        assert.strictEqual(
+          yield* fs.readFileString(`${workspaceRoot}/file.txt`),
+          "ALPHA\nbeta\nGAMMA\ndelta\n",
+        );
+        assert.strictEqual(yield* run(["show", ":file.txt"]), index);
+      }).pipe(Effect.provide(layer({ workspaceRoot, baseDir, gitLayer: GitVcsDriver.layer })));
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("rejects diff preview cwd outside the configured workspace roots", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

@@ -186,7 +186,7 @@ export function GuideStop({
                           }))
                         }
                       >
-                        <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-xs">
+                      <div className="flex min-w-0 items-center gap-2 bg-foreground/7 px-3 py-2 text-xs">
                           <CollapsibleTrigger
                             render={<Button size="icon-xs" variant="ghost" />}
                             aria-label={`${open ? "Collapse" : "Expand"} diff for ${file.path}`}

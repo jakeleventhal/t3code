@@ -75,7 +75,7 @@ export function ReviewChapterRail({
               const bounds = event.currentTarget.getBoundingClientRect();
               showChapterReviewMenu(chapter, { x: bounds.left, y: bounds.bottom });
             }}
-            className={cn(position === index && "rounded-md bg-accent text-accent-foreground")}
+            className={cn(position === index && "rounded-md bg-accent/35 text-foreground")}
           >
             <button
               type="button"
@@ -83,7 +83,7 @@ export function ReviewChapterRail({
               onClick={() => onSelect(index)}
               className={cn(
                 "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                position === index ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+                position === index ? "text-foreground" : "hover:bg-accent/20",
               )}
             >
               <span

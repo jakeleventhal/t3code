@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestFilesViewed } from "../usePullRequestFilesViewed";
@@ -39,7 +40,9 @@ export function GuideTour({
   onAsk,
   onFinish,
   onOpenFile,
+  viewControlsTarget,
 }: {
+  viewControlsTarget: HTMLElement | null;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   guide: PullRequestReviewGuide;
@@ -125,9 +128,7 @@ export function GuideTour({
   return (
     // Each pane owns its scroll, so reading the diff leaves the chapter context in place.
     <div className="@container/guide flex h-full min-h-0 flex-col">
-      <div className="flex h-10 min-h-10 shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-background px-4">
-        <DiffDisplayControls />
-      </div>
+      {viewControlsTarget ? createPortal(<DiffDisplayControls />, viewControlsTarget) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="w-80 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
           <GuideRail

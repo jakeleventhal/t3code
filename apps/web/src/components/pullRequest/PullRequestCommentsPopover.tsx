@@ -6,7 +6,7 @@ import type {
   PullRequestThreadComment,
 } from "@t3tools/contracts";
 import { FileCode2Icon, MessageSquareIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -48,6 +48,26 @@ export function PullRequestCommentsPopover({
   onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
+  const anchor = useMemo(
+    () =>
+      trigger
+        ? {
+            contextElement: trigger,
+            getBoundingClientRect: () => {
+              const button = trigger.getBoundingClientRect();
+              const panel = trigger.closest("[data-pull-request-panel]")?.getBoundingClientRect();
+              return new DOMRect(
+                panel?.left ?? button.left,
+                button.top,
+                panel?.width ?? button.width,
+                button.height,
+              );
+            },
+          }
+        : undefined,
+    [trigger],
+  );
   const [selectedStatus, setSelectedStatus] = useState<"resolved" | "unresolved" | "pending">(
     "unresolved",
   );
@@ -73,6 +93,7 @@ export function PullRequestCommentsPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        ref={setTrigger}
         render={<Button size="xs" variant="ghost-muted" />}
         aria-label={`Comments, ${openCount} open`}
       >
@@ -82,8 +103,17 @@ export function PullRequestCommentsPopover({
           {openCount}
         </Badge>
       </PopoverTrigger>
-      <PopoverPopup align="end" padding="none" width="auto">
-        <div className="flex max-h-[min(75vh,48rem)] w-[min(36rem,calc(100vw-2rem))] min-w-0 flex-col">
+      <PopoverPopup
+        anchor={anchor}
+        side="bottom"
+        align="end"
+        alignOffset={12}
+        collisionPadding={12}
+        collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
+        padding="none"
+        width="auto"
+      >
+        <div className="flex max-h-[min(75vh,48rem,var(--available-height))] w-[min(28rem,calc(100vw-2rem))] min-w-0 flex-col [--text-sm:0.8125rem]">
           <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
             <PopoverTitle>Comments</PopoverTitle>
             <Button

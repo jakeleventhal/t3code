@@ -10,7 +10,7 @@ import { hideWhitespaceChanges, resolveDiffThemeName } from "~/lib/diffRendering
 import { useClientSettings } from "~/hooks/useSettings";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 
-import { DIFF_VIEW_UNSAFE_CSS } from "../../diffs/StyledDiffCodeView";
+import { GUIDE_DIFF_UNSAFE_CSS } from "./guideDiffStyles";
 
 export function GuideFileDiff({
   file,
@@ -36,7 +36,7 @@ export function GuideFileDiff({
     theme: resolveDiffThemeName(resolvedTheme),
     themeType: resolvedTheme,
     preferredHighlighter: PREFERRED_HIGHLIGHTER,
-    unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
+      unsafeCSS: GUIDE_DIFF_UNSAFE_CSS,
     loadDiffFiles,
     }),
     [loadDiffFiles, resolvedTheme, settings.diffLayout, settings.wordWrap],

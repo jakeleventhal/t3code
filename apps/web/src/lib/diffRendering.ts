@@ -364,4 +364,9 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
   background-color: var(--diffs-bg) !important;
   color: var(--code-foreground) !important;
 }
+
+[data-diffs-header] {
+  background-color: color-mix(in srgb, var(--code-background) 93%, var(--code-foreground)) !important;
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--code-foreground) 14%, transparent) !important;
+}
 `;

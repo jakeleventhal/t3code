@@ -175,7 +175,14 @@ export const make = Effect.gen(function* () {
       yield* git.execute({
         operation: "ReviewService.setStaged.patch",
         cwd: input.cwd,
-        args: ["apply", "--cached", ...(input.staged ? [] : ["--reverse"]), "--", "-"],
+        args: [
+          "apply",
+          "--cached",
+          "--unidiff-zero",
+          ...(input.staged ? [] : ["--reverse"]),
+          "--",
+          "-",
+        ],
         stdin: input.patch,
       });
       yield* workflow.invalidateLocalStatus(input.cwd);
@@ -238,7 +245,7 @@ export const make = Effect.gen(function* () {
   const revert = Effect.fn("ReviewService.revert")(function* (input: ReviewRevertInput) {
     yield* assertWorkspaceBoundCwd("ReviewService.revert", input.cwd);
     if (
-      input.paths.length === 0 ||
+      (input.paths.length === 0 && input.patch === undefined) ||
       input.paths.some(
         (file) => path.isAbsolute(file) || file === "." || file.split(/[\\/]/).includes(".."),
       )
@@ -249,6 +256,16 @@ export const make = Effect.gen(function* () {
         command: "git restore",
         detail: "Choose repository-relative changed files to revert.",
       });
+    }
+    if (input.patch !== undefined) {
+      yield* git.execute({
+        operation: "ReviewService.revert.patch",
+        cwd: input.cwd,
+        args: ["apply", "--reverse", "--unidiff-zero", "--", "-"],
+        stdin: input.patch,
+      });
+      yield* workflow.invalidateLocalStatus(input.cwd);
+      return;
     }
     const paths = [...new Set(input.paths)].map((file) => `:(literal)${file}`);
     const tracked = yield* git.execute({

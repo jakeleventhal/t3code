@@ -31,7 +31,8 @@ import {
 } from "~/reviewCommentContext";
 
 import { DiffCommentAnnotation } from "../../diffs/DiffCommentAnnotation";
-import { DIFF_VIEW_UNSAFE_CSS, INLINE_RENAME_HEADER_CSS } from "../../diffs/StyledDiffCodeView";
+import { INLINE_RENAME_HEADER_CSS } from "../../diffs/StyledDiffCodeView";
+import { GUIDE_DIFF_UNSAFE_CSS } from "./guideDiffStyles";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { DiffFileRename } from "../../diffs/DiffFileRename";
@@ -51,7 +52,7 @@ import { GuideNoteMarker } from "./GuideNotes";
 import { GuideProse } from "./GuideProse";
 
 // When wrapping is off, keep the excerpt's scrollbar visible so long lines do not look cut off.
-const EXCERPT_UNSAFE_CSS = `${DIFF_VIEW_UNSAFE_CSS}
+const EXCERPT_UNSAFE_CSS = `${GUIDE_DIFF_UNSAFE_CSS}
 ${INLINE_RENAME_HEADER_CSS}
 [data-diffs-header] [data-change-icon] {
   display: none;

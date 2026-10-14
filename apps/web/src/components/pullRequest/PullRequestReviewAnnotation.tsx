@@ -23,20 +23,17 @@ import {
   HammerIcon,
   ClockIcon,
   Trash2Icon,
-  XIcon,
 } from "lucide-react";
 import { Circle, CircleCheck } from "lucide";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { RelativeTime } from "~/components/RelativeTime";
 import { cn } from "~/lib/utils";
-import { observeResize } from "~/lib/observeResize";
 
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MorphIcon } from "~/components/MorphIcon";
-import { Textarea } from "../ui/textarea";
 import { isCommentSubmitShortcut } from "../diffs/commentSubmitShortcut";
 import {
   editPullRequestThreadComment,
@@ -203,9 +200,7 @@ export function ReviewThreadCard({
     if (revealRequest !== undefined) setExpanded(true);
   }
   const [uploading, setUploading] = useState(false);
-  const [replying, setReplying] = useState(false);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
-  const replyComposerRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [lastResolved, setLastResolved] = useState(thread.isResolved);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -234,23 +229,7 @@ export function ReviewThreadCard({
   if (lastResolved !== thread.isResolved) {
     setLastResolved(thread.isResolved);
     setExpanded(!thread.isResolved);
-    setReplying(false);
   }
-
-  useLayoutEffect(() => {
-    const composer = replyComposerRef.current;
-    if (!replying || !composer) return;
-    // Autofocus reveals only the textarea. Reveal its attachments and submit controls too,
-    // after the inline diff has measured the expanded annotation.
-    const reveal = () => composer.scrollIntoView({ block: "nearest", inline: "nearest" });
-    const frame = requestAnimationFrame(reveal);
-    // Typing can grow the form after its initial autofocus.
-    const stopObserving = observeResize(composer, reveal);
-    return () => {
-      cancelAnimationFrame(frame);
-      stopObserving();
-    };
-  }, [replying]);
 
   const saveEdit = async (commentId: string, body: string) => {
     if (savingEdit) return;
@@ -274,22 +253,25 @@ export function ReviewThreadCard({
     const trimmed = reply.trim();
     if (trimmed.length === 0 || pending || uploading || sendingRef.current) return;
     sendingRef.current = true;
-    const result = await settlePromise(() => onReply(trimmed));
-    sendingRef.current = false;
-    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    if (!result.value) return;
-    // The mutation returns no comment. Keep what the reader loaded and reopen its cursor so
-    // the new reply remains reachable without spending requests until they ask to load it.
-    setLoadedPage((previous) =>
-      previous?.threadId === thread.id
-        ? {
-            ...previous,
-            nextCursor: previous.nextCursor ?? thread.nextCommentsCursor ?? null,
-          }
-        : previous,
-    );
-    setReply("");
-    setReplying(false);
+    // Cleared only once the host has it. Otherwise a failed reply leaves an error toast and an
+    // empty box, and the words have to be written again.
+    try {
+      if (await onReply(trimmed)) {
+        // The mutation returns no comment. Keep what the reader loaded and reopen its cursor so
+        // the new reply remains reachable without spending requests until they ask to load it.
+        setLoadedPage((previous) =>
+          previous?.threadId === thread.id
+            ? {
+                ...previous,
+                nextCursor: previous.nextCursor ?? thread.nextCommentsCursor ?? null,
+              }
+            : previous,
+        );
+        setReply("");
+      }
+    } finally {
+      sendingRef.current = false;
+    }
   };
   const loadMore = async () => {
     if (nextCommentsCursor === null || loadingMore) return;
@@ -451,73 +433,49 @@ export function ReviewThreadCard({
           ) : null}
 
           {canReply ? (
-            replying ? (
-              <div
-                ref={replyComposerRef}
-                data-review-reply-composer
-                data-review-attachment-composer
-                className="sticky bottom-0 z-10 flex items-end gap-2 rounded-b-xl border-t border-border/70 bg-background px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <Textarea
-                    ref={replyInputRef}
-                    autoFocus
-                    unstyled
-                    disabled={pending || uploading}
-                    size="sm"
-                    style={{ maxHeight: "min(16rem,30vh)" }}
-                    value={reply}
-                    placeholder="Leave a reply…"
-                    aria-label="Reply to this conversation"
-                    onChange={(event) => setReply(event.target.value)}
-                    onKeyDown={submitKeys({
-                      value: reply,
-                      pending: pending || uploading,
-                      onSubmit: () => void send(),
-                      onCancel: () => setReplying(false),
-                    })}
-                  />
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <PullRequestAttachments
-                    environmentId={environmentId}
-                    reference={reference}
-                    disabled={pending}
-                    onBusyChange={setUploading}
-                    textareaRef={replyInputRef}
-                    onTextChange={setReply}
-                  />
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label="Cancel reply"
-                    title="Cancel reply"
-                    disabled={pending || uploading}
-                    onClick={() => setReplying(false)}
-                  >
-                    <XIcon className="size-3.5" />
-                  </Button>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label="Send reply"
-                    title="Send reply"
-                    disabled={pending || uploading || reply.trim().length === 0}
-                    onClick={() => void send()}
-                  >
-                    <ArrowUpIcon className="size-4" />
-                  </Button>
-                </div>
+            <div
+              data-review-reply-composer
+              data-review-attachment-composer
+              className="flex items-end gap-2 rounded-b-xl border-t border-border/70 bg-background px-3 py-3"
+            >
+              <textarea
+                ref={replyInputRef}
+                rows={1}
+                disabled={pending || uploading}
+                className="field-sizing-content min-h-6 min-w-0 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground"
+                style={{ maxHeight: "min(16rem,30vh)" }}
+                value={reply}
+                placeholder="Leave a reply…"
+                aria-label="Reply to this conversation"
+                onChange={(event) => setReply(event.target.value)}
+                onKeyDown={submitKeys({
+                  value: reply,
+                  pending: pending || uploading,
+                  onSubmit: () => void send(),
+                  onCancel: () => replyInputRef.current?.blur(),
+                })}
+              />
+              <div className="flex h-6 shrink-0 items-center gap-1">
+                <PullRequestAttachments
+                  environmentId={environmentId}
+                  reference={reference}
+                  disabled={pending}
+                  onBusyChange={setUploading}
+                  textareaRef={replyInputRef}
+                  onTextChange={setReply}
+                />
+                <Button
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label="Send reply"
+                  title="Send reply"
+                  disabled={pending || uploading || reply.trim().length === 0}
+                  onClick={() => void send()}
+                >
+                  <ArrowUpIcon className="size-4" />
+                </Button>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="flex w-full items-center rounded-b-xl border-t border-border/70 px-3 py-3 text-left text-sm text-muted-foreground hover:bg-muted/40"
-                onClick={() => setReplying(true)}
-              >
-                Leave a reply…
-              </button>
-            )
+            </div>
           ) : null}
         </>
       ) : null}

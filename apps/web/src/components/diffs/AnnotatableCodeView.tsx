@@ -131,6 +131,8 @@ interface AnnotatableCodeViewProps {
   stageLinesAction?: "stage" | "unstage" | undefined;
   onStageLines?: ((fileDiff: FileDiffMetadata, range: SelectedLineRange) => void) | undefined;
   canStageLines?: ((fileDiff: FileDiffMetadata, range: SelectedLineRange) => boolean) | undefined;
+  onRevertLines?: ((fileDiff: FileDiffMetadata, range: SelectedLineRange) => void) | undefined;
+  canRevertLines?: ((fileDiff: FileDiffMetadata, range: SelectedLineRange) => boolean) | undefined;
   renderHeaderFilenameSuffix: (fileDiff: FileDiffMetadata) => ReactNode;
   renderHeaderPrefix: (
     fileDiff: FileDiffMetadata,
@@ -161,6 +163,8 @@ export function AnnotatableCodeView({
   stageLinesAction,
   onStageLines,
   canStageLines,
+  onRevertLines,
+  canRevertLines,
   renderHeaderFilenameSuffix,
   renderHeaderPrefix,
   onRevealSearchMatch,
@@ -339,7 +343,7 @@ export function AnnotatableCodeView({
 
   const hasOpenComment = draft !== null;
   useEffect(() => {
-    if (!container || !onStageLines || !stageLinesAction) return;
+    if (!container || (!onStageLines && !onRevertLines)) return;
     const onContextMenu = (event: MouseEvent) => {
       const path = event
         .composedPath()
@@ -357,36 +361,54 @@ export function AnnotatableCodeView({
         (selectedLines?.id === file.fileKey && line.hasAttribute("data-selected-line")
           ? selectedLines.range
           : { start: point.lineNumber, end: point.lineNumber, side: point.side });
-      if (canStageLines && !canStageLines(file.fileDiff, range)) return;
+      const stageAvailable =
+        onStageLines && stageLinesAction && (!canStageLines || canStageLines(file.fileDiff, range));
+      const revertAvailable =
+        onRevertLines && (!canRevertLines || canRevertLines(file.fileDiff, range));
+      if (!stageAvailable && !revertAvailable) return;
       const api = readLocalApi();
       if (!api) return;
       event.preventDefault();
       event.stopPropagation();
       setSelectedLines({ id: file.fileKey, range });
       const label = stageLinesAction === "stage" ? "Stage" : "Unstage";
+      const singleLine = range.start === range.end && (range.endSide ?? range.side) === range.side;
       void api.contextMenu
         .show(
           [
+            ...(stageAvailable
+              ? [
             {
               id: "stage-lines",
-              label: `${label} ${
-                range.start === range.end && (range.endSide ?? range.side) === range.side
-                  ? "line"
-                  : "selected lines"
-              }`,
+                    label: `${label} ${singleLine ? "line" : "selected lines"}`,
             },
+                ]
+              : []),
+            ...(revertAvailable
+              ? [{ id: "revert-lines", label: `Revert ${singleLine ? "line" : "lines"}` }]
+              : []),
           ],
           { x: event.clientX, y: event.clientY },
         )
         .then((action) => {
-          if (action !== "stage-lines") return;
+          if (action !== "stage-lines" && action !== "revert-lines") return;
           setSelectedLines(null);
-          onStageLines(file.fileDiff, range);
+          if (action === "stage-lines") onStageLines?.(file.fileDiff, range);
+          else onRevertLines?.(file.fileDiff, range);
         });
     };
     container.addEventListener("contextmenu", onContextMenu);
     return () => container.removeEventListener("contextmenu", onContextMenu);
-  }, [container, filesByKey, selectedLines, onStageLines, stageLinesAction, canStageLines]);
+  }, [
+    container,
+    filesByKey,
+    selectedLines,
+    onStageLines,
+    stageLinesAction,
+    canStageLines,
+    onRevertLines,
+    canRevertLines,
+  ]);
 
   return (
     <StyledDiffCodeView<DiffCommentAnnotationGroup>

@@ -41,9 +41,11 @@ export function PullRequestGuideTab({
   onOpenFile,
   onTourShown,
   fallback,
+  viewControlsTarget,
 }: {
   /** The ordinary diff reader keeps the whole change available until the guide arrives. */
-  fallback: ReactNode;
+  fallback: (status: ReactNode) => ReactNode;
+  viewControlsTarget: HTMLElement | null;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   title: string | null;
@@ -166,24 +168,31 @@ export function PullRequestGuideTab({
     ) : null;
 
   if (guide === null) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-2">
-          <p role="status" className="text-xs text-muted-foreground">
-            {failure ??
-              query.error ??
-              (running
-                ? "Generating guide. You can review the files below."
-                : query.isPending
-                  ? "Loading guide..."
-                  : "No review guide yet.")}
-          </p>
-          {!running && !query.isPending
-            ? writeButton(failure === null ? "Write guide" : "Try again", "xs")
-            : null}
-        </div>
-        <div className="min-h-0 flex-1">{fallback}</div>
-      </div>
+    return fallback(
+      <div className="mb-4 flex flex-col gap-2" aria-busy={running}>
+        <style>{`
+          @keyframes guide-status-glimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+          [data-guide-generating] { background: linear-gradient(100deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%); background-size: 200% 100%; background-clip: text; color: transparent; animation: guide-status-glimmer 2.4s ease-in-out 3; }
+          @media (prefers-reduced-motion: reduce) { [data-guide-generating] { animation: none; } }
+        `}</style>
+        <h2
+          role="status"
+          data-guide-generating={running || undefined}
+          className="text-sm font-medium"
+        >
+          {failure ??
+            query.error ??
+            (running ? "Generating guide…" : query.isPending ? "Loading guide…" : "Review guide")}
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {running
+            ? "Organizing this change into chapters. Review the files while you wait."
+            : "Review the files while the guide is prepared."}
+        </p>
+        {!running && !query.isPending
+          ? writeButton(failure === null ? "Write guide" : "Try again", "xs")
+          : null}
+      </div>,
     );
   }
 
@@ -206,6 +215,7 @@ export function PullRequestGuideTab({
         environmentId={environmentId}
         reference={reference}
         guide={guide}
+        viewControlsTarget={viewControlsTarget}
         banner={banner}
         active={active}
         commenting={commenting}

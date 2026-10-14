@@ -3,6 +3,7 @@ import {
   reviewFileGroup,
   type ReviewFileGroup,
 } from "@t3tools/shared/reviewFileClassification";
+import { createPortal } from "react-dom";
 import { ReviewPath } from "../diffs/ReviewPath";
 import {
   reviewPositionRange,
@@ -91,7 +92,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
-import { ReviewChapterRail } from "./ReviewChapterRail";
+import { ReviewChapterRail, ReviewChapterFileLink } from "./ReviewChapterRail";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
@@ -281,8 +282,12 @@ function PullRequestCodeTab({
   backgroundRefreshToken = 0,
   revealRequest = null,
   guideFallback = false,
+  guideStatus,
+  viewControlsTarget,
 }: {
-  /** Before a Guide is ready, show every file without Code-only filters or grouping. */
+  guideStatus?: ReactNode;
+  viewControlsTarget?: HTMLElement | null;
+  /** Before a Guide is ready, keep its chapter layout with files grouped by type. */
   guideFallback?: boolean;
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
@@ -333,7 +338,7 @@ function PullRequestCodeTab({
   );
   const commentsOnly = !guideFallback && settings.pullRequestViewing.commentsOnly;
   const hideReviewed = !guideFallback && settings.pullRequestViewing.hideReviewed;
-  const groupByType = !guideFallback && settings.pullRequestViewing.groupByType;
+  const groupByType = guideFallback || settings.pullRequestViewing.groupByType;
   const [selectedChapter, setSelectedChapter] = useState<ReviewFileGroup>("implementation");
   const [chapterRailOpen, setChapterRailOpen] = useState(false);
   const canSetChapterViewed = useAtomValue(
@@ -1517,7 +1522,52 @@ function PullRequestCodeTab({
     setDraft(null);
     setSelectedLines(null);
   };
-  const toolbar = (
+  const displayControls = (
+    <DiffDisplayControls
+      onWhitespaceChange={changeIgnoreWhitespace}
+      filters={
+        guideFallback
+          ? []
+          : [
+              {
+                label: "Hide reviewed",
+                checked: hideReviewed,
+                disabled: !filesViewed.enabled,
+                onCheckedChange: (checked) =>
+                  updateClientSettings({
+                    pullRequestViewing: {
+                      ...settings.pullRequestViewing,
+                      hideReviewed: checked,
+                    },
+                  }),
+              },
+              {
+                label: "Hide without unresolved comments",
+                checked: commentsOnly,
+                onCheckedChange: (checked) =>
+                  updateClientSettings({
+                    pullRequestViewing: {
+                      ...settings.pullRequestViewing,
+                      commentsOnly: checked,
+                    },
+                  }),
+              },
+              {
+                label: "Group by file type",
+                checked: groupByType,
+                onCheckedChange: (checked) =>
+                  updateClientSettings({
+                    pullRequestViewing: {
+                      ...settings.pullRequestViewing,
+                      groupByType: checked,
+                    },
+                  }),
+              },
+            ]
+      }
+    />
+  );
+  const toolbarContent = (
     <div className="@container flex h-10 min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4 text-xs text-muted-foreground">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {/* A host that reports no commits has nothing to scope by, and a dropdown whose only
@@ -1595,10 +1645,12 @@ function PullRequestCodeTab({
           </DropdownMenu>
         ) : null}
         <PullRequestMetaLine>
+          {!filesViewed.enabled ? (
           <span className="shrink-0 tabular-nums">
             {files.length} {files.length === 1 ? "file" : "files"}
             {nextCursor === null ? "" : "+"}
           </span>
+          ) : null}
           {filesViewed.enabled && files.length > 0 ? (
             <span className="flex min-w-0 items-center gap-1 tabular-nums">
               <span className="shrink-0">
@@ -1682,49 +1734,7 @@ function PullRequestCodeTab({
         </PullRequestMetaLine>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <DiffDisplayControls
-          onWhitespaceChange={changeIgnoreWhitespace}
-          filters={
-            guideFallback
-              ? []
-              : [
-                  {
-                    label: "Hide reviewed",
-                    checked: hideReviewed,
-                    disabled: !filesViewed.enabled,
-                    onCheckedChange: (checked) =>
-              updateClientSettings({
-                        pullRequestViewing: {
-                          ...settings.pullRequestViewing,
-                          hideReviewed: checked,
-                        },
-                      }),
-                  },
-                  {
-                    label: "Hide without unresolved comments",
-                    checked: commentsOnly,
-                    onCheckedChange: (checked) =>
-              updateClientSettings({
-                        pullRequestViewing: {
-                          ...settings.pullRequestViewing,
-                          commentsOnly: checked,
-                        },
-                      }),
-                  },
-                  {
-                    label: "Group by file type",
-                    checked: groupByType,
-                    onCheckedChange: (checked) =>
-              updateClientSettings({
-                        pullRequestViewing: {
-                          ...settings.pullRequestViewing,
-                          groupByType: checked,
-                        },
-                      }),
-                  },
-                ]
-              }
-        />
+        {viewControlsTarget === undefined ? displayControls : null}
         {fileKeys.length > 0 ? (
           <Tooltip>
             <TooltipTrigger
@@ -1804,12 +1814,30 @@ function PullRequestCodeTab({
       onSelectedCommitChange(null);
     }
   }, [commit, onSelectedCommitChange, selectedCommit]);
+  const toolbar = (
+    <>
+      {viewControlsTarget ? createPortal(displayControls, viewControlsTarget) : null}
+      {guideFallback ? null : toolbarContent}
+    </>
+  );
+  // The toolbar rides above every branch below, not just the one with a patch in it: a commit
+  // whose diff is empty or unreadable still needs the scope dropdown that got the reader there.
   const withToolbar = (body: ReactNode) => (
     <div className="flex h-full min-h-0 flex-col">
       {toolbar}
-      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto">
+      <div className="@container/guide flex min-h-0 flex-1">
+        {guideFallback && guideStatus ? (
+          <aside className="w-80 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
+            {guideStatus}
+          </aside>
+        ) : null}
+        <div ref={scrollerRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
+          {guideFallback && guideStatus ? (
+            <div className="px-4 py-3 @min-[56rem]/guide:hidden">{guideStatus}</div>
+          ) : null}
         {body}
       </div>
+    </div>
     </div>
   );
 
@@ -1907,6 +1935,21 @@ function PullRequestCodeTab({
                     Load all files to review this chapter.
                   </p>
                 ) : null}
+                {guideFallback ? (
+                  <ul className="flex min-w-0 flex-col gap-0.5">
+                    {members.map((file) => (
+                      <li key={file.path}>
+                        <ReviewChapterFileLink
+                          path={file.path}
+                          stat={
+                            sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff])
+                          }
+                          onSelect={() => revealFile(file.path)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             ) : null,
         };
@@ -1918,6 +1961,9 @@ function PullRequestCodeTab({
 
   const chapterHeader = chapter ? (
     <div className="space-y-2 border-b border-border/60 px-4 py-3">
+      {guideFallback && guideStatus ? (
+        <div className="@min-[56rem]/guide:hidden">{guideStatus}</div>
+      ) : null}
       <ReviewChapterHeader
         index={chapterPosition}
         count={chapters.length}
@@ -1993,7 +2039,13 @@ function PullRequestCodeTab({
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {chapter ? (
-          <aside className="w-64 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
+          <aside
+            className={cn(
+              "shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden",
+              guideFallback ? "w-80" : "w-64",
+            )}
+          >
+            {guideStatus}
             {chapterRail}
           </aside>
         ) : null}
@@ -2063,7 +2115,7 @@ function PullRequestCodeTab({
             />
           </div>
         </div>
-        {fileTreeOpen ? (
+        {!guideFallback && fileTreeOpen ? (
           <aside
             className="relative flex max-w-[60%] min-w-48 shrink-0 flex-col border-l border-border/60 w-(--resizable-width)"
             style={{ "--resizable-width": `${treeWidth.width}px` } as React.CSSProperties}

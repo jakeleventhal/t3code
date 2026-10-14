@@ -42,7 +42,8 @@ export const ReviewCommitResult = Schema.Struct({
 export type ReviewCommitResult = typeof ReviewCommitResult.Type;
 export const ReviewRevertInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  paths: Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1)),
+  paths: Schema.Array(TrimmedNonEmptyString),
+  patch: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(2_000_000))),
 });
 export type ReviewRevertInput = typeof ReviewRevertInput.Type;
 
