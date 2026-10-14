@@ -1,4 +1,4 @@
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, FileIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ContextMenuItem } from "@t3tools/contracts";
 
@@ -6,10 +6,14 @@ import { readLocalApi } from "~/localApi";
 
 import { cn } from "~/lib/utils";
 
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { PullRequestDiffStat } from "./pullRequestPresentation";
+
 interface ReviewChapter {
   title: string;
   detail: ReactNode;
   reviewed: boolean;
+  selectedContent?: ReactNode;
   review?: {
     reviewedCount: number;
     fileCount: number;
@@ -68,6 +72,7 @@ export function ReviewChapterRail({
               const bounds = event.currentTarget.getBoundingClientRect();
               showChapterReviewMenu(chapter, { x: bounds.left, y: bounds.bottom });
             }}
+            className={cn(position === index && "rounded-md bg-accent text-accent-foreground")}
           >
             <button
               type="button"
@@ -101,9 +106,47 @@ export function ReviewChapterRail({
                 ) : null}
               </span>
             </button>
+            {position === index ? chapter.selectedContent : null}
           </li>
         ))}
       </ol>
     </nav>
+  );
+}
+
+/** A file shortcut inside the selected chapter, revealing its existing diff in place. */
+export function ReviewChapterFileLink({
+  path,
+  stat,
+  onSelect,
+}: {
+  path: string;
+  stat: { additions: number; deletions: number } | null;
+  onSelect: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Show ${path}`}
+            onClick={onSelect}
+            className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-1 text-left text-xs outline-none hover:bg-background/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          />
+        }
+      >
+        <FileIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate">{path.split("/").at(-1)}</span>
+        {stat !== null ? (
+          <PullRequestDiffStat
+            additions={stat.additions}
+            deletions={stat.deletions}
+            className="shrink-0 font-mono text-2xs"
+          />
+        ) : null}
+      </TooltipTrigger>
+      <TooltipPopup side="right">{path}</TooltipPopup>
+    </Tooltip>
   );
 }

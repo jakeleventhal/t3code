@@ -13,7 +13,7 @@ import {
   MessageCircleQuestionIcon,
   MessageSquareIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { getDiffLineStat } from "~/lib/diffRendering";
 
@@ -23,15 +23,11 @@ import { Button } from "../../ui/button";
 import { PullRequestDiffStat } from "../pullRequestPresentation";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../../ui/collapsible";
 import { GuideExcerpt, type ExcerptCommenting } from "./GuideExcerpt";
-import { ReviewChapterHeader, ReviewChapterProgress } from "../ReviewChapterHeader";
+import { ReviewChapterHeader } from "../ReviewChapterHeader";
 import { GuideFileDiff } from "./GuideFileDiff";
 import { GuideNotes } from "./GuideNotes";
 import { GuideProse } from "./GuideProse";
-import {
-  letterStopNotes,
-  stopFilePaths,
-  reviewGuideStopProgress,
-} from "@t3tools/client-runtime/review-guide-tour";
+import { letterStopNotes, stopFilePaths } from "@t3tools/client-runtime/review-guide-tour";
 
 const ATTENTION_LABELS = {
   tradeoff: "A tradeoff to weigh",
@@ -41,6 +37,14 @@ const ATTENTION_LABELS = {
   accessibility: "An accessibility call",
 } as const satisfies Record<PullRequestReviewGuideAttention["kind"], string>;
 
+export interface GuideStopHandle {
+  revealFile: (path: string) => void;
+}
+
+/**
+ * One stop of the tour: what it is about, where to look, and the two things a reader does with
+ * it: comment on its lines for the review, or ask an agent about it.
+ */
 export function GuideStop({
   stop,
   index,
@@ -59,7 +63,9 @@ export function GuideStop({
   onOpenFile,
   isViewed,
   onSetViewed,
+  navigationRef,
 }: {
+  navigationRef: Ref<GuideStopHandle>;
   stop: PullRequestReviewGuideStop;
   index: number;
   stopCount: number;
@@ -79,7 +85,6 @@ export function GuideStop({
   onSetViewed: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | null;
 }) {
   const { lettered, byExcerpt } = useMemo(() => letterStopNotes(stop), [stop]);
-  const progress = reviewGuideStopProgress(stop, isViewed);
   const otherFiles = stopFilePaths(stop).map((path) => ({
     path,
     note: stop.files.find((file) => file.path === path)?.note,
@@ -87,6 +92,21 @@ export function GuideStop({
 
   const [filePanels, setFilePanels] = useState<Record<string, { viewed: boolean; open: boolean }>>(
     {},
+  );
+
+  const fileRows = useRef(new Map<string, HTMLLIElement>());
+  useImperativeHandle(
+    navigationRef,
+    () => ({
+      revealFile: (path) => {
+        setFilePanels((current) => ({
+          ...current,
+          [path]: { viewed: isViewed(path), open: true },
+        }));
+        requestAnimationFrame(() => fileRows.current.get(path)?.scrollIntoView({ block: "start" }));
+      },
+    }),
+    [isViewed],
   );
 
   return (
@@ -104,17 +124,6 @@ export function GuideStop({
           keyboardHints
           wideRail
         />
-        {progress.paths.length && onSetViewed ? (
-          <ReviewChapterProgress
-            reviewedCount={progress.reviewedCount}
-            fileCount={progress.paths.length}
-            onSetReviewed={(value) => onSetViewed(progress.paths, value)}
-          />
-        ) : null}
-        <div className="flex max-w-[60rem] flex-col gap-2">
-          <h2 className="text-lg font-semibold text-foreground">{stop.title}</h2>
-            </div>
-
         {stop.excerpts.length > 0 ? (
           <div className="flex min-w-0 flex-col gap-4">
             <DiffWorkerPoolProvider>
@@ -147,7 +156,14 @@ export function GuideStop({
                   const viewed = isViewed(file.path);
                   const panel = filePanels[file.path];
                   return (
-                    <li key={file.path} className="border-border/60 not-first:border-t">
+                    <li
+                      key={file.path}
+                      ref={(node) => {
+                        if (node === null) fileRows.current.delete(file.path);
+                        else fileRows.current.set(file.path, node);
+                      }}
+                      className="scroll-mt-4 border-border/60 not-first:border-t"
+                    >
                       <div className="flex items-center gap-2 px-3 py-2 text-xs">
                         {onSetViewed ? (
                           <Checkbox
@@ -272,9 +288,9 @@ export function GuideStop({
         </footer>
       </article>
       <aside className="flex min-w-0 flex-col gap-5 @min-[56rem]/guide:sticky @min-[56rem]/guide:top-4 @min-[56rem]/guide:max-h-[calc(100vh-8rem)] @min-[56rem]/guide:self-start @min-[56rem]/guide:overflow-y-auto">
+        <h2 className="text-lg font-semibold text-foreground">{stop.title}</h2>
         {stop.summary.trim() !== "" ? (
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium text-foreground">Chapter summary</h3>
             <div className="text-sm text-muted-foreground">
               <GuideProse text={stop.summary} />
             </div>

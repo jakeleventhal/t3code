@@ -4102,6 +4102,302 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect.each([500, 502, 503, 504])(
+    "retries a pending review read after HTTP %i without repeating its save",
+    (status) =>
+      Effect.gen(function* () {
+        mockedExecute.mockReturnValueOnce(
+          Effect.fail(
+            new GitHubApi.GitHubApiResponseError({
+              host: "github.com",
+              operation: "pendingReview",
+              status,
+            }),
+          ),
+        );
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson({
+                data: { repository: { pullRequest: { id: "PR_7", reviews: { nodes: [] } } } },
+              }),
+            ),
+          ),
+        );
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson({
+                data: {
+                  addPullRequestReview: {
+                    pullRequestReview: {
+                      id: "PRR_1",
+                      comments: {
+                        nodes: [
+                          {
+                            id: "PRRC_1",
+                            url: "https://github.com/acme/web/pull/7#discussion_r91",
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              }),
+            ),
+          ),
+        );
+        const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+        const fiber = yield* cli
+          .saveDraftComment({
+            cwd: "/w",
+            repository: "acme/web",
+            host: "github.com",
+            number: 7,
+            comment: { path: "src/a.ts", body: "nit", position: { kind: "added", newLine: 4 } },
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("250 millis");
+        expect(yield* Fiber.join(fiber)).toEqual({
+          reviewId: "PRR_1",
+          commentId: "PRRC_1",
+          url: "https://github.com/acme/web/pull/7/changes#r91",
+        });
+        expect(variablesOf("query PendingReview")).toHaveLength(2);
+        expect(variablesOf("addPullRequestReview(")).toHaveLength(1);
+      }),
+  );
+
+  it.effect("bounds retries when GitHub cannot read a pending review", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(
+        Effect.fail(
+          new GitHubApi.GitHubApiRequestError({
+            host: "github.com",
+            operation: "pendingReview",
+            cause: new Error("Connection reset"),
+          }),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const fiber = yield* cli
+        .saveDraftComment({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          comment: { path: "src/a.ts", body: "nit", position: { kind: "added", newLine: 4 } },
+        })
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust("250 millis");
+      yield* TestClock.adjust("500 millis");
+      expect((yield* Fiber.join(fiber))._tag).toBe("GitHubApiRequestError");
+      expect(mockedExecute).toHaveBeenCalledTimes(3);
+      expect(variablesOf("addPullRequestReview(")).toEqual([]);
+    }),
+  );
+
+  it.effect("retries comment and position reads while recovering a previously saved draft", () =>
+    Effect.gen(function* () {
+      let commentReads = 0;
+      let positionReads = 0;
+      mockedExecute.mockImplementation((call) =>
+        Effect.suspend(() => {
+          if (call.kind === "rest") {
+            if (++commentReads === 1)
+              return Effect.fail(
+                new GitHubApi.GitHubApiResponseError({
+                  host: "github.com",
+                  operation: "pendingReview",
+                  status: 502,
+                }),
+              );
+            return Effect.succeed(
+              output(
+                encodeJson([
+                  {
+                    id: 91,
+                    node_id: "PRRC_1",
+                    html_url: "https://github.com/acme/web/pull/7#discussion_r91",
+                    body: "nit",
+                    path: "src/a.ts",
+                  },
+                ]),
+              ),
+            );
+          }
+          if (call.query.includes("query PendingReviewPositions")) {
+            if (++positionReads === 1)
+              return Effect.fail(
+                new GitHubApi.GitHubApiResponseError({
+                  host: "github.com",
+                  operation: "pendingReview",
+                  status: 503,
+                }),
+              );
+            return Effect.succeed(
+              output(
+                encodeJson({
+                  data: {
+                    repository: {
+                      pullRequest: {
+                        reviewThreads: {
+                          pageInfo: { hasNextPage: false, endCursor: null },
+                          nodes: [
+                            {
+                              line: 4,
+                              diffSide: "RIGHT",
+                              startLine: null,
+                              startDiffSide: null,
+                              comments: { nodes: [{ id: "PRRC_1" }] },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                }),
+              ),
+            );
+          }
+          return Effect.succeed(
+            output(
+              encodeJson({
+                data: {
+                  repository: {
+                    pullRequest: {
+                      id: "PR_7",
+                      reviews: {
+                        nodes: [
+                          { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
+                        ],
+                      },
+                    },
+                  },
+                },
+              }),
+            ),
+          );
+        }),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const fiber = yield* cli
+        .saveDraftComment({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          comment: { path: "src/a.ts", body: "nit", position: { kind: "added", newLine: 4 } },
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("250 millis");
+      yield* TestClock.adjust("250 millis");
+      expect(yield* Fiber.join(fiber)).toEqual({
+        reviewId: "PRR_1",
+        commentId: "PRRC_1",
+        url: "https://github.com/acme/web/pull/7/changes#r91",
+      });
+      expect(commentReads).toBe(2);
+      expect(positionReads).toBe(2);
+      expect(variablesOf("addPullRequestReview(")).toEqual([]);
+      expect(variablesOf("addPullRequestReviewThread(")).toEqual([]);
+    }),
+  );
+
+  it.effect.each(["pendingReview", "saveDraftComment"])(
+    "does not retry a refused %s request or a failed mutation",
+    (operation) =>
+      Effect.gen(function* () {
+        if (operation === "saveDraftComment")
+          mockedExecute.mockReturnValueOnce(
+            Effect.succeed(
+              output(
+                encodeJson({
+                  data: { repository: { pullRequest: { id: "PR_7", reviews: { nodes: [] } } } },
+                }),
+              ),
+            ),
+          );
+        mockedExecute.mockReturnValueOnce(
+          Effect.fail(
+            new GitHubApi.GitHubApiResponseError({
+              host: "github.com",
+              operation,
+              status: operation === "pendingReview" ? 422 : 500,
+            }),
+          ),
+        );
+        const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+        const failure = yield* cli
+          .saveDraftComment({
+            cwd: "/w",
+            repository: "acme/web",
+            host: "github.com",
+            number: 7,
+            comment: { path: "src/a.ts", body: "nit", position: { kind: "added", newLine: 4 } },
+          })
+          .pipe(Effect.flip);
+        expect(failure._tag).toBe("GitHubApiResponseError");
+        expect(mockedExecute).toHaveBeenCalledTimes(operation === "pendingReview" ? 1 : 2);
+      }),
+  );
+
+  it.effect.each([false, true])(
+    "discards an already removed pending comment without a second mutation (review exists: %s)",
+    (reviewExists) =>
+      Effect.gen(function* () {
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson({
+                data: {
+                  repository: {
+                    pullRequest: {
+                      id: "PR_7",
+                      reviews: {
+                        nodes: reviewExists
+                          ? [{ id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true }]
+                          : [],
+                      },
+                    },
+                  },
+                },
+              }),
+            ),
+          ),
+        );
+        if (reviewExists)
+          mockedExecute.mockReturnValueOnce(
+            Effect.succeed(
+              output(
+                encodeJson([
+                  {
+                    id: 92,
+                    node_id: "PRRC_other",
+                    html_url: "https://github.com/acme/web/pull/7#discussion_r92",
+                    body: "Keep this other pending comment",
+                    path: "src/b.ts",
+                  },
+                ]),
+              ),
+            ),
+          );
+        const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+        yield* cli.discardDraftComment({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          reviewId: "PRR_1",
+          commentId: "PRRC_1",
+          url: "https://github.com/acme/web/pull/7#discussion_r91",
+        });
+        expect(variablesOf("deletePullRequestReview(")).toEqual([]);
+        expect(variablesOf("deletePullRequestReviewComment(")).toEqual([]);
+        expect(mockedExecute).toHaveBeenCalledTimes(reviewExists ? 2 : 1);
+      }),
+  );
+
   it.effect("discards a private draft when REST omits its positions", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValueOnce(
@@ -4139,32 +4435,6 @@ layer("GitHubPullRequestApi.layer", (it) => {
           ),
         ),
       );
-      mockedExecute.mockReturnValueOnce(
-        Effect.succeed(
-          output(
-            encodeJson({
-              data: {
-                repository: {
-                  pullRequest: {
-                    reviewThreads: {
-                      pageInfo: { hasNextPage: false, endCursor: null },
-                      nodes: [
-                        {
-                          line: 5,
-                          diffSide: "RIGHT",
-                          startLine: 3,
-                          startDiffSide: "RIGHT",
-                          comments: { nodes: [{ id: "PRRC_1" }] },
-                        },
-                      ],
-                    },
-                  },
-                },
-              },
-            }),
-          ),
-        ),
-      );
       mockedExecute.mockReturnValueOnce(Effect.succeed(output("{}")));
       const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
       yield* cli.discardDraftComment({
@@ -4177,6 +4447,8 @@ layer("GitHubPullRequestApi.layer", (it) => {
         url: "https://github.com/acme/web/pull/7#discussion_r91",
       });
       expect(variablesOf("deletePullRequestReview(")).toEqual([{ id: "PRR_1" }]);
+      expect(mockedExecute).toHaveBeenCalledTimes(3);
+      expect(variablesOf("query PendingReviewPositions")).toEqual([]);
       expect(variablesOf("submitPullRequestReview(")).toEqual([]);
     }),
   );

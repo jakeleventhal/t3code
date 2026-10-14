@@ -12,8 +12,8 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 
 import { GuideRail } from "./GuideRail";
-import { GuideStop } from "./GuideStop";
-import { PullRequestDiffDisplayControls } from "../PullRequestDiffDisplayControls";
+import { GuideStop, type GuideStopHandle } from "./GuideStop";
+import { DiffDisplayControls } from "../../diffs/DiffDisplayControls";
 import type { ExcerptCommenting } from "./GuideExcerpt";
 import {
   guideProgressKey,
@@ -92,6 +92,11 @@ export function GuideTour({
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stopNavigation = useRef<GuideStopHandle>(null);
+  const selectFile = (path: string) => {
+    stopNavigation.current?.revealFile(path);
+    setRailOpen(false);
+  };
   const goTo = (next: number) => {
     update((current) => ({
       position: next,
@@ -122,7 +127,7 @@ export function GuideTour({
     // maximized panel, the stop's notes in a column of their own (see GuideStop).
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 min-h-10 shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-background px-4">
-        <PullRequestDiffDisplayControls />
+        <DiffDisplayControls />
       </div>
       <div
         ref={scrollRef}
@@ -133,6 +138,8 @@ export function GuideTour({
             header instead. */}
           <aside className="sticky top-4 self-start @max-[80rem]/guide:hidden">
             <GuideRail
+              files={diff.files}
+              onSelectFile={selectFile}
               stops={guide.stops}
               position={position}
               seen={reviewedStops}
@@ -159,6 +166,7 @@ export function GuideTour({
             ) : (
               <GuideStop
                 key={position}
+                navigationRef={stopNavigation}
                 stop={stop}
                 isViewed={viewed.isViewed}
                 onSetViewed={
@@ -174,6 +182,8 @@ export function GuideTour({
                 onRailOpenChange={setRailOpen}
                 stopList={
                   <GuideRail
+                    files={diff.files}
+                    onSelectFile={selectFile}
                     stops={guide.stops}
                     position={position}
                     seen={reviewedStops}

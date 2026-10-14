@@ -80,9 +80,8 @@ export function PullRequestReviewForm({
   const [requestedVerdict, setRequestedVerdict] = useState<PullRequestReviewVerdict>("comment");
   const comments = usePendingReviewComments(reference, reviewThreads);
   const reviewKey = pullRequestReviewKey(reference);
-  const pendingReviewId = reviewThreads
-    .flatMap((thread) => thread.comments)
-    .find((comment) => comment.pendingReviewId)?.pendingReviewId;
+  const pendingReviewId = comments.find((comment) => comment.hostedComment)?.hostedComment
+    ?.reviewId;
   // The panel stays mounted while the selected pull request changes. Keeping summaries beside
   // the keyed line-comment drafts makes the selected pull request's body correct on the first
   // render, before an effect could reset state left behind by the previous one.
@@ -123,6 +122,9 @@ export function PullRequestReviewForm({
     removeComments(
       reviewKey,
       submittedComments.map((comment) => comment.id),
+      submittedComments.flatMap((comment) =>
+        comment.hostedComment ? [comment.hostedComment.commentId] : [],
+      ),
     );
     clearSummary(reviewKey, submittedBody);
     toastManager.add({ type: "success", title: verdict.sent });

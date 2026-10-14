@@ -24,6 +24,30 @@ const state = Atom.make<{
 }>({ drafts: {}, ready: false, error: null }).pipe(Atom.keepAlive);
 const operations = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
 
+const removedHostComments = Atom.make<Readonly<Record<string, ReadonlyArray<string>>>>({}).pipe(
+  Atom.keepAlive,
+);
+
+/** Keep a successful removal from reappearing in an older activity snapshot. */
+export function retireReviewDraftComments(
+  params: PullRequestParams,
+  comments: ReadonlyArray<ReviewDraft["comments"][number]>,
+) {
+  const key = pullRequestReviewKey(params);
+  const previous = appAtomRegistry.get(removedHostComments);
+  appAtomRegistry.set(removedHostComments, {
+    ...previous,
+    [key]: [
+      ...new Set([
+        ...(previous[key] ?? []),
+        ...comments.flatMap((comment) =>
+          comment.hostedComment ? [comment.hostedComment.commentId] : [],
+        ),
+      ]),
+    ],
+  });
+}
+
 export function setReviewDraftBusy(params: PullRequestParams, busy: boolean) {
   const key = pullRequestReviewKey(params);
   const current = appAtomRegistry.get(operations);
@@ -127,25 +151,30 @@ export function usePullRequestReviewDraft(params: PullRequestParams) {
   const target = pullRequestTarget(params);
   const detail = useEnvironmentQuery(composerPullRequests.detail(target));
   const activity = useEnvironmentQuery(composerPullRequests.activity(target));
+  const retiredIds = useAtomValue(removedHostComments)[key];
   const draft = snapshot.drafts[key] ?? EMPTY_REVIEW_DRAFT;
   const comments = useMemo(() => {
-    const localIds = new Set(draft.comments.map((comment) => comment.hostedComment?.commentId));
-    const remote = pendingReviewCommentsFromThreads(activity.data?.reviewThreads ?? [])
-      .filter((comment) => !localIds.has(comment.id))
-      .map((comment) => ({ ...comment, headSha: detail.data?.headSha ?? "", code: "" }));
-    return remote.length ? [...draft.comments, ...remote] : draft.comments;
-  }, [draft.comments, activity.data?.reviewThreads, detail.data?.headSha]);
-  const threads = useMemo(() => {
-    const hostedIds = new Set(comments.map((comment) => comment.hostedComment?.commentId));
-    return (activity.data?.reviewThreads ?? []).filter(
-      (thread) => !thread.comments.some((comment) => hostedIds.has(comment.id)),
+    const retired = new Set(retiredIds);
+    for (const thread of activity.data?.reviewThreads ?? []) {
+      for (const comment of thread.comments) if (!comment.pendingReviewId) retired.add(comment.id);
+    }
+    const local = draft.comments.filter(
+      (comment) => !comment.hostedComment || !retired.has(comment.hostedComment.commentId),
     );
-  }, [activity.data?.reviewThreads, comments]);
-  const pendingReviewId =
-    comments.find((comment) => comment.hostedComment)?.hostedComment?.reviewId ??
-    activity.data?.reviewThreads
-      .flatMap((thread) => thread.comments)
-      .find((comment) => comment.pendingReviewId)?.pendingReviewId;
+    const localIds = new Set(local.map((comment) => comment.hostedComment?.commentId));
+    const remote = pendingReviewCommentsFromThreads(activity.data?.reviewThreads ?? [])
+      .filter((comment) => !localIds.has(comment.id) && !retired.has(comment.id))
+      .map((comment) => ({ ...comment, headSha: detail.data?.headSha ?? "", code: "" }));
+    return remote.length ? [...local, ...remote] : local;
+  }, [draft.comments, activity.data?.reviewThreads, detail.data?.headSha, retiredIds]);
+  const threads = useMemo(() => {
+    return (activity.data?.reviewThreads ?? []).flatMap((thread) => {
+      const published = thread.comments.filter((comment) => !comment.pendingReviewId);
+      return published.length ? [{ ...thread, comments: published }] : [];
+    });
+  }, [activity.data?.reviewThreads]);
+  const pendingReviewId = comments.find((comment) => comment.hostedComment)?.hostedComment
+    ?.reviewId;
   useEffect(() => {
     void load();
     const listener = AppState.addEventListener("change", (phase) => {

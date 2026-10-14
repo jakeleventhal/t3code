@@ -40,6 +40,7 @@ export function pullRequestReviewKey(reference: PullRequestRef): string {
 
 interface PullRequestReviewStoreState {
   readonly drafts: Readonly<Record<string, ReadonlyArray<PendingReviewComment>>>;
+  readonly removedHostComments: Readonly<Record<string, ReadonlyArray<string>>>;
   readonly busyComments: Readonly<Record<string, ReadonlyArray<string>>>;
   readonly setCommentBusy: (key: string, id: string, busy: boolean) => void;
   readonly setHostedComment: (
@@ -50,7 +51,11 @@ interface PullRequestReviewStoreState {
   readonly summaries: Readonly<Record<string, string>>;
   readonly addComment: (key: string, comment: PendingReviewComment) => void;
   readonly removeComment: (key: string, commentId: string) => void;
-  readonly removeComments: (key: string, commentIds: ReadonlyArray<string>) => void;
+  readonly removeComments: (
+    key: string,
+    commentIds: ReadonlyArray<string>,
+    hostedIds?: ReadonlyArray<string>,
+  ) => void;
   readonly clear: (key: string) => void;
   readonly setSummary: (key: string, body: string) => void;
   readonly clearSummary: (key: string, submittedBody: string) => void;
@@ -60,6 +65,7 @@ const EMPTY: ReadonlyArray<PendingReviewComment> = [];
 
 export const usePullRequestReviewStore = create<PullRequestReviewStoreState>()((set) => ({
   drafts: {},
+  removedHostComments: {},
   busyComments: {},
   setCommentBusy: (key, id, busy) =>
     set((state) => {
@@ -86,19 +92,30 @@ export const usePullRequestReviewStore = create<PullRequestReviewStoreState>()((
       drafts: { ...state.drafts, [key]: [...(state.drafts[key] ?? EMPTY), comment] },
     })),
   removeComment: (key, commentId) =>
-    set((state) => {
-      const remaining = (state.drafts[key] ?? EMPTY).filter((entry) => entry.id !== commentId);
-      if (remaining.length > 0) return { drafts: { ...state.drafts, [key]: remaining } };
-      const { [key]: _removed, ...rest } = state.drafts;
-      return { drafts: rest };
-    }),
-  removeComments: (key, commentIds) =>
+    usePullRequestReviewStore.getState().removeComments(key, [commentId]),
+  removeComments: (key, commentIds, hostedIds = []) =>
     set((state) => {
       const submitted = new Set(commentIds);
-      const remaining = (state.drafts[key] ?? EMPTY).filter((entry) => !submitted.has(entry.id));
-      if (remaining.length > 0) return { drafts: { ...state.drafts, [key]: remaining } };
+      const previous = state.drafts[key] ?? EMPTY;
+      const remaining = previous.filter((entry) => !submitted.has(entry.id));
+      // A refresh can still contain the old host snapshot after a successful mutation.
+      // Remember host identities so that snapshot cannot resurrect the removed cards.
+      const removedHostComments = {
+        ...state.removedHostComments,
+        [key]: [
+          ...new Set([
+            ...(state.removedHostComments[key] ?? []),
+            ...hostedIds,
+            ...previous.flatMap((entry) =>
+              submitted.has(entry.id) && entry.hostedComment ? [entry.hostedComment.commentId] : [],
+            ),
+          ]),
+        ],
+      };
+      if (remaining.length > 0)
+        return { drafts: { ...state.drafts, [key]: remaining }, removedHostComments };
       const { [key]: _removed, ...rest } = state.drafts;
-      return { drafts: rest };
+      return { drafts: rest, removedHostComments };
     }),
   clear: (key) =>
     set((state) => {
@@ -120,13 +137,33 @@ export function usePendingReviewComments(
   reference: PullRequestRef,
   threads?: ReadonlyArray<PullRequestReviewThread>,
 ): ReadonlyArray<PendingReviewComment> {
-  const local = usePullRequestReviewStore(
-    (store) => store.drafts[pullRequestReviewKey(reference)] ?? EMPTY,
+  const key = pullRequestReviewKey(reference);
+  const local = usePullRequestReviewStore((store) => store.drafts[key] ?? EMPTY);
+  const removedIds = usePullRequestReviewStore((store) => store.removedHostComments[key]);
+  return useMemo(
+    () => mergePendingReviewComments(local, threads ?? [], removedIds ?? []),
+    [local, threads, removedIds],
   );
-  return useMemo(() => {
-    const remote = pendingReviewCommentsFromThreads(threads ?? []);
-    if (remote.length === 0) return local;
-    const localHostIds = new Set(local.map((comment) => comment.hostedComment?.commentId));
-    return [...local, ...remote.filter((comment) => !localHostIds.has(comment.id))];
-  }, [local, threads]);
+}
+
+/** Reconcile a cached host snapshot with successful local removals and published comments. */
+export function mergePendingReviewComments(
+  local: ReadonlyArray<PendingReviewComment>,
+  threads: ReadonlyArray<PullRequestReviewThread>,
+  removedIds: ReadonlyArray<string>,
+): ReadonlyArray<PendingReviewComment> {
+  const retired = new Set(removedIds);
+  for (const thread of threads ?? []) {
+    for (const comment of thread.comments) {
+      if (!comment.pendingReviewId) retired.add(comment.id);
+    }
+  }
+  const remaining = local.filter(
+    (comment) => !comment.hostedComment || !retired.has(comment.hostedComment.commentId),
+  );
+  const localHostIds = new Set(remaining.map((comment) => comment.hostedComment?.commentId));
+  const remote = pendingReviewCommentsFromThreads(threads ?? []).filter(
+    (comment) => !retired.has(comment.id) && !localHostIds.has(comment.id),
+  );
+  return remote.length ? [...remaining, ...remote] : remaining;
 }

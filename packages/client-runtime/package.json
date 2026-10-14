@@ -435,6 +435,14 @@
       "types": "./src/reviewWorkspace.ts",
       "default": "./src/reviewWorkspace.ts"
     },
+    "./review-diff-context": {
+      "types": "./src/reviewDiffContext.ts",
+      "default": "./src/reviewDiffContext.ts"
+    },
+    "./review-tree-selection": {
+      "types": "./src/reviewFileTreeSelection.ts",
+      "default": "./src/reviewFileTreeSelection.ts"
+    },
     "./review-selection": {
       "types": "./src/reviewSelection.ts",
       "default": "./src/reviewSelection.ts"

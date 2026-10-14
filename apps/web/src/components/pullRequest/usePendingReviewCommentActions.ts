@@ -62,7 +62,11 @@ export function usePendingReviewCommentActions(
           return false;
         }
       }
-      store.removeComment(key, comment.id);
+      store.removeComments(
+        key,
+        [comment.id],
+        comment.hostedComment ? [comment.hostedComment.commentId] : [],
+      );
       return true;
     } finally {
       store.setCommentBusy(key, comment.id, false);

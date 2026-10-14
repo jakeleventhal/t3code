@@ -20,12 +20,14 @@ import {
   buildFileDiffRenderKey,
   fnv1a32,
   getRenderablePatch,
+  getDiffLineStat,
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "~/lib/diffRendering";
 import { Files, GitBranch, ChevronDown, GitCommitHorizontal, Sparkles } from "lucide";
 import { WorkingChangesTree } from "./WorkingChangesTree";
 import { Badge } from "../ui/badge";
+import { DiffStatLabel } from "../chat/DiffStatLabel";
 import { InputGroup, InputGroupAddon } from "../ui/input-group";
 import { Group, GroupSeparator } from "../ui/group";
 import {
@@ -43,10 +45,13 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./AnnotatableCodeView";
-import { DiffFileTree } from "./DiffFileTree";
+import FileBrowserPanel from "../files/FileBrowserPanel";
+import { WorkspaceSourcePreview } from "../files/WorkspaceSourcePreview";
 import { diffFileTreeEntries } from "./diffFileTree.logic";
 import { useReviewFilePatches } from "./useReviewFilePatches";
 import { applyWorkingChangesMutation, type WorkingChangesState } from "./workingChangesState";
+import { reviewDiffEdits } from "@t3tools/client-runtime/review-diff-context";
+import { hideWhitespaceChanges } from "~/lib/diffRendering";
 
 interface WorkingReviewProps {
   environmentId: EnvironmentId;
@@ -54,10 +59,13 @@ interface WorkingReviewProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
   wordWrap: boolean;
   split: boolean;
+  ignoreWhitespace: boolean;
   fileTreeOpen: boolean;
   revision: string | null;
   onChanged: () => void;
   navigationKey?: string;
+  projectName: string;
+  onOpenFile: (path: string) => void;
 }
 
 type WorkingScope = "staged" | "unstaged";
@@ -67,6 +75,7 @@ type WorkingNavigation = {
   selection: WorkingSelection;
   folded: ReadonlySet<string>;
   message: string;
+  workspacePath: string | null;
 };
 // Thread switches unmount the pane, so remember its scoped selection independently of its query cache.
 const workingNavigation = new Map<string, WorkingNavigation>();
@@ -141,7 +150,7 @@ function useWorkingChanges(
       ),
     [source, scope, patches.rawPatches],
   );
-  return { files, patches, query, loadDiffFiles, hunksByPath };
+  return { files, source, patches, query, loadDiffFiles, hunksByPath };
 }
 
 export function WorkingChangesReview(props: WorkingReviewProps) {
@@ -158,9 +167,12 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const [pending, setPending] = useState(false);
   const [viewer, setViewer] = useState<AnnotatableCodeViewHandle | null>(null);
   const [message, setMessage] = useState(remembered?.message ?? "");
+  const [workspacePath, setWorkspacePath] = useState<string | null>(
+    remembered?.workspacePath ?? null,
+  );
   useLayoutEffect(() => {
-    workingNavigation.set(navigationKey, { view, selection, folded, message });
-  }, [navigationKey, view, selection, folded, message]);
+    workingNavigation.set(navigationKey, { view, selection, folded, message, workspacePath });
+  }, [navigationKey, view, selection, folded, message, workspacePath]);
   const [generatingMessage, setGeneratingMessage] = useState(false);
   const [reverting, setReverting] = useState<{ paths: string[]; label: string } | null>(null);
   const all = useWorkingChanges(props, undefined, generation);
@@ -173,6 +185,10 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     unstagedBefore: typeof unstaged.query.data;
     stagedUpdatedAt: number;
     unstagedUpdatedAt: number;
+  } | null>(null);
+  const [readerContext, setReaderContext] = useState<{
+    selection: WorkingSelection;
+    state: WorkingChangesState;
   } | null>(null);
   const busy = useRef(false);
   const refreshedScopes = useRef({ staged: false, unstaged: false });
@@ -239,20 +255,46 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     unstaged: { ...unstaged, ...(optimistic?.state.unstaged ?? {}) },
   };
   const scope = selection.scope;
+  const retained =
+    view === "git" && readerContext?.selection === selection ? readerContext.state[scope] : null;
+  const authoritativeReaderFiles = (view === "files" ? all : scopes[scope]).files;
+  const readerFiles = useMemo(() => {
+    const actual = authoritativeReaderFiles;
+    if (!retained) return actual;
+    const previous = new Map(
+      [...retained.files, ...(retained.retainedFiles ?? [])].map((file) => [
+        resolveFileDiffPath(file),
+        file,
+      ]),
+    );
+    const result = actual.map((file) => {
+      const remembered = previous.get(resolveFileDiffPath(file));
+      return remembered &&
+        (file.cacheKey?.endsWith(":pending") ||
+          reviewDiffEdits(remembered) === reviewDiffEdits(file))
+        ? remembered
+        : file;
+    });
+    for (const file of retained.retainedFiles ?? []) {
+      if (
+        reviewDiffEdits(file) === "[]" &&
+        !actual.some((candidate) => resolveFileDiffPath(candidate) === resolveFileDiffPath(file))
+      )
+        result.push(file);
+    }
+    return orderReviewFiles(result, resolveFileDiffPath);
+  }, [authoritativeReaderFiles, retained]);
   const selectedPath =
-    selection.path &&
-    (view === "files" ? all.files : scopes[scope].files).some(
-      (file) => resolveFileDiffPath(file) === selection.path,
-    )
+    selection.path && readerFiles.some((file) => resolveFileDiffPath(file) === selection.path)
       ? selection.path
       : null;
   const data = view === "files" ? all : scopes[scope];
   const files = useMemo(
     () =>
       view === "git" && selectedPath
-        ? data.files.filter((file) => resolveFileDiffPath(file) === selectedPath)
-        : data.files,
-    [data.files, view, selectedPath],
+        ? readerFiles.filter((file) => resolveFileDiffPath(file) === selectedPath)
+        : readerFiles,
+    [readerFiles, view, selectedPath],
   );
   const requestFile = data.patches.requestFile;
   useEffect(() => {
@@ -271,6 +313,17 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const unstagedEntries = useMemo(
     () => diffFileTreeEntries(scopes.unstaged.files),
     [scopes.unstaged.files],
+  );
+  const workspaceGitChanges = useMemo(
+    () => [
+      ...new Map(
+        [...stagedEntries, ...unstagedEntries, ...diffFileTreeEntries(all.files)].map((entry) => [
+          entry.path,
+          entry,
+        ]),
+      ).values(),
+    ],
+    [stagedEntries, unstagedEntries, all.files],
   );
   const canCommit = useAtomValue(reviewEnvironment.commit.permissionAtom(environmentId));
   const canRevert = useAtomValue(reviewEnvironment.revert.permissionAtom(environmentId));
@@ -386,21 +439,31 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     refreshedScopes.current = { staged: false, unstaged: false };
     setPending(true);
     const beforeSelection = selection;
+    const beforeContext = readerContext;
+    const displayed = {
+      ...scopes,
+      [scope]: {
+        ...scopes[scope],
+        files: scopes[scope].files.map((file) => {
+          const item = view === "git" ? viewer?.getItem(buildFileDiffRenderKey(file)) : undefined;
+          return item?.type === "diff" ? item.fileDiff : file;
+        }),
+      },
+    };
+    const nextState = applyWorkingChangesMutation(displayed, all, {
+      scope,
+      paths,
+      ...(patch ? { patch } : {}),
+    });
+    setReaderContext({ selection, state: nextState });
     setOptimistic({
-      state: applyWorkingChangesMutation(scopes, all, {
-        scope,
-        paths,
-        ...(patch ? { patch } : {}),
-      }),
+      state: nextState,
       confirmed: false,
       stagedBefore: staged.query.data,
       unstagedBefore: unstaged.query.data,
       stagedUpdatedAt: staged.query.dataUpdatedAt,
       unstagedUpdatedAt: unstaged.query.dataUpdatedAt,
     });
-    if (!patch && selection.path && paths.includes(selection.path)) {
-      setSelection({ scope: scope === "unstaged" ? "staged" : "unstaged", path: selection.path });
-    }
     const result = await stage({
       environmentId,
       input: {
@@ -413,6 +476,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     if (result._tag === "Failure") {
       setOptimistic(null);
       setSelection(beforeSelection);
+      setReaderContext(beforeContext);
       busy.current = false;
       setPending(false);
       toastManager.add({
@@ -467,19 +531,21 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const codeFiles = useMemo(
     () =>
       files.map((fileDiff) => ({
-        fileDiff,
+        fileDiff: props.ignoreWhitespace ? hideWhitespaceChanges(fileDiff) : fileDiff,
         filePath: resolveFileDiffPath(fileDiff),
         fileKey: buildFileDiffRenderKey(fileDiff),
-        fileVersion: fnv1a32(JSON.stringify(fileDiff)),
+        fileVersion: fnv1a32(`${props.ignoreWhitespace}:${JSON.stringify(fileDiff)}`),
         collapsed:
           folded.has(resolveFileDiffPath(fileDiff)) ||
           fileDiff.cacheKey?.endsWith(":pending") === true,
       })),
-    [files, folded],
+    [files, folded, props.ignoreWhitespace],
   );
   const renderActions = (file: FileDiffMetadata) => {
     const path = resolveFileDiffPath(file);
     if (view === "files") return null;
+    if (!scopes[scope].files.some((candidate) => resolveFileDiffPath(candidate) === path))
+      return null;
     return (
       <>
         <Button
@@ -494,314 +560,362 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
       </>
     );
   };
+  const viewTabs = (
+    <ToggleGroup
+      value={[view]}
+      onValueChange={(values) => {
+        const next = values[0];
+        if (next === "files" || next === "git") {
+          if (next === "files" && selection.path) setWorkspacePath(selection.path);
+          setView(next);
+        }
+      }}
+      aria-label="Workspace navigation"
+    >
+      <Toggle value="files">
+        <MorphIcon icon={Files} />
+        Files
+      </Toggle>
+      <Toggle value="git">
+        <MorphIcon icon={GitBranch} />
+        Git
+        <Badge size="sm" variant="info" aria-label={`${changedCount} changed files`}>
+          {changedCount}
+        </Badge>
+      </Toggle>
+    </ToggleGroup>
+  );
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3 text-xs text-muted-foreground">
-          {view === "git" ? (scope === "staged" ? "Staged" : "Unstaged") : "All changed files"}
-          {!fileTreeOpen ? (
-            <ToggleGroup
-              value={[view]}
-              onValueChange={(values) => {
-                const next = values[0];
-                if (next === "files" || next === "git") setView(next);
-              }}
-              aria-label="Change navigation"
-            >
-              <Toggle value="files">Files</Toggle>
-              <Toggle value="git">
-                Git{" "}
-                <Badge size="sm" variant="info" aria-label={`${changedCount} changed files`}>
-                  {changedCount}
-                </Badge>
-              </Toggle>
-            </ToggleGroup>
-          ) : null}
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      style={{ "--resizable-width": `${width.width}px` } as React.CSSProperties}
+    >
+      <div className="flex h-10 shrink-0 border-b border-border/60 bg-background">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-xs text-muted-foreground">
+          <span className="truncate">
+            {view === "git"
+              ? scope === "staged"
+                ? "Staged"
+                : "Unstaged"
+              : (workspacePath ?? "Workspace files")}
+          </span>
+          {!fileTreeOpen ? viewTabs : null}
         </div>
-        {data.query.error ? (
-          <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs">
-            <p>{data.query.error}</p>
-            <Button size="xs" variant="outline" onClick={() => setGeneration((value) => value + 1)}>
-              Retry
-            </Button>
+        {fileTreeOpen ? (
+          <div className="flex w-(--resizable-width) min-w-48 max-w-[60%] shrink-0 items-center border-l border-border/60 px-2">
+            {viewTabs}
           </div>
-        ) : null}
-        {files.length === 0 ? (
-          <p className="px-3 py-4 text-xs text-muted-foreground">
-            {!optimistic && data.query.isPending ? "Loading changes…" : "No changes."}
-          </p>
-        ) : (
-          <AnnotatableCodeView
-            codeViewKey={`${cwd}:${view}:${view === "git" ? `${scope}:${selectedPath ?? "all"}` : "all"}`}
-            sectionId={view === "git" ? scope : "working-tree"}
-            sectionTitle={view === "git" ? scope : "Uncommitted"}
-            composerDraftTarget={composerDraftTarget}
-            files={codeFiles}
-            viewerRef={setViewer}
-            className="min-h-0 flex-1 overflow-auto"
-            stageLinesAction={
-              view === "git" ? (scope === "unstaged" ? "stage" : "unstage") : undefined
-            }
-            canStageLines={(file, range) =>
-              canStage &&
-              !pending &&
-              Boolean(
-                reviewSelectedLinesPatch(
-                  data.hunksByPath.get(resolveFileDiffPath(file)) ?? [],
-                  range,
-                  scope === "staged",
-                  props.split ? "split" : "unified",
-                ),
-              )
-            }
-            onStageLines={
-              view === "git"
-                ? (file, range) => {
-                    const path = resolveFileDiffPath(file);
-                    const patch = reviewSelectedLinesPatch(
-                      data.hunksByPath.get(path) ?? [],
-                      range,
-                      scope === "staged",
-                      props.split ? "split" : "unified",
-                    );
-                    if (patch) void updateStaging(scope, stagingPaths(scope, path), patch);
-                  }
-                : undefined
-            }
-            renderHunkAction={
-              view === "git"
-                ? (file, index) => {
-                    const path = resolveFileDiffPath(file);
-                    const patch = reviewHunkPatch(
-                      data.hunksByPath.get(path) ?? [],
-                      file.hunks[index]?.hunkSpecs ?? "",
-                    );
-                    return patch ? (
-                      <div className="flex justify-end px-3 py-0.5 font-sans">
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          disabled={!canStage || pending}
-                          aria-label={`${scope === "unstaged" ? "Stage" : "Unstage"} hunk ${index + 1} in ${path}`}
-                          onClick={() =>
-                            void updateStaging(scope, stagingPaths(scope, path), patch)
-                          }
-                        >
-                          {scope === "unstaged" ? "Stage hunk" : "Unstage hunk"}
-                        </Button>
-                      </div>
-                    ) : null;
-                  }
-                : undefined
-            }
-            renderHeaderFilenameSuffix={renderActions}
-            renderHeaderPrefix={(file) => (
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                aria-label={`Toggle ${resolveFileDiffPath(file)}`}
-                onClick={() =>
-                  setFolded((current) => {
-                    const next = new Set(current);
-                    const path = resolveFileDiffPath(file);
-                    if (next.has(path)) next.delete(path);
-                    else next.add(path);
-                    return next;
-                  })
-                }
-              >
-                {folded.has(resolveFileDiffPath(file)) ? "▸" : "▾"}
-              </Button>
-            )}
-            onRevealSearchMatch={(key) => {
-              const file = files.find((file) => buildFileDiffRenderKey(file) === key);
-              if (file)
-                setFolded(
-                  (current) =>
-                    new Set([...current].filter((path) => path !== resolveFileDiffPath(file))),
-                );
-            }}
-            options={{
-              diffStyle: props.split ? "split" : "unified",
-              overflow: props.wordWrap ? "wrap" : "scroll",
-              theme: resolveDiffThemeName(resolvedTheme),
-              themeType: resolvedTheme,
-              ...(optimistic ? {} : { loadDiffFiles: data.loadDiffFiles }),
-            }}
-          />
-        )}
-        {data.patches.settledFileCount < data.files.length && !selectedPath ? (
-          <Button size="xs" variant="ghost" onClick={data.patches.loadNextFiles}>
-            Load more files
-          </Button>
         ) : null}
       </div>
-      {fileTreeOpen ? (
-        <aside
-          aria-label="Changed files panel"
-          className="relative flex w-(--resizable-width) min-w-48 max-w-[60%] shrink-0 flex-col border-l border-border/60"
-          style={{ "--resizable-width": `${width.width}px` } as React.CSSProperties}
-        >
-          <RightPanelResizeHandle handlers={width.handlers} />
-          <div className="flex h-8 shrink-0 items-center border-b border-border/60 px-2">
-            <ToggleGroup
-              value={[view]}
-              onValueChange={(values) => {
-                const next = values[0];
-                if (next === "files" || next === "git") setView(next);
-              }}
-              aria-label="Change navigation"
-            >
-              <Toggle value="files">
-                <MorphIcon icon={Files} />
-                Files
-              </Toggle>
-              <Toggle value="git">
-                <MorphIcon icon={GitBranch} />
-                Git
-                <Badge size="sm" variant="info" aria-label={`${changedCount} changed files`}>
-                  {changedCount}
-                </Badge>
-              </Toggle>
-            </ToggleGroup>
-          </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {view === "files" ? (
-            <DiffFileTree
-              ariaLabel="Changed files"
-              entries={diffFileTreeEntries(all.files)}
-              selectedPath={selectedPath}
-              onSelectFile={(path) =>
-                selectFile(
-                  unstaged.files.some((file) => resolveFileDiffPath(file) === path)
-                    ? "unstaged"
-                    : "staged",
-                  path,
-                )
-              }
+            <WorkspaceSourcePreview
+              environmentId={environmentId}
+              cwd={cwd}
+              path={workspacePath}
+              revision={props.revision}
+              onOpenFile={props.onOpenFile}
             />
           ) : (
             <>
-              <div className="flex shrink-0 flex-col gap-1 px-2 py-1.5">
-                <InputGroup size="compact" aria-label="Commit message field">
-                  <textarea
-                    className="field-sizing-content block min-h-7 w-full min-w-0 resize-none border-0 bg-transparent px-2.5 py-1 font-sans text-xs leading-5 text-foreground outline-none placeholder:text-placeholder"
-                    rows={1}
-                    aria-label="Commit message"
-                    placeholder="Message (blank generates one)"
-                    value={message}
-                    disabled={pending || !canCommit}
-                    onChange={(event) => setMessage(event.target.value)}
-                    onKeyDown={(event) => {
-                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                        event.preventDefault();
-                        void runCommit();
-                      }
-                    }}
-                  />
-                  {staged.files.length > 0 ? (
-                    <InputGroupAddon align="inline-end">
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        disabled={pending || !canGenerate}
-                        aria-label="Generate commit message"
-                        aria-busy={generatingMessage}
-                        onClick={() => void generatePreview()}
-                      >
-                        <MorphIcon icon={Sparkles} />
-                      </Button>
-                    </InputGroupAddon>
-                  ) : null}
-                </InputGroup>
-                <Group className="w-full" aria-label="Commit actions">
+              {data.query.error ? (
+                <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs">
+                  <p>{data.query.error}</p>
                   <Button
-                    size="sm"
-                    className="min-w-0 flex-1"
-                    disabled={pending || !canCommit || staged.files.length === 0}
-                    onClick={() => void runCommit()}
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setGeneration((value) => value + 1)}
                   >
-                    <MorphIcon icon={GitCommitHorizontal} />
-                    {generatingMessage
-                      ? "Generating…"
-                      : pending && !optimistic
-                        ? "Working…"
-                        : "Commit"}
+                    Retry
                   </Button>
-                  <GroupSeparator />
-                  <Menu>
-                    <MenuTrigger
-                      render={
-                        <Button
-                          size="icon-sm"
-                          disabled={pending || !canCommit}
-                          aria-label="Commit options"
-                        />
-                      }
+                </div>
+              ) : null}
+              {files.length === 0 ? (
+                <p className="px-3 py-4 text-xs text-muted-foreground">
+                  {!optimistic && data.query.isPending ? "Loading changes…" : "No changes."}
+                </p>
+              ) : (
+                <AnnotatableCodeView
+                  codeViewKey={`${cwd}:${view}:${view === "git" ? `${scope}:${selectedPath ?? "all"}` : "all"}`}
+                  sectionId={view === "git" ? scope : "working-tree"}
+                  sectionTitle={view === "git" ? scope : "Uncommitted"}
+                  composerDraftTarget={composerDraftTarget}
+                  files={codeFiles}
+                  viewerRef={setViewer}
+                  className="min-h-0 flex-1 overflow-auto"
+                  stageLinesAction={
+                    view === "git" ? (scope === "unstaged" ? "stage" : "unstage") : undefined
+                  }
+                  canStageLines={(file, range) =>
+                    canStage &&
+                    !pending &&
+                    Boolean(
+                      reviewSelectedLinesPatch(
+                        data.hunksByPath.get(resolveFileDiffPath(file)) ?? [],
+                        range,
+                        scope === "staged",
+                        props.split ? "split" : "unified",
+                      ),
+                    )
+                  }
+                  onStageLines={
+                    view === "git"
+                      ? (file, range) => {
+                          const path = resolveFileDiffPath(file);
+                          const patch = reviewSelectedLinesPatch(
+                            data.hunksByPath.get(path) ?? [],
+                            range,
+                            scope === "staged",
+                            props.split ? "split" : "unified",
+                          );
+                          if (patch) void updateStaging(scope, stagingPaths(scope, path), patch);
+                        }
+                      : undefined
+                  }
+                  renderHunkAction={
+                    view === "git"
+                      ? (file, index) => {
+                          const path = resolveFileDiffPath(file);
+                          const patch = reviewHunkPatch(
+                            data.hunksByPath.get(path) ?? [],
+                            file.hunks[index]?.hunkSpecs ?? "",
+                          );
+                          return patch ? (
+                            <div className="flex justify-end px-3 py-0.5 font-sans">
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={!canStage || pending}
+                                aria-label={`${scope === "unstaged" ? "Stage" : "Unstage"} hunk ${index + 1} in ${path}`}
+                                onClick={() =>
+                                  void updateStaging(scope, stagingPaths(scope, path), patch)
+                                }
+                              >
+                                {scope === "unstaged" ? "Stage hunk" : "Unstage hunk"}
+                              </Button>
+                            </div>
+                          ) : null;
+                        }
+                      : undefined
+                  }
+                  renderHeaderFilenameSuffix={renderActions}
+                  renderHeaderMetadata={(file) => {
+                    const stat = file.cacheKey?.endsWith(":pending")
+                      ? data.source?.files?.find((stat) => stat.path === resolveFileDiffPath(file))
+                      : null;
+                    return <DiffStatLabel {...(stat ?? getDiffLineStat([file]))} layout="inline" />;
+                  }}
+                  renderHeaderPrefix={(file) => (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label={`Toggle ${resolveFileDiffPath(file)}`}
+                      onClick={() => {
+                        if (file.cacheKey?.endsWith(":pending")) {
+                          if (data.patches.fileStates.get(resolveFileDiffPath(file))?.error)
+                            data.patches.retry(resolveFileDiffPath(file));
+                          requestFile(
+                            data.files.findIndex(
+                              (candidate) =>
+                                resolveFileDiffPath(candidate) === resolveFileDiffPath(file),
+                            ),
+                          );
+                          setFolded(
+                            (current) =>
+                              new Set(
+                                [...current].filter((path) => path !== resolveFileDiffPath(file)),
+                              ),
+                          );
+                          return;
+                        }
+                        setFolded((current) => {
+                          const next = new Set(current);
+                          const path = resolveFileDiffPath(file);
+                          if (next.has(path)) next.delete(path);
+                          else next.add(path);
+                          return next;
+                        });
+                      }}
                     >
-                      <MorphIcon icon={ChevronDown} />
-                    </MenuTrigger>
-                    <MenuPopup>
-                      {(["commit", "amend", "commit-push"] as const).map((action) => (
-                        <MenuItem
-                          key={action}
-                          disabled={
-                            pending ||
-                            !canCommit ||
-                            (staged.files.length === 0 && (action !== "amend" || !message.trim()))
-                          }
-                          onClick={() => void runCommit(action)}
-                        >
-                          {action === "amend"
-                            ? "Commit (Amend)"
-                            : action === "commit-push"
-                              ? "Commit & Push"
-                              : "Commit"}
-                        </MenuItem>
-                      ))}
-                    </MenuPopup>
-                  </Menu>
-                </Group>
-              </div>
-              <WorkingChangesTree
-                staged={stagedEntries}
-                unstaged={unstagedEntries}
-                selected={selectedPath ? { scope, path: selectedPath } : null}
-                disabled={!canStage || pending}
-                revertDisabled={!canRevert || pending}
-                onSelect={selectFile}
-                onViewAll={(scope) => {
-                  setSelection({ scope, path: null });
-                  setView("git");
-                }}
-                onStage={(scope, path) =>
-                  void updateStaging(
-                    scope,
-                    path === null
-                      ? scopes[scope].files.flatMap((file) => [
-                          resolveFileDiffPath(file),
-                          ...(file.prevName ? [file.prevName] : []),
-                        ])
-                      : stagingPaths(scope, path),
-                  )
-                }
-                onRevert={(path) =>
-                  setReverting({
-                    paths: scopes.unstaged.files
-                      .filter(
-                        (file) =>
-                          path === null ||
-                          resolveFileDiffPath(file) === path ||
-                          reviewFolderContains(path, resolveFileDiffPath(file)),
-                      )
-                      .map(resolveFileDiffPath),
-                    label: path ?? "all unstaged changes",
-                  })
-                }
-              />
+                      {folded.has(resolveFileDiffPath(file)) || file.cacheKey?.endsWith(":pending")
+                        ? "▸"
+                        : "▾"}
+                    </Button>
+                  )}
+                  onRevealSearchMatch={(key) => {
+                    const file = files.find((file) => buildFileDiffRenderKey(file) === key);
+                    if (file)
+                      setFolded(
+                        (current) =>
+                          new Set(
+                            [...current].filter((path) => path !== resolveFileDiffPath(file)),
+                          ),
+                      );
+                  }}
+                  options={{
+                    diffStyle: props.split ? "split" : "unified",
+                    overflow: props.wordWrap ? "wrap" : "scroll",
+                    theme: resolveDiffThemeName(resolvedTheme),
+                    themeType: resolvedTheme,
+                    ...(optimistic ? {} : { loadDiffFiles: data.loadDiffFiles }),
+                  }}
+                />
+              )}
+              {data.patches.settledFileCount < data.files.length && !selectedPath ? (
+                <Button size="xs" variant="ghost" onClick={data.patches.loadNextFiles}>
+                  Load more files
+                </Button>
+              ) : null}
             </>
           )}
-        </aside>
-      ) : null}
+        </div>
+        {fileTreeOpen ? (
+          <aside
+            aria-label="Changed files panel"
+            className="relative flex w-(--resizable-width) min-w-48 max-w-[60%] shrink-0 flex-col border-l border-border/60"
+            style={{ "--resizable-width": `${width.width}px` } as React.CSSProperties}
+          >
+            <RightPanelResizeHandle handlers={width.handlers} />
+            {view === "files" ? (
+              <FileBrowserPanel
+                environmentId={environmentId}
+                cwd={cwd}
+                projectName={props.projectName}
+                selectedPath={workspacePath}
+                selectedPathRevealId={0}
+                workspaceMutationId={props.revision}
+                gitChanges={workspaceGitChanges}
+                onOpenFile={setWorkspacePath}
+              />
+            ) : (
+              <>
+                <div className="flex shrink-0 flex-col gap-1 px-2 py-1.5">
+                  <InputGroup size="compact" aria-label="Commit message field">
+                    <textarea
+                      className="field-sizing-content block min-h-7 w-full min-w-0 resize-none border-0 bg-transparent px-2.5 py-1 font-sans text-xs leading-5 text-foreground outline-none placeholder:text-placeholder"
+                      rows={1}
+                      aria-label="Commit message"
+                      placeholder="Message (blank generates one)"
+                      value={message}
+                      disabled={pending || !canCommit}
+                      onChange={(event) => setMessage(event.target.value)}
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                          event.preventDefault();
+                          void runCommit();
+                        }
+                      }}
+                    />
+                    {staged.files.length > 0 ? (
+                      <InputGroupAddon align="inline-end">
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          disabled={pending || !canGenerate}
+                          aria-label="Generate commit message"
+                          aria-busy={generatingMessage}
+                          onClick={() => void generatePreview()}
+                        >
+                          <MorphIcon icon={Sparkles} />
+                        </Button>
+                      </InputGroupAddon>
+                    ) : null}
+                  </InputGroup>
+                  <Group className="w-full" aria-label="Commit actions">
+                    <Button
+                      size="sm"
+                      className="min-w-0 flex-1"
+                      disabled={pending || !canCommit || staged.files.length === 0}
+                      onClick={() => void runCommit()}
+                    >
+                      <MorphIcon icon={GitCommitHorizontal} />
+                      {generatingMessage
+                        ? "Generating…"
+                        : pending && !optimistic
+                          ? "Working…"
+                          : "Commit"}
+                    </Button>
+                    <GroupSeparator />
+                    <Menu>
+                      <MenuTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            disabled={pending || !canCommit}
+                            aria-label="Commit options"
+                          />
+                        }
+                      >
+                        <MorphIcon icon={ChevronDown} />
+                      </MenuTrigger>
+                      <MenuPopup>
+                        {(["commit", "amend", "commit-push"] as const).map((action) => (
+                          <MenuItem
+                            key={action}
+                            disabled={
+                              pending ||
+                              !canCommit ||
+                              (staged.files.length === 0 && (action !== "amend" || !message.trim()))
+                            }
+                            onClick={() => void runCommit(action)}
+                          >
+                            {action === "amend"
+                              ? "Commit (Amend)"
+                              : action === "commit-push"
+                                ? "Commit & Push"
+                                : "Commit"}
+                          </MenuItem>
+                        ))}
+                      </MenuPopup>
+                    </Menu>
+                  </Group>
+                </div>
+                <WorkingChangesTree
+                  staged={stagedEntries}
+                  unstaged={unstagedEntries}
+                  selected={selectedPath ? { scope, path: selectedPath } : null}
+                  disabled={!canStage || pending}
+                  revertDisabled={!canRevert || pending}
+                  onSelect={selectFile}
+                  onViewAll={(scope) => {
+                    setSelection({ scope, path: null });
+                    setView("git");
+                  }}
+                  onStage={(scope, paths) => {
+                    const selectedPaths = paths === null ? null : new Set(paths);
+                    void updateStaging(
+                      scope,
+                      scopes[scope].files.flatMap((file) =>
+                        selectedPaths === null || selectedPaths.has(resolveFileDiffPath(file))
+                          ? [resolveFileDiffPath(file), ...(file.prevName ? [file.prevName] : [])]
+                          : [],
+                      ),
+                    );
+                  }}
+                  onRevert={(paths) => {
+                    const selectedPaths = paths === null ? null : new Set(paths);
+                    setReverting({
+                      paths: scopes.unstaged.files
+                        .filter(
+                          (file) =>
+                            selectedPaths === null || selectedPaths.has(resolveFileDiffPath(file)),
+                        )
+                        .map(resolveFileDiffPath),
+                      label:
+                        paths === null
+                          ? "all unstaged changes"
+                          : paths.length === 1
+                            ? paths[0]!
+                            : `${paths.length} selected files`,
+                    });
+                  }}
+                />
+              </>
+            )}
+          </aside>
+        ) : null}
+      </div>
       <Dialog
         open={reverting !== null}
         onOpenChange={(open) => {

@@ -185,10 +185,23 @@ export function isReviewFileVisible(
 ): boolean {
   return (!filter.commentsOnly || hasUnresolvedComments) && (!filter.hideReviewed || !viewed);
 }
-/** Rename anchors still belong to the file under its current name. */
+/**
+ * Count unresolved conversations and private draft comments under the file's current name.
+ * A supplied draft list is the client's merged, authoritative list, including removals that
+ * the last host snapshot does not reflect yet. Hosted drafts must not count twice.
+ */
 export function reviewCommentCounts(
   files: ReadonlyArray<{ path: string; previousPath?: string | null | undefined }>,
-  threads: ReadonlyArray<{ path: string; isResolved: boolean }>,
+  threads: ReadonlyArray<{
+    path: string;
+    isResolved: boolean;
+    comments?: ReadonlyArray<{ id: string; pendingReviewId?: string | undefined }>;
+  }>,
+  pendingComments?: ReadonlyArray<{
+    path: string;
+    id?: string | undefined;
+    hostedComment?: { commentId: string } | undefined;
+  }>,
 ) {
   const paths = new Map(
     files.flatMap(
@@ -200,13 +213,30 @@ export function reviewCommentCounts(
     ),
   );
   const counts = new Map<string, { total: number; unresolved: number }>();
-  for (const thread of threads) {
-    const path = paths.get(thread.path) ?? thread.path;
+  const publishedIds = new Set<string>();
+  const hostedDrafts: { path: string; id?: string; hostedComment: { commentId: string } }[] = [];
+  const add = (originalPath: string, unresolved: boolean) => {
+    const path = paths.get(originalPath) ?? originalPath;
     const count = counts.get(path) ?? { total: 0, unresolved: 0 };
-    counts.set(path, {
-      total: count.total + 1,
-      unresolved: count.unresolved + Number(!thread.isResolved),
-    });
+    counts.set(path, { total: count.total + 1, unresolved: count.unresolved + Number(unresolved) });
+  };
+  for (const thread of threads) {
+    for (const comment of thread.comments ?? []) {
+      if (comment.pendingReviewId) {
+        hostedDrafts.push({ path: thread.path, hostedComment: { commentId: comment.id } });
+      } else publishedIds.add(comment.id);
+    }
+    if (!thread.comments?.length || thread.comments.some((comment) => !comment.pendingReviewId))
+      add(thread.path, !thread.isResolved);
+  }
+  const seen = new Set<string>();
+  for (const draft of pendingComments ?? hostedDrafts) {
+    const hostedId = draft.hostedComment?.commentId;
+    if (hostedId && publishedIds.has(hostedId)) continue;
+    const key = hostedId ? `host:${hostedId}` : draft.id ? `local:${draft.id}` : undefined;
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    add(draft.path, true);
   }
   return counts;
 }

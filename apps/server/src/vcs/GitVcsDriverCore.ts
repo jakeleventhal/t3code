@@ -195,8 +195,28 @@ function parseBranchAb(value: string): { ahead: number; behind: number } {
 function parseReviewNumstat(stdout: string): ReviewDiffFileStat[] {
   const fields = stdout.split("\0");
   const files: ReviewDiffFileStat[] = [];
+  const statuses = new Map<string, NonNullable<ReviewDiffFileStat["status"]>>();
   for (let index = 0; index < fields.length; index++) {
     const field = fields[index]!;
+    const raw = /^:[0-7]{6} [0-7]{6} [\da-f]+ [\da-f]+ ([A-Z])\d*$/.exec(field);
+    if (raw) {
+      const kind = raw[1];
+      const firstPath = fields[++index];
+      const path = kind === "R" || kind === "C" ? fields[++index] : firstPath;
+      if (path !== undefined) {
+        statuses.set(
+          path,
+          kind === "A" || kind === "C"
+            ? "added"
+            : kind === "D"
+              ? "deleted"
+              : kind === "R"
+                ? "renamed"
+                : "modified",
+        );
+      }
+      continue;
+    }
     const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(field);
     if (!match) continue;
     const previousPath = match[3] === "" ? fields[++index]! : null;
@@ -208,7 +228,10 @@ function parseReviewNumstat(stdout: string): ReviewDiffFileStat[] {
       deletions: match[2] === "-" ? 0 : Number(match[2]),
     });
   }
-  return files;
+  return files.map((file) => {
+    const status = statuses.get(file.path);
+    return status === undefined ? file : { ...file, status };
+  });
 }
 
 // Space-separated fields precede the path in each porcelain v2 record type. The path itself
@@ -3094,7 +3117,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       ref: string,
       env?: NodeJS.ProcessEnv,
     ) {
-      const args = [...diffArgs, "--numstat", "-z"];
+      const args = [...diffArgs, "--raw", "--numstat", "-z"];
       const result = yield* executeGit(
         "GitVcsDriver.getReviewDiffPreview.stat",
         cwd,

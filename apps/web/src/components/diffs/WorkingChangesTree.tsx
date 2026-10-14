@@ -1,5 +1,12 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { reviewFileTreeRows } from "@t3tools/client-runtime/review-workspace";
+import { reviewFileTreeRows, reviewFolderContains } from "@t3tools/client-runtime/review-workspace";
+import {
+  reviewTreeRowKey,
+  selectReviewTreeRows,
+  reviewTreeActionFiles,
+  type ReviewTreeRow,
+  type ReviewTreeSelection,
+} from "@t3tools/client-runtime/review-tree-selection";
 import { ChevronDown, ChevronRight, Minus, Plus, Undo2, PanelsTopLeft } from "lucide";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "~/hooks/useTheme";
@@ -33,15 +40,27 @@ export function WorkingChangesTree({
   disabled: boolean;
   revertDisabled: boolean;
   onSelect: (scope: Scope, path: string) => void;
-  onStage: (scope: Scope, path: string | null) => void;
-  onRevert: (path: string | null) => void;
+  onStage: (scope: Scope, paths: ReadonlyArray<string> | null) => void;
+  onRevert: (paths: ReadonlyArray<string> | null) => void;
   onViewAll: (scope: Scope) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const list = useRef<LegendListRef | null>(null);
   const [open, setOpen] = useState({ staged: true, unstaged: true });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [selection, setSelection] = useState<ReviewTreeSelection>(() => ({
+    rows: selected ? [{ ...selected, kind: "file" }] : [],
+    anchor: selected ? { ...selected, kind: "file" } : null,
+  }));
+  const lastRevealed = useRef<string | null>(null);
   const sections = { staged, unstaged };
+  const sectionPaths = useMemo(
+    () => ({
+      staged: staged.map((file) => file.path),
+      unstaged: unstaged.map((file) => file.path),
+    }),
+    [staged, unstaged],
+  );
   const rows = useMemo<Row[]>(
     () =>
       (["staged", "unstaged"] as const).flatMap((scope) => [
@@ -60,153 +79,219 @@ export function WorkingChangesTree({
       ]),
     [staged, unstaged, open, collapsed],
   );
+  const selectableRows = useMemo(() => rows.filter((row) => row.kind !== "section"), [rows]);
+  const selectedKeys = useMemo(
+    () => new Set(selection.rows.map(reviewTreeRowKey)),
+    [selection.rows],
+  );
+  const selectedFolders = useMemo(
+    () => selection.rows.filter((row) => row.kind === "folder"),
+    [selection.rows],
+  );
+  const revealScope = selected?.scope;
+  const revealPath = selected?.path;
+  const revealKey = selected ? reviewTreeRowKey(selected) : null;
   useEffect(() => {
+    if (revealKey === lastRevealed.current) return;
     const index = rows.findIndex(
-      (row) => row.kind === "file" && row.scope === selected?.scope && row.path === selected.path,
+      (row) => row.kind === "file" && row.scope === revealScope && row.path === revealPath,
     );
-    if (index >= 0) list.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
-  }, [rows, selected?.scope, selected?.path]);
-  const actions = (scope: Scope, path: string | null) => (
-    <div className="flex shrink-0 items-center gap-0">
-      {scope === "unstaged" ? (
+    if (index >= 0) {
+      lastRevealed.current = revealKey;
+      list.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+    }
+    if (revealKey === null) lastRevealed.current = null;
+  }, [rows, revealScope, revealPath, revealKey]);
+  const toggleFolder = (row: ReviewTreeRow) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      const key = `${row.scope}:${row.path}`;
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const actions = (scope: Scope, row: ReviewTreeRow | null) => {
+    const path = row?.path ?? null;
+    const groupTarget =
+      row &&
+      (selectedKeys.has(reviewTreeRowKey(row)) ||
+        selectedFolders.some(
+          (folder) => folder.scope === scope && reviewFolderContains(folder.path, row.path),
+        ));
+    const label =
+      groupTarget && (selection.rows.length > 1 || row.kind === "folder")
+        ? "selected files"
+        : (path ?? "all files");
+    const targets = () => reviewTreeActionFiles(sectionPaths[scope], selection.rows, row);
+    return (
+      <div className="flex shrink-0 items-center gap-0">
+        {scope === "unstaged" ? (
+          <Button
+            size="icon-micro"
+            variant="ghost"
+            disabled={revertDisabled || unstaged.length === 0}
+            aria-label={path ? `Revert ${label}` : "Revert all unstaged changes"}
+            onClick={() => onRevert(row ? targets() : null)}
+          >
+            <MorphIcon icon={Undo2} />
+          </Button>
+        ) : null}
         <Button
           size="icon-micro"
           variant="ghost"
-          disabled={revertDisabled || unstaged.length === 0}
-          aria-label={path ? `Revert ${path}` : "Revert all unstaged changes"}
-          onClick={() => onRevert(path)}
+          disabled={disabled || sections[scope].length === 0}
+          aria-label={`${scope === "staged" ? "Unstage" : "Stage"} ${label}`}
+          onClick={() => onStage(scope, row ? targets() : null)}
         >
-          <MorphIcon icon={Undo2} />
+          <MorphIcon icon={scope === "staged" ? Minus : Plus} />
         </Button>
-      ) : null}
-      <Button
-        size="icon-micro"
-        variant="ghost"
-        disabled={disabled || sections[scope].length === 0}
-        aria-label={`${scope === "staged" ? "Unstage" : "Stage"} ${path ?? "all files"}`}
-        onClick={() => onStage(scope, path)}
-      >
-        <MorphIcon icon={scope === "staged" ? Minus : Plus} />
-      </Button>
-    </div>
-  );
+      </div>
+    );
+  };
   return (
-    <LegendList
-      ref={list}
-      data={rows}
-      keyExtractor={(row) => `${row.scope}:${row.kind}:${row.path}`}
-      estimatedItemSize={24}
-      drawDistance={240}
-      className="min-h-0 flex-1 overflow-x-hidden px-4"
-      extraData={{ selected, disabled, revertDisabled, resolvedTheme }}
-      renderItem={({ item: row }) => {
-        if (row.kind === "section")
+    <div
+      role="tree"
+      aria-label="Git files"
+      aria-multiselectable="true"
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <LegendList
+        ref={list}
+        data={rows}
+        keyExtractor={(row) => `${row.scope}:${row.kind}:${row.path}`}
+        estimatedItemSize={24}
+        drawDistance={240}
+        className="min-h-0 flex-1 overflow-x-hidden px-4"
+        extraData={{ selected, selectedKeys, disabled, revertDisabled, resolvedTheme }}
+        renderItem={({ item: row }) => {
+          if (row.kind === "section")
+            return (
+              <div className="flex h-6 items-center gap-1 px-1.5" data-git-section={row.scope}>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium"
+                  aria-expanded={open[row.scope]}
+                  onClick={() =>
+                    setOpen((current) => ({ ...current, [row.scope]: !current[row.scope] }))
+                  }
+                >
+                  <MorphIcon
+                    className="size-3.5"
+                    icon={open[row.scope] ? ChevronDown : ChevronRight}
+                  />
+                  {row.scope === "staged" ? "Staged" : "Unstaged"}
+                </button>
+                <Badge variant="info" size="sm">
+                  {sections[row.scope].length}
+                </Badge>
+                <Button
+                  size="icon-micro"
+                  variant="ghost"
+                  aria-label={`View all ${row.scope} changes`}
+                  disabled={sections[row.scope].length === 0}
+                  onClick={() => onViewAll(row.scope)}
+                >
+                  <MorphIcon icon={PanelsTopLeft} />
+                </Button>
+                {actions(row.scope, null)}
+              </div>
+            );
+          const folder = row.kind === "folder";
+          const batchSelected = selectedKeys.has(reviewTreeRowKey(row));
+          const current = selected?.scope === row.scope && selected.path === row.path;
+          const status = folder ? "modified" : row.file.status;
+          const statusColor =
+            status === "added" || status === "untracked"
+              ? "light-dark(#16a994, #00cab1)"
+              : status === "deleted"
+                ? "light-dark(#ff2e3f, #ff6762)"
+                : status === "renamed"
+                  ? "light-dark(#d5a910, #ffd452)"
+                  : "light-dark(#1ca1c7, #08c0ef)";
           return (
-            <div className="flex h-6 items-center gap-1 px-1.5" data-git-section={row.scope}>
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium"
-                aria-expanded={open[row.scope]}
-                onClick={() =>
-                  setOpen((current) => ({ ...current, [row.scope]: !current[row.scope] }))
-                }
-              >
-                <MorphIcon
-                  className="size-3.5"
-                  icon={open[row.scope] ? ChevronDown : ChevronRight}
-                />
-                {row.scope === "staged" ? "Staged" : "Unstaged"}
-              </button>
-              <Badge variant="info" size="sm">
-                {sections[row.scope].length}
-              </Badge>
-              <Button
-                size="icon-micro"
-                variant="ghost"
-                aria-label={`View all ${row.scope} changes`}
-                disabled={sections[row.scope].length === 0}
-                onClick={() => onViewAll(row.scope)}
-              >
-                <MorphIcon icon={PanelsTopLeft} />
-              </Button>
-              {actions(row.scope, null)}
-            </div>
-          );
-        const folder = row.kind === "folder";
-        const active = selected?.scope === row.scope && selected.path === row.path;
-        const status = folder ? "modified" : row.file.status;
-        const statusColor =
-          status === "added" || status === "untracked"
-            ? "light-dark(#16a994, #00cab1)"
-            : status === "deleted"
-              ? "light-dark(#ff2e3f, #ff6762)"
-              : status === "renamed"
-                ? "light-dark(#d5a910, #ffd452)"
-                : "light-dark(#1ca1c7, #08c0ef)";
-        return (
-          <div
-            data-git-scope={row.scope}
-            data-git-path={row.path}
-            className={`group relative flex h-6 min-w-0 items-center gap-1 rounded-md pr-1.5 text-xs hover:bg-accent ${active ? "bg-accent" : ""}`}
-            style={{
-              paddingLeft: `calc(6.4px + min(${row.depth * 18.7}px, max(0px, 100% - 180px)))`,
-            }}
-          >
-            <button
-              type="button"
-              className={`flex min-w-0 flex-1 items-center gap-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${row.scope === "unstaged" ? "group-hover:pr-11 group-focus-within:pr-11" : "group-hover:pr-6 group-focus-within:pr-6"}`}
-              aria-label={`${row.scope}: ${row.path}`}
+            <div
+              data-git-scope={row.scope}
+              data-git-path={row.path}
+              data-git-active={current || undefined}
+              role="treeitem"
+              aria-selected={batchSelected}
+              aria-level={row.depth + 1}
               aria-expanded={folder ? !collapsed.has(`${row.scope}:${row.path}`) : undefined}
-              aria-current={!folder && active ? "true" : undefined}
-              onClick={() =>
-                folder
-                  ? setCollapsed((current) => {
-                      const next = new Set(current);
-                      const key = `${row.scope}:${row.path}`;
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                    })
-                  : onSelect(row.scope, row.path)
-              }
+              className={`group relative flex h-6 min-w-0 items-center gap-1 rounded-md pr-1.5 text-xs ${batchSelected ? "bg-foreground/10" : "hover:bg-foreground/5"} ${current ? "ring-1 ring-inset ring-ring" : ""}`}
+              style={{
+                paddingLeft: `calc(6.4px + min(${row.depth * 18.7}px, max(0px, 100% - 180px)))`,
+              }}
             >
               {folder ? (
-                <MorphIcon
-                  className="size-4 shrink-0 text-muted-foreground"
-                  icon={collapsed.has(`${row.scope}:${row.path}`) ? ChevronRight : ChevronDown}
-                />
-              ) : (
-                <PierreEntryIcon pathValue={row.path} kind="file" theme={resolvedTheme} />
-              )}
-              <ReviewPath path={row.path} className="min-w-0 flex-1 truncate">
-                <span
-                  style={{ color: folder ? undefined : statusColor, colorScheme: resolvedTheme }}
+                <button
+                  type="button"
+                  aria-label={`${collapsed.has(`${row.scope}:${row.path}`) ? "Expand" : "Collapse"} ${row.path}`}
+                  className="flex size-4 shrink-0 items-center justify-center text-muted-foreground outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                  onClick={() => toggleFolder(row)}
                 >
-                  {folder ? row.label.replaceAll("/", " / ") : row.path.split("/").at(-1)}
-                </span>
-              </ReviewPath>
-            </button>
-            <div className="pointer-events-none absolute right-6 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-              {actions(row.scope, row.path)}
+                  <MorphIcon
+                    className="size-4"
+                    icon={collapsed.has(`${row.scope}:${row.path}`) ? ChevronRight : ChevronDown}
+                  />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`flex min-w-0 flex-1 items-center gap-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${row.scope === "unstaged" ? "group-hover:pr-11 group-focus-within:pr-11" : "group-hover:pr-6 group-focus-within:pr-6"}`}
+                aria-label={`${row.scope}: ${row.path}`}
+                aria-current={!folder && current ? "true" : undefined}
+                onMouseDown={(event) => {
+                  if (event.shiftKey) event.preventDefault();
+                }}
+                onClick={(event) => {
+                  const toggle = event.metaKey || event.ctrlKey;
+                  setSelection((previous) =>
+                    selectReviewTreeRows(previous, selectableRows, row, {
+                      toggle,
+                      range: event.shiftKey,
+                    }),
+                  );
+                  if (toggle || event.shiftKey) return;
+                  if (folder) toggleFolder(row);
+                  else {
+                    lastRevealed.current = reviewTreeRowKey(row);
+                    onSelect(row.scope, row.path);
+                  }
+                }}
+              >
+                {!folder ? (
+                  <PierreEntryIcon pathValue={row.path} kind="file" theme={resolvedTheme} />
+                ) : null}
+                <ReviewPath path={row.path} className="min-w-0 flex-1 truncate">
+                  <span
+                    style={{ color: folder ? undefined : statusColor, colorScheme: resolvedTheme }}
+                  >
+                    {folder ? row.label.replaceAll("/", " / ") : row.path.split("/").at(-1)}
+                  </span>
+                </ReviewPath>
+              </button>
+              <div className="pointer-events-none absolute right-6 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                {actions(row.scope, row)}
+              </div>
+              <span
+                className={`w-3 shrink-0 text-center ${folder ? "opacity-50" : ""}`}
+                style={{ color: statusColor, colorScheme: resolvedTheme }}
+                aria-label={folder ? "Contains changes" : row.file.status}
+              >
+                {folder
+                  ? "•"
+                  : row.file.status === "added"
+                    ? "A"
+                    : row.file.status === "deleted"
+                      ? "D"
+                      : row.file.status === "renamed"
+                        ? "R"
+                        : "M"}
+              </span>
             </div>
-            <span
-              className={`w-3 shrink-0 text-center ${folder ? "opacity-50" : ""}`}
-              style={{ color: statusColor, colorScheme: resolvedTheme }}
-              aria-label={folder ? "Contains changes" : row.file.status}
-            >
-              {folder
-                ? "•"
-                : row.file.status === "added"
-                  ? "A"
-                  : row.file.status === "deleted"
-                    ? "D"
-                    : row.file.status === "renamed"
-                      ? "R"
-                      : "M"}
-            </span>
-          </div>
-        );
-      }}
-    />
+          );
+        }}
+      />
+    </div>
   );
 }
