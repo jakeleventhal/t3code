@@ -62,20 +62,21 @@ import { ReviewFileTree } from "./ReviewFileTree";
 import { selectReviewFileDiff } from "./reviewPaneSelection";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 
-function ReviewHeader(
+export function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
-    readonly iconColor: string;
+    readonly iconColor?: string;
     readonly onReturnToThread: () => void;
   },
 ) {
   const presentation = useReviewHeaderPresentation(props);
+  const iconColor = String(useUniwindTheme()["--color-icon"]);
   return (
     <AppBar
       title={presentation.title}
       subtitle={presentation.subtitle}
       onBack={props.onReturnToThread}
       hideBottomBorder
-      options={{ headerTintColor: props.iconColor, headerTitle: props.title }}
+      options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
       menus={[
         ...(presentation.gitMenu ? [presentation.gitMenu] : []),
@@ -180,10 +181,11 @@ type ReviewSheetProps = StaticScreenProps<{
 export function ReviewSheet(
   props: ReviewSheetProps & {
     readonly workspaceTabs?: ReactNode;
+    readonly workspaceHeader?: ReactNode;
     readonly openedFile?:
       | {
           readonly sectionId: string;
-          readonly path: string;
+          readonly path?: string;
           readonly scope?: "staged" | "unstaged" | undefined;
         }
       | undefined;
@@ -209,6 +211,8 @@ export function ReviewSheet(
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
 
+  const isOverview = props.openedFile === undefined;
+  const [defaultSelectionPending, setDefaultSelectionPending] = useState(isOverview);
   const {
     error,
     reviewSections,
@@ -217,13 +221,21 @@ export function ReviewSheet(
     selectSection,
     isSelectedSectionPending,
     diffPreviewRevision,
+    liveGitUnavailableReason,
   } = useReviewSections({
     enabled: isEnvironmentReady,
     environmentId,
     threadId,
     reviewCache,
-    selectedSectionId: props.openedFile?.sectionId,
+    selectedSectionId:
+      props.openedFile?.sectionId ?? (defaultSelectionPending ? "git:working-tree" : undefined),
   });
+  useEffect(() => {
+    if (!isOverview) return;
+    selectSection("git:working-tree");
+    // eslint-disable-next-line react/set-state-in-effect -- Reset the comparison once when entering Git, while keeping subsequent navigation in the shared review cache.
+    setDefaultSelectionPending(false);
+  }, [isOverview, selectSection]);
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,
     sections: reviewSections,
@@ -277,7 +289,7 @@ export function ReviewSheet(
   const { collapsedFileIds, toggleExpandedFile } = fileVisibility;
   const displayedDiff = useMemo(
     () =>
-      props.openedFile
+      props.openedFile?.path
         ? selectReviewFileDiff(nativeReviewDiffData, props.openedFile.path)
         : nativeReviewDiffData,
     [nativeReviewDiffData, props.openedFile],
@@ -323,14 +335,14 @@ export function ReviewSheet(
     [onNativeDebug, nativeThemeId, showcaseReviewKey],
   );
 
-  const openFile = (path: string, scope?: "staged" | "unstaged") => {
+  const openFile = (path: string | undefined, scope?: "staged" | "unstaged") => {
     if (!selectedSection) return;
     navigation.dispatch(
       StackActions.push("ThreadReviewFile", {
         environmentId: String(environmentId),
         threadId: String(threadId),
         reviewSectionId: selectedSection.id,
-        reviewFilePath: path,
+        ...(path ? { reviewFilePath: path } : {}),
         ...(scope ? { reviewWorkingTreeScope: scope } : {}),
       }),
     );
@@ -423,22 +435,30 @@ export function ReviewSheet(
   ]
     .filter(Boolean)
     .join(" · ");
-  const headerTitleText = props.openedFile?.path.split("/").at(-1) ?? "Git";
+  const headerTitleText =
+    props.openedFile?.path?.split("/").at(-1) ??
+    (props.openedFile?.scope === "staged"
+      ? "Staged files"
+      : props.openedFile
+        ? "Unstaged files"
+        : "Git");
 
   return (
     <>
-      <ReviewHeader
-        environmentId={environmentId}
-        threadId={threadId}
-        title={headerTitleText}
-        subtitle={headerSubtitle}
-        androidSubtitle={androidHeaderSubtitle}
-        iconColor={headerIcon}
-        selectedThreadCwd={selectedThreadCwd}
-        selectedSection={selectedSection}
-        onRefresh={handlePullToRefresh}
-        onReturnToThread={handleReturnToThread}
-      />
+      {props.workspaceHeader ?? (
+        <ReviewHeader
+          environmentId={environmentId}
+          threadId={threadId}
+          title={headerTitleText}
+          subtitle={headerSubtitle}
+          androidSubtitle={androidHeaderSubtitle}
+          iconColor={headerIcon}
+          selectedThreadCwd={selectedThreadCwd}
+          selectedSection={selectedSection}
+          onRefresh={handlePullToRefresh}
+          onReturnToThread={handleReturnToThread}
+        />
+      )}
 
       <ScreenContent>
         <View className="flex-1 bg-sheet android:bg-sheet-solid">
@@ -455,6 +475,14 @@ export function ReviewSheet(
               />
             ) : null}
           </View>
+          {liveGitUnavailableReason && !showConnectionNotice ? (
+            <Text
+              accessibilityRole="alert"
+              className="border-b border-warning-border bg-warning px-4 py-3 text-xs leading-normal text-warning-foreground"
+            >
+              {liveGitUnavailableReason}
+            </Text>
+          ) : null}
           {showConnectionNotice ? (
             <View className="flex-1" style={{ paddingTop: topContentInset }}>
               <EnvironmentConnectionNotice
@@ -492,6 +520,7 @@ export function ReviewSheet(
                     : undefined
                 }
                 onOpenFile={({ path, scope }) => openFile(path, scope)}
+                onOpenScope={(scope) => openFile(undefined, scope)}
               />
             </View>
           ) : !props.openedFile && treeFiles.length > 0 ? (

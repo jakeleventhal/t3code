@@ -1,6 +1,6 @@
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { StaticScreenProps } from "@react-navigation/native";
+import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useState } from "react";
 import { View } from "react-native";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -10,7 +10,7 @@ import { vcsEnvironment } from "../../state/vcs";
 import { environmentSession } from "../../state/session";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "../files/ThreadFilesRouteScreen";
-import { ReviewSheet } from "../review/ReviewSheet";
+import { ReviewHeader, ReviewSheet } from "../review/ReviewSheet";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
@@ -25,6 +25,7 @@ type Props = StaticScreenProps<{
 }>;
 
 function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "git" }) {
+  const navigation = useNavigation();
   const [tab, setTab] = useState(props.initialTab);
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
@@ -59,6 +60,19 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
       />
     </View>
   );
+  const workspaceHeader = (
+    <ReviewHeader
+      environmentId={environmentId}
+      threadId={threadId}
+      title={tab === "files" ? "Files" : "Git"}
+      subtitle=""
+      androidSubtitle=""
+      selectedThreadCwd={cwd}
+      selectedSection={null}
+      onRefresh={async () => status.refresh()}
+      onReturnToThread={() => navigation.goBack()}
+    />
+  );
   return tab === "files" ? (
     props.route.params.path ? (
       <ThreadFileScreen
@@ -66,14 +80,20 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
         workspaceTabs={tabs}
       />
     ) : (
-      <ThreadFilesTreeScreen route={props.route} workspaceTabs={tabs} />
+      <ThreadFilesTreeScreen
+        route={props.route}
+        workspaceTabs={tabs}
+        workspaceHeader={workspaceHeader}
+      />
     )
   ) : (
     <ReviewSheet
       route={{ params: { environmentId, threadId } }}
       workspaceTabs={tabs}
+      workspaceHeader={props.route.params.reviewSectionId ? undefined : workspaceHeader}
       openedFile={
-        props.route.params.reviewFilePath && props.route.params.reviewSectionId
+        props.route.params.reviewSectionId &&
+        (props.route.params.reviewFilePath || props.route.params.reviewWorkingTreeScope)
           ? {
               path: props.route.params.reviewFilePath,
               sectionId: props.route.params.reviewSectionId,

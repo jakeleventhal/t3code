@@ -108,6 +108,7 @@ export function PullRequestActionToolbar(props: {
   readonly params: PullRequestParams;
   readonly filePath?: string;
   readonly onOpenFiles?: () => void;
+  readonly showFiles?: boolean;
   readonly onHeightChange?: (height: number) => void;
 }) {
   const navigation = useNavigation();
@@ -185,7 +186,13 @@ export function PullRequestActionToolbar(props: {
                 )}
               </View>
             ) : null}
-            <IconButton icon="file.diff" accessibilityLabel="Changed files" onPress={openFiles} />
+            {props.showFiles !== false ? (
+              <IconButton
+                icon="file.diff"
+                accessibilityLabel="Changed files"
+                onPress={openFiles}
+              />
+            ) : null}
           </View>
         </Toolbar>
       </View>
@@ -279,15 +286,17 @@ export function PullRequestActionToolbar(props: {
       )}
     </Toolbar.Menu>
   ) : null;
-  const filesControl = (
-    <Toolbar.Button
-      identifier="workspace-trailing-action"
-      icon={{ type: "image", source: require("../../../assets/icons/file-diff.png") }}
-      accessibilityLabel="Changed files"
-      onPress={openFiles}
-      separateBackground
-    />
-  );
+  // Tabler file-diff geometry, rasterized at 1x/2x/3x for UIKit template images.
+  const filesControl =
+    props.showFiles !== false ? (
+      <Toolbar.Button
+        identifier="workspace-trailing-action"
+        icon={{ type: "image", source: require("../../../assets/icons/file-diff.png") }}
+        accessibilityLabel="Changed files"
+        onPress={openFiles}
+        separateBackground
+      />
+    ) : null;
   if (verticalControls)
     return (
       <Toolbar placement="bottom">

@@ -730,7 +730,10 @@ private class DiffCanvasView(context: Context) : View(context) {
               hit.bottom,
               width,
               style
-            ).contains(event.x, event.y)
+            ).apply {
+              inset(-12f * density, -12f * density)
+              intersect(0f, hit.top.toFloat(), width.toFloat(), hit.bottom.toFloat())
+            }.contains(event.x, event.y)
           ) {
             if (!viewedCheckboxEnabled) return true
             RowTapTarget.VIEWED_CHECKBOX

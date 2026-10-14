@@ -1614,7 +1614,9 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let interactiveRects = fileHeaderInteractiveRects(for: row, cardRect: rect)
     let fileId = resolvedFileId(for: row)
 
-    if showViewedCheckbox && interactiveRects.checkbox.contains(point) {
+    // Keep the drawn mark small while giving it a full touch target in the file header.
+    let checkboxTouchRect = interactiveRects.checkbox.insetBy(dx: -12, dy: -12).intersection(rect)
+    if showViewedCheckbox && checkboxTouchRect.contains(point) {
       if viewedCheckboxEnabled { onToggleViewedFile?(fileId) }
       return
     }
@@ -2503,7 +2505,13 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       .foregroundColor: color,
       .paragraphStyle: paragraphStyle,
     ]
-    (text as NSString).draw(in: rect, withAttributes: attributes)
+    (text as NSString).draw(
+      in: CGRect(
+        x: rect.minX, y: centeredTextY(in: rect, font: font),
+        width: rect.width, height: font.lineHeight
+      ),
+      withAttributes: attributes
+    )
   }
 
   private func drawHunkRow(_ row: ReviewDiffNativeRow, rect: CGRect, context: CGContext) {
