@@ -8,7 +8,8 @@ import { AppText as Text } from "../../../components/AppText";
 import { PullRequestCommentsSheet } from "../PullRequestCommentsSheet";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../../native/StackHeader";
 import { PullRequestDiffContent } from "../PullRequestRouteScreen";
-import { ReviewChapterNavigation } from "../../review/ReviewChapterNavigation";
+import { GuideViewOptions } from "./GuideViewOptions";
+import { GuideChapterNavigation } from "./GuideChapterNavigation";
 import { reviewGuideState } from "./reviewGuideState";
 import { useEnvironmentQuery } from "../../../state/query";
 import { composerPullRequests } from "../../../state/pull-requests";
@@ -30,6 +31,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
   const stop = guide?.stops[position];
   const [expanded, setExpanded] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const changedGuide =
     guide !== null &&
     (guide.headSha !== params.guideHeadSha || guide.generatedAt !== params.guideGeneratedAt);
@@ -48,12 +50,18 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
       }}
     >
       <NativeStackScreenOptions options={{ title, headerTitle: title }} />
+      <GuideViewOptions open={optionsOpen} onClose={() => setOptionsOpen(false)} />
       <PullRequestCommentsSheet
         params={params}
         visible={commentsOpen}
         onClose={() => setCommentsOpen(false)}
       />
       <NativeHeaderToolbar placement="right">
+        <NativeHeaderToolbar.Button
+          icon="slider.horizontal.3"
+          accessibilityLabel="View options"
+          onPress={() => setOptionsOpen(true)}
+        />
         <NativeHeaderToolbar.Button
           icon="text.bubble"
           accessibilityLabel="Comments"
@@ -65,6 +73,11 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
           title={title}
           onBack={() => navigation.goBack()}
           actions={[
+            {
+              icon: "slider.horizontal.3",
+              accessibilityLabel: "View options",
+              onPress: () => setOptionsOpen(true),
+            },
             {
               icon: "text.bubble",
               accessibilityLabel: "Comments",
@@ -85,8 +98,8 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
         </View>
       ) : (
         <>
-          <View className="gap-2 border-b border-border-subtle px-4 py-3">
-            <ReviewChapterNavigation
+          <View className="gap-1 border-b border-border-subtle bg-screen px-3 py-2">
+            <GuideChapterNavigation
               chapters={guide?.stops ?? []}
               position={position}
               reviewedCount={progress?.reviewedCount ?? 0}
@@ -115,7 +128,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
               </Pressable>
               {expanded ? (
                 <PullRequestMarkdownRepository value={params.repository} params={params}>
-                  <View className="gap-3 pt-3">
+                  <View className="gap-2 pt-2">
                     {stop.attention ? <PullRequestMarkdown markdown={stop.attention.note} /> : null}
                     {stop.notes.map((note) => (
                       <View key={`${note.path}:${note.line}:${note.title}`} className="gap-1">

@@ -24,6 +24,10 @@ private struct ReviewDiffNativeRow: Decodable, Sendable {
   let commentSectionTitle: String?
   let hunkAction: String?
   let hunkActionDisabled: Bool?
+  let hunkRevertAction: Bool?
+  let hunkRevertActionDisabled: Bool?
+  let fileAction: String?
+  let fileActionDisabled: Bool?
 }
 
 private struct ReviewDiffRenameSegment: Decodable, Sendable {
@@ -358,6 +362,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
   let onPressLine = EventDispatcher()
   let onSelectLineRange = EventDispatcher()
   let onPressHunk = EventDispatcher()
+  let onPressFileAction = EventDispatcher()
   let onToggleComment = EventDispatcher()
   let onPullToRefresh = EventDispatcher()
 
@@ -392,8 +397,11 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     contentView.onSelectLineRange = { [weak self] payload in
       self?.onSelectLineRange(payload)
     }
-    contentView.onPressHunk = { [weak self] rowId in
-      self?.onPressHunk(["rowId": rowId])
+    contentView.onPressHunk = { [weak self] rowId, action in
+      self?.onPressHunk(["rowId": rowId, "action": action])
+    }
+    contentView.onPressFileAction = { [weak self] fileId, rowId in
+      self?.onPressFileAction(["fileId": fileId, "rowId": rowId])
     }
     contentView.onToggleComment = { [weak self] commentId in
       self?.onToggleComment(["commentId": commentId])
@@ -1139,7 +1147,8 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   var onToggleViewedFile: ((String) -> Void)?
   var onPressLine: (([String: Any]) -> Void)?
   var onSelectLineRange: (([String: Any]) -> Void)?
-  var onPressHunk: ((String) -> Void)?
+  var onPressHunk: ((String, String) -> Void)?
+  var onPressFileAction: ((String, String) -> Void)?
   var onToggleComment: ((String) -> Void)?
   var onDrawMetrics: (([String: Any]) -> Void)?
 
@@ -1447,8 +1456,10 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let row = rows[rowIndex]
     if row.kind == "hunk", row.hunkAction != nil {
       let rect = CGRect(x: 0, y: rowOffsets[rowIndex] - verticalOffset, width: viewportWidth, height: height(for: row))
-      if hunkActionRect(in: rect).contains(point), row.hunkActionDisabled != true {
-        onPressHunk?(row.id)
+      if row.hunkRevertAction == true, hunkRevertRect(in: rect).contains(point) {
+        if row.hunkRevertActionDisabled != true { onPressHunk?(row.id, "revert") }
+      } else if hunkActionRect(in: rect).contains(point), row.hunkActionDisabled != true {
+        onPressHunk?(row.id, "stage")
       }
       return
     }
@@ -1613,6 +1624,11 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   private func handleFileHeaderTap(row: ReviewDiffNativeRow, rect: CGRect, point: CGPoint) {
     let interactiveRects = fileHeaderInteractiveRects(for: row, cardRect: rect)
     let fileId = resolvedFileId(for: row)
+
+    if row.fileAction != nil, fileActionRect(in: rect).contains(point) {
+      if row.fileActionDisabled != true { onPressFileAction?(fileId, row.id) }
+      return
+    }
 
     // Keep the drawn mark small while giving it a full touch target in the file header.
     let checkboxTouchRect = interactiveRects.checkbox.insetBy(dx: -12, dy: -12).intersection(rect)
@@ -2186,7 +2202,8 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let addWidth = textWidth(addText, font: fileHeaderMetaFont)
     let countsGap = min(style.fileHeaderCountGap, 4)
     let countsWidth = deleteWidth + countsGap + addWidth
-    let countsX = interactiveRects.checkbox.minX - 10 - countsWidth
+    let countsRight = row.fileAction == nil ? interactiveRects.checkbox.minX : fileActionRect(in: cardRect).minX
+    let countsX = countsRight - 10 - countsWidth
     drawSingleLineText(
       deleteText,
       rect: CGRect(x: countsX, y: centerY - 9, width: deleteWidth, height: 18),
@@ -2214,6 +2231,19 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       )
     }
     drawFileHeaderPathScrollFade(row, pathRect: pathLayout.rect, horizontalOffset: pathOffset, context: context)
+    if let action = row.fileAction {
+      let button = fileActionRect(in: cardRect).insetBy(dx: 4, dy: 7)
+      context.setStrokeColor(theme.border.cgColor)
+      context.setLineWidth(1 / traitCollection.displayScale)
+      UIBezierPath(roundedRect: button, cornerRadius: 6).stroke()
+      drawCenteredText(action, rect: button,
+        color: row.fileActionDisabled == true ? theme.mutedText : theme.hunkText,
+        font: .systemFont(ofSize: 12, weight: .semibold))
+    }
+  }
+
+  private func fileActionRect(in rect: CGRect) -> CGRect {
+    CGRect(x: rect.maxX - 100, y: rect.minY, width: 94, height: rect.height)
   }
 
   private func drawNoticeRow(_ row: ReviewDiffNativeRow, rect: CGRect, context: CGContext) {
@@ -2331,7 +2361,8 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let addWidth = textWidth("+\(additions)", font: fileHeaderMetaFont)
     let countsGap = min(style.fileHeaderCountGap, 4)
     let countsWidth = deleteWidth + countsGap + addWidth
-    let countsX = interactiveRects.checkbox.minX - 10 - countsWidth
+    let countsRight = row.fileAction == nil ? interactiveRects.checkbox.minX : fileActionRect(in: cardRect).minX
+    let countsX = countsRight - 10 - countsWidth
     let pathX = interactiveRects.icon.maxX + 10
     let pathWidth = max(CGFloat(24), countsX - pathX - 12)
     let displayPath: String
@@ -2522,7 +2553,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     context.fill(rect)
 
     context.saveGState()
-    let actionWidth: CGFloat = row.hunkAction == nil ? 0 : 112
+    let actionWidth: CGFloat = row.hunkAction == nil ? 0 : (row.hunkRevertAction == true ? 224 : 112)
     context.clip(to: CGRect(x: stickyWidth, y: rect.minY, width: max(0, viewportWidth - stickyWidth - actionWidth), height: rect.height))
     drawText(
       row.text ?? "",
@@ -2542,10 +2573,22 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       UIBezierPath(roundedRect: button, cornerRadius: 6).fill()
       drawCenteredText(action, rect: button, color: row.hunkActionDisabled == true ? theme.mutedText : theme.hunkText, font: .systemFont(ofSize: 13, weight: .semibold))
     }
+    if row.hunkRevertAction == true {
+      let button = hunkRevertRect(in: rect).insetBy(dx: 6, dy: 6)
+      theme.headerBackground.setFill()
+      UIBezierPath(roundedRect: button, cornerRadius: 6).fill()
+      drawCenteredText("Revert hunk", rect: button,
+        color: row.hunkRevertActionDisabled == true ? theme.mutedText : theme.deleteText,
+        font: .systemFont(ofSize: 13, weight: .semibold))
+    }
   }
 
   private func hunkActionRect(in rect: CGRect) -> CGRect {
     CGRect(x: viewportWidth - 112, y: rect.minY, width: 112, height: rect.height)
+  }
+
+  private func hunkRevertRect(in rect: CGRect) -> CGRect {
+    CGRect(x: viewportWidth - 224, y: rect.minY, width: 112, height: rect.height)
   }
 
   private func drawCodeRow(_ row: ReviewDiffNativeRow, rect: CGRect, context: CGContext) {

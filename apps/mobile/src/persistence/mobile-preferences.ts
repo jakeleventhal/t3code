@@ -67,6 +67,7 @@ export interface Preferences {
   readonly codeFontSize?: number | null;
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
+  readonly diffIgnoreWhitespace?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
   readonly collapsedProjectGroups?: readonly string[];
   /** Environments whose "reclaim database space" notice was dismissed. */
@@ -143,6 +144,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeFontSize?: number | null;
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
+    diffIgnoreWhitespace?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
     dismissedDatabaseStorageNotices?: readonly string[];
@@ -218,6 +220,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.codeWordBreak === "boolean") preferences.codeWordBreak = parsed.codeWordBreak;
   if (typeof parsed.mathRenderingEnabled === "boolean")
     preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
+  if (typeof parsed.diffIgnoreWhitespace === "boolean")
+    preferences.diffIgnoreWhitespace = parsed.diffIgnoreWhitespace;
   if (Array.isArray(parsed.connectOnboardingOptOutAccounts)) {
     preferences.connectOnboardingOptOutAccounts = parsed.connectOnboardingOptOutAccounts.filter(
       (account): account is string => typeof account === "string",

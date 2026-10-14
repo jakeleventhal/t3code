@@ -467,6 +467,10 @@
       "types": "./src/reviewEditing.ts",
       "default": "./src/reviewEditing.ts"
     },
+    "./review-threads": {
+      "types": "./src/reviewThreads.ts",
+      "default": "./src/reviewThreads.ts"
+    },
     "./review-reactions": {
       "types": "./src/reviewReactions.ts",
       "default": "./src/reviewReactions.ts"
@@ -478,6 +482,10 @@
     "./review-file-progress": {
       "types": "./src/useReviewFileProgress.ts",
       "default": "./src/useReviewFileProgress.ts"
+    },
+    "./review-diff-whitespace": {
+      "types": "./src/reviewDiffWhitespace.ts",
+      "default": "./src/reviewDiffWhitespace.ts"
     },
     "./review-diff-metadata": {
       "types": "./src/reviewDiffMetadata.ts",

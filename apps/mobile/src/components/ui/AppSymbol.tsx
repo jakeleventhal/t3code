@@ -24,6 +24,11 @@ import IconArrowsLeftRight from "@tabler/icons-react-native/IconArrowsLeftRight"
 import IconArrowsDiagonal2 from "@tabler/icons-react-native/IconArrowsDiagonal2";
 import IconArrowsMinimize from "@tabler/icons-react-native/IconArrowsMinimize";
 import IconBan from "@tabler/icons-react-native/IconBan";
+import IconArrowsVertical from "@tabler/icons-react-native/IconArrowsVertical";
+import IconFold from "@tabler/icons-react-native/IconFold";
+import IconUnfold from "@tabler/icons-react-native/IconUnfold";
+import IconSquare from "@tabler/icons-react-native/IconSquare";
+import IconSquareCheckFilled from "@tabler/icons-react-native/IconSquareCheckFilled";
 import IconBellRinging from "@tabler/icons-react-native/IconBellRinging";
 import IconBolt from "@tabler/icons-react-native/IconBolt";
 import IconBox from "@tabler/icons-react-native/IconBox";
@@ -173,6 +178,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   camera: IconCamera,
   car: IconCar,
   "chart.bar.xaxis": IconChartBar,
+  square: IconSquare,
+  "checkmark.square.fill": IconSquareCheckFilled,
   checkmark: IconCheck,
   "checkmark.circle": IconCircleCheck,
   "checkmark.circle.fill": IconCircleCheck,
@@ -190,6 +197,9 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "chevron.left.forwardslash.chevron.right": IconCode,
   "chevron.right": IconChevronRight,
   "chevron.up": IconChevronUp,
+  "arrow.up.and.down": IconArrowsVertical,
+  "diff.collapse": IconFold,
+  "diff.expand": IconUnfold,
   desktopcomputer: IconDeviceDesktop,
   doc: IconFileText,
   "doc.on.doc": IconCopy,
@@ -282,13 +292,25 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "xmark.circle.fill": IconCircleXFilled,
 } satisfies Partial<
   Record<
-    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff",
+    | SFSymbol
+    | "git.pull-request.closed"
+    | "git.pull-request.draft"
+    | "git.commit"
+    | "file.diff"
+    | "diff.collapse"
+    | "diff.expand",
     Icon
   >
 >;
 const SF_ICON_LOOKUP: Partial<
   Record<
-    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff",
+    | SFSymbol
+    | "git.pull-request.closed"
+    | "git.pull-request.draft"
+    | "git.commit"
+    | "file.diff"
+    | "diff.collapse"
+    | "diff.expand",
     Icon
   >
 > = ANDROID_ICON_BY_SF_SYMBOL;

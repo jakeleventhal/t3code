@@ -52,6 +52,10 @@ export interface NativeReviewDiffRow {
   readonly commentSectionTitle?: string;
   readonly hunkAction?: "Stage hunk" | "Unstage hunk";
   readonly hunkActionDisabled?: boolean;
+  readonly hunkRevertAction?: boolean;
+  readonly hunkRevertActionDisabled?: boolean;
+  readonly fileAction?: "Stage file" | "Unstage file";
+  readonly fileActionDisabled?: boolean;
 }
 
 export interface NativeReviewDiffWordDiffRange {
@@ -147,7 +151,12 @@ export interface NativeReviewDiffViewProps extends ViewProps {
   ) => void;
   readonly onToggleFile?: (event: NativeSyntheticEvent<{ readonly fileId?: string }>) => void;
   readonly onToggleViewedFile?: (event: NativeSyntheticEvent<{ readonly fileId?: string }>) => void;
-  readonly onPressHunk?: (event: NativeSyntheticEvent<{ readonly rowId?: string }>) => void;
+  readonly onPressHunk?: (
+    event: NativeSyntheticEvent<{ readonly rowId?: string; readonly action?: "stage" | "revert" }>,
+  ) => void;
+  readonly onPressFileAction?: (
+    event: NativeSyntheticEvent<{ readonly fileId?: string; readonly rowId?: string }>,
+  ) => void;
   readonly onPressLine?: (
     event: NativeSyntheticEvent<{
       readonly rowId?: string;

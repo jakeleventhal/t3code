@@ -20,7 +20,7 @@ interface DiffDisplayOption {
 function DiffDisplayOptionRow({ label, ...props }: DiffDisplayOption) {
   const id = useId();
   return (
-    <div className="flex min-h-8 items-center justify-between gap-3 text-xs">
+    <div className="flex min-h-7 items-center justify-between gap-3 text-xs">
       <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
         {label}
       </label>
@@ -56,7 +56,7 @@ export function DiffDisplayControls({
         <TooltipPopup side="top">Diff options</TooltipPopup>
       </Tooltip>
       <PopoverPopup align="end" width="md" padding="none" aria-label="Diff options">
-        <div className="p-3">
+        <div className="px-3 py-2">
           <ToggleGroup
             aria-label="Diff layout"
             variant="segmented"
@@ -78,7 +78,7 @@ export function DiffDisplayControls({
           </ToggleGroup>
         </div>
         <Separator />
-        <div className="space-y-1 p-3">
+        <div className="px-3 py-1.5">
           <DiffDisplayOptionRow
             label="Wrap lines"
             checked={settings.wordWrap}
@@ -95,7 +95,7 @@ export function DiffDisplayControls({
         {filters && filters.length > 0 ? (
           <>
             <Separator />
-            <div className="space-y-1 p-3">
+            <div className="px-3 py-1.5">
               {filters.map((option) => (
                 <DiffDisplayOptionRow key={option.label} {...option} />
               ))}

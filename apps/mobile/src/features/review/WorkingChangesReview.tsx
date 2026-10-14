@@ -10,13 +10,20 @@ import {
   nativeWorkingRenderableFile,
 } from "./workingChangesProjection";
 import { reviewDiffEdits } from "@t3tools/client-runtime/review-diff-context";
-import { parseReviewInlineComments } from "./reviewCommentSelection";
+import {
+  parseReviewInlineComments,
+  useReviewCommentTarget,
+  getSelectedReviewCommentLines,
+  formatReviewSelectedRangeLabel,
+} from "./reviewCommentSelection";
+import { WorkingChangesLineActions } from "./WorkingChangesLineActions";
 import * as Hash from "effect/Hash";
 import { useAtomValue } from "@effect/atom-react";
 import {
   orderReviewFiles,
   reviewPatchHunks,
   reviewHunkPatch,
+  reviewSelectedLinesPatch,
   reviewFolderContains,
 } from "@t3tools/client-runtime/review-workspace";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -34,7 +41,6 @@ import {
 } from "react-native";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
-import { MaterialButton } from "../../components/MaterialButton";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { reviewEnvironment } from "../../state/review";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -147,12 +153,17 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
       ? { scope: props.openedFile.scope, path: props.openedFile.path }
       : remembered.selection,
   );
-  const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set(remembered.foldedPaths));
   const [actionPending, setPending] = useState(false);
   const [stagingCount, setStagingCount] = useState(0);
   const pending = actionPending || stagingCount > 0;
-  type StageMutation = { scope: WorkingScope; paths: ReadonlyArray<string>; patch?: string };
+  type StageMutation = {
+    scope: WorkingScope;
+    paths: ReadonlyArray<string>;
+    patch?: string;
+    revert?: boolean;
+    retainContext: boolean;
+  };
   const stagingQueue = useRef<OptimisticReviewMutationQueue<
     WorkingChangesState,
     StageMutation
@@ -212,7 +223,8 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   useLayoutEffect(() => {
     readerContextRef.current = readerContext;
   }, [readerContext]);
-  const retained = readerContext?.key === readerKey ? readerContext.state[scope] : null;
+  const retained =
+    selectedPath !== null && readerContext?.key === readerKey ? readerContext.state[scope] : null;
   const data = { ...scopes[scope], hunks: state[scope].hunksByPath };
   const originals = useMemo(
     () => new Map([...staged.files, ...unstaged.files].map((file) => [file.path, file])),
@@ -295,6 +307,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     [parsedReader, props.draftMessage, data.section.id],
   );
   const canStage = useAtomValue(reviewEnvironment.setStaged.permissionAtom(environmentId));
+  const canRevert = useAtomValue(reviewEnvironment.revert.permissionAtom(environmentId));
   const rendered = useMemo(() => {
     const native = nativeReader;
     const paths = new Set(files.map((file) => file.path));
@@ -307,6 +320,20 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
       rows: native.rows
         .filter((row) => row.fileId && ids.has(row.fileId))
         .map((row) => {
+          if (row.kind === "file") {
+            const file = filesById.get(row.fileId ?? "");
+            return {
+              ...row,
+              // Ignore a header tap from a replaced native scope or file snapshot.
+              id: `${row.id}:${scope}:${Hash.string(data.hunks.get(file?.path ?? "")?.join("") ?? "")}`,
+              fileAction: scope === "staged" ? ("Unstage file" as const) : ("Stage file" as const),
+              fileActionDisabled:
+                !canStage ||
+                actionPending ||
+                !file ||
+                !state[scope].files.some((changed) => changed.name === file.path),
+            };
+          }
           if (row.kind !== "hunk") return row;
           const file = filesById.get(row.fileId ?? "");
           const patch = file && reviewHunkPatch(data.hunks.get(file.path) ?? [], row.text ?? "");
@@ -317,12 +344,16 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
             id: `${row.id}:${scope}:${Hash.string(patch)}`,
             hunkAction: scope === "staged" ? ("Unstage hunk" as const) : ("Stage hunk" as const),
             hunkActionDisabled: !canStage || actionPending,
+            ...(scope === "unstaged"
+              ? {
+                  hunkRevertAction: true,
+                  hunkRevertActionDisabled: !canRevert || actionPending,
+                }
+              : {}),
           };
         }),
     };
-  }, [nativeReader, data.hunks, files, scope, canStage, actionPending]);
-  const file = files.find((file) => file.id === visibleFileId) ?? files[0];
-  const canRevert = useAtomValue(reviewEnvironment.revert.permissionAtom(environmentId));
+  }, [nativeReader, data.hunks, files, scope, canStage, canRevert, actionPending, state]);
   const canCommit = useAtomValue(reviewEnvironment.commit.permissionAtom(environmentId));
   const canGenerate = useAtomValue(
     reviewEnvironment.generateCommitMessage.permissionAtom(environmentId),
@@ -356,13 +387,16 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   const stateForMutation = () =>
     nativeWorkingChangesStateForMutation(
       stateRef.current,
-      readerContextRef.current?.key === readerKeyRef.current
+      selectedPath !== null && readerContextRef.current?.key === readerKeyRef.current
         ? readerContextRef.current.state
         : null,
     );
-  const projectMutation = (mutation: StageMutation & { revert?: boolean }) => {
+  const projectMutation = (mutation: Omit<StageMutation, "retainContext">) => {
     const before = stateForMutation();
-    const next = applyWorkingChangesMutation(before, before[mutation.scope], mutation);
+    const next = applyWorkingChangesMutation(before, before[mutation.scope], {
+      ...mutation,
+      retainContext: selectedPath !== null,
+    });
     stateRef.current = next;
     setOptimistic({
       state: next,
@@ -373,23 +407,34 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     setReaderContext({ key: readerKeyRef.current, state: next });
     return before;
   };
-  const updateStaging = (scope: WorkingScope, paths: ReadonlyArray<string>, patch?: string) => {
-    if (!canStage || !paths.length || busy.current) return;
+  const updateStaging = (
+    scope: WorkingScope,
+    paths: ReadonlyArray<string>,
+    patch?: string,
+    revertingPatch = false,
+  ) => {
+    if (!(revertingPatch ? canRevert : canStage) || !paths.length || busy.current) return;
     if (stagingWrites.current === 0) {
       const initial = stateForMutation();
       stagingQueue.current = new OptimisticReviewMutationQueue(initial, {
         apply: (current, mutation) =>
           applyWorkingChangesMutation(current, initial[mutation.scope], mutation),
         send: async (mutation) => {
-          const result = await stage({
-            environmentId,
-            input: {
-              cwd,
-              paths: [...new Set(mutation.paths)],
-              staged: mutation.scope === "unstaged",
-              ...(mutation.patch ? { patch: mutation.patch } : {}),
-            },
-          });
+          const result = mutation.revert
+            ? await revert({
+                environmentId,
+                // An older server must reject this instead of discarding the whole file.
+                input: { cwd, paths: [], ...(mutation.patch ? { patch: mutation.patch } : {}) },
+              })
+            : await stage({
+                environmentId,
+                input: {
+                  cwd,
+                  paths: [...new Set(mutation.paths)],
+                  staged: mutation.scope === "unstaged",
+                  ...(mutation.patch ? { patch: mutation.patch } : {}),
+                },
+              });
           return result._tag === "Success";
         },
         onSnapshot: (next, count) => {
@@ -412,12 +457,18 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
         },
         onFailure: () =>
           Alert.alert(
-            "Could not update staging",
-            "The file may have changed. Refresh and try again.",
+            "Could not update changes",
+            "The failed action was rolled back. Your other changes have been kept.",
           ),
       });
     }
-    stagingQueue.current?.enqueue({ scope, paths, ...(patch ? { patch } : {}) });
+    stagingQueue.current?.enqueue({
+      scope,
+      paths,
+      ...(patch ? { patch } : {}),
+      revert: revertingPatch,
+      retainContext: selectedPath !== null,
+    });
   };
   const confirmRevert = (path: string | null) => {
     const paths = pathsFor("unstaged", path);
@@ -462,6 +513,24 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
               if (result._tag === "Failure")
                 Alert.alert("Could not revert changes", "Refresh and try again.");
             })();
+          },
+        },
+      ],
+    );
+  };
+  const confirmPatchRevert = (path: string, patch: string, label: string) => {
+    if (!canRevert || busy.current) return;
+    Alert.alert(
+      `Revert ${label}?`,
+      `Only ${label} in ${path} will be discarded. Other edits and staged changes are kept.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Revert",
+          style: "destructive",
+          onPress: () => {
+            updateStaging("unstaged", [path], patch, true);
+            commentSelection.clearSelection();
           },
         },
       ],
@@ -513,6 +582,72 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     selectedSection: data.section,
     nativeReviewDiffData: rendered,
   });
+  const activeSelection = useReviewCommentTarget();
+  const selectedLines =
+    activeSelection?.sectionId === data.section.id
+      ? getSelectedReviewCommentLines(activeSelection)
+      : [];
+  const firstSelectedLine = selectedLines[0];
+  const lastSelectedLine = selectedLines.at(-1);
+  const range =
+    firstSelectedLine && lastSelectedLine
+      ? {
+          start: firstSelectedLine.newLineNumber ?? firstSelectedLine.oldLineNumber ?? 0,
+          end: lastSelectedLine.newLineNumber ?? lastSelectedLine.oldLineNumber ?? 0,
+          side:
+            firstSelectedLine.change === "delete" ? ("deletions" as const) : ("additions" as const),
+          endSide:
+            lastSelectedLine.change === "delete" ? ("deletions" as const) : ("additions" as const),
+        }
+      : null;
+  const selectionPatches =
+    range && activeSelection
+      ? {
+          stage: reviewSelectedLinesPatch(
+            data.hunks.get(activeSelection.filePath) ?? [],
+            range,
+            scope === "staged",
+          ),
+          revert:
+            scope === "unstaged"
+              ? reviewSelectedLinesPatch(
+                  data.hunks.get(activeSelection.filePath) ?? [],
+                  range,
+                  true,
+                )
+              : undefined,
+        }
+      : null;
+  const lineActions =
+    activeSelection && selectedLines.length > 0 ? (
+      <WorkingChangesLineActions
+        rangeLabel={formatReviewSelectedRangeLabel(activeSelection)}
+        lineCount={selectedLines.length}
+        staged={scope === "staged"}
+        canStage={canStage && !actionPending && Boolean(selectionPatches?.stage)}
+        canRevert={canRevert && !actionPending && Boolean(selectionPatches?.revert)}
+        onStage={() => {
+          if (selectionPatches?.stage) {
+            updateStaging(scope, [activeSelection.filePath], selectionPatches.stage);
+            commentSelection.clearSelection();
+          }
+        }}
+        onRevert={
+          scope === "unstaged"
+            ? () => {
+                if (selectionPatches?.revert)
+                  confirmPatchRevert(
+                    activeSelection.filePath,
+                    selectionPatches.revert,
+                    selectedLines.length === 1 ? "the selected line" : "the selected lines",
+                  );
+              }
+            : undefined
+        }
+        onComment={commentSelection.selectionAction?.onOpenComment}
+        onClear={commentSelection.clearSelection}
+      />
+    ) : null;
   const foldedFileIds = useMemo(
     () => new Set(rendered.files.filter((file) => folded.has(file.path)).map((file) => file.id)),
     [rendered.files, folded],
@@ -605,13 +740,13 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   const selectFile = (scope: WorkingScope, path: string) => {
     setSelection({ scope, path });
     const target = scopes[scope];
-    const id = target.files.find((file) => file.path === path)?.id ?? path;
+
     rememberWorkingChangesAnchor(props.memoryKey, JSON.stringify(["git", scope, path]), {
       path,
       kind: "file",
       offsetInFile: 0,
     });
-    setVisibleFileId(id);
+
     target.diff.loadVisibleFile(path);
     setFolded((current) => new Set([...current].filter((foldedPath) => foldedPath !== path)));
     commentSelection.clearSelection();
@@ -760,39 +895,13 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
       </KeyboardAvoidingView>
     );
   }
-  const label = scope === "staged" ? "Unstage" : "Stage";
   return (
     <View className="flex-1">
-      <View className="min-h-11 flex-row items-center gap-2 border-b border-border-subtle py-2 pl-4 pr-2">
+      <View className="min-h-11 flex-row items-center border-b border-border-subtle px-4">
         <Text numberOfLines={1} className="min-w-0 flex-1 text-xs text-foreground-muted">
           {data.section.title}
         </Text>
-        {file ? (
-          <MaterialButton
-            label={`${label} file`}
-            tone="primary"
-            disabled={
-              !canStage ||
-              actionPending ||
-              !tree[scope].some((changed) => changed.path === file.path)
-            }
-            onPress={() => void updateStaging(scope, pathsFor(scope, file.path))}
-          />
-        ) : null}
       </View>
-      {commentSelection.selectionAction ? (
-        <View className="flex-row items-center gap-2 px-4 py-2">
-          <Text className="flex-1 text-xs">{commentSelection.selectionAction.title}</Text>
-          {commentSelection.selectionAction.onOpenComment ? (
-            <MaterialButton
-              label="Add to composer"
-              tone="contrast"
-              onPress={commentSelection.selectionAction.onOpenComment}
-            />
-          ) : null}
-          <MaterialButton label="Clear" onPress={commentSelection.clearSelection} />
-        </View>
-      ) : null}
       {data.query.error ? (
         <Text className="px-4 text-xs text-danger-foreground">{data.query.error}</Text>
       ) : null}
@@ -907,7 +1016,6 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
             onSelectLineRange={commentSelection.onSelectLineRange}
             selectedRowIdsJson={bridge.selectedRowIdsJson}
             onVisibleFileChange={({ nativeEvent }) => {
-              setVisibleFileId(nativeEvent.fileId ?? null);
               const visiblePath = files.find((file) => file.id === nativeEvent.fileId)?.path;
               data.diff.loadVisibleFile(visiblePath ?? null);
             }}
@@ -922,12 +1030,24 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
                 return next;
               });
             }}
+            onPressFileAction={({ nativeEvent }) => {
+              const row = rendered.rows.find(
+                (row) => row.kind === "file" && row.id === nativeEvent.rowId,
+              );
+              const file = files.find(
+                (file) => file.id === row?.fileId && file.id === nativeEvent.fileId,
+              );
+              if (file) updateStaging(scope, pathsFor(scope, file.path));
+            }}
             onPressHunk={({ nativeEvent }) => {
               const row = rendered.rows.find((row) => row.id === nativeEvent.rowId);
               const file = files.find((file) => file.id === row?.fileId);
               if (!row || !file) return;
               const patch = reviewHunkPatch(data.hunks.get(file.path) ?? [], row.text ?? "");
-              if (patch) void updateStaging(scope, pathsFor(scope, file.path), patch);
+              if (!patch) return;
+              if (nativeEvent.action === "revert")
+                confirmPatchRevert(file.path, patch, "this hunk");
+              else updateStaging(scope, pathsFor(scope, file.path), patch);
             }}
             onPullToRefresh={() => {
               setPullRefreshing(true);
@@ -946,6 +1066,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
           </Text>
         )}
       </View>
+      {lineActions}
     </View>
   );
 }

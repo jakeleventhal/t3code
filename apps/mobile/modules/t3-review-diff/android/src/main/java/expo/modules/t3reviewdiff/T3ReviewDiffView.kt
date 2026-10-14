@@ -30,6 +30,7 @@ class T3ReviewDiffView(context: Context, appContext: AppContext) : ExpoView(cont
   private val onToggleFile by EventDispatcher()
   private val onToggleViewedFile by EventDispatcher()
   private val onPressHunk by EventDispatcher()
+  private val onPressFileAction by EventDispatcher()
   private val onPressLine by EventDispatcher()
   private val onSelectLineRange by EventDispatcher()
   private val onToggleComment by EventDispatcher()
@@ -391,12 +392,17 @@ class T3ReviewDiffView(context: Context, appContext: AppContext) : ExpoView(cont
 
   private fun handleRowTap(row: DiffRow, gesture: String, target: RowTapTarget) {
     when (row.kind) {
-      "hunk" -> if (gesture == "tap" && target == RowTapTarget.HUNK_ACTION && !row.hunkActionDisabled) {
-        onPressHunk(mapOf("rowId" to row.id))
+      "hunk" -> if (gesture == "tap") {
+        if (target == RowTapTarget.HUNK_REVERT && !row.hunkRevertActionDisabled)
+          onPressHunk(mapOf("rowId" to row.id, "action" to "revert"))
+        else if (target == RowTapTarget.HUNK_ACTION && !row.hunkActionDisabled)
+          onPressHunk(mapOf("rowId" to row.id, "action" to "stage"))
       }
       "file" -> {
         if (gesture != "tap") return
-        if (target == RowTapTarget.VIEWED_CHECKBOX) {
+        if (target == RowTapTarget.FILE_ACTION) {
+          if (!row.fileActionDisabled) onPressFileAction(mapOf("fileId" to row.resolvedFileId, "rowId" to row.id))
+        } else if (target == RowTapTarget.VIEWED_CHECKBOX) {
           onToggleViewedFile(mapOf("fileId" to row.resolvedFileId))
         } else {
           onToggleFile(mapOf("fileId" to row.resolvedFileId))
@@ -465,7 +471,9 @@ class T3ReviewDiffView(context: Context, appContext: AppContext) : ExpoView(cont
 private enum class RowTapTarget {
   ROW,
   VIEWED_CHECKBOX,
-  HUNK_ACTION
+  HUNK_ACTION,
+  HUNK_REVERT,
+  FILE_ACTION
 }
 
 private enum class HorizontalPanKind {
@@ -500,7 +508,11 @@ internal data class DiffRow(
   val commentResolvedSummary: String? = null,
   val renameSegments: List<DiffRenameSegment> = emptyList(),
   val hunkAction: String? = null,
-  val hunkActionDisabled: Boolean = false
+  val hunkActionDisabled: Boolean = false,
+  val hunkRevertAction: Boolean = false,
+  val hunkRevertActionDisabled: Boolean = false,
+  val fileAction: String? = null,
+  val fileActionDisabled: Boolean = false
 ) {
   val resolvedFileId: String get() = fileId.ifEmpty { id }
 }
@@ -723,6 +735,10 @@ private class DiffCanvasView(context: Context) : View(context) {
           if (hit.row.kind == "line") clearNativeRange()
           val target = if (hit.row.kind == "hunk" && hit.row.hunkAction != null && event.x >= width - 112 * density) {
             RowTapTarget.HUNK_ACTION
+          } else if (hit.row.kind == "hunk" && hit.row.hunkRevertAction && event.x >= width - 224 * density) {
+            RowTapTarget.HUNK_REVERT
+          } else if (hit.row.kind == "file" && hit.row.fileAction != null && event.x >= width - 100 * density) {
+            RowTapTarget.FILE_ACTION
           } else if (
             showViewedCheckbox && hit.row.kind == "file" &&
             drawing.fileHeaderCheckboxRect(
@@ -1164,7 +1180,8 @@ private class DiffCanvasView(context: Context) : View(context) {
     val addText = "+${row.additions}"
     val addWidth = boldTextPaint.measureText(addText)
     val countGap = 4f * density
-    val countsRight = if (showViewedCheckbox) checkboxRect.left - 10f * density else width - 16f * density
+    val countsRight = if (row.fileAction != null) width - 110f * density
+      else if (showViewedCheckbox) checkboxRect.left - 10f * density else width - 16f * density
     val countsX = countsRight - deleteWidth - countGap - addWidth
     val baseline = centeredBaseline(top, bottom, boldTextPaint)
     canvas.drawText(deleteText, countsX, baseline, boldTextPaint)
@@ -1205,6 +1222,16 @@ private class DiffCanvasView(context: Context) : View(context) {
       pathOffset,
       maxPathOffset,
     )
+    row.fileAction?.let { label ->
+      val rect = RectF(width - 96 * density, top + 7 * density, width - 10 * density, bottom - 7 * density)
+      backgroundPaint.color = theme.border
+      backgroundPaint.style = Paint.Style.STROKE
+      backgroundPaint.strokeWidth = density
+      canvas.drawRoundRect(rect, 6 * density, 6 * density, backgroundPaint)
+      backgroundPaint.style = Paint.Style.FILL
+      drawing.configureUiPaint(boldTextPaint, if (row.fileActionDisabled) theme.mutedText else theme.hunkText, 12 * density, "semibold")
+      canvas.drawText(label, rect.centerX() - boldTextPaint.measureText(label) / 2, centeredBaseline(top, bottom, boldTextPaint), boldTextPaint)
+    }
     drawBottomBorder(canvas, bottom)
   }
 
@@ -1247,7 +1274,8 @@ private class DiffCanvasView(context: Context) : View(context) {
       size = style.fileHeaderMetaFontSizePx,
       weight = style.fileHeaderMetaFontWeight,
     )
-    val countsRight = if (showViewedCheckbox) checkboxRect.left - 10f * density else width - 16f * density
+    val countsRight = if (row.fileAction != null) width - 110f * density
+      else if (showViewedCheckbox) checkboxRect.left - 10f * density else width - 16f * density
     val countsX = countsRight -
       boldTextPaint.measureText("-${row.deletions}") - 4f * density -
       boldTextPaint.measureText("+${row.additions}")
@@ -1286,7 +1314,7 @@ private class DiffCanvasView(context: Context) : View(context) {
       weight = style.hunkFontWeight,
     )
     canvas.save()
-    if (row.hunkAction != null) canvas.clipRect(0f, top.toFloat(), width - 112 * density, bottom.toFloat())
+    if (row.hunkAction != null) canvas.clipRect(0f, top.toFloat(), width - (if (row.hunkRevertAction) 224 else 112) * density, bottom.toFloat())
     drawScrollableCode(canvas, top, bottom) { codeX ->
       canvas.drawText(
         row.text.ifEmpty { row.content },
@@ -1301,6 +1329,14 @@ private class DiffCanvasView(context: Context) : View(context) {
       backgroundPaint.color = theme.headerBackground
       canvas.drawRoundRect(rect, 6 * density, 6 * density, backgroundPaint)
       drawing.configureUiPaint(boldTextPaint, if (row.hunkActionDisabled) theme.mutedText else theme.hunkText, 13 * density, "semibold")
+      canvas.drawText(label, rect.centerX() - boldTextPaint.measureText(label) / 2, centeredBaseline(top, bottom, boldTextPaint), boldTextPaint)
+    }
+    if (row.hunkRevertAction) {
+      val rect = RectF(width - 218 * density, top + 6 * density, width - 118 * density, bottom - 6 * density)
+      backgroundPaint.color = theme.headerBackground
+      canvas.drawRoundRect(rect, 6 * density, 6 * density, backgroundPaint)
+      drawing.configureUiPaint(boldTextPaint, if (row.hunkRevertActionDisabled) theme.mutedText else theme.deleteText, 13 * density, "semibold")
+      val label = "Revert hunk"
       canvas.drawText(label, rect.centerX() - boldTextPaint.measureText(label) / 2, centeredBaseline(top, bottom, boldTextPaint), boldTextPaint)
     }
   }
@@ -1599,6 +1635,10 @@ private fun parseRows(value: String): List<DiffRow> = try {
       text = row.optString("text"),
       hunkAction = row.optNullableString("hunkAction"),
       hunkActionDisabled = row.optBoolean("hunkActionDisabled", false),
+      hunkRevertAction = row.optBoolean("hunkRevertAction", false),
+      hunkRevertActionDisabled = row.optBoolean("hunkRevertActionDisabled", false),
+      fileAction = row.optNullableString("fileAction"),
+      fileActionDisabled = row.optBoolean("fileActionDisabled", false),
       content = row.optString("content"),
       change = row.optString("change", "context"),
       oldLineNumber = row.optNullableInt("oldLineNumber"),

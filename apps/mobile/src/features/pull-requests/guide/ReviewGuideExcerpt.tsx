@@ -3,10 +3,12 @@ import { Pressable, View } from "react-native";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { PullRequestReviewGuideExcerpt } from "@t3tools/contracts";
 import { excerptRows, fileDiffRows, rowsToPatch } from "@t3tools/client-runtime/review-guide-tour";
-import { AppText as Text } from "../../../components/ui/AppText";
-import { SymbolView } from "../../../components/ui/AppSymbol";
+import { AppText as Text } from "../../../components/AppText";
+import { SymbolView } from "../../../components/AppSymbol";
+import { PierreEntryIcon } from "../../../components/PierreEntryIcon";
 import { resolveNativeReviewDiffView } from "../../diffs/nativeReviewDiffSurface";
 import { buildNativeReviewDiffData } from "../../review/nativeReviewDiffAdapter";
+import { useDiffWhitespacePreference } from "../../review/useDiffWhitespacePreference";
 import { buildReviewParsedDiff } from "../../review/reviewModel";
 import { useNativeReviewDiffBridge } from "../../review/useNativeReviewDiffBridge";
 import { useAppearanceCodeSurface } from "../../settings/appearance/useAppearanceCodeSurface";
@@ -28,16 +30,28 @@ export function ReviewGuideExcerpt({
 }) {
   const { nativeReviewDiffStyle, codeWordBreak } = useAppearanceCodeSurface();
   const { themeAppearance } = useAppearancePreferences();
-  const slice = excerptPatch(file, excerpt);
-  const data = (() => {
+  const { ignoreWhitespace } = useDiffWhitespacePreference();
+  const slice = useMemo(() => {
+    try {
+      if (!file) return "";
+      return rowsToPatch(
+        excerpt.path,
+        file.prevName ?? excerpt.path,
+        excerptRows(fileDiffRows(file), excerpt),
+      );
+    } catch {
+      return "";
+    }
+  }, [file, excerpt]);
+  const data = useMemo(() => {
     const parsed = buildNativeReviewDiffData(
-      buildReviewParsedDiff(slice, `guide:${excerpt.path}:${excerpt.start}`),
+      buildReviewParsedDiff(slice, `guide:${excerpt.path}:${excerpt.start}`, ignoreWhitespace),
     );
     return {
       ...parsed,
       rows: parsed.rows.filter((row) => row.kind !== "file" && row.kind !== "hunk"),
     };
-  })();
+  }, [slice, excerpt.path, excerpt.start, ignoreWhitespace]);
   const bridge = useNativeReviewDiffBridge({
     threadKey: null,
     sectionId: `guide:${excerpt.path}:${excerpt.start}`,
@@ -51,7 +65,7 @@ export function ReviewGuideExcerpt({
   const [measuredHeight, setMeasuredHeight] = useState<{ key: string; height: number } | null>(
     null,
   );
-  const measurementKey = `${slice}:${codeWordBreak}:${nativeReviewDiffStyle.rowHeight}`;
+  const measurementKey = `${ignoreWhitespace}:${slice}:${codeWordBreak}:${nativeReviewDiffStyle.rowHeight}`;
   const [NativeDiff] = useState(() => resolveNativeReviewDiffView());
   return (
     <View className="gap-3">
@@ -63,6 +77,7 @@ export function ReviewGuideExcerpt({
           onPress={onOpen}
           className="min-h-11 flex-row items-center gap-3 border-b border-border-subtle px-3 py-2 active:opacity-60"
         >
+          <PierreEntryIcon kind="file" path={excerpt.path} size={16} />
           <Text
             className="min-w-0 flex-1 text-xs text-foreground-muted"
             numberOfLines={1}

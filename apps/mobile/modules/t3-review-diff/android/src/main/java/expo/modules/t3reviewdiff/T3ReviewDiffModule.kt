@@ -67,6 +67,7 @@ class T3ReviewDiffModule : Module() {
         "onPressLine",
         "onSelectLineRange",
         "onPressHunk",
+        "onPressFileAction",
         "onToggleComment",
       )
 

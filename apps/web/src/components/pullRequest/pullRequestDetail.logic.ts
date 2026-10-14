@@ -1,3 +1,7 @@
+import {
+  pullRequestReviewVerdict,
+  visibleCommentBody,
+} from "@t3tools/client-runtime/review-threads";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
@@ -397,16 +401,7 @@ export type PullRequestReviewOutcome = "approved" | "changes-requested" | "dismi
 export function pullRequestReviewOutcome(
   reviewState: string | null,
 ): PullRequestReviewOutcome | null {
-  switch (reviewState?.trim().toLowerCase().replaceAll("_", "-")) {
-    case "approved":
-      return "approved";
-    case "changes-requested":
-      return "changes-requested";
-    case "dismissed":
-      return "dismissed";
-    default:
-      return null;
-  }
+  return pullRequestReviewVerdict(reviewState);
 }
 
 /**
@@ -539,7 +534,7 @@ export function groupPullRequestTimelineConversations(
  * it.
  */
 export function visibleBody(body: string): string | null {
-  return body.replace(/<!--[\s\S]*?-->/gu, "").trim().length === 0 ? null : body.trim();
+  return visibleCommentBody(body);
 }
 
 function commentTimelineEvent(comment: PullRequestComment): PullRequestTimelineEvent {

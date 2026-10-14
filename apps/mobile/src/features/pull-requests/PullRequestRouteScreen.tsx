@@ -1,3 +1,7 @@
+import { readPullRequestView, rememberPullRequestView } from "./pullRequestViewMemory";
+import { PullRequestFilesSheet } from "./PullRequestFilesSheet";
+import { ReviewDisplayOptions } from "../review/ReviewDisplayOptions";
+import { useDiffWhitespacePreference } from "../review/useDiffWhitespacePreference";
 import { PullRequestCommentsSheet } from "./PullRequestCommentsSheet";
 import { PullRequestCommitPicker } from "./PullRequestCommitPicker";
 import { ReviewChapterNavigation } from "../review/ReviewChapterNavigation";
@@ -156,7 +160,7 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
   const filtered = result.data ? filterPullRequestActivity(result.data, filter) : null;
   const rows = (() => {
     if (!filtered) return [];
-    const rows = pullRequestTimelineRows(filtered.activity, params, navigation);
+    const rows = pullRequestTimelineRows(filtered.activity, params, navigation, filter.newestFirst);
     if (filter.newestFirst) {
       const notice = rows.at(-1)?.key === "truncated" ? rows.pop() : undefined;
       rows.reverse();
@@ -297,7 +301,11 @@ function usePullRequestToolbarHeight(bottomInset: number) {
   return useState(() => (Platform.OS === "android" ? bottomInset + buttonSize + 40 : 0));
 }
 
-export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestParams>) {
+export function PullRequestRouteScreen(props: StaticScreenProps<PullRequestParams>) {
+  return <PullRequestRouteContent key={pullRequestReviewKey(props.route.params)} {...props} />;
+}
+
+function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>) {
   const returnToList = useAndroidWorkspaceBack("pullRequests");
   const { layout } = useAdaptiveWorkspaceLayout();
   const navigation = useNavigation();
@@ -306,10 +314,13 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const params = route.params;
   usePullRequestEnvironmentFallback(params);
   const connected = usePullRequestConnected(params.environmentId);
-  const [visitedSections, setVisitedSections] = useState<ReadonlySet<string>>(
-    () => new Set(["overview"]),
+  const viewMemoryKey = pullRequestReviewKey(params);
+  const [section, setSection] = useState<"overview" | "diff" | "guide">(
+    () => readPullRequestView(viewMemoryKey).section ?? "overview",
   );
-  const [section, setSection] = useState<"overview" | "diff" | "guide">("overview");
+  const [visitedSections, setVisitedSections] = useState<ReadonlySet<string>>(
+    () => new Set([section]),
+  );
   // Keep each tab's native list and measured rows alive when it is hidden.
   const requestedSection = useRef(section);
   const [listAnimationsReady, setListAnimationsReady] = useState(false);
@@ -344,6 +355,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
     scrollViews.current[next]?.scrollToOffset({ offset, animated: false });
     setVisitedSections((current) => new Set(current).add(next));
     setSection(next);
+    rememberPullRequestView(viewMemoryKey, { section: next });
   };
   const topInset = insets.top;
   if (!guidesEnabled && section === "guide") setSection("overview");
@@ -613,7 +625,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                                 },
                               ]
                             : []),
-                          { value: "diff", label: "Diff", icon: "plusminus" },
+                          { value: "diff", label: "Code", icon: "plusminus" },
                         ]}
                         selected={section}
                         onSelect={selectSection}
@@ -799,7 +811,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                                       },
                                     ]
                                 : []),
-                                { value: "diff", label: "Diff", icon: "plusminus" },
+                                { value: "diff", label: "Code", icon: "plusminus" },
                             ]}
                             selected={section}
                             onSelect={selectSection}
@@ -878,7 +890,13 @@ export function PullRequestDiffContent({
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
   const [commit, setCommit] = useState<string | null>(params.commit ?? null);
   const { commit: _requestedCommit, ...reviewParams } = params;
-  const result = usePullRequestDiff({ ...reviewParams, ...(commit ? { commit } : {}) });
+  const { ignoreWhitespace, setIgnoreWhitespace } = useDiffWhitespacePreference();
+  const result = usePullRequestDiff(
+    { ...reviewParams, ...(commit ? { commit } : {}) },
+    ignoreWhitespace,
+  );
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const filter = usePullRequestFileFilter(result.parsed, params.focus ? params.path : undefined);
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(params)));
   const { refresh: refreshDetail } = detail;
@@ -907,7 +925,11 @@ export function PullRequestDiffContent({
   const { commentsOnly, hideReviewed, groupByType } = viewingPreferences;
   const isGuideChapter = onlyPaths !== undefined;
   const grouped = groupByType && !isGuideChapter;
-  const [chapterId, setChapterId] = useState<ReviewFileGroup>(() => reviewFileGroup(params.path));
+  const rememberedPath =
+    params.path || (onlyPaths === undefined ? (readPullRequestView(scopeKey).path ?? "") : "");
+  const [chapterId, setChapterId] = useState<ReviewFileGroup>(() =>
+    reviewFileGroup(rememberedPath),
+  );
   const { isViewed } = viewed;
   const visibleParsed = useMemo(() => {
     const original = isGuideChapter ? result.parsed : filter.parsed;
@@ -1033,7 +1055,7 @@ export function PullRequestDiffContent({
           : (row.content ?? ""),
     });
   };
-  const [jumpPath, setJumpPath] = useState(params.path);
+  const [jumpPath, setJumpPath] = useState(rememberedPath);
   const requestedFile =
     result.parsed.kind === "files"
       ? result.parsed.files.find((file) => file.path === jumpPath)
@@ -1247,6 +1269,74 @@ export function PullRequestDiffContent({
     jumpStarted.current = false;
     setCollapsedIds(EMPTY_IDS);
   };
+  const allCollapsed =
+    data.files.length > 0 &&
+    data.files.every(
+      (file) =>
+        collapsedIds.includes(file.id) ||
+        (viewedIds.includes(file.id) && !expandedViewed.has(file.id)),
+    );
+  const toggleAllFiles = allCollapsed ? expandAllFiles : collapseAllFiles;
+  const fileCommentCounts = reviewCommentCounts(
+    parsed.kind === "files" ? parsed.files : [],
+    commit ? [] : reviewDraft.threads,
+    commit ? [] : reviewDraft.comments,
+  );
+  const treeFiles =
+    parsed.kind === "files"
+      ? parsed.files.map((file) => ({
+          path: file.path,
+          previousPath: file.previousPath,
+          changeType: file.changeType,
+          additions: file.additions,
+          deletions: file.deletions,
+          reviewed: viewed.isViewed(file.path),
+          unresolved: fileCommentCounts.get(file.path)?.unresolved ?? 0,
+        }))
+      : [];
+  const chooseTreeFile = (path: string) => {
+    setJumpPath(path);
+    setSelectedRowId(null);
+    setRangeEndRowId(null);
+    const file = data.files.find((entry) => entry.path === path);
+    if (!file) return;
+    setCollapsedIds((ids) => ids.filter((id) => id !== file.id));
+    setExpandedViewed((ids) => new Set(ids).add(file.id));
+    jumpStarted.current = false;
+    if (nativeView.current) {
+      jumpStarted.current = true;
+      void nativeView.current.scrollToFile(file.id, true).catch(() => {
+        jumpStarted.current = false;
+      });
+    }
+  };
+  const displayOptions = [
+    {
+      id: "wrap",
+      label: "Wrap lines",
+      checked: appearance.codeWordBreak,
+      onChange: setCodeWordBreak,
+    },
+    {
+      id: "whitespace",
+      label: "Hide whitespace changes",
+      checked: ignoreWhitespace,
+      onChange: setIgnoreWhitespace,
+    },
+    {
+      id: "tests",
+      label: "Hide test files",
+      checked: filter.hideTestFiles,
+      onChange: () => toggleTestFiles(),
+    },
+    ...viewingActions.map((action) => ({
+      id: action.id,
+      label: action.title,
+      checked: action.state === "on",
+      disabled: "attributes" in action && action.attributes?.disabled === true,
+      onChange: () => changeViewingOption(action.id),
+    })),
+  ];
   const title = commit ? "Commit changes" : "Changes";
   const seekingFile = !targetFile && result.nextCursor !== null;
   const loadingDiff = (result.isPending && !data.rows.length) || (seekingFile && !result.error);
@@ -1268,19 +1358,8 @@ export function PullRequestDiffContent({
           trailing={
             <Menu
               actions={[
-                ...viewingActions,
-                {
-                  id: "word-wrap",
-                  title: "Word wrap",
-                  image: "text.alignleft",
-                  state: appearance.codeWordBreak ? "on" : "off",
-                },
-                {
-                  id: "hide-tests",
-                  title: "Hide test files",
-                  image: "line.3.horizontal.decrease",
-                  state: filter.hideTestFiles ? "on" : "off",
-                },
+                { id: "view-files", title: "View files", image: "folder" },
+                { id: "view-options", title: "View options", image: "slider.horizontal.3" },
                 ...(permissions.verdicts.length
                   ? [{ id: "submit-review", title: "Submit review", image: "text.bubble" }]
                   : []),
@@ -1295,11 +1374,8 @@ export function PullRequestDiffContent({
                   : []),
               ]}
               onPressAction={({ nativeEvent }) => {
-                if (viewingActions.some((action) => action.id === nativeEvent.event))
-                  changeViewingOption(nativeEvent.event);
-                else if (nativeEvent.event === "word-wrap")
-                  setCodeWordBreak(!appearance.codeWordBreak);
-                else if (nativeEvent.event === "hide-tests") toggleTestFiles();
+                if (nativeEvent.event === "view-files") setFilesOpen(true);
+                else if (nativeEvent.event === "view-options") setOptionsOpen(true);
                 else if (
                   nativeEvent.event === "submit-review" ||
                   nativeEvent.event === "comment-on-pr"
@@ -1323,41 +1399,35 @@ export function PullRequestDiffContent({
         <NativeHeaderToolbar placement="right">
           {commits.length > 0 ? (
             <NativeHeaderToolbar.Button
-              label={commit === null ? "All" : `${selectedCommits.length} commits`}
+              label={
+                commit === null
+                  ? "All"
+                  : `${selectedCommits.length} ${selectedCommits.length === 1 ? "commit" : "commits"}`
+              }
               accessibilityLabel="Commit range"
               icon="arrow.triangle.branch"
               onPress={() => setCommitPickerOpen(true)}
             />
           ) : null}
           {!isGuideChapter ? (
-            <>
-              <NativeHeaderToolbar.Button
-                accessibilityLabel="Expand all files"
-                icon="chevron.down"
-                onPress={expandAllFiles}
-              />
-              <NativeHeaderToolbar.Button
-                accessibilityLabel="Collapse all files"
-                icon="chevron.up"
-                onPress={collapseAllFiles}
-              />
-            </>
+            <NativeHeaderToolbar.Custom>
+              <PullRequestFileExpansionActions collapsed={allCollapsed} onToggle={toggleAllFiles} />
+            </NativeHeaderToolbar.Custom>
           ) : null}
           <NativeHeaderToolbar.Menu
             title="Diff options"
             accessibilityLabel="Diff options"
             icon="ellipsis"
           >
-            {viewingActions.map((action) => (
+            <NativeHeaderToolbar.MenuAction icon="folder" onPress={() => setFilesOpen(true)}>
+              <NativeHeaderToolbar.Label>View files</NativeHeaderToolbar.Label>
+            </NativeHeaderToolbar.MenuAction>
               <NativeHeaderToolbar.MenuAction
-                key={action.id}
-                isOn={action.state === "on"}
-                disabled={"attributes" in action && action.attributes?.disabled}
-                onPress={() => changeViewingOption(action.id)}
+              icon="slider.horizontal.3"
+              onPress={() => setOptionsOpen(true)}
               >
-                <NativeHeaderToolbar.Label>{action.title}</NativeHeaderToolbar.Label>
+              <NativeHeaderToolbar.Label>View options</NativeHeaderToolbar.Label>
               </NativeHeaderToolbar.MenuAction>
-            ))}
           {permissions.verdicts.length ? (
               <NativeHeaderToolbar.MenuAction
               icon="text.bubble"
@@ -1378,20 +1448,6 @@ export function PullRequestDiffContent({
                 <NativeHeaderToolbar.Label>Add comment</NativeHeaderToolbar.Label>
               </NativeHeaderToolbar.MenuAction>
           ) : null}
-            <NativeHeaderToolbar.MenuAction
-            icon="text.alignleft"
-            isOn={appearance.codeWordBreak}
-            onPress={() => setCodeWordBreak(!appearance.codeWordBreak)}
-          >
-              <NativeHeaderToolbar.Label>Word wrap</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
-            <NativeHeaderToolbar.MenuAction
-            icon="line.3.horizontal.decrease"
-            isOn={filter.hideTestFiles}
-            onPress={toggleTestFiles}
-          >
-              <NativeHeaderToolbar.Label>Hide test files</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
           {selectedRow && selectedFile && canCommentOnDiff ? (
               <NativeHeaderToolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
                 <NativeHeaderToolbar.Label>
@@ -1412,10 +1468,7 @@ export function PullRequestDiffContent({
       ) : null}
       {!embedded && !isGuideChapter && Platform.OS === "android" ? (
         <View className="flex-row justify-end px-4">
-          <PullRequestFileExpansionActions
-            onExpand={expandAllFiles}
-            onCollapse={collapseAllFiles}
-          />
+          <PullRequestFileExpansionActions collapsed={allCollapsed} onToggle={toggleAllFiles} />
         </View>
       ) : null}
       {embedded ? (
@@ -1424,10 +1477,7 @@ export function PullRequestDiffContent({
             {data.files.length} files
           </Text>
           {!isGuideChapter ? (
-            <PullRequestFileExpansionActions
-              onExpand={expandAllFiles}
-              onCollapse={collapseAllFiles}
-            />
+            <PullRequestFileExpansionActions collapsed={allCollapsed} onToggle={toggleAllFiles} />
           ) : null}
           {!isGuideChapter && commits.length > 0 ? (
             <Pressable
@@ -1437,30 +1487,26 @@ export function PullRequestDiffContent({
               onPress={() => setCommitPickerOpen(true)}
             >
               <Text numberOfLines={1} className="min-w-0 shrink text-xs">
-                {commit === null ? "All" : `${selectedCommits.length} commits`}
+                {commit === null
+                  ? "All"
+                  : `${selectedCommits.length} ${selectedCommits.length === 1 ? "commit" : "commits"}`}
               </Text>
               <SymbolView name="chevron.down" size={10} tintColorClassName="accent-icon-muted" />
             </Pressable>
           ) : null}
           <ControlPillMenu
-            title="Viewing options"
+            title="Code options"
             actions={[
-              ...viewingActions,
-              {
-                id: "word-wrap",
-                title: "Wrap lines",
-                state: appearance.codeWordBreak ? "on" : "off",
-              },
+              { id: "view-files", title: "View files", image: "folder" },
+              { id: "view-options", title: "View options", image: "slider.horizontal.3" },
             ]}
             onPressAction={({ nativeEvent }) =>
-              nativeEvent.event === "word-wrap"
-                ? setCodeWordBreak(!appearance.codeWordBreak)
-                : changeViewingOption(nativeEvent.event)
+              nativeEvent.event === "view-files" ? setFilesOpen(true) : setOptionsOpen(true)
             }
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Viewing options"
+              accessibilityLabel="Code options"
               className="min-h-11 min-w-11 items-center justify-center"
             >
               <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
@@ -1468,6 +1514,20 @@ export function PullRequestDiffContent({
           </ControlPillMenu>
         </View>
       ) : null}
+      <ReviewDisplayOptions
+        open={optionsOpen}
+        onClose={() => setOptionsOpen(false)}
+        options={displayOptions}
+      />
+      <PullRequestFilesSheet
+        open={filesOpen}
+        onClose={() => setFilesOpen(false)}
+        title={activeChapter || isGuideChapter ? "Files in this chapter" : "Files"}
+        files={treeFiles}
+        onSelectFile={chooseTreeFile}
+        onSetViewed={viewed.canToggle && !commit && !staleDiff ? viewed.setManyViewed : undefined}
+        onLoadMore={result.canLoadMore ? result.loadMore : undefined}
+      />
       <PullRequestCommitPicker
         open={commitPickerOpen}
         onClose={() => setCommitPickerOpen(false)}
@@ -1619,7 +1679,12 @@ export function PullRequestDiffContent({
                 }
               }}
               onToggleFile={onToggleFile}
-              onVisibleFileChange={(event) => setVisibleFileId(event.nativeEvent.fileId ?? null)}
+              onVisibleFileChange={(event) => {
+                const fileId = event.nativeEvent.fileId ?? null;
+                setVisibleFileId(fileId);
+                const file = data.files.find((entry) => entry.id === fileId);
+                if (file && !isGuideChapter) rememberPullRequestView(scopeKey, { path: file.path });
+              }}
               appearanceScheme={themeAppearance}
               rowHeight={nativeReviewDiffStyle.rowHeight}
               contentWidth={NATIVE_REVIEW_DIFF_CONTENT_WIDTH}
@@ -1745,27 +1810,24 @@ export function PullRequestDiffContent({
 }
 
 function PullRequestFileExpansionActions(props: {
-  readonly onExpand: () => void;
-  readonly onCollapse: () => void;
+  readonly collapsed: boolean;
+  readonly onToggle: () => void;
 }) {
   return (
-    <View className="flex-row">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Expand all files"
-        className="min-h-11 min-w-11 items-center justify-center"
-        onPress={props.onExpand}
+      accessibilityLabel={props.collapsed ? "Expand all files" : "Collapse all files"}
+      className="min-h-11 flex-row items-center gap-1.5 px-2"
+      onPress={props.onToggle}
       >
-        <SymbolView name="chevron.down" size={16} tintColorClassName="accent-icon-muted" />
+      <SymbolView
+        name={props.collapsed ? "diff.expand" : "diff.collapse"}
+        size={17}
+        tintColorClassName="accent-icon-muted"
+      />
+      <Text className="text-xs text-foreground-muted">
+        {props.collapsed ? "Expand all" : "Collapse all"}
+      </Text>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Collapse all files"
-        className="min-h-11 min-w-11 items-center justify-center"
-        onPress={props.onCollapse}
-      >
-        <SymbolView name="chevron.up" size={16} tintColorClassName="accent-icon-muted" />
-      </Pressable>
-    </View>
   );
 }
