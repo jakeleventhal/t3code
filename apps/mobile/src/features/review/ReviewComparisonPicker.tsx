@@ -9,12 +9,10 @@ export function ReviewComparisonPicker({
   sections,
   selected,
   onSelect,
-  onBrowse,
 }: {
   readonly sections: ReadonlyArray<ReviewSectionItem>;
   readonly selected: ReviewSectionItem | null;
   readonly onSelect: (sectionId: string) => void;
-  readonly onBrowse?: (() => void) | undefined;
 }) {
   const menu = buildReviewSectionMenu(sections);
   const action = (section: ReviewSectionItem | null, title: string) => ({
@@ -65,16 +63,6 @@ export function ReviewComparisonPicker({
           </Pressable>
         </ControlPillMenu>
       </View>
-      {onBrowse ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Browse changed files"
-          onPress={onBrowse}
-          className="size-11 items-center justify-center"
-        >
-          <SymbolView name="sidebar.right" size={21} tintColorClassName="accent-icon" />
-        </Pressable>
-      ) : null}
     </View>
   );
 }

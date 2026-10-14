@@ -19,6 +19,9 @@ type Props = StaticScreenProps<{
   readonly line?: string;
   readonly cwd?: string;
   readonly projectName?: string;
+  readonly reviewSectionId?: string;
+  readonly reviewFilePath?: string;
+  readonly reviewWorkingTreeScope?: "staged" | "unstaged";
 }>;
 
 function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "git" }) {
@@ -66,7 +69,19 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
       <ThreadFilesTreeScreen route={props.route} workspaceTabs={tabs} />
     )
   ) : (
-    <ReviewSheet route={{ params: { environmentId, threadId } }} workspaceTabs={tabs} />
+    <ReviewSheet
+      route={{ params: { environmentId, threadId } }}
+      workspaceTabs={tabs}
+      openedFile={
+        props.route.params.reviewFilePath && props.route.params.reviewSectionId
+          ? {
+              path: props.route.params.reviewFilePath,
+              sectionId: props.route.params.reviewSectionId,
+              scope: props.route.params.reviewWorkingTreeScope,
+            }
+          : undefined
+      }
+    />
   );
 }
 

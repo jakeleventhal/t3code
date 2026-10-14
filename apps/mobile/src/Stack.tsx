@@ -808,6 +808,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
       linking: `${THREAD_LINKING_PREFIX}/review`,
       options: GLASS_HEADER_OPTIONS,
     }),
+    ThreadReviewFile: createNativeStackScreen({
+      screen: ThreadGitWorkspaceScreen,
+      linking: `${THREAD_LINKING_PREFIX}/review/file`,
+      options: GLASS_HEADER_OPTIONS,
+    }),
     ThreadReviewComment: createNativeStackScreen({
       screen: ReviewCommentComposerSheet,
       linking: `${THREAD_LINKING_PREFIX}/review-comment`,
