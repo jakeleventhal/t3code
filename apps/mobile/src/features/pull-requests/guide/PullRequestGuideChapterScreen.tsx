@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { reviewGuideStopProgress } from "@t3tools/client-runtime/review-guide-tour";
 import { AndroidScreenHeader } from "../../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../../components/AppText";
-import { NativeStackScreenOptions } from "../../../native/StackHeader";
+import { PullRequestCommentsSheet } from "../PullRequestCommentsSheet";
+import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../../native/StackHeader";
 import { PullRequestDiffContent } from "../PullRequestRouteScreen";
 import { ReviewChapterNavigation } from "../../review/ReviewChapterNavigation";
 import { reviewGuideState } from "./reviewGuideState";
@@ -28,6 +29,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
   const position = Math.max(0, Math.min(params.position, (guide?.stops.length ?? 1) - 1));
   const stop = guide?.stops[position];
   const [expanded, setExpanded] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const changedGuide =
     guide !== null &&
     (guide.headSha !== params.guideHeadSha || guide.generatedAt !== params.guideGeneratedAt);
@@ -46,8 +48,30 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
       }}
     >
       <NativeStackScreenOptions options={{ title, headerTitle: title }} />
+      <PullRequestCommentsSheet
+        params={params}
+        visible={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+      />
+      <NativeHeaderToolbar placement="right">
+        <NativeHeaderToolbar.Button
+          icon="text.bubble"
+          accessibilityLabel="Comments"
+          onPress={() => setCommentsOpen(true)}
+        />
+      </NativeHeaderToolbar>
       {Platform.OS === "android" ? (
-        <AndroidScreenHeader title={title} onBack={() => navigation.goBack()} />
+        <AndroidScreenHeader
+          title={title}
+          onBack={() => navigation.goBack()}
+          actions={[
+            {
+              icon: "text.bubble",
+              accessibilityLabel: "Comments",
+              onPress: () => setCommentsOpen(true),
+            },
+          ]}
+        />
       ) : null}
       {!stop || changedGuide || stale ? (
         <View className="p-4">

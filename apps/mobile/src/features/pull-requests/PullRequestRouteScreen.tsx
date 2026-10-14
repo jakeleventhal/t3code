@@ -1,3 +1,4 @@
+import { PullRequestCommentsSheet } from "./PullRequestCommentsSheet";
 import { PullRequestCommitPicker } from "./PullRequestCommitPicker";
 import { ReviewChapterNavigation } from "../review/ReviewChapterNavigation";
 import {
@@ -315,7 +316,12 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const filesContent = usePullRequestFilesContent({ params });
   const guidesEnabled = useReviewGuidesEnabled(params);
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>(DEFAULT_ACTIVITY_FILTER);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>({
+    ...DEFAULT_ACTIVITY_FILTER,
+    bots: true,
+    resolved: true,
+  });
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const activityContent = usePullRequestActivityRows(params, activityFilter);
   const scrollOffsets = useRef<Record<string, number>>({});
   const currentScrollOffset = useRef(-insets.top);
@@ -426,6 +432,11 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
             onBack={layout.usesSplitView ? undefined : returnToList}
             leading={layout.usesSplitView ? <AndroidWorkspaceSidebarButton /> : undefined}
             actions={[
+              {
+                accessibilityLabel: "Comments",
+                icon: "text.bubble" as const,
+                onPress: () => setCommentsOpen(true),
+              },
               ...(permissions.verdicts.length
                 ? [
                     {
@@ -482,7 +493,17 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
             ]}
           />
         ) : null}
+        <PullRequestCommentsSheet
+          params={params}
+          visible={commentsOpen}
+          onClose={() => setCommentsOpen(false)}
+        />
         <Toolbar placement="right">
+          <Toolbar.Button
+            icon="text.bubble"
+            accessibilityLabel="Comments"
+            onPress={() => setCommentsOpen(true)}
+          />
           <Toolbar.Menu
             title="Pull request"
             accessibilityLabel="Pull request actions"

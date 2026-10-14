@@ -372,9 +372,14 @@ function Section({
 
 const COMMENT_PAGE = 10;
 
-const COMMENT_FILTER_STORAGE_KEY = "t3code:pull-request-comment-filter:v1";
+/**
+ * Which kinds of comment the conversation shows. Kept per browser rather than per pull request:
+ * whether a reader wants bot reports and finished threads in front of them is a habit, not a
+ * property of one change.
+ */
+const COMMENT_FILTER_STORAGE_KEY = "t3code:pull-request-comment-filter:v2";
 const CommentFilterSchema = Schema.Struct({ bots: Schema.Boolean, resolved: Schema.Boolean });
-const DEFAULT_COMMENT_FILTER: typeof CommentFilterSchema.Type = { bots: false, resolved: false };
+const DEFAULT_COMMENT_FILTER: typeof CommentFilterSchema.Type = { bots: true, resolved: true };
 
 export function PullRequestSummaryTab({
   scrollerRef,
@@ -422,15 +427,33 @@ export function PullRequestSummaryTab({
     (count, item) => count + pullRequestConversationItemComments(item).length,
     0,
   );
-  const filteredOutCount =
-    commentCount -
-    filteredItems.reduce(
-      (count, item) => count + pullRequestConversationItemComments(item).length,
-      0,
-    );
-  const { shown: recentItems, hidden: hiddenConversationCount } = pagePullRequestConversationItems(
-    filteredItems,
-    shownConversations,
+
+  const isFinished = (comment: PullRequestComment) =>
+    threadByCommentId.get(comment.id)?.isResolved === true ||
+    pullRequestReviewOutcome(comment.reviewState) === "dismissed";
+  const isBot = (comment: PullRequestComment) =>
+    comment.author?.isBot === true || comment.author?.login.endsWith("[bot]") === true;
+  const filteredComments = detail.comments.filter(
+    (comment) =>
+      (commentFilter.bots || !isBot(comment)) &&
+      (activityContent !== undefined || commentFilter.resolved || !isFinished(comment)),
+  );
+  // The one count the filter shows. Per-kind counts would overlap, since a resolved bot comment
+  // is both kinds and needs both shown.
+  const filteredActivity = filterPullRequestActivity(detail, {
+    kind: "all",
+    bots: commentFilter.bots,
+    // Finished conversations remain in the timeline, collapsed until opened.
+    resolved: true,
+    newestFirst: true,
+  });
+  const filteredOutCount = activityContent
+    ? filteredActivity.hiddenCount
+    : detail.comments.length - filteredComments.length;
+  // Windowed by recency regardless of display order: expanding always reaches further back in
+  // time, whether the newest comment currently reads first or last.
+  const recentComments = filteredComments.slice(
+    Math.max(0, filteredComments.length - shownComments),
   );
   const [commentOrder, setCommentOrder] = useState<"newest" | "oldest">("newest");
   const visibleItems = orderPullRequestComments(recentItems, commentOrder);
@@ -900,6 +923,7 @@ export function PullRequestSummaryTab({
                   >
                     Bot comments
                   </MenuCheckboxItem>
+                      {activityContent === undefined ? (
                   <MenuCheckboxItem
                     checked={commentFilter.resolved}
                     closeOnClick={false}
@@ -909,6 +933,7 @@ export function PullRequestSummaryTab({
                   >
                     Resolved or dismissed
                   </MenuCheckboxItem>
+                      ) : null}
                 </MenuGroup>
               </MenuPopup>
             </Menu>
@@ -939,15 +964,7 @@ export function PullRequestSummaryTab({
                 onRetry={onRefresh}
               />
         ) : (
-              (activityContent?.(
-                filterPullRequestActivity(detail, {
-                  kind: "all",
-                  bots: commentFilter.bots,
-                  resolved: commentFilter.resolved,
-                  newestFirst: commentOrder === "newest",
-                }).activity,
-                commentOrder,
-              ) ?? (
+              (activityContent?.(filteredActivity.activity, commentOrder) ?? (
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">

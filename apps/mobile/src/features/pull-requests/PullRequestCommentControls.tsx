@@ -1,3 +1,4 @@
+import { usePullRequestThreads } from "./usePullRequestThreads";
 import { canEditPullRequestComment } from "@t3tools/client-runtime/review-editing";
 import { PullRequestCommentComposer } from "./PullRequestCommentComposer";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -32,6 +33,7 @@ export function PullRequestCommentControls({
   comment,
   onEdit,
   onUnresolve,
+  onResolve,
   disabled,
   render,
 }: {
@@ -47,12 +49,15 @@ export function PullRequestCommentControls({
   };
   onEdit?: (() => void) | undefined;
   onUnresolve?: (() => void) | undefined;
+  onResolve?: (() => void) | undefined;
   disabled?: boolean;
   render?: (slots: { actions: ReactNode; reactions: ReactNode }) => ReactNode;
 }) {
   const target = pullRequestTarget(params);
   const detail = useEnvironmentQuery(composerPullRequests.detail(target));
   const activity = useEnvironmentQuery(composerPullRequests.activity(target));
+  const agent = usePullRequestThreads(params, detail.data);
+  const markdown = `${comment.author?.login ? `**${comment.author.login}**\n\n` : ""}${comment.body}${comment.url ? `\n\n[View comment](${comment.url})` : ""}`;
   const allowed = useAtomValue(
     composerPullRequests.setReaction.permissionAtom(target.environmentId),
   );
@@ -178,6 +183,15 @@ export function PullRequestCommentControls({
     <ControlPillMenu
       title="Comment actions"
       actions={[
+        ...(onResolve
+          ? [
+              {
+                id: "resolve",
+                title: "Resolve thread",
+                attributes: { disabled: Boolean(disabled) },
+              },
+            ]
+          : []),
         ...(onUnresolve
           ? [
               {
@@ -188,18 +202,32 @@ export function PullRequestCommentControls({
             ]
           : []),
         ...(onEdit || canEdit ? [{ id: "edit", title: "Edit comment" }] : []),
-        { id: "copy", title: "Copy comment" },
-        ...(comment.url
-          ? [
-              { id: "copy-link", title: "Copy link" },
-              { id: "open", title: "Open on host" },
-            ]
-          : []),
+        {
+          id: "copy-menu",
+          title: "Copy",
+          subactions: [
+            ...(comment.url ? [{ id: "copy-link", title: "Link to comment" }] : []),
+            { id: "copy", title: "Copy as Markdown" },
+          ],
+        },
+        {
+          id: "composer",
+          title: "Add to composer",
+          attributes: { disabled: !agent.canAsk || agent.busy },
+        },
+        ...(comment.url ? [{ id: "open", title: "Open on host" }] : []),
       ]}
       onPressAction={({ nativeEvent }) => {
-        if (nativeEvent.event === "unresolve") onUnresolve?.();
+        if (nativeEvent.event === "resolve") onResolve?.();
+        else if (nativeEvent.event === "composer")
+          void agent.ask(
+            agent.threads.length === 1 ? agent.threads[0] : undefined,
+            "ask",
+            markdown,
+          );
+        else if (nativeEvent.event === "unresolve") onUnresolve?.();
         else if (nativeEvent.event === "edit") edit();
-        else if (nativeEvent.event === "copy") void Clipboard.setStringAsync(comment.body);
+        else if (nativeEvent.event === "copy") void Clipboard.setStringAsync(markdown);
         else if (nativeEvent.event === "copy-link" && comment.url)
           void Clipboard.setStringAsync(comment.url);
         else if (nativeEvent.event === "open" && comment.url) void Linking.openURL(comment.url);

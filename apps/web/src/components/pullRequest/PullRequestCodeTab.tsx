@@ -21,6 +21,7 @@ import type {
   PullRequestReviewPosition,
   PullRequestReviewThread,
   PullRequestThreadCommentsResult,
+  PullRequestThreadComment,
 } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
@@ -90,7 +91,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
-import { ReviewChapterRail, ReviewChapterFileLink } from "./ReviewChapterRail";
+import { ReviewChapterRail } from "./ReviewChapterRail";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
@@ -273,6 +274,8 @@ function PullRequestCodeTab({
   fixFindingLabel = "Fix in a thread",
   onFixFinding,
   onAddToAgentSelection,
+  onAddThreadCommentToComposer,
+  onAddPendingToComposer,
   onRefresh,
   refreshToken = 0,
   backgroundRefreshToken = 0,
@@ -291,10 +294,21 @@ function PullRequestCodeTab({
   fixFindingLabel?: string;
   onFixFinding?: (finding: PullRequestFinding) => void;
   onAddToAgentSelection?: (input: PullRequestAgentSelectionInput) => void;
+  onAddThreadCommentToComposer?:
+    | ((thread: PullRequestReviewThread, comment: PullRequestThreadComment) => void)
+    | undefined;
+  onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
   onRefresh: () => void;
   refreshToken?: number;
   backgroundRefreshToken?: number;
-  revealRequest?: { readonly path: string; readonly nonce: number } | null;
+  /** A file another tab asked to show. A new nonce asks again for the same path. */
+  revealRequest?: {
+    readonly path: string;
+    readonly nonce: number;
+    readonly line?: number | null;
+    readonly side?: PullRequestDiffSide;
+    readonly threadId?: string;
+  } | null;
 }) {
   const resolvedTheme = useRenderedAppearance();
   const settings = useClientSettings((settings) => ({
@@ -749,14 +763,16 @@ function PullRequestCodeTab({
   );
   const filteredFiles = useMemo(
     () =>
-      annotatedFiles.filter(({ path }) =>
+      annotatedFiles.filter(
+        ({ path }) =>
+          path === revealRequest?.path ||
         isReviewFileVisible(
           { hideReviewed, commentsOnly },
           isFileViewed(path),
           (commentCounts.get(path)?.unresolved ?? 0) > 0,
         ),
       ),
-    [annotatedFiles, hideReviewed, commentsOnly, isFileViewed, commentCounts],
+    [annotatedFiles, hideReviewed, commentsOnly, isFileViewed, commentCounts, revealRequest?.path],
   );
   const chapters = useMemo(
     () => (groupByType ? reviewFileChapters(filteredFiles, (file) => file.path) : []),
@@ -937,7 +953,7 @@ function PullRequestCodeTab({
 
   const chapterSummaries = useMemo(
     () =>
-      chapters.map((candidate) => {
+      chapters.map((candidate, index) => {
         const members = candidate.files;
         const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
         const stat = members.reduce(
@@ -955,10 +971,12 @@ function PullRequestCodeTab({
           reviewed: chapterReviewComplete && reviewedCount === members.length,
           detail: (
             <>
+              {index !== chapterPosition ? (
               <span>
                 {reviewedCount} of {members.length} files reviewed
                 {chapterReviewComplete ? "" : " (loaded)"}
               </span>
+              ) : null}
               <PullRequestDiffStat additions={stat.additions} deletions={stat.deletions} />
             </>
           ),
@@ -978,6 +996,7 @@ function PullRequestCodeTab({
       }),
     [
       chapters,
+      chapterPosition,
       isFileViewed,
       chapterReviewComplete,
       sourceFileStats,
@@ -989,7 +1008,7 @@ function PullRequestCodeTab({
 
   const requestTreeReveal = useCodeViewFileReveal(viewer, scopeKey, fileKeys);
   const revealFile = useCallback(
-    (path: string) => {
+    (path: string, line?: number | null, side: PullRequestDiffSide = "right") => {
       const file = filteredFiles.find((candidate) => candidate.path === path);
       if (file === undefined) return;
       if (groupByType) {
@@ -1005,7 +1024,18 @@ function PullRequestCodeTab({
         )
       )
         toggleFile(file.fileKey);
-      requestTreeReveal(file.fileKey);
+      requestTreeReveal(
+        file.fileKey,
+        line != null && isLineInFileDiff(file.fileDiff, side, line)
+          ? {
+              type: "line",
+              id: file.fileKey,
+              lineNumber: line,
+              side: toViewerSide(side),
+              align: "center",
+            }
+          : undefined,
+      );
     },
     [
       filteredFiles,
@@ -1023,14 +1053,34 @@ function PullRequestCodeTab({
   const answeredReveal = useRef<number | null>(null);
   useEffect(() => {
     if (revealRequest === null || answeredReveal.current === revealRequest.nonce) return;
+    if (diffQuery.isPending && files.length === 0) return;
+    if (
+      revealRequest.threadId &&
+      !placedThreadIds.has(revealRequest.threadId) &&
+      !canLoadNextSlice
+    ) {
+      setOrphansOpen(true);
+      scrollElement.current?.scrollTo({ top: 0 });
+      answeredReveal.current = revealRequest.nonce;
+      return;
+    }
     if (!filteredFiles.some((file) => file.path === revealRequest.path)) {
       // The reader is not scrolling toward it, so the sentinel would never ask for its slice.
       if (canLoadNextSlice) loadNextSlice();
       return;
     }
     answeredReveal.current = revealRequest.nonce;
-    revealFile(revealRequest.path);
-  }, [canLoadNextSlice, filteredFiles, loadNextSlice, revealFile, revealRequest]);
+    revealFile(revealRequest.path, revealRequest.line, revealRequest.side);
+  }, [
+    canLoadNextSlice,
+    diffQuery.isPending,
+    files.length,
+    filteredFiles,
+    loadNextSlice,
+    placedThreadIds,
+    revealFile,
+    revealRequest,
+  ]);
 
   const toggleAllFiles = () => {
     setFoldOverride(areAllDiffFilesCollapsed(fileKeys, collapsedFileKeys) ? "expanded" : "folded");
@@ -1274,6 +1324,7 @@ function PullRequestCodeTab({
       // other's conversation.
       key={`${reference.projectId}#${reference.number}:${thread.id}`}
       thread={thread}
+        revealRequest={revealRequest?.threadId === thread.id ? revealRequest.nonce : undefined}
       workspaceRoot={detail.workspaceRoot}
       canReply={review.reply}
       canResolve={review.resolve && canResolvePullRequestThread(detail, thread)}
@@ -1331,6 +1382,11 @@ function PullRequestCodeTab({
         )
       }
       onReacted={onRefresh}
+        onAddToComposer={
+          onAddThreadCommentToComposer
+            ? (comment) => onAddThreadCommentToComposer(thread, comment)
+            : undefined
+        }
     />
     ),
     [
@@ -1340,9 +1396,11 @@ function PullRequestCodeTab({
       loadThreadComments,
       onRefresh,
       onFixFinding,
+      onAddThreadCommentToComposer,
       pendingFinding,
       reference,
       replyToThread,
+      revealRequest,
       review.reply,
       review.resolve,
       runThreadCommand,
@@ -1359,6 +1417,9 @@ function PullRequestCodeTab({
       {annotation.metadata.pending.map((comment) => (
         <PendingReviewCommentCard
           key={comment.id}
+            onAddToComposer={
+              onAddPendingToComposer ? () => onAddPendingToComposer(comment) : undefined
+            }
           comment={comment}
             environmentId={environmentId}
             reference={reference}
@@ -1426,6 +1487,7 @@ function PullRequestCodeTab({
       reference,
       finishSelection,
       onAddToAgentSelection,
+      onAddPendingToComposer,
       renderThreadCard,
       reviewKey,
     ],
@@ -1845,21 +1907,6 @@ function PullRequestCodeTab({
                     Load all files to review this chapter.
                   </p>
                 ) : null}
-                <ul className="flex min-w-0 flex-col gap-0.5">
-                  {members.map((file) => {
-                    const stat =
-                      sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
-                    return (
-                      <li key={file.fileKey}>
-                        <ReviewChapterFileLink
-                          path={file.path}
-                          stat={stat}
-                          onSelect={() => revealFile(file.path)}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
               </div>
             ) : null,
         };

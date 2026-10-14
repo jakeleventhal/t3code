@@ -13,7 +13,15 @@ import {
   MessageCircleQuestionIcon,
   MessageSquareIcon,
 } from "lucide-react";
-import { useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 import { getDiffLineStat } from "~/lib/diffRendering";
 
@@ -94,6 +102,7 @@ export function GuideStop({
     {},
   );
 
+  const reviewCheckboxPrefix = useId();
   const fileRows = useRef(new Map<string, HTMLLIElement>());
   useImperativeHandle(
     navigationRef,
@@ -155,6 +164,8 @@ export function GuideStop({
                   const stat = diff === undefined ? null : getDiffLineStat([diff]);
                   const viewed = isViewed(file.path);
                   const panel = filePanels[file.path];
+                  const open = panel?.viewed === viewed ? panel.open : !viewed;
+                  const reviewCheckboxId = `${reviewCheckboxPrefix}-${encodeURIComponent(file.path)}`;
                   return (
                     <li
                       key={file.path}
@@ -164,24 +175,8 @@ export function GuideStop({
                       }}
                       className="scroll-mt-4 border-border/60 not-first:border-t"
                     >
-                      <div className="flex items-center gap-2 px-3 py-2 text-xs">
-                        {onSetViewed ? (
-                          <Checkbox
-                            aria-label={`Reviewed ${file.path}`}
-                            checked={isViewed(file.path)}
-                            onCheckedChange={(value) => onSetViewed([file.path], value === true)}
-                          />
-                        ) : null}
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 truncate text-left font-mono"
-                          onClick={() => onOpenFile(file.path)}
-                        >
-                          <ReviewPath path={file.path} />
-                        </button>
-                      </div>
                       <Collapsible
-                        open={panel?.viewed === viewed ? panel.open : !viewed}
+                        open={open}
                         onOpenChange={(open) =>
                           setFilePanels((current) => ({
                             ...current,
@@ -189,18 +184,27 @@ export function GuideStop({
                           }))
                         }
                       >
-                        <CollapsibleTrigger className="group flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                        <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-xs">
+                          <CollapsibleTrigger
+                            render={<Button size="icon-xs" variant="ghost" />}
+                            aria-label={`${open ? "Collapse" : "Expand"} diff for ${file.path}`}
+                          >
                           <ChevronRightIcon
                             aria-hidden
-                            className="size-3.5 shrink-0 text-muted-foreground group-data-panel-open:rotate-90"
+                              className={`size-3.5 shrink-0 text-muted-foreground ${open ? "rotate-90" : ""}`}
                           />
+                          </CollapsibleTrigger>
                           <FileIcon
                             aria-hidden
                             className="size-3.5 shrink-0 text-muted-foreground"
                           />
-                          <span className="min-w-0 truncate font-mono text-foreground">
-                            {file.path}
-                          </span>
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left font-mono"
+                            onClick={() => onOpenFile(file.path)}
+                          >
+                            <ReviewPath path={file.path} />
+                          </button>
                           {file.note !== undefined && file.note.trim() !== "" ? (
                             <span className="ml-auto min-w-0 truncate text-muted-foreground @max-[30rem]/guide:hidden">
                               <GuideProse text={file.note} plain />
@@ -213,7 +217,25 @@ export function GuideStop({
                               className="shrink-0 font-mono"
                             />
                           ) : null}
-                        </CollapsibleTrigger>
+                          {onSetViewed ? (
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <Checkbox
+                                id={reviewCheckboxId}
+                                aria-label={`Reviewed ${file.path}`}
+                                checked={viewed}
+                                onCheckedChange={(value) =>
+                                  onSetViewed([file.path], value === true)
+                                }
+                              />
+                              <label
+                                htmlFor={reviewCheckboxId}
+                                className="cursor-pointer text-muted-foreground"
+                              >
+                                Viewed
+                              </label>
+                            </div>
+                          ) : null}
+                        </div>
                         <CollapsiblePanel animate={false}>
                           {diff !== undefined ? (
                             <GuideFileDiff file={diff} loadDiffFiles={loadDiffFiles} />

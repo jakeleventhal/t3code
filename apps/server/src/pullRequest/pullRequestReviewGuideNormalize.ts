@@ -104,6 +104,66 @@ function mergeExcerpts(
 
 const nonEmpty = (value: string) => value.trim() !== "";
 
+/**
+ * GitHub tracks viewed state for whole files. Keep every excerpt and note for a file in one
+ * chapter, preferring the first chapter that actually shows it over a files-only mention.
+ * Also used for guides stored before generation enforced this rule.
+ */
+export function groupReviewGuideFiles(
+  stops: ReadonlyArray<PullRequestReviewGuideStop>,
+): Array<PullRequestReviewGuideStop> {
+  const owners = new Map<string, number>();
+  stops.forEach((stop, index) => {
+    for (const excerpt of stop.excerpts) {
+      if (!owners.has(excerpt.path)) owners.set(excerpt.path, index);
+    }
+  });
+  stops.forEach((stop, index) => {
+    for (const file of stop.files) {
+      if (!owners.has(file.path)) owners.set(file.path, index);
+    }
+  });
+
+  const chapters = stops.map((stop) => ({
+    ...stop,
+    excerpts: [] as Array<PullRequestReviewGuideExcerpt>,
+    files: [] as Array<PullRequestReviewGuideStop["files"][number]>,
+    notes: [] as Array<PullRequestReviewGuideStop["notes"][number]>,
+  }));
+  const excerpted = new Set(stops.flatMap((stop) => stop.excerpts.map((excerpt) => excerpt.path)));
+  const listed = new Set<string>();
+  for (const stop of stops) {
+    for (const excerpt of stop.excerpts) {
+      chapters[owners.get(excerpt.path)!]!.excerpts.push(excerpt);
+    }
+    for (const file of stop.files) {
+      if (excerpted.has(file.path) || listed.has(file.path)) continue;
+      chapters[owners.get(file.path)!]!.files.push(file);
+      listed.add(file.path);
+    }
+    for (const note of stop.notes) {
+      const owner = owners.get(note.path);
+      if (owner !== undefined) chapters[owner]!.notes.push(note);
+    }
+  }
+  return chapters.map((chapter) => {
+    // Preserve every range and caption, grouping by first appearance without expanding or
+    // merging ranges from other chapters, which could discard a later note's anchor.
+    const paths = [...new Set(chapter.excerpts.map((excerpt) => excerpt.path))];
+    return {
+      ...chapter,
+      excerpts: paths.flatMap((path) =>
+        chapter.excerpts.filter((excerpt) => excerpt.path === path),
+      ),
+    };
+  });
+}
+
+/**
+ * Holds a generated guide to the change it describes. A model's line numbers and ids are
+ * suggestions: excerpts are clamped to changed lines, notes must sit inside what is left, and any
+ * changed file the tour skipped lands in a closing skim stop.
+ */
 export function normalizeReviewGuide(
   guide: ReviewGuideGenerationResult,
   change: ReviewGuideChange,
@@ -141,12 +201,13 @@ export function normalizeReviewGuide(
       };
     });
 
-  const placed = new Set(shaped.flatMap((stop) => stop.excerpts.map((excerpt) => excerpt.path)));
-  const stops = shaped.map((stop) => {
-    const files = stop.files.filter((file) => !placed.has(file.path));
-    for (const file of files) placed.add(file.path);
-    return { ...stop, files };
-  });
+  const stops = groupReviewGuideFiles(shaped);
+  const placed = new Set(
+    stops.flatMap((stop) => [
+      ...stop.excerpts.map((excerpt) => excerpt.path),
+      ...stop.files.map((file) => file.path),
+    ]),
+  );
   const unplaced = change.files.filter((path) => !placed.has(path));
   const unplacedSource = unplaced.filter((path) => reviewFileGroup(path) !== "generated");
   if (unplacedSource.length > 0) {

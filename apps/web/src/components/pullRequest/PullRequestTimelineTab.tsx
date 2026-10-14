@@ -1,3 +1,6 @@
+import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewAnnotation";
+import { useReviewThreadActions } from "./useReviewThreadActions";
+import { usePendingReviewComments, type PendingReviewComment } from "./pullRequestReviewStore";
 import { PullRequestCommentActions } from "./PullRequestCommentActions";
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
@@ -6,6 +9,8 @@ import type {
   PullRequestComment,
   PullRequestDetailView,
   PullRequestRef,
+  PullRequestReviewThread,
+  PullRequestThreadComment,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
@@ -60,6 +65,7 @@ interface ReactionSurface {
   readonly threadRef: ScopedThreadRef | null;
   readonly reference: PullRequestRef;
   readonly onRefresh: () => void;
+  readonly onAddCommentToComposer?: ((comment: PullRequestComment) => void) | undefined;
 }
 
 function TimelineBody({
@@ -216,11 +222,12 @@ function ConversationCard({
   };
 
   return (
-    <article className="group py-2">
-      <div className="px-2">
+    <article className="group rounded-xl border border-border/70 bg-background shadow-sm">
+      <div className="px-3 pt-3">
         <div className="flex min-w-0 flex-wrap items-start gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+              <PullRequestActorAvatar actor={event.actor} className="size-6 text-3xs" />
               <ActorName actor={event.actor} />
               <span className="text-muted-foreground">{event.title}</span>
               {event.reviewState ? <ReviewStateBadge state={event.reviewState} /> : null}
@@ -241,6 +248,13 @@ function ConversationCard({
             body={event.body ?? ""}
             url={event.url}
             onEdit={editable !== null && !editing ? () => setEditing(true) : undefined}
+            onAddToComposer={
+              event.comment && reactions.onAddCommentToComposer
+                ? () => {
+                    if (event.comment) reactions.onAddCommentToComposer?.(event.comment);
+                  }
+                : undefined
+            }
           />
           {editable !== null && !editing ? (
             <PullRequestEditButton
@@ -264,7 +278,7 @@ function ConversationCard({
         </div>
       </div>
       {editing && editable !== null ? (
-        <div className="px-2 pb-2 pt-3">
+        <div className="px-3 pb-3 pt-3">
           <PullRequestMarkdownEditor
             value={editable.body}
             cwd={cwd}
@@ -277,7 +291,7 @@ function ConversationCard({
           />
         </div>
       ) : event.body ? (
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-3">
           <TimelineBody
             body={event.body}
             markdown={event.markdown}
@@ -313,7 +327,7 @@ function ConversationGroup({
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const actors = uniqueConversationActors(events);
   const first = events[0];
   if (first === undefined) return null;
@@ -643,6 +657,9 @@ export function PullRequestTimelineTab({
   onOpenCommit,
   onRefresh,
   embedded = false,
+  onAddCommentToComposer,
+  onAddThreadCommentToComposer,
+  onAddPendingToComposer,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   detail: PullRequestDetailView;
@@ -653,8 +670,45 @@ export function PullRequestTimelineTab({
   onOpenCommit: (oid: string) => void;
   onRefresh: () => void;
   embedded?: boolean;
+  onAddCommentToComposer?: (comment: PullRequestComment) => void;
+  onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
+  onAddThreadCommentToComposer?: (
+    thread: PullRequestReviewThread,
+    comment: PullRequestThreadComment,
+  ) => void;
 }) {
-  const events = buildPullRequestTimeline(detail);
+  const pendingComments = usePendingReviewComments(reference, detail.reviewThreads);
+  // Private host drafts use the merged list, including its successful-removal tombstones.
+  // Keeping them in the ordinary discussion would duplicate cards or resurrect a discarded draft.
+  const hostedPendingIds = new Set(
+    detail.reviewThreads.flatMap((thread) =>
+      thread.comments.flatMap((comment) => (comment.pendingReviewId ? [comment.id] : [])),
+    ),
+  );
+  const events = buildPullRequestTimeline({
+    ...detail,
+    comments: detail.comments.filter((comment) => !hostedPendingIds.has(comment.id)),
+    reviewThreads: detail.reviewThreads.flatMap((thread) => {
+      const comments = thread.comments.filter((comment) => !hostedPendingIds.has(comment.id));
+      if (comments.length === thread.comments.length) return [thread];
+      if (comments.length === 0) return [];
+      return [
+        {
+          ...thread,
+          comments,
+          ...(thread.commentCount === undefined
+            ? {}
+            : {
+                commentCount: Math.max(
+                  comments.length,
+                  thread.commentCount - (thread.comments.length - comments.length),
+                ),
+              }),
+        },
+      ];
+    }),
+  });
+  const threadActions = useReviewThreadActions(environmentId, reference, detail, onRefresh);
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
   const reactions: ReactionSurface = {
     canReact: detail.capabilities.reactions === true,
@@ -662,6 +716,7 @@ export function PullRequestTimelineTab({
     threadRef,
     reference,
     onRefresh,
+    onAddCommentToComposer,
   };
   const editable = new Map(
     events
@@ -676,6 +731,34 @@ export function PullRequestTimelineTab({
     void readLocalApi()?.shell.openExternal(url);
   };
 
+  const pendingCards = pendingComments.length ? (
+    <div className="relative mb-5 pl-12">
+      <IconMarker className="top-6" icon={<MessageSquareIcon className="size-3.5" />} />
+      <div className="mb-1 px-3 text-xs font-medium text-muted-foreground">
+        Pending review · {pendingComments.length}
+      </div>
+      {pendingComments.map((comment) => (
+        <div key={comment.id}>
+          <div className="flex min-w-0 items-center gap-1.5 px-3 text-2xs text-muted-foreground">
+            <FileCode2Icon aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{comment.path}</span>
+          </div>
+          <PendingReviewCommentCard
+            comment={comment}
+            environmentId={environmentId}
+            reference={reference}
+            canCopyLink={
+              detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
+            }
+            onAddToComposer={
+              onAddPendingToComposer ? () => onAddPendingToComposer(comment) : undefined
+            }
+          />
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div
       ref={scrollerRef}
@@ -687,6 +770,7 @@ export function PullRequestTimelineTab({
       <div className="mx-auto max-w-3xl">
         <div className="relative">
           <span aria-hidden className="absolute bottom-5 left-[15px] top-1 w-px bg-border/45" />
+          {order === "newest" ? pendingCards : null}
           {rows.map((row) => {
             if (row.kind === "comments") {
               return (
@@ -701,17 +785,41 @@ export function PullRequestTimelineTab({
               );
             }
             const event = row.event;
-            if (event.thread !== undefined) {
+            if (event.kind === "thread" && event.reviewThread) {
+              const thread = event.reviewThread;
               return (
-                <ReviewThreadEvent
-                  key={`${reactions.reference.projectId}#${reactions.reference.number}:thread:${event.id}:${event.thread.isResolved}:${pullRequestReviewOutcome(event.reviewState) === "dismissed"}`}
-                  event={event}
-                  thread={event.thread}
-                  editable={editable}
-                  cwd={detail.workspaceRoot}
-                  onOpen={openOnHost}
-                  reactions={reactions}
-                />
+                <div key={event.id} className="relative mb-5 pl-12">
+                  <ActorTimelineMarker
+                    actors={thread.comments.flatMap((comment) =>
+                      comment.author ? [comment.author] : [],
+                    )}
+                    className="top-6"
+                    fallback={<MessageSquareIcon className="size-3.5" />}
+                    muted={thread.isResolved}
+                  />
+                  <div className="mb-1 flex min-w-0 items-center gap-1.5 px-3 text-2xs text-muted-foreground">
+                    <FileCode2Icon aria-hidden className="size-3 shrink-0" />
+                    <span className="truncate">
+                      {thread.path}
+                      {thread.line === null ? "" : `:${thread.line}`}
+                    </span>
+                    {thread.isOutdated ? <span className="shrink-0">Outdated</span> : null}
+                  </div>
+                  <ReviewThreadCard
+                    {...threadActions(thread)}
+                    thread={thread}
+                    workspaceRoot={detail.workspaceRoot}
+                    environmentId={environmentId}
+                    reference={reference}
+                    canReact={reactions.canReact}
+                    onReacted={onRefresh}
+                    onAddToComposer={
+                      onAddThreadCommentToComposer
+                        ? (comment) => onAddThreadCommentToComposer(thread, comment)
+                        : undefined
+                    }
+                  />
+                </div>
               );
             }
             if (event.kind === "commit") {
@@ -733,9 +841,10 @@ export function PullRequestTimelineTab({
             }
             return <LifecycleEvent key={event.id} event={event} />;
           })}
+          {order === "oldest" ? pendingCards : null}
         </div>
 
-        {events.length === 0 ? (
+        {events.length === 0 && pendingComments.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
             <PullRequestGlyph.pullRequest className="mb-2 size-5" />
             <p className="text-xs">No activity yet.</p>

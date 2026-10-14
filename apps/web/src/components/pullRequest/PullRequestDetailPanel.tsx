@@ -23,6 +23,9 @@ import {
   type PullRequestUpdateMethod,
   type PullRequestRef,
   type PullRequestReviewGuideStop,
+  type PullRequestReviewThread,
+  type PullRequestThreadComment,
+  type PullRequestComment,
   resolveEnvironmentMachineKind,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -135,6 +138,9 @@ import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLi
 import { PullRequestMarkdownContext } from "./PullRequestMarkdown";
 import { PullRequestComposer } from "./PullRequestComposer";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
+import { PullRequestCommentsPopover } from "./PullRequestCommentsPopover";
+import { getReviewPositionAnchor } from "./PullRequestReviewAnnotation";
+import type { PendingReviewComment } from "./pullRequestReviewStore";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
 import {
   buildAddSelectionToAgentHandoff,
@@ -660,6 +666,9 @@ export function PullRequestDetailPanel({
   const [codeRevealRequest, setCodeRevealRequest] = useState<{
     readonly path: string;
     readonly nonce: number;
+    readonly line?: number | null;
+    readonly side?: "left" | "right";
+    readonly threadId?: string;
   } | null>(null);
   const openFileInCode = (path: string) => {
     selectCodeCommit(null);
@@ -667,6 +676,18 @@ export function PullRequestDetailPanel({
     void loadCodeTab();
     selectTab("code");
   };
+  const openCommentInCode = (location: {
+    path: string;
+    line: number | null;
+    side: "left" | "right";
+    threadId?: string;
+  }) => {
+    selectCodeCommit(null);
+    setCodeRevealRequest((previous) => ({ ...location, nonce: (previous?.nonce ?? 0) + 1 }));
+    void loadCodeTab();
+    setTab("code");
+  };
+  // A guide notice asks for its pull request's Guide tab once the page has opened it.
   const guideOpenRequested = useGuideRunStore(
     (state) => state.openRequestKey === guideRunKey(environmentId, reference),
   );
@@ -1491,6 +1512,71 @@ export function PullRequestDetailPanel({
         baseBranch: detail.baseBranch,
         finding,
       }),
+    );
+  };
+
+  const addThreadCommentToComposer = (
+    thread: PullRequestReviewThread,
+    comment: PullRequestThreadComment,
+  ) => {
+    if (!detail) return;
+    const task = buildFixFindingHandoff({
+      number: detail.number,
+      title: detail.title,
+      url: detail.url,
+      headBranch: detail.headBranch,
+      baseBranch: detail.baseBranch,
+      finding: { kind: "thread", thread: { ...thread, comments: [comment] } },
+    });
+    void startAsk(
+      `comment:${comment.id}`,
+      {
+        ...task,
+        prompt: "",
+        reviewComments: task.reviewComments.map((context) => ({
+          ...context,
+          id: `pull-request-comment:${comment.id}`,
+          text: comment.body,
+          startIndex: Math.max(0, (thread.startLine ?? thread.line ?? 1) - 1),
+        })),
+      },
+      { keepGuide: true },
+    );
+  };
+  const addCommentToComposer = (comment: PullRequestComment) => {
+    if (!detail) return;
+    const task = buildFixFindingHandoff({
+      number: detail.number,
+      title: detail.title,
+      url: detail.url,
+      headBranch: detail.headBranch,
+      baseBranch: detail.baseBranch,
+      finding: { kind: "comment", comment },
+    });
+    // General comments have no diff anchor, so their words belong in the composer itself.
+    void startAsk(`comment:${comment.id}`, { ...task, prompt: comment.body }, { keepGuide: true });
+  };
+  const addPendingToComposer = (comment: PendingReviewComment) => {
+    const anchor = getReviewPositionAnchor(comment.position);
+    void startAsk(
+      `comment:${comment.id}`,
+      {
+        prompt: "",
+        reviewComments: [
+          {
+            id: comment.id,
+            sectionId: `pull-request:${reference.number}`,
+            sectionTitle: `PR #${reference.number} review`,
+            filePath: comment.path,
+            startIndex: (comment.position.startLine ?? anchor.line) - 1,
+            endIndex: anchor.line - 1,
+            rangeLabel: `${comment.position.startLine ? `L${comment.position.startLine} to ` : ""}L${anchor.line}${anchor.side === "left" ? " (before)" : ""}`,
+            text: comment.body,
+            diff: "",
+          },
+        ],
+      },
+      { keepGuide: true },
     );
   };
 
@@ -2708,6 +2794,19 @@ export function PullRequestDetailPanel({
                 />
               )
             ) : null}
+            <span className="ml-auto">
+              <PullRequestMarkdownContext value={markdownContext}>
+                <PullRequestCommentsPopover
+                  environmentId={environmentId}
+                  reference={reference}
+                  detail={detail}
+                  onRefresh={refreshDetail}
+                  onOpenComment={openCommentInCode}
+                  onAddThreadCommentToComposer={addThreadCommentToComposer}
+                  onAddPendingToComposer={addPendingToComposer}
+                />
+              </PullRequestMarkdownContext>
+            </span>
           </PullRequestDetailTabBar>
         ) : null}
       </div>
@@ -2774,6 +2873,9 @@ export function PullRequestDetailPanel({
                       reference={reference}
                       order={order}
                       onOpenCommit={openCommit}
+                      onAddCommentToComposer={addCommentToComposer}
+                      onAddThreadCommentToComposer={addThreadCommentToComposer}
+                      onAddPendingToComposer={addPendingToComposer}
                       onRefresh={refreshDetail}
                     />
                   )}
@@ -2847,6 +2949,8 @@ export function PullRequestDetailPanel({
                     refreshToken={refreshToken}
                     backgroundRefreshToken={turnRefresh ?? 0}
                     revealRequest={codeRevealRequest}
+                    onAddThreadCommentToComposer={addThreadCommentToComposer}
+                    onAddPendingToComposer={addPendingToComposer}
                   />
                 </Suspense>
               </div>

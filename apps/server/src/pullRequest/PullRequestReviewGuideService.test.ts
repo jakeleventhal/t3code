@@ -6,15 +6,18 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import {
   ProjectId,
   GitCommandError,
+  ProviderInstanceId,
   type PullRequestActivity,
   type PullRequestDetail,
   type PullRequestStack,
   type PullRequestRef,
+  type PullRequestReviewGuide,
 } from "@t3tools/contracts";
 import type { ReviewGuideGenerationInput } from "@t3tools/provider-core/server/textGeneration";
 
@@ -476,6 +479,79 @@ it.layer(layerBase, { excludeTestServices: true })("PullRequestReviewGuideServic
           );
           const fs = yield* FileSystem.FileSystem;
           assert.isFalse(yield* fs.exists(run.observed[0]?.cwd ?? ""));
+        }),
+      ),
+  );
+
+  it.effect(
+    "groups a stored guide's files without rewriting its provenance or running a model",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repositories = yield* makeRepositories;
+          const cachedRef = { ...reference, host: "github.com", number: 17 };
+          const original: PullRequestReviewGuide = {
+            headSha: repositories.lowerSha,
+            generatedAt: "2026-10-13T12:00:00.000Z",
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+            stops: [
+              {
+                title: "Contract",
+                summary: "Introduce the shape.",
+                attention: null,
+                excerpts: [
+                  { path: "feature.txt", side: "new", start: 1, end: 3, caption: "Shape" },
+                ],
+                files: [],
+                notes: [],
+                questions: [],
+              },
+              {
+                title: "Implementation",
+                summary: "Implement that shape.",
+                attention: null,
+                excerpts: [
+                  { path: "feature.txt", side: "new", start: 7, end: 10, caption: "Logic" },
+                ],
+                files: [],
+                notes: [{ path: "feature.txt", line: 8, title: "Reason", body: "Keep this note." }],
+                questions: [],
+              },
+            ],
+          };
+          const persistenceContext = yield* Layer.build(PullRequestReviewGuides.layer);
+          const repository = Context.get(
+            persistenceContext,
+            PullRequestReviewGuides.PullRequestReviewGuideRepository,
+          );
+          yield* repository.put(cachedRef, original);
+          const stored = yield* Deferred.make<void>();
+          const context = yield* Layer.build(
+            makeLayer({
+              ...repositories,
+              stored,
+              generate: () => Effect.die("reading a stored guide must not run a model"),
+            }),
+          );
+          const service = Context.get(
+            context,
+            PullRequestReviewGuideService.PullRequestReviewGuideService,
+          );
+          const result = yield* service.get(cachedRef);
+          expect(result.currentHeadSha).toBe(repositories.headSha);
+          expect(result.guide).toEqual({
+            ...original,
+            stops: [
+              {
+                ...original.stops[0],
+                excerpts: [...original.stops[0]!.excerpts, ...original.stops[1]!.excerpts],
+                notes: original.stops[1]!.notes,
+              },
+              { ...original.stops[1], excerpts: [], notes: [] },
+            ],
+          });
+          expect(Option.getOrNull(yield* repository.get(cachedRef))).toEqual(original);
+          expect((yield* service.get(cachedRef)).guide).toEqual(result.guide);
         }),
       ),
   );

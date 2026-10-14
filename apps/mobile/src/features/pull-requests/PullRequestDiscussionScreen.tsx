@@ -242,6 +242,11 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                       params={params}
                       comment={{ ...comment, url: comment.url ?? null }}
                       onUnresolve={resolved && canResolve ? () => void toggleResolved() : undefined}
+                      onResolve={
+                        !resolved && canResolve && index === 0
+                          ? () => void toggleResolved()
+                          : undefined
+                      }
                       disabled={busy}
                       render={({ actions, reactions }) => (
                         <>

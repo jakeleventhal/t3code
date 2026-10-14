@@ -238,6 +238,9 @@ export function pullRequestTimelineRows(
               </Text>
               <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-muted" />
             </View>
+            {!thread.isResolved && thread.comments[0] ? (
+              <PullRequestMarkdown markdown={thread.comments[0].body} />
+            ) : null}
             {thread.comments.some((comment) => comment.pendingReviewId) ? (
               <PullRequestPendingBadge />
             ) : null}
