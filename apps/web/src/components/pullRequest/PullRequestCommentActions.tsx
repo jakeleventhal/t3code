@@ -5,7 +5,9 @@ import {
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   TextIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
+import { readLocalApi } from "~/localApi";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "../ui/button";
 import {
@@ -24,12 +26,14 @@ export function PullRequestCommentActions({
   body,
   url,
   onEdit,
+  onOpen,
   resolution,
   onCopyLink,
   disabled,
   onAddToComposer,
 }: {
   body: string;
+  onOpen?: ((url: string) => void) | undefined;
   url: string | null;
   onCopyLink?: (() => Promise<string | null>) | undefined;
   disabled?: boolean | undefined;
@@ -65,6 +69,14 @@ export function PullRequestCommentActions({
             </MenuItem>
             <MenuSeparator />
           </>
+        ) : null}
+        {url ? (
+          <MenuItem
+            onClick={() => (onOpen ? onOpen(url) : void readLocalApi()?.shell.openExternal(url))}
+          >
+            <ExternalLinkIcon />
+            Open in GitHub
+          </MenuItem>
         ) : null}
         {onEdit ? <MenuItem onClick={onEdit}>Edit comment</MenuItem> : null}
         <MenuSub>

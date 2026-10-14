@@ -969,17 +969,14 @@ function PullRequestCodeTab({
         return {
           title: candidate.title,
           reviewed: chapterReviewComplete && reviewedCount === members.length,
-          detail: (
-            <>
-              {index !== chapterPosition ? (
+          stat,
+          detail:
+            index !== chapterPosition ? (
               <span>
                 {reviewedCount} of {members.length} files reviewed
                 {chapterReviewComplete ? "" : " (loaded)"}
               </span>
-              ) : null}
-              <PullRequestDiffStat additions={stat.additions} deletions={stat.deletions} />
-            </>
-          ),
+            ) : null,
           ...(filesViewed.enabled && canSetChapterViewed
             ? {
                 review: {

@@ -123,26 +123,50 @@ export function GuideTour({
   }, [active]);
 
   return (
-    // Three widths: one column with the rail folded; the rail beside the stop; and, on a
-    // maximized panel, the stop's notes in a column of their own (see GuideStop).
-    <div className="flex h-full min-h-0 flex-col">
+    // Each pane owns its scroll, so reading the diff leaves the chapter context in place.
+    <div className="@container/guide flex h-full min-h-0 flex-col">
       <div className="flex h-10 min-h-10 shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-background px-4">
         <DiffDisplayControls />
       </div>
-      <div
-        ref={scrollRef}
-        className="@container/guide min-h-0 flex-1 overflow-y-auto scrollbar-gutter-both"
-      >
-        <div className="mx-auto grid max-w-[100rem] gap-6 px-4 py-4 @min-[80rem]/guide:grid-cols-[14rem_minmax(0,1fr)] @min-[90rem]/guide:gap-8 @min-[90rem]/guide:px-6">
-          {/* Beside the stop on a wide panel; narrow, the stop folds the same list open under its
-            header instead. */}
-          <aside className="sticky top-4 self-start @max-[80rem]/guide:hidden">
-            <GuideRail
-              files={diff.files}
-              onSelectFile={selectFile}
-              stops={guide.stops}
-              position={position}
-              seen={reviewedStops}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="w-80 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
+          <GuideRail
+            files={diff.files}
+            onSelectFile={selectFile}
+            stops={guide.stops}
+            position={position}
+            seen={reviewedStops}
+            isViewed={viewed.isViewed}
+            onSetViewed={
+              allowed && viewed.enabled
+                ? (paths, value) => {
+                    for (const path of paths) viewed.setViewed(path, value);
+                  }
+                : null
+            }
+            onSelect={goTo}
+          />
+        </aside>
+        <main
+          data-guide-diff-scroll
+          ref={scrollRef}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"
+        >
+          {banner ? <div className="px-4 py-3">{banner}</div> : null}
+          {diff.error !== null ? (
+            <p className="px-4 py-3 text-xs text-muted-foreground">
+              The diff could not be loaded, so excerpts are missing: {diff.error}
+            </p>
+          ) : null}
+          {stop === null ? (
+            <p className="px-4 py-3 text-sm text-muted-foreground">
+              This change has no files to tour.
+            </p>
+          ) : (
+            <GuideStop
+              key={position}
+              navigationRef={stopNavigation}
+              stop={stop}
               isViewed={viewed.isViewed}
               onSetViewed={
                 allowed && viewed.enabled
@@ -151,73 +175,47 @@ export function GuideTour({
                     }
                   : null
               }
-              onSelect={goTo}
-            />
-          </aside>
-          <main className="flex min-w-0 flex-col gap-4">
-            {banner}
-            {diff.error !== null ? (
-              <p className="text-xs text-muted-foreground">
-                The diff could not be loaded, so excerpts are missing: {diff.error}
-              </p>
-            ) : null}
-            {stop === null ? (
-              <p className="text-sm text-muted-foreground">This change has no files to tour.</p>
-            ) : (
-              <GuideStop
-                key={position}
-                navigationRef={stopNavigation}
-                stop={stop}
-                isViewed={viewed.isViewed}
-                onSetViewed={
-                  allowed && viewed.enabled
-                    ? (paths, value) => {
-                        for (const path of paths) viewed.setViewed(path, value);
-                      }
-                    : null
-                }
-                index={position}
-                stopCount={stopCount}
-                railOpen={railOpen}
-                onRailOpenChange={setRailOpen}
-                stopList={
-                  <GuideRail
-                    files={diff.files}
-                    onSelectFile={selectFile}
-                    stops={guide.stops}
-                    position={position}
-                    seen={reviewedStops}
-                    isViewed={viewed.isViewed}
-                    onSetViewed={
-                      allowed && viewed.enabled
-                        ? (paths, value) => {
-                            for (const path of paths) viewed.setViewed(path, value);
-                          }
-                        : null
+              index={position}
+              stopCount={stopCount}
+              railOpen={railOpen}
+              onRailOpenChange={setRailOpen}
+              stopList={
+                <GuideRail
+                  files={diff.files}
+                  onSelectFile={selectFile}
+                  stops={guide.stops}
+                  position={position}
+                  seen={reviewedStops}
+                  isViewed={viewed.isViewed}
+                  onSetViewed={
+                    allowed && viewed.enabled
+                      ? (paths, value) => {
+                          for (const path of paths) viewed.setViewed(path, value);
+                        }
+                      : null
+                  }
+                  onSelect={goTo}
+                />
+              }
+              nextTitle={guide.stops[position + 1]?.title ?? null}
+              files={diff.files}
+              loadDiffFiles={loadDiffFiles}
+              diffLoading={diff.loading}
+              commenting={commenting}
+              onStep={step}
+              onAsk={onAsk === null ? null : (question) => onAsk(position, question)}
+              onFinish={
+                onFinish === null
+                  ? null
+                  : () => {
+                      update((current) => ({ seen: new Set(current.seen).add(position) }));
+                      onFinish();
                     }
-                    onSelect={goTo}
-                  />
-                }
-                nextTitle={guide.stops[position + 1]?.title ?? null}
-                files={diff.files}
-                loadDiffFiles={loadDiffFiles}
-                diffLoading={diff.loading}
-                commenting={commenting}
-                onStep={step}
-                onAsk={onAsk === null ? null : (question) => onAsk(position, question)}
-                onFinish={
-                  onFinish === null
-                    ? null
-                    : () => {
-                        update((current) => ({ seen: new Set(current.seen).add(position) }));
-                        onFinish();
-                      }
-                }
-                onOpenFile={onOpenFile}
-              />
-            )}
-          </main>
-        </div>
+              }
+              onOpenFile={onOpenFile}
+            />
+          )}
+        </main>
       </div>
     </div>
   );

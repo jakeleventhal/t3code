@@ -16,6 +16,7 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode, type RefObject } from "react";
 
 import { useRenderedAppearance } from "~/hooks/useTheme";
+import { PierreEntryIcon } from "../../chat/PierreEntryIcon";
 import { useClientSettings } from "~/hooks/useSettings";
 import {
   getRenderablePatch,
@@ -52,6 +53,9 @@ import { GuideProse } from "./GuideProse";
 // When wrapping is off, keep the excerpt's scrollbar visible so long lines do not look cut off.
 const EXCERPT_UNSAFE_CSS = `${DIFF_VIEW_UNSAFE_CSS}
 ${INLINE_RENAME_HEADER_CSS}
+[data-diffs-header] [data-change-icon] {
+  display: none;
+}
 [data-code]::-webkit-scrollbar-thumb {
   background-color: var(--diffs-bg-context);
 }
@@ -365,13 +369,16 @@ function ExcerptDiff({
   return (
     <figure className="flex min-w-0 flex-col gap-1.5">
       {excerpt.caption.trim() !== "" ? (
-        <figcaption className="text-xs text-muted-foreground">
+        <figcaption className="px-4 text-xs text-muted-foreground">
           <GuideProse text={excerpt.caption} plain />
         </figcaption>
       ) : null}
       {slice !== null ? (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-border/60">
+        <div className="min-w-0 border-y border-border/60">
       <FileDiff<ExcerptAnnotation>
+            renderHeaderPrefix={() => (
+              <PierreEntryIcon pathValue={excerpt.path} kind="file" theme={resolvedTheme} />
+            )}
             renderHeaderFilenameSuffix={() => (file ? <DiffFileRename file={file} /> : null)}
         fileDiff={slice.fileDiff}
         options={options}

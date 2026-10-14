@@ -4,6 +4,7 @@ import { Alert, Modal, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { PullRequestReviewThread } from "@t3tools/contracts";
 import { AppText as Text } from "../../components/AppText";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { ControlPill } from "../../components/ControlPill";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -109,8 +110,23 @@ export function PullRequestCommentsSheet({
 }) {
   const navigation = useNavigation();
   const draft = usePullRequestReviewDraft(params);
-  const [showResolved, setShowResolved] = useState(false);
-  const threads = draft.threads.filter((thread) => showResolved || !thread.isResolved);
+  const [status, setStatus] = useState<"resolved" | "unresolved" | "pending">("unresolved");
+  const resolved = draft.threads.filter((thread) => thread.isResolved);
+  const unresolved = draft.threads.filter((thread) => !thread.isResolved);
+  // Removing the last draft also removes its tab; stay on an available status.
+  const selectedStatus =
+    status === "pending" && draft.comments.length === 0 ? "unresolved" : status;
+  if (selectedStatus !== status) setStatus(selectedStatus);
+  const threads =
+    selectedStatus === "resolved" ? resolved : selectedStatus === "unresolved" ? unresolved : [];
+  const pending = selectedStatus === "pending" ? draft.comments : [];
+  const options = [
+    { value: "unresolved" as const, label: "Unresolved", badge: unresolved.length },
+    { value: "resolved" as const, label: "Resolved", badge: resolved.length },
+    ...(draft.comments.length
+      ? [{ value: "pending" as const, label: "Pending", badge: draft.comments.length }]
+      : []),
+  ];
   return (
     <Modal
       visible={visible}
@@ -123,16 +139,17 @@ export function PullRequestCommentsSheet({
           <Text className="flex-1 text-lg font-t3-semibold">Comments</Text>
           <ControlPill icon="xmark" accessibilityLabel="Close comments" onPress={onClose} />
         </View>
+        <View className="px-4 pt-3">
+          <SegmentedControl
+            options={options}
+            selected={selectedStatus}
+            onSelect={setStatus}
+            variant="tabs"
+            size="compact"
+          />
+        </View>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-          <Pressable
-            onPress={() => setShowResolved(!showResolved)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: showResolved }}
-            className="py-2"
-          >
-            <Text className="text-sm">{showResolved ? "Hide resolved" : "Show resolved"}</Text>
-          </Pressable>
-          {draft.comments.map((comment) => (
+          {pending.map((comment) => (
             <View
               key={comment.id}
               className="gap-2 rounded-2xl border border-border-subtle bg-grouped-card p-3"
@@ -179,8 +196,10 @@ export function PullRequestCommentsSheet({
               }}
             />
           ))}
-          {!threads.length && !draft.comments.length ? (
-            <Text className="text-sm text-foreground-muted">No unresolved comments.</Text>
+          {!threads.length && !pending.length ? (
+            <Text className="text-sm text-foreground-muted">
+              {selectedStatus === "resolved" ? "No resolved comments." : "No unresolved comments."}
+            </Text>
           ) : null}
         </ScrollView>
       </SafeAreaView>

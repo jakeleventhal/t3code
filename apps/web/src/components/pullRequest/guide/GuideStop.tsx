@@ -1,15 +1,10 @@
 import { ReviewPath } from "../../diffs/ReviewPath";
 import { Checkbox } from "../../ui/checkbox";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
-import type {
-  PullRequestReviewGuideAttention,
-  PullRequestReviewGuideStop,
-} from "@t3tools/contracts";
+import type { PullRequestReviewGuideStop } from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   ChevronRightIcon,
-  EyeIcon,
-  FileIcon,
   MessageCircleQuestionIcon,
   MessageSquareIcon,
 } from "lucide-react";
@@ -24,26 +19,18 @@ import {
 } from "react";
 
 import { getDiffLineStat } from "~/lib/diffRendering";
+import { useTheme } from "~/hooks/useTheme";
+import { PierreEntryIcon } from "../../chat/PierreEntryIcon";
 
 import { DiffWorkerPoolProvider } from "../../DiffWorkerPoolProvider";
-import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Button } from "../../ui/button";
 import { PullRequestDiffStat } from "../pullRequestPresentation";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../../ui/collapsible";
 import { GuideExcerpt, type ExcerptCommenting } from "./GuideExcerpt";
 import { ReviewChapterHeader } from "../ReviewChapterHeader";
 import { GuideFileDiff } from "./GuideFileDiff";
-import { GuideNotes } from "./GuideNotes";
 import { GuideProse } from "./GuideProse";
 import { letterStopNotes, stopFilePaths } from "@t3tools/client-runtime/review-guide-tour";
-
-const ATTENTION_LABELS = {
-  tradeoff: "A tradeoff to weigh",
-  contract: "A contract to check",
-  product: "A product call",
-  risk: "A risk to judge",
-  accessibility: "An accessibility call",
-} as const satisfies Record<PullRequestReviewGuideAttention["kind"], string>;
 
 export interface GuideStopHandle {
   revealFile: (path: string) => void;
@@ -77,22 +64,30 @@ export function GuideStop({
   stop: PullRequestReviewGuideStop;
   index: number;
   stopCount: number;
+  /** Whether the stop list is folded open under the header, on a narrow panel. */
   railOpen: boolean;
   onRailOpenChange: (open: boolean) => void;
+  /** The tour's stop list, folded under the header on a narrow panel. */
   stopList: ReactNode;
+  /** The following stop's title, null on the last stop. */
   nextTitle: string | null;
   files: ReadonlyMap<string, FileDiffMetadata>;
+  /** Loads a file's unchanged lines for the bars between hunks. */
   loadDiffFiles: FileDiffContentsLoader;
   diffLoading: boolean;
+  /** Commenting on excerpt lines; null where the reader can neither comment nor ask. */
   commenting: ExcerptCommenting | null;
   onStep: (delta: 1 | -1) => void;
+  /** Opens an agent thread about this stop, with the question prefilled or empty. */
   onAsk: ((question: string) => void) | null;
+  /** Opens the review composer, on the last stop. Null where the reader cannot review. */
   onFinish: (() => void) | null;
   onOpenFile: (path: string) => void;
   isViewed: (path: string) => boolean;
   onSetViewed: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | null;
 }) {
-  const { lettered, byExcerpt } = useMemo(() => letterStopNotes(stop), [stop]);
+  const { resolvedTheme } = useTheme();
+  const { byExcerpt } = useMemo(() => letterStopNotes(stop), [stop]);
   const otherFiles = stopFilePaths(stop).map((path) => ({
     path,
     note: stop.files.find((file) => file.path === path)?.note,
@@ -112,17 +107,24 @@ export function GuideStop({
           ...current,
           [path]: { viewed: isViewed(path), open: true },
         }));
-        requestAnimationFrame(() => fileRows.current.get(path)?.scrollIntoView({ block: "start" }));
+        requestAnimationFrame(() => {
+          const row = fileRows.current.get(path);
+          const scroller = row?.closest("[data-guide-diff-scroll]");
+          if (!row || !(scroller instanceof HTMLElement)) return;
+          const top =
+            scroller.scrollTop +
+            row.getBoundingClientRect().top -
+            scroller.getBoundingClientRect().top;
+          scroller.scrollTo({ top: Math.max(top - 8, 0) });
+        });
       },
     }),
     [isViewed],
   );
 
   return (
-    // The chapter explanation stays beside the diff, above its notes. Narrow panels put that
-    // same column after the files rather than squeezing the diff between two sidebars.
-    <div className="grid min-w-0 gap-5 @min-[56rem]/guide:grid-cols-[minmax(0,1fr)_18rem]">
-      <article className="flex min-w-0 flex-col gap-5">
+    <article className="flex min-w-0 flex-col gap-4">
+      <div className="border-b border-border/60 px-4 py-2">
         <ReviewChapterHeader
           index={index}
           count={stopCount}
@@ -131,8 +133,8 @@ export function GuideStop({
           rail={stopList}
           onStep={onStep}
           keyboardHints
-          wideRail
         />
+      </div>
         {stop.excerpts.length > 0 ? (
           <div className="flex min-w-0 flex-col gap-4">
             <DiffWorkerPoolProvider>
@@ -156,9 +158,9 @@ export function GuideStop({
 
         {otherFiles.length > 0 ? (
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium text-muted-foreground">Files in this chapter</h3>
+          <h3 className="px-4 text-xs font-medium text-muted-foreground">Files in this chapter</h3>
             <DiffWorkerPoolProvider>
-              <ul className="flex flex-col overflow-hidden rounded-lg border border-border/60">
+            <ul className="flex flex-col border-y border-border/60">
                 {otherFiles.map((file) => {
                   const diff = files.get(file.path);
                   const stat = diff === undefined ? null : getDiffLineStat([diff]);
@@ -194,9 +196,11 @@ export function GuideStop({
                               className={`size-3.5 shrink-0 text-muted-foreground ${open ? "rotate-90" : ""}`}
                           />
                           </CollapsibleTrigger>
-                          <FileIcon
-                            aria-hidden
-                            className="size-3.5 shrink-0 text-muted-foreground"
+                        <PierreEntryIcon
+                          pathValue={file.path}
+                          kind="file"
+                          theme={resolvedTheme}
+                          className="size-3.5"
                           />
                           <button
                             type="button"
@@ -223,9 +227,7 @@ export function GuideStop({
                                 id={reviewCheckboxId}
                                 aria-label={`Reviewed ${file.path}`}
                                 checked={viewed}
-                                onCheckedChange={(value) =>
-                                  onSetViewed([file.path], value === true)
-                                }
+                              onCheckedChange={(value) => onSetViewed([file.path], value === true)}
                               />
                               <label
                                 htmlFor={reviewCheckboxId}
@@ -257,7 +259,7 @@ export function GuideStop({
         ) : null}
 
         {stop.questions.length > 0 || onAsk !== null ? (
-          <section className="flex flex-col gap-1.5">
+        <section className="flex flex-col gap-1.5 px-4">
             {stop.questions.length > 0 ? (
               <h3 className="text-xs font-medium text-muted-foreground">Questions to consider</h3>
             ) : null}
@@ -268,6 +270,7 @@ export function GuideStop({
                     <GuideProse text={question} />
                   </div>
                 ) : (
+                // A question is a sentence, so it wraps rather than truncating as a button would.
                   <button
                     key={question}
                     type="button"
@@ -295,7 +298,7 @@ export function GuideStop({
           </section>
         ) : null}
 
-        <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
+      <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 p-4">
           {nextTitle !== null ? (
             <Button className="min-w-0" onClick={() => onStep(1)}>
               <span className="min-w-0 truncate">Next: {nextTitle}</span>
@@ -309,28 +312,5 @@ export function GuideStop({
           ) : null}
         </footer>
       </article>
-      <aside className="flex min-w-0 flex-col gap-5 @min-[56rem]/guide:sticky @min-[56rem]/guide:top-4 @min-[56rem]/guide:max-h-[calc(100vh-8rem)] @min-[56rem]/guide:self-start @min-[56rem]/guide:overflow-y-auto">
-        <h2 className="text-lg font-semibold text-foreground">{stop.title}</h2>
-        {stop.summary.trim() !== "" ? (
-          <section className="flex flex-col gap-2">
-            <div className="text-sm text-muted-foreground">
-              <GuideProse text={stop.summary} />
-            </div>
-          </section>
-        ) : null}
-        {stop.attention !== null ? (
-          <Alert controlAlignment="first-line">
-            <EyeIcon />
-            <AlertTitle>{ATTENTION_LABELS[stop.attention.kind]}</AlertTitle>
-            <AlertDescription>
-              <div>
-                <GuideProse text={stop.attention.note} />
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-          <GuideNotes notes={lettered} />
-        </aside>
-    </div>
   );
 }
