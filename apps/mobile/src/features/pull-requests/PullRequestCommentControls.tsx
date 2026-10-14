@@ -215,7 +215,14 @@ export function PullRequestCommentControls({
           title: "Add to composer",
           attributes: { disabled: !agent.canAsk || agent.busy },
         },
-        ...(comment.url ? [{ id: "open", title: "Open on host" }] : []),
+        ...(comment.url
+          ? [
+              {
+                id: "open",
+                title: detail.data?.provider === "github" ? "Open in GitHub" : "Open on host",
+              },
+            ]
+          : []),
       ]}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "resolve") onResolve?.();

@@ -15,7 +15,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
-  ExternalLinkIcon,
   FileCode2Icon,
   GitCommitHorizontalIcon,
   MessageSquareIcon,
@@ -27,7 +26,6 @@ import { readLocalApi } from "~/localApi";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
-import { Button } from "../ui/button";
 import { PullRequestEditButton } from "./PullRequestEditButton";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { toastManager } from "../ui/toast";
@@ -167,20 +165,6 @@ function ReviewStateBadge({ state }: { state: string }) {
   );
 }
 
-function OpenOnHostButton({ url, onOpen }: { url: string | null; onOpen: (url: string) => void }) {
-  return url === null ? null : (
-    <Button
-      size="icon-xs"
-      variant="ghost-muted"
-      className="-mr-1 -mt-1 shrink-0"
-      aria-label="Open activity on host"
-      onClick={() => onOpen(url)}
-    >
-      <ExternalLinkIcon className="size-3" />
-    </Button>
-  );
-}
-
 function ConversationCard({
   event,
   editable,
@@ -243,6 +227,7 @@ function ConversationCard({
           <PullRequestCommentActions
             body={event.body ?? ""}
             url={event.url}
+            onOpen={onOpen}
             onEdit={editable !== null && !editing ? () => setEditing(true) : undefined}
             onAddToComposer={
               event.comment && reactions.onAddCommentToComposer
@@ -270,7 +255,6 @@ function ConversationCard({
               onRefresh={reactions.onRefresh}
             />
           ) : null}
-          <OpenOnHostButton url={event.url} onOpen={onOpen} />
         </div>
       </div>
       {editing && editable !== null ? (
@@ -540,7 +524,7 @@ function ReviewVerdictEvent({
             onRefresh={reactions.onRefresh}
           />
         ) : null}
-        <OpenOnHostButton url={event.url} onOpen={onOpen} />
+        <PullRequestCommentActions body={event.body ?? ""} url={event.url} onOpen={onOpen} />
       </div>
       {/* An approval usually carries no words. When it does they are the review, so they stay
           visible rather than being folded away with the ordinary conversation. */}

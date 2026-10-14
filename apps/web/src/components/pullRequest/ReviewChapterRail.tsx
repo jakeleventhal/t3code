@@ -1,10 +1,12 @@
-import { CheckIcon, FileIcon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ContextMenuItem } from "@t3tools/contracts";
 
 import { readLocalApi } from "~/localApi";
 
 import { cn } from "~/lib/utils";
+import { useTheme } from "~/hooks/useTheme";
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestDiffStat } from "./pullRequestPresentation";
@@ -13,6 +15,7 @@ interface ReviewChapter {
   title: string;
   detail: ReactNode;
   reviewed: boolean;
+  stat?: { additions: number; deletions: number } | null;
   selectedContent?: ReactNode;
   review?: {
     reviewedCount: number;
@@ -97,8 +100,24 @@ export function ReviewChapterRail({
                   index + 1
                 )}
               </span>
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm text-foreground">{chapter.title}</span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex min-w-0 items-start justify-between gap-2">
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 text-sm text-foreground",
+                      position === index && chapter.selectedContent ? "break-words" : "truncate",
+                    )}
+                  >
+                    {chapter.title}
+                  </span>
+                  {chapter.stat ? (
+                    <PullRequestDiffStat
+                      additions={chapter.stat.additions}
+                      deletions={chapter.stat.deletions}
+                      className="shrink-0 pt-0.5 font-mono text-2xs"
+                    />
+                  ) : null}
+                </span>
                 {chapter.detail !== null ? (
                   <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     {chapter.detail}
@@ -124,6 +143,7 @@ export function ReviewChapterFileLink({
   stat: { additions: number; deletions: number } | null;
   onSelect: () => void;
 }) {
+  const { resolvedTheme } = useTheme();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -136,7 +156,7 @@ export function ReviewChapterFileLink({
           />
         }
       >
-        <FileIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        <PierreEntryIcon pathValue={path} kind="file" theme={resolvedTheme} className="size-3.5" />
         <span className="min-w-0 flex-1 truncate">{path.split("/").at(-1)}</span>
         {stat !== null ? (
           <PullRequestDiffStat

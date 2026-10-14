@@ -10,6 +10,7 @@ import { useState } from "react";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Popover, PopoverPopup, PopoverTrigger, PopoverTitle } from "../ui/popover";
 import {
   getReviewPositionAnchor,
@@ -47,7 +48,9 @@ export function PullRequestCommentsPopover({
   onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
-  const [showResolved, setShowResolved] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<"resolved" | "unresolved" | "pending">(
+    "unresolved",
+  );
   const pending = usePendingReviewComments(reference, detail.reviewThreads);
   const actions = useReviewThreadActions(environmentId, reference, detail, onRefresh);
   // Hosted drafts are represented by the merged pending list, so they get one checklist entry.
@@ -58,6 +61,11 @@ export function PullRequestCommentsPopover({
   const unresolved = threads.filter((thread) => !thread.isResolved);
   const resolved = threads.filter((thread) => thread.isResolved);
   const openCount = unresolved.length + pending.length;
+  const status =
+    selectedStatus === "pending" && pending.length === 0 ? "unresolved" : selectedStatus;
+  if (status !== selectedStatus) setSelectedStatus(status);
+  const visibleThreads =
+    status === "resolved" ? resolved : status === "unresolved" ? unresolved : [];
   const jump = (location: CommentLocation) => {
     setOpen(false);
     onOpenComment(location);
@@ -75,12 +83,9 @@ export function PullRequestCommentsPopover({
         </Badge>
       </PopoverTrigger>
       <PopoverPopup align="end" padding="none" width="auto">
-        <div className="flex max-h-[min(75vh,48rem)] w-[min(32rem,calc(100vw-2rem))] flex-col">
+        <div className="flex max-h-[min(75vh,48rem)] w-[min(36rem,calc(100vw-2rem))] min-w-0 flex-col">
           <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
             <PopoverTitle>Comments</PopoverTitle>
-            <span className="text-xs text-muted-foreground">
-              {unresolved.length} unresolved · {pending.length} pending
-            </span>
             <Button
               size="icon-xs"
               variant="ghost-muted"
@@ -91,15 +96,50 @@ export function PullRequestCommentsPopover({
               <XIcon className="size-3.5" />
             </Button>
           </div>
-          <div className="min-h-0 overflow-y-auto py-2">
+          <div className="border-b border-border/60 px-3 py-2">
+            <ToggleGroup
+              variant="segmented"
+              className="w-full"
+              aria-label="Comment status"
+              value={[status]}
+              onValueChange={(values) => {
+                const next = values[0];
+                if (next === "resolved" || next === "unresolved" || next === "pending")
+                  setSelectedStatus(next);
+              }}
+            >
+              <Toggle value="unresolved" className="flex-1">
+                Unresolved{" "}
+                <Badge variant="secondary" size="sm">
+                  {unresolved.length}
+                </Badge>
+              </Toggle>
+              <Toggle value="resolved" className="flex-1">
+                Resolved{" "}
+                <Badge variant="secondary" size="sm">
+                  {resolved.length}
+                </Badge>
+              </Toggle>
+              {pending.length > 0 ? (
+                <Toggle value="pending" className="flex-1">
+                  Pending{" "}
+                  <Badge variant="secondary" size="sm">
+                    {pending.length}
+                  </Badge>
+                </Toggle>
+              ) : null}
+            </ToggleGroup>
+          </div>
+          <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto py-2 [overflow-wrap:anywhere]">
             {open ? (
               <>
-                {[...unresolved, ...(showResolved ? resolved : [])].map((thread) => (
+                {visibleThreads.map((thread) => (
                   <div key={thread.id}>
                     <div className="mx-3 mt-2">
                       <Button
                         size="xs"
                         variant="ghost-muted"
+                        className="max-w-full"
                         onClick={() =>
                           jump({
                             path: thread.path,
@@ -132,12 +172,13 @@ export function PullRequestCommentsPopover({
                     />
                   </div>
                 ))}
-                {pending.map((comment) => (
+                {(status === "pending" ? pending : []).map((comment) => (
                   <div key={comment.id}>
                     <div className="mx-3 mt-2">
                       <Button
                         size="xs"
                         variant="ghost-muted"
+                        className="max-w-full"
                         onClick={() =>
                           jump({
                             path: comment.path,
@@ -163,24 +204,12 @@ export function PullRequestCommentsPopover({
                     />
                   </div>
                 ))}
-                {openCount === 0 && (!showResolved || resolved.length === 0) ? (
-                  <p className="px-4 py-5 text-sm text-muted-foreground">No open comments.</p>
+                {visibleThreads.length === 0 && (status !== "pending" || pending.length === 0) ? (
+                  <p className="px-4 py-5 text-sm text-muted-foreground">No {status} comments.</p>
                 ) : null}
               </>
             ) : null}
           </div>
-          {resolved.length ? (
-            <div className="border-t border-border/60 px-3 py-2">
-              <Button
-                size="xs"
-                variant="ghost-muted"
-                onClick={() => setShowResolved((previous) => !previous)}
-              >
-                {showResolved ? "Hide" : "Show"} {resolved.length} resolved{" "}
-                {resolved.length === 1 ? "thread" : "threads"}
-              </Button>
-            </div>
-          ) : null}
         </div>
       </PopoverPopup>
     </Popover>
