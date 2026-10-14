@@ -1,3 +1,4 @@
+import { OptimisticReviewMutationQueue } from "@t3tools/client-runtime/review-mutation-queue";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
@@ -17,7 +18,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { useResizableWidth } from "~/hooks/useResizableWidth";
 import { createGitDiffFileContentsLoader } from "~/lib/diffFileContents";
 import {
-  buildFileDiffRenderKey,
+  buildFileDiffIdentityKey,
   fnv1a32,
   getRenderablePatch,
   getDiffLineStat,
@@ -165,6 +166,19 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   );
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => remembered?.folded ?? new Set());
   const [pending, setPending] = useState(false);
+  const [stagingCount, setStagingCount] = useState(0);
+  const stagingCountRef = useRef(0);
+  type StagingMutation = {
+    scope: WorkingScope;
+    paths: string[];
+    patch?: string;
+    combined: WorkingChangesState["staged"];
+  };
+  const stagingQueue = useRef<OptimisticReviewMutationQueue<
+    WorkingChangesState,
+    StagingMutation
+  > | null>(null);
+  const stagingState = useRef<WorkingChangesState | null>(null);
   const [viewer, setViewer] = useState<AnnotatableCodeViewHandle | null>(null);
   const [message, setMessage] = useState(remembered?.message ?? "");
   const [workspacePath, setWorkspacePath] = useState<string | null>(
@@ -219,8 +233,10 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     // A successful write stays projected if reading Git fails. Let the reader retry
     // without trapping every action behind a pending flag or rolling back the write.
     if (staged.query.error || unstaged.query.error) {
-      busy.current = false;
-      setPending(false);
+      if (busy.current) {
+        busy.current = false;
+        setPending(false);
+      }
       return;
     }
     if (staged.patches.isPending || unstaged.patches.isPending) return;
@@ -234,8 +250,11 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
       refreshedScopes.current.unstaged;
     if (stagedFresh && unstagedFresh) {
       setOptimistic(null);
-      busy.current = false;
-      setPending(false);
+      stagingState.current = null;
+      if (busy.current) {
+        busy.current = false;
+        setPending(false);
+      }
     }
   }, [
     optimistic,
@@ -336,7 +355,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     reportFailure: false,
   });
   const generatePreview = async () => {
-    if (pending || !canGenerate || staged.files.length === 0) return;
+    if (pending || stagingCountRef.current > 0 || !canGenerate || staged.files.length === 0) return;
     setPending(true);
     setGeneratingMessage(true);
     const result = await generateMessage({ environmentId, input: { cwd } });
@@ -353,6 +372,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const runCommit = async (action: "commit" | "amend" | "commit-push" = "commit") => {
     if (
       pending ||
+      stagingCountRef.current > 0 ||
       !canCommit ||
       (staged.files.length === 0 && (action !== "amend" || !message.trim()))
     )
@@ -387,7 +407,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     }
   };
   const runRevert = async () => {
-    if (busy.current || pending || !canRevert || !reverting) return;
+    if (busy.current || pending || stagingCountRef.current > 0 || !canRevert || !reverting) return;
     busy.current = true;
     refreshedScopes.current = { staged: false, unstaged: false };
     setPending(true);
@@ -433,73 +453,66 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   };
   const canStage = useAtomValue(reviewEnvironment.setStaged.permissionAtom(environmentId));
   const stage = useAtomCommand(reviewEnvironment.setStaged, { reportFailure: false });
-  const updateStaging = async (scope: WorkingScope, paths: string[], patch?: string) => {
-    if (busy.current || pending || !canStage || paths.length === 0) return;
-    busy.current = true;
-    refreshedScopes.current = { staged: false, unstaged: false };
-    setPending(true);
-    const beforeSelection = selection;
-    const beforeContext = readerContext;
+  const updateStaging = (scope: WorkingScope, paths: string[], patch?: string) => {
+    if (pending || !canStage || paths.length === 0) return;
+    const current = stagingState.current ?? scopes;
     const displayed = {
-      ...scopes,
+      ...current,
       [scope]: {
-        ...scopes[scope],
-        files: scopes[scope].files.map((file) => {
-          const item = view === "git" ? viewer?.getItem(buildFileDiffRenderKey(file)) : undefined;
-          return item?.type === "diff" ? item.fileDiff : file;
+        ...current[scope],
+        files: current[scope].files.map((file) => {
+          const item = view === "git" ? viewer?.getItem(buildFileDiffIdentityKey(file)) : undefined;
+          return item?.type === "diff" && reviewDiffEdits(item.fileDiff) === reviewDiffEdits(file)
+            ? item.fileDiff
+            : file;
         }),
       },
     };
-    const nextState = applyWorkingChangesMutation(displayed, all, {
-      scope,
-      paths,
-      ...(patch ? { patch } : {}),
-    });
-    setReaderContext({ selection, state: nextState });
-    setOptimistic({
-      state: nextState,
-      confirmed: false,
-      stagedBefore: staged.query.data,
-      unstagedBefore: unstaged.query.data,
-      stagedUpdatedAt: staged.query.dataUpdatedAt,
-      unstagedUpdatedAt: unstaged.query.dataUpdatedAt,
-    });
-    const result = await stage({
-      environmentId,
-      input: {
-        cwd,
-        paths: [...new Set(paths)],
-        staged: scope === "unstaged",
-        ...(patch === undefined ? {} : { patch }),
-      },
-    });
-    if (result._tag === "Failure") {
-      setOptimistic(null);
-      setSelection(beforeSelection);
-      setReaderContext(beforeContext);
-      busy.current = false;
-      setPending(false);
-      toastManager.add({
-        type: "error",
-        title: "Could not update staging",
-        description: "The file may have changed. Refresh the diff and try again.",
+    if (stagingCountRef.current === 0) {
+      stagingQueue.current = new OptimisticReviewMutationQueue(displayed, {
+        apply: (state, mutation) => applyWorkingChangesMutation(state, mutation.combined, mutation),
+        send: async ({ scope, paths, patch }) => {
+          const result = await stage({
+            environmentId,
+            input: {
+              cwd,
+              paths: [...new Set(paths)],
+              staged: scope === "unstaged",
+              ...(patch ? { patch } : {}),
+            },
+          });
+          return result._tag === "Success";
+        },
+        onSnapshot: (state, pendingCount) => {
+          stagingState.current = state;
+          stagingCountRef.current = pendingCount;
+          setStagingCount(pendingCount);
+          setReaderContext((current) => ({ selection: current?.selection ?? selection, state }));
+          refreshedScopes.current = { staged: false, unstaged: false };
+          setOptimistic({
+            state,
+            confirmed: pendingCount === 0,
+            stagedBefore: queryData.current.staged,
+            unstagedBefore: queryData.current.unstaged,
+            stagedUpdatedAt: queryData.current.stagedUpdatedAt,
+            unstagedUpdatedAt: queryData.current.unstagedUpdatedAt,
+          });
+          if (pendingCount === 0) {
+            props.onChanged();
+            setGeneration((value) => value + 1);
+          }
+        },
+        onFailure: () =>
+          toastManager.add({
+            type: "error",
+            title: "Could not update staging",
+            description:
+              "The failed action was rolled back. Your other staging actions have been kept.",
+          }),
       });
-    } else {
-      setOptimistic((current) =>
-        current
-          ? {
-              ...current,
-              confirmed: true,
-              stagedBefore: queryData.current.staged,
-              unstagedBefore: queryData.current.unstaged,
-              stagedUpdatedAt: queryData.current.stagedUpdatedAt,
-              unstagedUpdatedAt: queryData.current.unstagedUpdatedAt,
-            }
-          : null,
-      );
-      props.onChanged();
     }
-    setGeneration((value) => value + 1);
+    setReaderContext({ selection, state: displayed });
+    stagingQueue.current!.enqueue({ scope, paths, ...(patch ? { patch } : {}), combined: all });
   };
   const stagingPaths = (scope: WorkingScope, path: string) =>
     scopes[scope].files.flatMap((file) =>
@@ -517,7 +530,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     if (view === "files")
       viewer?.scrollTo({
         type: "item",
-        id: buildFileDiffRenderKey(target.files[index]!),
+        id: buildFileDiffIdentityKey(target.files[index]!),
         align: "start",
       });
   };
@@ -533,7 +546,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
       files.map((fileDiff) => ({
         fileDiff: props.ignoreWhitespace ? hideWhitespaceChanges(fileDiff) : fileDiff,
         filePath: resolveFileDiffPath(fileDiff),
-        fileKey: buildFileDiffRenderKey(fileDiff),
+        fileKey: buildFileDiffIdentityKey(fileDiff),
         fileVersion: fnv1a32(`${props.ignoreWhitespace}:${JSON.stringify(fileDiff)}`),
         collapsed:
           folded.has(resolveFileDiffPath(fileDiff)) ||
@@ -744,7 +757,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                     </Button>
                   )}
                   onRevealSearchMatch={(key) => {
-                    const file = files.find((file) => buildFileDiffRenderKey(file) === key);
+                    const file = files.find((file) => buildFileDiffIdentityKey(file) === key);
                     if (file)
                       setFolded(
                         (current) =>
@@ -798,7 +811,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                       aria-label="Commit message"
                       placeholder="Message (blank generates one)"
                       value={message}
-                      disabled={pending || !canCommit}
+                      disabled={pending || stagingCount > 0 || !canCommit}
                       onChange={(event) => setMessage(event.target.value)}
                       onKeyDown={(event) => {
                         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -812,7 +825,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                         <Button
                           size="icon-xs"
                           variant="ghost"
-                          disabled={pending || !canGenerate}
+                          disabled={pending || stagingCount > 0 || !canGenerate}
                           aria-label="Generate commit message"
                           aria-busy={generatingMessage}
                           onClick={() => void generatePreview()}
@@ -826,7 +839,9 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                     <Button
                       size="sm"
                       className="min-w-0 flex-1"
-                      disabled={pending || !canCommit || staged.files.length === 0}
+                      disabled={
+                        pending || stagingCount > 0 || !canCommit || staged.files.length === 0
+                      }
                       onClick={() => void runCommit()}
                     >
                       <MorphIcon icon={GitCommitHorizontal} />
@@ -842,7 +857,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                         render={
                           <Button
                             size="icon-sm"
-                            disabled={pending || !canCommit}
+                            disabled={pending || stagingCount > 0 || !canCommit}
                             aria-label="Commit options"
                           />
                         }
@@ -855,6 +870,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                             key={action}
                             disabled={
                               pending ||
+                              stagingCount > 0 ||
                               !canCommit ||
                               (staged.files.length === 0 && (action !== "amend" || !message.trim()))
                             }
@@ -876,7 +892,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                   unstaged={unstagedEntries}
                   selected={selectedPath ? { scope, path: selectedPath } : null}
                   disabled={!canStage || pending}
-                  revertDisabled={!canRevert || pending}
+                  revertDisabled={!canRevert || pending || stagingCount > 0}
                   onSelect={selectFile}
                   onViewAll={(scope) => {
                     setSelection({ scope, path: null });

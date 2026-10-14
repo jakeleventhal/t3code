@@ -319,3 +319,14 @@ it("compacts single-child chains while keeping folder actions and collapse at th
     { kind: "folder", path: "packages/artelo/src", label: "packages/artelo/src", depth: 0 },
   ]);
 });
+
+it("keeps staging available in retained context windows and excludes adjacent edits", () => {
+  const header = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n";
+  const near = header + "@@ -14 +14 @@\n-old near\n+new near\n";
+  const middle = header + "@@ -24 +24 @@\n-old middle\n+new middle\n";
+  const far = header + "@@ -40 +40 @@\n-old far\n+new far\n";
+  const chosen = reviewHunkPatch([near, middle, far], "@@ -10,20 +10,20 @@");
+  expect(chosen).toBe(header + near.slice(header.length) + middle.slice(header.length));
+  expect(chosen).not.toContain("new far");
+  expect(reviewHunkPatch([near, middle, far], "@@ -12,5 +12,5 @@")).toBe(near);
+});

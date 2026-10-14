@@ -5,7 +5,7 @@ import {
   selectReviewTreeRows,
   type ReviewTreeRow,
   type ReviewTreeSelection,
-} from "./reviewFileTreeSelection";
+} from "./reviewFileTreeSelection.ts";
 
 const row = (
   path: string,

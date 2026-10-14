@@ -371,7 +371,7 @@ function buildRenderableRows(file: FileDiffMetadata): ReadonlyArray<ReviewRender
   return rows;
 }
 
-function mapRenderableFile(file: FileDiffMetadata): ReviewRenderableFile {
+export function mapRenderableFile(file: FileDiffMetadata): ReviewRenderableFile {
   const path = file.name || file.prevName || "";
   const previousPath = file.prevName || null;
   const additions = file.hunks.reduce((total, hunk) => total + hunk.additionLines, 0);

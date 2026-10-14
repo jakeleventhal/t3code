@@ -281,7 +281,40 @@ export function reviewHunkPatch(hunks: ReadonlyArray<string>, header: string): s
     return range ? `${range[1]},${range[2] ?? "1"}:${range[3]},${range[4] ?? "1"}` : null;
   };
   const range = rangeKey(header);
-  return range ? hunks.find((patch) => rangeKey(patch) === range) : undefined;
+  const exact = range ? hunks.find((patch) => rangeKey(patch) === range) : undefined;
+  if (exact) return exact;
+  const visible = header.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/m);
+  if (!visible) return undefined;
+  const within = (line: number, side: "old" | "new") => {
+    const start = Number(visible[side === "old" ? 1 : 3]);
+    const count = Number(visible[side === "old" ? 2 : 4] ?? 1);
+    return line >= start && line < start + count;
+  };
+  // Retained reader windows contain context; the optimistic Git patches use zero context.
+  // Include only hunks whose actual edits fit this window, never an adjacent context overlap.
+  const matched = hunks.filter((patch) => {
+    const raw = patch.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/m);
+    if (!raw) return false;
+    let oldLine = Number(raw[1]);
+    let newLine = Number(raw[3]);
+    let changed = false;
+    for (const line of patch
+      .slice(raw.index! + raw[0].length)
+      .split("\n")
+      .slice(1)) {
+      const sign = line[0];
+      if (sign === "-" || sign === "+") {
+        changed = true;
+        if (!within(sign === "-" ? oldLine : newLine, sign === "-" ? "old" : "new")) return false;
+      }
+      if (sign === " " || sign === "-") oldLine++;
+      if (sign === " " || sign === "+") newLine++;
+    }
+    return changed;
+  });
+  if (!matched.length) return undefined;
+  const prefix = matched[0]!.slice(0, matched[0]!.indexOf("@@ "));
+  return prefix + matched.map((patch) => patch.slice(patch.indexOf("@@ "))).join("");
 }
 
 /** The current account's latest completed review, including reviews containing only line comments. */

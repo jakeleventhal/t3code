@@ -273,6 +273,53 @@ describe("optimistic working changes", () => {
       [10, 9],
       [30, 29],
     ]);
+    expect(file.hunks.map((hunk) => hunk.splitLineStart)).toEqual([9, 29]);
+    expect(file.splitLineCount).toBe(40);
+    expect(file.unifiedLineCount).toBe(41);
     expect(edits(next.unstaged)).toEqual(["-line 31", "+new second"]);
+  });
+
+  it("keeps nearby and far hydrated windows while selected insertion lines become context", () => {
+    const original = Array.from({ length: 150 }, (_, index) => `line ${index + 1}\n`);
+    const working = [...original];
+    working[82] = "changed near\n";
+    working[123] = "changed far\n";
+    working.splice(83, 0, "extra\n");
+    const unstaged = snapshot(
+      "@@ -80,7 +80,8 @@\n line 80\n line 81\n line 82\n-line 83\n+changed near\n+extra\n line 84\n line 85\n line 86\n@@ -121,7 +122,7 @@\n line 121\n line 122\n line 123\n-line 124\n+changed far\n line 125\n line 126\n line 127\n",
+    );
+    hydratePartialDiff("merge", unstaged.files[0]!, {
+      oldFile: { name: "file.txt", contents: original.join("") },
+      newFile: { name: "file.txt", contents: working.join("") },
+    });
+    const selected =
+      header +
+      "@@ -80,7 +80,8 @@\n line 80\n line 81\n line 82\n line 83\n+extra\n line 84\n line 85\n line 86\n";
+    const next = applyWorkingChangesMutation({ staged: snapshot(""), unstaged }, unstaged, {
+      scope: "unstaged",
+      paths: ["file.txt"],
+      patch: selected,
+    });
+    const file = next.unstaged.files[0]!;
+    expect(file.isPartial).toBe(false);
+    expect(file.additionLines).toEqual(working);
+    expect(file.deletionLines[83]).toBe("extra\n");
+    expect(file.hunks.map((hunk) => [hunk.additionStart, hunk.additionCount])).toEqual([
+      [80, 8],
+      [122, 7],
+    ]);
+    expect(file.hunks.map((hunk) => hunk.splitLineStart)).toEqual([79, 121]);
+    expect(file.splitLineCount).toBe(151);
+    expect(edits(next.unstaged)).toEqual([
+      "-line 83",
+      "+changed near",
+      "-line 124",
+      "+changed far",
+    ]);
+    expect(edits(next.staged)).toEqual(["+extra"]);
+    const refreshed = snapshot(
+      "@@ -83 +83 @@\n-line 83\n+changed near\n@@ -125 +125 @@\n-line 124\n+changed far\n",
+    );
+    expect(reviewDiffEdits(file)).toBe(reviewDiffEdits(refreshed.files[0]!));
   });
 });

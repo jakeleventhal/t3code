@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./review-mutation-queue": {
+      "types": "./src/reviewMutationQueue.ts",
+      "default": "./src/reviewMutationQueue.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"
@@ -434,6 +438,10 @@
     "./review-workspace": {
       "types": "./src/reviewWorkspace.ts",
       "default": "./src/reviewWorkspace.ts"
+    },
+    "./review-working-changes-state": {
+      "types": "./src/reviewWorkingChangesState.ts",
+      "default": "./src/reviewWorkingChangesState.ts"
     },
     "./review-diff-context": {
       "types": "./src/reviewDiffContext.ts",

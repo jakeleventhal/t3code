@@ -31,24 +31,18 @@ function CommentThread({
 }) {
   const target = pullRequestTarget(params);
   const detail = useEnvironmentQuery(composerPullRequests.detail(target));
-  const activity = useEnvironmentQuery(composerPullRequests.activity(target));
   const permissions = usePullRequestPermissions(params, detail.data);
   const resolve = useAtomCommand(composerPullRequests.setThreadResolution, {
     reportFailure: false,
   });
-  const [busy, setBusy] = useState(false);
   const first = thread.comments[0];
   if (!first) return null;
   const toggle = async () => {
-    if (busy) return;
-    setBusy(true);
     const result = await resolve({
       ...target,
       input: { ...target.input, threadId: thread.id, resolved: !thread.isResolved },
     });
-    setBusy(false);
     if (result._tag === "Failure") Alert.alert("Could not update the thread", "Try again.");
-    else activity.refresh();
   };
   const canResolve = permissions.canResolve && thread.canResolve !== false;
   return (
@@ -67,7 +61,6 @@ function CommentThread({
       <PullRequestCommentControls
         params={params}
         comment={{ ...first, url: first.url ?? null }}
-        disabled={busy}
         onResolve={canResolve && !thread.isResolved ? () => void toggle() : undefined}
         onUnresolve={canResolve && thread.isResolved ? () => void toggle() : undefined}
         render={({ actions, reactions }) => (

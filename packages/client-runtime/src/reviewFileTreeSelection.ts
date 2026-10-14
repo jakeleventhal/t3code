@@ -1,4 +1,4 @@
-import { reviewFolderContains } from "./reviewWorkspace";
+import { reviewFolderContains } from "./reviewWorkspace.ts";
 
 export type ReviewTreeRow = {
   readonly scope: "staged" | "unstaged";
