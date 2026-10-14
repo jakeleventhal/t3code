@@ -438,11 +438,7 @@ export function ReviewSheet(
     .join(" · ");
   const headerTitleText =
     props.openedFile?.path?.split("/").at(-1) ??
-    (props.openedFile?.scope === "staged"
-      ? "Staged files"
-      : props.openedFile
-        ? "Unstaged files"
-        : "Git");
+    (props.openedFile?.scope === "staged" ? "Staged" : props.openedFile ? "Unstaged" : "Git");
 
   return (
     <>

@@ -114,7 +114,7 @@ export function WorkingChangesTree({
               <View className="min-h-[42px] flex-row items-center border-b border-border-subtle pl-3">
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={row.scope === "staged" ? "Staged files" : "Unstaged files"}
+                  accessibilityLabel={row.scope === "staged" ? "Staged" : "Unstaged"}
                   accessibilityState={{ expanded: open[row.scope] }}
                   className="min-h-[42px] min-w-0 flex-1 flex-row items-center gap-2"
                   onPress={() =>
@@ -127,7 +127,7 @@ export function WorkingChangesTree({
                     tintColorClassName="accent-icon-muted"
                   />
                   <Text numberOfLines={1} className="min-w-0 flex-1 text-sm font-t3-semibold">
-                    {row.scope === "staged" ? "Staged files" : "Unstaged files"}
+                    {row.scope === "staged" ? "Staged" : "Unstaged"}
                   </Text>
                 </Pressable>
                 <Text className="rounded-md bg-secondary px-1.5 text-xs text-foreground-muted">

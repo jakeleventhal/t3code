@@ -1,5 +1,5 @@
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -17,6 +17,7 @@ export function ReviewChapterHeader({
   rail,
   onStep,
   keyboardHints = false,
+  wideRail = false,
 }: {
   index: number;
   count: number;
@@ -25,15 +26,27 @@ export function ReviewChapterHeader({
   rail: ReactNode;
   onStep: (delta: 1 | -1) => void;
   keyboardHints?: boolean;
+  wideRail?: boolean;
 }) {
   return (
     <Collapsible open={railOpen} onOpenChange={onRailOpenChange}>
       <header className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground tabular-nums @max-[56rem]/guide:hidden">
+        <p
+          className={cn(
+            "text-xs text-muted-foreground tabular-nums",
+            wideRail ? "@max-[80rem]/guide:hidden" : "@max-[56rem]/guide:hidden",
+          )}
+        >
           Chapter {index + 1} of {count}
         </p>
         <CollapsibleTrigger
-          render={<Button size="xs" variant="ghost-muted" className="@min-[56rem]/guide:hidden" />}
+          render={
+            <Button
+              size="xs"
+              variant="ghost-muted"
+              className={wideRail ? "@min-[80rem]/guide:hidden" : "@min-[56rem]/guide:hidden"}
+            />
+          }
         >
           <span className="tabular-nums">
             Chapter {index + 1} of {count}
@@ -67,7 +80,9 @@ export function ReviewChapterHeader({
           ) : null}
         </div>
       </header>
-      <CollapsiblePanel className="@min-[56rem]/guide:hidden">
+      <CollapsiblePanel
+        className={wideRail ? "@min-[80rem]/guide:hidden" : "@min-[56rem]/guide:hidden"}
+      >
         <div className="pt-3">{rail}</div>
       </CollapsiblePanel>
     </Collapsible>
@@ -86,19 +101,27 @@ export function ReviewChapterProgress({
   onSetReviewed: ((reviewed: boolean) => void) | null;
   disabled?: boolean;
 }) {
+  const id = useId();
   return (
     <div className="flex items-center gap-2 text-xs">
       {onSetReviewed ? (
         <Checkbox
+          id={id}
           aria-label="Mark chapter reviewed"
           disabled={disabled}
           checked={fileCount > 0 && reviewedCount === fileCount}
           onCheckedChange={(checked) => onSetReviewed(checked === true)}
         />
       ) : null}
-      <span>
-        {reviewedCount} of {fileCount} files reviewed
-      </span>
+      {onSetReviewed ? (
+        <label htmlFor={id} className={disabled ? "text-muted-foreground" : "cursor-pointer"}>
+          {reviewedCount} of {fileCount} files reviewed
+        </label>
+      ) : (
+        <span>
+          {reviewedCount} of {fileCount} files reviewed
+        </span>
+      )}
     </div>
   );
 }
