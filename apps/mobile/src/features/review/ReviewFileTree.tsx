@@ -2,7 +2,7 @@ import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { reviewFileTreeRows, reviewFolderContains } from "@t3tools/client-runtime/review-workspace";
 import * as Clipboard from "expo-clipboard";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, RefreshControl, View } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { SymbolView } from "../../components/AppSymbol";
@@ -26,12 +26,16 @@ export function ReviewFileTree({
   onSelectFile,
   onSetViewed,
   reviewActionLabels,
+  onRefresh,
+  refreshing = false,
 }: {
   files: ReadonlyArray<ReviewFileTreeItem>;
   reviewFiles?: ReadonlyArray<ReviewFileTreeItem>;
   reviewActionLabels?: { mark: string; unmark: string };
   onSelectFile: (path: string) => void;
   onSetViewed?: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | undefined;
+  onRefresh?: (() => void) | undefined;
+  refreshing?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [width, setWidth] = useState(0);
@@ -58,6 +62,9 @@ export function ReviewFileTree({
   return (
     <AnimatedLegendList
       style={{ flex: 1 }}
+      refreshControl={
+        onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined
+      }
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       data={rows}
       keyExtractor={(row) => `${row.kind}:${row.path}`}

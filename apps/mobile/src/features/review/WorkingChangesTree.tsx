@@ -1,7 +1,7 @@
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { reviewFileTreeRows } from "@t3tools/client-runtime/review-workspace";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, RefreshControl, View } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
@@ -23,6 +23,8 @@ export function WorkingChangesTree({
   onSelect,
   onStage,
   onRevert,
+  onRefresh,
+  refreshing = false,
 }: {
   staged: ReadonlyArray<ReviewRenderableFile>;
   unstaged: ReadonlyArray<ReviewRenderableFile>;
@@ -32,6 +34,8 @@ export function WorkingChangesTree({
   onSelect: (scope: WorkingScope, path: string) => void;
   onStage: (scope: WorkingScope, path: string | null) => void;
   onRevert: (path: string | null) => void;
+  onRefresh?: (() => void) | undefined;
+  refreshing?: boolean;
 }) {
   const [open, setOpen] = useState({ staged: true, unstaged: true });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -94,6 +98,9 @@ export function WorkingChangesTree({
     <View className="min-h-0 flex-1" onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <AnimatedLegendList
         style={{ flex: 1 }}
+        refreshControl={
+          onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined
+        }
         data={rows}
         keyExtractor={(row) => `${row.scope}:${row.kind}:${row.path}`}
         estimatedItemSize={42}

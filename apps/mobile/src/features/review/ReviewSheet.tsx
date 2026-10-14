@@ -1,27 +1,20 @@
 import { WorkingChangesReview } from "./WorkingChangesReview";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
-import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { AppActivityIndicator } from "../../components/AppActivityIndicator";
-import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useReviewHeaderPresentation } from "./useReviewHeaderPresentation";
-import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
 import {
   memo,
-  type Ref,
   type ReactElement,
   type ReactNode,
   useCallback,
   useEffect,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
 import {
-  FlatList,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -35,19 +28,16 @@ import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics
 
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
-import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { cn } from "../../lib/cn";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { useThreadDraftForThread } from "../../state/use-thread-composer-state";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
-  useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
   useRegisterWorkspaceInspector,
 } from "../layout/AdaptiveWorkspaceLayout";
@@ -67,19 +57,17 @@ import { useReviewSections } from "./useReviewSections";
 import { useNativeReviewDiffBridge } from "./useNativeReviewDiffBridge";
 import { useReviewCommentSelectionController } from "./useReviewCommentSelectionController";
 import { resolveReviewAvailability } from "./reviewAvailability";
-import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
 import { ReviewComparisonPicker } from "./ReviewComparisonPicker";
 import { ReviewFileTree } from "./ReviewFileTree";
+import { selectReviewFileDiff } from "./reviewPaneSelection";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 
 function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
     readonly iconColor: string;
-    readonly showChangedFilesToggle: boolean;
     readonly onReturnToThread: () => void;
   },
 ) {
-  const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const presentation = useReviewHeaderPresentation(props);
   return (
     <ScreenHeader
@@ -89,20 +77,6 @@ function ReviewHeader(
       hideBottomBorder
       options={{ headerTintColor: props.iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
-      actions={
-        props.showChangedFilesToggle
-          ? [
-              {
-                accessibilityLabel: panes.auxiliaryPaneVisible
-                  ? "Hide changed files"
-                  : "Show changed files",
-                icon: "sidebar.right",
-                selected: panes.auxiliaryPaneVisible,
-                onPress: toggleAuxiliaryPane,
-              },
-            ]
-          : undefined
-      }
       menus={[
         ...(presentation.gitMenu ? [presentation.gitMenu] : []),
         ...(presentation.refreshAction
@@ -198,226 +172,28 @@ function ReviewSelectionActionBar(props: {
   );
 }
 
-interface ReviewNavigatorFile {
-  readonly id: string;
-  readonly path: string;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
-  readonly file: ReviewNavigatorFile;
-  readonly selected: boolean;
-  readonly onSelectFile: (fileId: string | null) => void;
-}) {
-  const { file, selected, onSelectFile } = props;
-  // Tapping the selected file again returns to the all-files diff.
-  const handlePress = useCallback(() => {
-    onSelectFile(selected ? null : file.id);
-  }, [file.id, onSelectFile, selected]);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      className={
-        Platform.OS === "android"
-          ? cn(
-              "mt-1 min-h-12 justify-center rounded-[20px] px-3 py-2 active:bg-subtle",
-              selected && "bg-subtle-strong",
-            )
-          : selected
-            ? "mt-1 min-h-12 justify-center rounded-xl bg-subtle-strong px-3 py-2"
-            : "mt-1 min-h-12 justify-center rounded-xl px-3 py-2 active:bg-subtle"
-      }
-      onPress={handlePress}
-    >
-      <Text
-        className={
-          selected
-            ? "text-xs font-t3-bold text-foreground"
-            : "text-xs font-t3-medium text-foreground-secondary"
-        }
-        numberOfLines={2}
-      >
-        {file.path}
-      </Text>
-      <View className="mt-1 flex-row gap-2">
-        <Text className="text-2xs font-t3-bold text-adaptive-emerald-700-300">
-          +{formatDiffCount(file.additions)}
-        </Text>
-        <Text className="text-2xs font-t3-bold text-adaptive-rose-700-300">
-          -{formatDiffCount(file.deletions)}
-        </Text>
-      </View>
-    </Pressable>
-  );
-});
-
-interface ReviewFileNavigatorHandle {
-  readonly setVisibleFile: (fileId: string | null) => void;
-}
-
-interface ReviewFileNavigatorProps {
-  readonly files: ReadonlyArray<ReviewNavigatorFile>;
-  readonly headerInset: number;
-  readonly sectionId: string | null;
-  readonly onSelectFile: (fileId: string | null) => void;
-  readonly ref?: Ref<ReviewFileNavigatorHandle>;
-}
-
-function ReviewFileNavigator({
-  files,
-  headerInset,
-  sectionId,
-  onSelectFile,
-  ref,
-}: ReviewFileNavigatorProps) {
-  const insets = useSafeAreaInsets();
-  const theme = useUniwindTheme();
-  const sheetColor = theme["--color-sheet"];
-  const foregroundColor = theme["--color-foreground"];
-  const headerScrollEdgeEffects = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
-  const [fileSelection, setFileSelection] = useState<{
-    readonly sectionId: string | null;
-    readonly fileId: string | null;
-  }>({ sectionId: null, fileId: null });
-  const availableFileIds = useMemo(() => files.map((file) => file.id), [files]);
-  const selectedFileId = resolveSelectedReviewFileId({
-    selection: fileSelection,
-    sectionId,
-    availableFileIds,
-  });
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      setVisibleFile: (fileId) => {
-        if (fileId !== null && !availableFileIds.includes(fileId)) {
-          return;
-        }
-        setFileSelection((current) => {
-          if (current.sectionId === sectionId && current.fileId === fileId) {
-            return current;
-          }
-          return { sectionId, fileId };
-        });
-      },
-    }),
-    [availableFileIds, sectionId],
-  );
-
-  const handleSelectFile = useCallback(
-    (fileId: string | null) => {
-      setFileSelection({ sectionId, fileId });
-      onSelectFile(fileId);
-    },
-    [onSelectFile, sectionId],
-  );
-
-  const renderFile = useCallback(
-    ({ item }: { readonly item: ReviewNavigatorFile }) => (
-      <ReviewFileNavigatorRow
-        file={item}
-        selected={selectedFileId === item.id}
-        onSelectFile={handleSelectFile}
-      />
-    ),
-    [handleSelectFile, selectedFileId],
-  );
-
-  const fileList = (
-    <FlatList
-      data={files}
-      extraData={selectedFileId}
-      keyExtractor={(file) => file.id}
-      contentContainerStyle={{
-        paddingHorizontal: 8,
-        paddingBottom: 8,
-        // The nested native header is translucent; start the list below it so
-        // the scroll-edge effect can sample the content (same treatment as
-        // FileTreeBrowser in the Files pane).
-        paddingTop: Platform.OS === "ios" ? insets.top + IOS_NAV_BAR_HEIGHT + 8 : 8,
-      }}
-      scrollIndicatorInsets={
-        Platform.OS === "ios" ? { top: insets.top + IOS_NAV_BAR_HEIGHT } : undefined
-      }
-      renderItem={renderFile}
-    />
-  );
-
-  if (Platform.OS === "ios") {
-    return (
-      <View className="flex-1 border-l border-border bg-sheet">
-        <ScreenStack style={{ flex: 1 }}>
-          <Screen
-            activityState={2}
-            enabled
-            isNativeStack
-            screenId="review-file-navigator-native"
-            scrollEdgeEffects={headerScrollEdgeEffects}
-            style={{ backgroundColor: sheetColor, flex: 1 }}
-          >
-            {fileList}
-            <ScreenStackHeaderConfig
-              backgroundColor="rgba(0,0,0,0)"
-              color={foregroundColor}
-              hideBackButton
-              hideShadow={false}
-              navigationItemStyle="editor"
-              subtitle={`${files.length} ${files.length === 1 ? "file" : "files"}`}
-              title="Changed files"
-              titleColor={foregroundColor}
-              titleFontSize={17}
-              titleFontWeight="700"
-              translucent
-            />
-          </Screen>
-        </ScreenStack>
-      </View>
-    );
-  }
-
-  return (
-    <View
-      className={
-        Platform.OS === "android" ? "flex-1 bg-header" : "flex-1 border-l border-border bg-sheet"
-      }
-    >
-      {Platform.OS === "android" ? (
-        <AndroidScreenHeader
-          title="Changed files"
-          subtitle={`${files.length} ${files.length === 1 ? "file" : "files"}`}
-          hideBottomBorder
-        />
-      ) : (
-        <View className="border-b border-border" style={{ paddingTop: headerInset }}>
-          <View className="px-4 py-3">
-            <Text className="text-sm font-t3-bold text-foreground">Changed files</Text>
-            <Text className="text-xs text-foreground-muted">
-              {files.length} {files.length === 1 ? "file" : "files"}
-            </Text>
-          </View>
-        </View>
-      )}
-      <MaterialScreenContent insetHorizontal>{fileList}</MaterialScreenContent>
-    </View>
-  );
-}
-
 type ReviewSheetProps = StaticScreenProps<{
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }>;
 
-export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?: ReactNode }) {
+export function ReviewSheet(
+  props: ReviewSheetProps & {
+    readonly workspaceTabs?: ReactNode;
+    readonly openedFile?:
+      | {
+          readonly sectionId: string;
+          readonly path: string;
+          readonly scope?: "staged" | "unstaged" | undefined;
+        }
+      | undefined;
+  },
+) {
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
   useAdaptiveWorkspacePaneRole("inspector");
-  const { panes, showAuxiliaryPane, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { themeAppearance: selectedTheme, themeVariables } = useAppearancePreferences();
-  const [showFiles, setShowFiles] = useState(false);
+  const { themeAppearance: selectedTheme } = useAppearancePreferences();
   const headerIcon = String(useUniwindTheme()["--color-icon"]);
   const { environmentId, threadId } = props.route.params;
   const environment = useEnvironmentPresentation(environmentId);
@@ -433,10 +209,6 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
 
-  useEffect(() => {
-    showAuxiliaryPane("inspector");
-    // eslint-disable-next-line react/exhaustive-effect-dependencies -- Entering another thread must reopen its review inspector.
-  }, [environmentId, showAuxiliaryPane, threadId]);
   const {
     error,
     reviewSections,
@@ -450,6 +222,7 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
     environmentId,
     threadId,
     reviewCache,
+    selectedSectionId: props.openedFile?.sectionId,
   });
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,
@@ -488,8 +261,11 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
       setIsPullRefreshing(false);
     }
   };
-  const reviewFileNavigatorRef = useRef<ReviewFileNavigatorHandle>(null);
   const reviewFiles = parsedDiff.kind === "files" ? parsedDiff.files : [];
+  const treeFiles =
+    parsedDiff.kind === "files"
+      ? parsedDiff.files
+      : (selectedSection?.files ?? []).map((file) => ({ ...file, changeType: "change" }));
   const fileVisibility = useReviewFileVisibility({
     threadKey: reviewCache.threadKey,
     sectionId: selectedSection?.id ?? null,
@@ -500,21 +276,32 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
     cachedViewedFileIds: undefined,
   });
   const { collapsedFileIds, toggleExpandedFile } = fileVisibility;
+  const displayedDiff = useMemo(
+    () =>
+      props.openedFile
+        ? selectReviewFileDiff(nativeReviewDiffData, props.openedFile.path)
+        : nativeReviewDiffData,
+    [nativeReviewDiffData, props.openedFile],
+  );
+  const openedPath = props.openedFile?.path;
+  useEffect(() => {
+    if (openedPath) loadVisibleFile(openedPath);
+  }, [openedPath, loadVisibleFile]);
   const commentSelection = useReviewCommentSelectionController({
     environmentId,
     threadId,
     selectedSection,
-    nativeReviewDiffData,
+    nativeReviewDiffData: displayedDiff,
   });
   const nativeBridge = useNativeReviewDiffBridge({
     threadKey: reviewCache.threadKey,
     sectionId: selectedSection?.id ?? null,
     diff: selectedSection?.diff,
-    data: nativeReviewDiffData,
+    data: displayedDiff,
     collapsedFileIds,
     viewedFileIds: [],
     selectedRowIds: commentSelection.selectedRowIds,
-    canHighlight: parsedDiff.kind === "files",
+    canHighlight: props.openedFile !== undefined && parsedDiff.kind === "files",
   });
   const showcaseReviewKey =
     SHOWCASE_ENABLED && parsedDiff.kind === "files" && selectedSection
@@ -537,43 +324,23 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
     [onNativeDebug, nativeThemeId, showcaseReviewKey],
   );
 
-  const handleSelectFile = useCallback(
-    (fileId: string | null) => {
-      loadVisibleFile(fileId, true);
-      commentSelection.clearSelection();
-      if (fileId !== null && collapsedFileIds.includes(fileId)) {
-        toggleExpandedFile(fileId);
-      }
-      const navigation =
-        fileId === null
-          ? nativeReviewDiffViewRef.current?.scrollToTop(true)
-          : nativeReviewDiffViewRef.current?.scrollToFile(fileId, true);
-      void navigation?.catch((error: unknown) => {
-        console.error("[review] Failed to navigate to diff file", error);
-      });
-    },
-    [collapsedFileIds, commentSelection, toggleExpandedFile, loadVisibleFile],
-  );
+  const openFile = (path: string, scope?: "staged" | "unstaged") => {
+    if (!selectedSection) return;
+    navigation.dispatch(
+      StackActions.push("ThreadReviewFile", {
+        environmentId: String(environmentId),
+        threadId: String(threadId),
+        reviewSectionId: selectedSection.id,
+        reviewFilePath: path,
+        ...(scope ? { reviewWorkingTreeScope: scope } : {}),
+      }),
+    );
+  };
   const handleVisibleFileChange = useCallback(
     (event: NativeSyntheticEvent<{ readonly fileId?: string | null }>) => {
       loadVisibleFile(event.nativeEvent.fileId ?? null);
-      reviewFileNavigatorRef.current?.setVisibleFile(event.nativeEvent.fileId ?? null);
     },
     [loadVisibleFile],
-  );
-  const renderInspector = useCallback(
-    () => (
-      <ReviewFileNavigator
-        ref={reviewFileNavigatorRef}
-        files={nativeReviewDiffData.files}
-        // The workspace inspector column spans the full window height, so the
-        // pane clears the status bar itself.
-        headerInset={insets.top}
-        sectionId={selectedSection?.id ?? null}
-        onSelectFile={handleSelectFile}
-      />
-    ),
-    [handleSelectFile, insets.top, nativeReviewDiffData.files, selectedSection?.id],
   );
 
   const handleNativeToggleFile = useCallback(
@@ -618,19 +385,7 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
     .filter((part): part is string => Boolean(part))
     .join(" · ");
 
-  // The changed-files navigator drives the native diff surface via
-  // scrollToFile, so it is only useful when that surface resolved. In raw
-  // fallback mode the ref is necessarily null and the raw patch neither
-  // scrolls nor filters — registering the navigator would present working
-  // controls that cannot navigate.
-  const showChangedFilesPane =
-    !showConnectionNotice &&
-    selectedSection !== null &&
-    parsedDiff.kind === "files" &&
-    NativeReviewDiffView !== null;
-  useRegisterWorkspaceInspector(showChangedFilesPane ? renderInspector : undefined);
-  // A toggle needs registered content; loading, errors and raw patches have no navigator pane.
-  const showChangedFilesToggle = panes.supportsAuxiliaryPane && showChangedFilesPane;
+  useRegisterWorkspaceInspector(undefined);
 
   const listHeader = useMemo(() => {
     const children: ReactElement[] = [];
@@ -669,7 +424,7 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
   ]
     .filter(Boolean)
     .join(" · ");
-  const headerTitleText = "Git";
+  const headerTitleText = props.openedFile?.path.split("/").at(-1) ?? "Git";
 
   return (
     <>
@@ -682,7 +437,6 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
         iconColor={headerIcon}
         selectedThreadCwd={selectedThreadCwd}
         selectedSection={selectedSection}
-        showChangedFilesToggle={showChangedFilesToggle}
         onRefresh={handlePullToRefresh}
         onReturnToThread={handleReturnToThread}
       />
@@ -695,13 +449,10 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
               <ReviewComparisonPicker
                 sections={reviewSections}
                 selected={selectedSection}
-                onSelect={selectSection}
-                onBrowse={
-                  selectedSection?.kind !== "working-tree" && reviewFiles.length
-                    ? () =>
-                        panes.supportsAuxiliaryPane ? toggleAuxiliaryPane() : setShowFiles(true)
-                    : undefined
-                }
+                onSelect={(sectionId) => {
+                  selectSection(sectionId);
+                  if (props.openedFile) navigation.goBack();
+                }}
               />
             ) : null}
           </View>
@@ -733,8 +484,35 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
                 draftMessage={draftMessage}
                 revision={diffPreviewRevision}
                 onChanged={refreshSelectedSection}
+                openedFile={
+                  props.openedFile
+                    ? {
+                        path: props.openedFile.path,
+                        scope: props.openedFile.scope === "staged" ? "staged" : "unstaged",
+                      }
+                    : undefined
+                }
+                onOpenFile={({ path, scope }) => openFile(path, scope)}
               />
             </View>
+          ) : !props.openedFile && treeFiles.length > 0 ? (
+            <View className="min-h-0 flex-1">
+              {listHeader}
+              <ReviewFileTree
+                files={treeFiles}
+                onSelectFile={(path) => openFile(path)}
+                onRefresh={() => void handlePullToRefresh()}
+                refreshing={isPullRefreshing || isSelectedSectionPending}
+              />
+            </View>
+          ) : props.openedFile &&
+            parsedDiff.kind === "files" &&
+            displayedDiff.files.length === 0 &&
+            !isSelectedSectionPending &&
+            !areFilePatchesPending ? (
+            <Text className="px-4 py-3 text-xs text-foreground-muted">
+              No changes remaining in this file.
+            </Text>
           ) : selectedSection && parsedDiff.kind === "files" && NativeReviewDiffView ? (
             <View
               className="flex-1"
@@ -903,41 +681,6 @@ export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?:
           />
         </View>
       </MaterialScreenContent>
-      <Modal
-        visible={showFiles}
-        presentationStyle="fullScreen"
-        animationType="slide"
-        onRequestClose={() => setShowFiles(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: themeVariables["--color-screen"],
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-          }}
-        >
-          <View className="min-h-11 flex-row items-center gap-2 border-b border-border-subtle px-3">
-            <Text className="min-w-0 flex-1 text-sm font-t3-medium">Changed files</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close changed files"
-              onPress={() => setShowFiles(false)}
-              className="size-11 items-center justify-center"
-            >
-              <SymbolView name="xmark" size={19} tintColorClassName="accent-icon" />
-            </Pressable>
-          </View>
-          <ReviewFileTree
-            files={reviewFiles}
-            onSelectFile={(path) => {
-              const file = reviewFiles.find((file) => file.path === path);
-              if (file) handleSelectFile(file.id);
-              setShowFiles(false);
-            }}
-          />
-        </View>
-      </Modal>
     </>
   );
 }
