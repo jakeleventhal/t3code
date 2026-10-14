@@ -100,22 +100,27 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
       setNotice("Reply posted.");
       refresh();
     });
-  const toggleResolved = () =>
-    operation(async () => {
-      if (
-        !thread ||
-        !permissions.canResolve ||
-        thread.canResolve === false ||
-        thread.comments.some((comment) => comment.pendingReviewId)
-      )
-        return;
-      const response = await resolve({
-        ...target,
-        input: { ...target.input, threadId: thread.id, resolved: !thread.isResolved },
-      });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
-      refresh();
+  const toggleResolved = async () => {
+    if (
+      !thread ||
+      !permissions.canResolve ||
+      thread.canResolve === false ||
+      thread.comments.some((comment) => comment.pendingReviewId)
+    )
+      return;
+    setError(null);
+    setNotice(null);
+    const response = await resolve({
+      ...target,
+      input: { ...target.input, threadId: thread.id, resolved: !thread.isResolved },
     });
+    if (response._tag === "Failure") {
+      const cause = squashAtomCommandFailure(response);
+      setError(
+        cause instanceof Error ? cause.message : "The provider could not update this discussion.",
+      );
+    }
+  };
   const nextCursor = cursor === undefined ? thread?.nextCommentsCursor : cursor;
   const more = () =>
     operation(async () => {
@@ -261,7 +266,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                               <ControlPill
                                 icon="checkmark"
                                 accessibilityLabel="Resolve thread"
-                                disabled={busy || activity.isPending}
+                                disabled={busy}
                                 onPress={() => void toggleResolved()}
                               />
                             ) : null}

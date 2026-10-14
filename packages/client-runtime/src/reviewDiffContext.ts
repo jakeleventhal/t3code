@@ -1,4 +1,9 @@
-import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import {
+  hydratePartialDiff,
+  parseDiffFromFile,
+  parsePatchFiles,
+  type FileDiffMetadata,
+} from "@pierre/diffs";
 import * as Hash from "effect/Hash";
 
 export const UNKNOWN_REVIEW_LINE = "\u0000unknown:";
@@ -93,51 +98,38 @@ export function projectReviewDiffContext(
     !previous.isPartial &&
     !before.some((line) => line.startsWith(UNKNOWN_REVIEW_LINE)) &&
     !after.some((line) => line.startsWith(UNKNOWN_REVIEW_LINE));
-  let splitStart = 0;
-  let unifiedStart = 0;
+  if (complete) {
+    // Complete metadata uses document coordinates, including collapsed gaps and trailing
+    // context, for virtualized expansion. Compact offsets are only valid for partial patches.
+    hydratePartialDiff("merge", file, {
+      oldFile: { name: previous.name, contents: before.join("") },
+      newFile: { name: previous.name, contents: after.join("") },
+    });
+  } else {
+    let splitStart = 0;
+    let unifiedStart = 0;
+    file.hunks = file.hunks.map((hunk) => {
+      const next = { ...hunk, splitLineStart: splitStart, unifiedLineStart: unifiedStart };
+      splitStart += hunk.splitLineCount;
+      unifiedStart += hunk.unifiedLineCount;
+      return next;
+    });
+    file.splitLineCount = splitStart;
+    file.unifiedLineCount = unifiedStart;
+  }
   return {
     ...file,
     type: previous.type,
     ...(previous.prevName ? { prevName: previous.prevName } : {}),
     ...(previous.lang ? { lang: previous.lang } : {}),
-    ...(complete
-      ? { isPartial: false, deletionLines: [...before], additionLines: [...after] }
-      : {}),
-    hunks: file.hunks.map((hunk) => {
-      const next = {
-        ...hunk,
-        splitLineStart: splitStart,
-        unifiedLineStart: unifiedStart,
-        ...(complete
-          ? {
-              deletionLineIndex: Math.max(0, hunk.deletionStart - 1),
-              additionLineIndex: Math.max(0, hunk.additionStart - 1),
-              hunkContent: hunk.hunkContent.map((content) => ({
-                ...content,
-                deletionLineIndex:
-                  content.deletionLineIndex -
-                  hunk.deletionLineIndex +
-                  Math.max(0, hunk.deletionStart - 1),
-                additionLineIndex:
-                  content.additionLineIndex -
-                  hunk.additionLineIndex +
-                  Math.max(0, hunk.additionStart - 1),
-              })),
-            }
-          : {}),
-      };
-      splitStart += hunk.splitLineCount;
-      unifiedStart += hunk.unifiedLineCount;
-      return next;
-    }),
-    splitLineCount: file.hunks.reduce((sum, hunk) => sum + hunk.splitLineCount, 0),
-    unifiedLineCount: file.hunks.reduce((sum, hunk) => sum + hunk.unifiedLineCount, 0),
     cacheKey: `working-context:${Hash.string(header + hunks.join(""))}:${complete}`,
   };
 }
 
 /** Compare actual edits independently of Git's hunk/context regrouping. */
 export function reviewDiffEdits(file: FileDiffMetadata): string {
+  const lineText = (line: string, at: number, last: number, noEOF: boolean) =>
+    noEOF && at === last ? line.replace(/\n$/, "") : line.endsWith("\n") ? line : `${line}\n`;
   return JSON.stringify(
     file.hunks.flatMap((hunk) =>
       hunk.hunkContent.flatMap((content) => {
@@ -148,14 +140,24 @@ export function reviewDiffEdits(file: FileDiffMetadata): string {
             .map((line, index) => [
               "-",
               hunk.deletionStart + content.deletionLineIndex - hunk.deletionLineIndex + index,
-              line,
+              lineText(
+                line,
+                content.deletionLineIndex + index,
+                hunk.deletionLineIndex + hunk.deletionCount - 1,
+                hunk.noEOFCRDeletions,
+              ),
             ]),
           ...file.additionLines
             .slice(content.additionLineIndex, content.additionLineIndex + content.additions)
             .map((line, index) => [
               "+",
               hunk.additionStart + content.additionLineIndex - hunk.additionLineIndex + index,
-              line,
+              lineText(
+                line,
+                content.additionLineIndex + index,
+                hunk.additionLineIndex + hunk.additionCount - 1,
+                hunk.noEOFCRAdditions,
+              ),
             ]),
         ];
       }),

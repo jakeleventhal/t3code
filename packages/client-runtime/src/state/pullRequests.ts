@@ -23,6 +23,7 @@ import {
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { createOptimisticPullRequestResolution } from "./pullRequestResolution.ts";
 import { persistPullRequestStats } from "./pullRequestStatsPersistence.ts";
 import { persistQuery } from "./queryPersistence.ts";
 import * as Option from "effect/Option";
@@ -239,6 +240,14 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
     }),
   );
+  const resolution = createOptimisticPullRequestResolution(activity);
+  const setThreadResolution = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:pull-requests:set-thread-resolution",
+    tag: WS_METHODS.pullRequestsSetThreadResolution,
+    execute: (input) => routedRequest(WS_METHODS.pullRequestsSetThreadResolution, input),
+    scheduler: commandScheduler,
+    concurrency: serialPerEnvironment,
+  });
   return {
     refreshes,
     linkedThreads: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -280,7 +289,7 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       staleTimeMs: 45_000,
       refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
     }),
-    activity,
+    activity: resolution.activity,
     threadComments: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:thread-comments",
       tag: WS_METHODS.pullRequestsThreadComments,
@@ -605,13 +614,10 @@ export function createPullRequestEnvironmentAtoms<R, E>(
           }));
         }),
     }),
-    setThreadResolution: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:pull-requests:set-thread-resolution",
-      tag: WS_METHODS.pullRequestsSetThreadResolution,
-      execute: (input) => routedRequest(WS_METHODS.pullRequestsSetThreadResolution, input),
-      scheduler: commandScheduler,
-      concurrency: serialPerEnvironment,
-    }),
+    setThreadResolution: {
+      ...setThreadResolution,
+      run: resolution.wrap(setThreadResolution).run,
+    },
     setReaction: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-reaction",
       tag: WS_METHODS.pullRequestsSetReaction,
