@@ -1,4 +1,6 @@
-import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
+import type { FileDiffMetadata } from "@pierre/diffs/types";
+import { parseReviewDiffFromFiles } from "./reviewDiffMetadata.ts";
 import * as Hash from "effect/Hash";
 import { orderReviewFiles } from "./reviewWorkspace.ts";
 import { projectReviewDiffContext, UNKNOWN_REVIEW_LINE } from "./reviewDiffContext.ts";
@@ -70,7 +72,7 @@ function optimisticFile(
   if (before.join("") === after.join("")) return { file: null, hunks: [], contextFile };
   // Unknown unchanged lines establish coordinates only. Zero context prevents them from
   // entering the optimistic render or a staging patch; Git supplies real context on refresh.
-  const generated = parseDiffFromFile(
+  const generated = parseReviewDiffFromFiles(
     { name: fallback.name, contents: before.join("") },
     { name: fallback.name, contents: after.join("") },
     { context: 0 },

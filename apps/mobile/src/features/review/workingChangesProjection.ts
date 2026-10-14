@@ -1,10 +1,12 @@
-import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
+import type { FileDiffMetadata } from "@pierre/diffs/types";
+import { parseReviewDiffFromFiles } from "@t3tools/client-runtime/review-diff-metadata";
 import type {
   WorkingChangesSnapshot,
   WorkingChangesState,
 } from "@t3tools/client-runtime/review-working-changes-state";
 import { reviewDiffEdits } from "@t3tools/client-runtime/review-diff-context";
-import { mapRenderableFile, type ReviewRenderableFile } from "./reviewModel";
+import { mapRenderableFile, type ReviewRenderableFile } from "./reviewModel.ts";
 
 /** Native and desktop readers project the same patch model instead of separate staging arithmetic. */
 export function nativeWorkingChangesSnapshot(
@@ -21,7 +23,10 @@ export function nativeWorkingChangesSnapshot(
       const parsed = patch ? parsePatchFiles(patch)[0]?.files[0] : undefined;
       if (parsed) return { ...parsed, cacheKey: file.path };
       return {
-        ...parseDiffFromFile({ name: file.path, contents: "" }, { name: file.path, contents: "" }),
+        ...parseReviewDiffFromFiles(
+          { name: file.path, contents: "" },
+          { name: file.path, contents: "" },
+        ),
         type: file.changeType,
         ...(file.previousPath ? { prevName: file.previousPath } : {}),
         cacheKey: `${file.path}:pending`,

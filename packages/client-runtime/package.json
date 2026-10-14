@@ -478,6 +478,10 @@
     "./review-file-progress": {
       "types": "./src/useReviewFileProgress.ts",
       "default": "./src/useReviewFileProgress.ts"
+    },
+    "./review-diff-metadata": {
+      "types": "./src/reviewDiffMetadata.ts",
+      "default": "./src/reviewDiffMetadata.ts"
     }
   },
   "scripts": {
@@ -495,6 +499,7 @@
     "@t3tools/source-control-gitcafe": "workspace:*",
     "@t3tools/source-control-github": "workspace:*",
     "@t3tools/source-control-gitlab": "workspace:*",
+    "diff": "9.0.0",
     "effect": "catalog:",
     "three": "0.180.0"
   },

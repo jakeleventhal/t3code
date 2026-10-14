@@ -1,9 +1,6 @@
-import {
-  hydratePartialDiff,
-  parseDiffFromFile,
-  parsePatchFiles,
-  type FileDiffMetadata,
-} from "@pierre/diffs";
+import { processFile, parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
+import type { FileDiffMetadata } from "@pierre/diffs/types";
+import { parseReviewDiffFromFiles } from "./reviewDiffMetadata.ts";
 import * as Hash from "effect/Hash";
 
 export const UNKNOWN_REVIEW_LINE = "\u0000unknown:";
@@ -15,7 +12,7 @@ export function projectReviewDiffContext(
   previous: FileDiffMetadata,
   anchorSide: "additions" | "deletions",
 ): FileDiffMetadata {
-  const generated = parseDiffFromFile(
+  const generated = parseReviewDiffFromFiles(
     { name: previous.name, contents: before.join("") },
     { name: previous.name, contents: after.join("") },
     { context: Infinity },
@@ -90,7 +87,7 @@ export function projectReviewDiffContext(
   const oldPath = JSON.stringify(`a/${previous.name}`);
   const newPath = JSON.stringify(`b/${previous.name}`);
   const header = `diff --git ${oldPath} ${newPath}\n--- ${oldPath}\n+++ ${newPath}\n`;
-  const file = parsePatchFiles(header + hunks.join(""))[0]?.files[0];
+  let file = parsePatchFiles(header + hunks.join(""))[0]?.files[0];
   if (!file) return { ...previous, hunks: [], splitLineCount: 0, unifiedLineCount: 0 };
   // Full contents let the renderer retain its existing expansion map. The hunks still
   // describe the original open regions, including ones that now contain only context.
@@ -101,10 +98,12 @@ export function projectReviewDiffContext(
   if (complete) {
     // Complete metadata uses document coordinates, including collapsed gaps and trailing
     // context, for virtualized expansion. Compact offsets are only valid for partial patches.
-    hydratePartialDiff("merge", file, {
-      oldFile: { name: previous.name, contents: before.join("") },
-      newFile: { name: previous.name, contents: after.join("") },
-    });
+    file =
+      processFile(header + hunks.join(""), {
+        oldFile: { name: previous.name, contents: before.join("") },
+        newFile: { name: previous.name, contents: after.join("") },
+        throwOnError: true,
+      }) ?? file;
   } else {
     let splitStart = 0;
     let unifiedStart = 0;
