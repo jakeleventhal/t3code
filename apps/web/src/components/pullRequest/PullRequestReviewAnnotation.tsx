@@ -98,11 +98,13 @@ export function PendingReviewCommentCard({
   environmentId,
   reference,
   canCopyLink,
+  onAddToComposer,
 }: {
   comment: PendingReviewComment;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   canCopyLink: boolean;
+  onAddToComposer?: (() => void) | undefined;
 }) {
   const { busy, canSave, canDiscard, copyLink, discard } = usePendingReviewCommentActions(
     environmentId,
@@ -126,6 +128,7 @@ export function PendingReviewCommentCard({
             url={comment.hostedComment?.url ?? null}
             onCopyLink={canCopyLink && canSave ? () => copyLink(comment) : undefined}
             disabled={busy}
+            onAddToComposer={onAddToComposer}
           />
           <Button
             size="icon-xs"
@@ -162,6 +165,8 @@ export function ReviewThreadCard({
   onEditComment,
   onToggleResolved,
   onReacted,
+  onAddToComposer,
+  revealRequest,
 }: {
   thread: PullRequestReviewThread;
   workspaceRoot: string;
@@ -186,9 +191,16 @@ export function ReviewThreadCard({
   onEditComment: (commentId: string, body: string) => Promise<boolean>;
   onToggleResolved: () => void;
   onReacted: () => void;
+  revealRequest?: number | undefined;
+  onAddToComposer?: ((comment: PullRequestThreadComment) => void) | undefined;
 }) {
   // A resolved thread is finished work, so it opens collapsed and stays one line until asked for.
-  const [expanded, setExpanded] = useState(!thread.isResolved);
+  const [expanded, setExpanded] = useState(revealRequest !== undefined || !thread.isResolved);
+  const [lastRevealRequest, setLastRevealRequest] = useState(revealRequest);
+  if (lastRevealRequest !== revealRequest) {
+    setLastRevealRequest(revealRequest);
+    if (revealRequest !== undefined) setExpanded(true);
+  }
   const [uploading, setUploading] = useState(false);
   const [replying, setReplying] = useState(false);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
@@ -303,6 +315,7 @@ export function ReviewThreadCard({
 
   return (
     <div
+      data-review-thread-id={thread.id}
       className="mx-3 my-2 rounded-xl border border-border/70 bg-background text-sm shadow-sm"
       contentEditable={false}
       onPointerDown={(event) => event.stopPropagation()}
@@ -395,6 +408,7 @@ export function ReviewThreadCard({
                       body={comment.body}
                       url={comment.url ?? null}
                       onEdit={canEditComment(comment) ? () => setEditingId(comment.id) : undefined}
+                      onAddToComposer={onAddToComposer ? () => onAddToComposer(comment) : undefined}
                       resolution={
                         canResolve
                           ? { resolved: thread.isResolved, pending, onToggle: onToggleResolved }

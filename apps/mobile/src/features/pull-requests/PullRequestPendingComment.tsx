@@ -1,3 +1,7 @@
+import { usePullRequestThreads } from "./usePullRequestThreads";
+import { composerPullRequests } from "../../state/pull-requests";
+import { useEnvironmentQuery } from "../../state/query";
+import { pullRequestTarget } from "./usePullRequestDiff";
 import * as Clipboard from "expo-clipboard";
 import { Alert, View } from "react-native";
 import { AppText as Text } from "../../components/AppText";
@@ -27,6 +31,9 @@ export function PullRequestPendingCommentActions({
   onEdit?: () => void;
 }) {
   const actions = usePendingReviewCommentActions(params);
+  const detail = useEnvironmentQuery(composerPullRequests.detail(pullRequestTarget(params)));
+  const agent = usePullRequestThreads(params, detail.data, comment.path);
+  const markdown = `**Pending comment on ${comment.path}**\n\n${comment.body}`;
   return (
     <ControlPillMenu
       title="Comment actions"
@@ -34,10 +41,27 @@ export function PullRequestPendingCommentActions({
         ...(onEdit
           ? [{ id: "edit", title: "Edit comment", attributes: { disabled: actions.busy } }]
           : []),
-        { id: "copy", title: "Copy comment" },
-        ...(comment.hostedComment || actions.canSave
-          ? [{ id: "copy-link", title: "Copy link", attributes: { disabled: actions.busy } }]
-          : []),
+        {
+          id: "copy-menu",
+          title: "Copy",
+          subactions: [
+            ...(comment.hostedComment || actions.canSave
+              ? [
+                  {
+                    id: "copy-link",
+                    title: "Link to comment",
+                    attributes: { disabled: actions.busy },
+                  },
+                ]
+              : []),
+            { id: "copy", title: "Copy as Markdown" },
+          ],
+        },
+        {
+          id: "composer",
+          title: "Add to composer",
+          attributes: { disabled: !agent.canAsk || agent.busy },
+        },
         ...(!comment.hostedComment || actions.canDiscard
           ? [
               {
@@ -50,7 +74,13 @@ export function PullRequestPendingCommentActions({
       ]}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "edit") onEdit?.();
-        else if (nativeEvent.event === "copy") void Clipboard.setStringAsync(comment.body);
+        else if (nativeEvent.event === "copy") void Clipboard.setStringAsync(markdown);
+        else if (nativeEvent.event === "composer")
+          void agent.ask(
+            agent.threads.length === 1 ? agent.threads[0] : undefined,
+            "ask",
+            markdown,
+          );
         else if (nativeEvent.event === "copy-link") void actions.copyLink(comment);
         else if (nativeEvent.event === "discard")
           Alert.alert("Discard this comment?", "Your other review comments will be kept.", [

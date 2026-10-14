@@ -1,7 +1,23 @@
-import { MoreHorizontalIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ClipboardIcon,
+  LinkIcon,
+  MessageSquarePlusIcon,
+  MoreHorizontalIcon,
+  TextIcon,
+} from "lucide-react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "../ui/menu";
 import { toastManager } from "../ui/toast";
 
 export function PullRequestCommentActions({
@@ -11,11 +27,13 @@ export function PullRequestCommentActions({
   resolution,
   onCopyLink,
   disabled,
+  onAddToComposer,
 }: {
   body: string;
   url: string | null;
   onCopyLink?: (() => Promise<string | null>) | undefined;
   disabled?: boolean | undefined;
+  onAddToComposer?: (() => void) | undefined;
   onEdit?: (() => void) | undefined;
   resolution?:
     | {
@@ -39,27 +57,46 @@ export function PullRequestCommentActions({
         <MoreHorizontalIcon className="size-3.5" />
       </MenuTrigger>
       <MenuPopup align="end">
-        {onEdit ? <MenuItem onClick={onEdit}>Edit comment</MenuItem> : null}
-        <MenuItem disabled={body.length === 0} onClick={() => copyToClipboard(body, undefined)}>
-          Copy comment
-        </MenuItem>
-        {url || onCopyLink ? (
-          <MenuItem
-            onClick={() =>
-              void (async () => {
-                const link = onCopyLink ? await onCopyLink() : url;
-                if (link) await copyToClipboard(link, undefined);
-              })()
-            }
-          >
-            Copy link
-          </MenuItem>
+        {resolution ? (
+          <>
+            <MenuItem disabled={resolution.pending} onClick={resolution.onToggle}>
+              <CheckIcon />
+              {resolution.resolved ? "Unresolve thread" : "Resolve thread"}
+            </MenuItem>
+            <MenuSeparator />
+          </>
         ) : null}
-        {resolution?.resolved ? (
+        {onEdit ? <MenuItem onClick={onEdit}>Edit comment</MenuItem> : null}
+        <MenuSub>
+          <MenuSubTrigger>
+            <ClipboardIcon />
+            Copy
+          </MenuSubTrigger>
+          <MenuSubPopup>
+            <MenuItem
+              disabled={!url && !onCopyLink}
+              onClick={() =>
+                void (async () => {
+                  const link = onCopyLink ? await onCopyLink() : url;
+                  if (link) await copyToClipboard(link, undefined);
+                })()
+              }
+            >
+              <LinkIcon />
+              Link to comment
+            </MenuItem>
+            <MenuItem disabled={body.length === 0} onClick={() => copyToClipboard(body, undefined)}>
+              <TextIcon />
+              Copy as Markdown
+            </MenuItem>
+          </MenuSubPopup>
+        </MenuSub>
+        {onAddToComposer ? (
           <>
             <MenuSeparator />
-            <MenuItem disabled={resolution.pending} onClick={resolution.onToggle}>
-              Unresolve conversation
+            <MenuItem onClick={onAddToComposer}>
+              <MessageSquarePlusIcon />
+              Add to composer
             </MenuItem>
           </>
         ) : null}
