@@ -75,6 +75,7 @@ type ThreadGitHeaderActionItems = {
   readonly terminal: HeaderItem;
   readonly files: HeaderItem;
   readonly git: HeaderItem;
+  readonly mergeBack: HeaderItem | null;
 };
 type QuickActionIcon =
   | "arrow.down.circle"
@@ -394,6 +395,18 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
         type: "button",
         variant: "plain",
       },
+      mergeBack: props.onMergeBack
+        ? {
+            accessibilityLabel: "Merge back to source",
+            icon: { name: "arrow.triangle.merge", type: "sfSymbol" },
+            identifier: "thread-right-merge-back",
+            label: "Merge back",
+            onPress: props.onMergeBack,
+            sharesBackground: true,
+            type: "button",
+            variant: "plain",
+          }
+        : null,
     }),
     [
       model.openFiles,
@@ -402,6 +415,7 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       props.canOpenTerminal,
       props.canOperateTerminal,
       props.onOpenNewTerminal,
+      props.onMergeBack,
       props.onOpenTerminal,
       props.onRunProjectScript,
       props.projectScripts,
@@ -412,12 +426,30 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
 
 export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
-  return [actionItems.git, actionItems.files, actionItems.terminal] as HeaderItems;
+  return useMemo(
+    () =>
+      [
+        ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
+        actionItems.git,
+        actionItems.files,
+        actionItems.terminal,
+      ] as HeaderItems,
+    [actionItems],
+  );
 }
 
 export function useThreadGitCenterHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
-  return [actionItems.files, actionItems.git, actionItems.terminal] as HeaderItems;
+  return useMemo(
+    () =>
+      [
+        actionItems.files,
+        actionItems.git,
+        ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
+        actionItems.terminal,
+      ] as HeaderItems,
+    [actionItems],
+  );
 }
 
 export function ThreadGitControls(props: ThreadGitControlsProps) {
