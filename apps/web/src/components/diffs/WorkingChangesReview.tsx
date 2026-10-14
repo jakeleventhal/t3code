@@ -160,7 +160,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const [generation, setGeneration] = useState(0);
   const navigationKey = props.navigationKey ?? JSON.stringify([environmentId, composerDraftTarget]);
   const remembered = workingNavigation.get(navigationKey);
-  const [view, setView] = useState<"files" | "git">(remembered?.view ?? "git");
+  const [chosenView, setView] = useState<"files" | "git" | null>(remembered?.view ?? null);
   const [selection, setSelection] = useState<WorkingSelection>(
     remembered?.selection ?? { scope: "unstaged", path: null },
   );
@@ -184,14 +184,22 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   const [workspacePath, setWorkspacePath] = useState<string | null>(
     remembered?.workspacePath ?? null,
   );
-  useLayoutEffect(() => {
-    workingNavigation.set(navigationKey, { view, selection, folded, message, workspacePath });
-  }, [navigationKey, view, selection, folded, message, workspacePath]);
   const [generatingMessage, setGeneratingMessage] = useState(false);
   const [reverting, setReverting] = useState<{ paths: string[]; label: string } | null>(null);
   const all = useWorkingChanges(props, undefined, generation);
   const staged = useWorkingChanges(props, "staged", generation);
   const unstaged = useWorkingChanges(props, "unstaged", generation);
+  const initialGitStatusReady = staged.query.data !== null && unstaged.query.data !== null;
+  const initialChangedCount =
+    (staged.source?.files?.length ?? staged.files.length) +
+    (unstaged.source?.files?.length ?? unstaged.files.length);
+  const view = chosenView ?? (initialGitStatusReady && initialChangedCount === 0 ? "files" : "git");
+  // Choose once after the initial read. Later writes keep the current reader open.
+  if (chosenView === null && initialGitStatusReady) setView(view);
+  useLayoutEffect(() => {
+    workingNavigation.set(navigationKey, { view, selection, folded, message, workspacePath });
+  }, [navigationKey, view, selection, folded, message, workspacePath]);
+
   const [optimistic, setOptimistic] = useState<{
     state: WorkingChangesState;
     confirmed: boolean;
@@ -575,6 +583,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
   };
   const viewTabs = (
     <ToggleGroup
+      className="w-full"
       value={[view]}
       onValueChange={(values) => {
         const next = values[0];
@@ -585,16 +594,16 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
       }}
       aria-label="Workspace navigation"
     >
-      <Toggle value="files">
-        <MorphIcon icon={Files} />
-        Files
-      </Toggle>
-      <Toggle value="git">
+      <Toggle value="git" className="flex-1">
         <MorphIcon icon={GitBranch} />
         Git
         <Badge size="sm" variant="info" aria-label={`${changedCount} changed files`}>
           {changedCount}
         </Badge>
+      </Toggle>
+      <Toggle value="files" className="flex-1">
+        <MorphIcon icon={Files} />
+        Files
       </Toggle>
     </ToggleGroup>
   );

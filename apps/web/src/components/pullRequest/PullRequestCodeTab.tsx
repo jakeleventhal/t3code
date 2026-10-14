@@ -130,9 +130,9 @@ import {
   nextPendingReviewCommentId,
   pullRequestReviewKey,
   usePendingReviewComments,
-  usePullRequestReviewStore,
   type PendingReviewComment,
 } from "./pullRequestReviewStore";
+import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
 
 /** Everything pinned to one line of one file: what is already there, and what is being added. */
 interface ReviewAnnotationGroup {
@@ -402,9 +402,8 @@ function PullRequestCodeTab({
       input: { ...reference, ...(commit === null ? {} : { commit }) },
     }),
   );
-  const reviewKey = referenceKey;
   const pendingComments = usePendingReviewComments(reference, detail.reviewThreads);
-  const addComment = usePullRequestReviewStore((store) => store.addComment);
+  const { add: addComment } = usePendingReviewCommentActions(environmentId, reference);
   const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
     reportFailure: false,
   });
@@ -1363,13 +1362,16 @@ function PullRequestCodeTab({
               setSelectedLines(null);
             }}
             onComment={(body) => {
-              addComment(reviewKey, {
-                id: nextPendingReviewCommentId(),
-                path: draft.path,
-                ...(draft.oldPath === null ? {} : { oldPath: draft.oldPath }),
-                position: draft.position,
-                body,
-              });
+              addComment(
+                {
+                  id: nextPendingReviewCommentId(),
+                  path: draft.path,
+                  ...(draft.oldPath === null ? {} : { oldPath: draft.oldPath }),
+                  position: draft.position,
+                  body,
+                },
+                detail.capabilities.review.draftComment === true,
+              );
               setDraft(null);
               setSelectedLines(null);
             }}
@@ -1387,7 +1389,6 @@ function PullRequestCodeTab({
       onAddToAgentSelection,
       onAddPendingToComposer,
       renderThreadCard,
-      reviewKey,
     ],
   );
 

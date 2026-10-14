@@ -34,11 +34,15 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
   const params = route.params;
   const navigation = useNavigation();
   const store = usePullRequestReviewDraft(params);
-  const saved = store.comments.find((draft) => draft.id === params.draftId);
+  const [commentId] = useState(() => params.draftId ?? uuidv4());
+  const saved = store.comments.find((draft) => draft.id === commentId);
   const [editedBody, setBody] = useState<string | null>(null);
   const body = editedBody ?? saved?.body ?? params.body ?? "";
   const pendingActions = usePendingReviewCommentActions(params);
   const updateComment = useAtomCommand(composerPullRequests.updateComment, {
+    reportFailure: false,
+  });
+  const saveDraftComment = useAtomCommand(composerPullRequests.saveDraftComment, {
     reportFailure: false,
   });
   const detail = useEnvironmentQuery(composerPullRequests.detail(pullRequestTarget(params)));
@@ -92,28 +96,42 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
         });
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       }
+      const comment = {
+        id: commentId,
+        path: params.path,
+        ...(params.oldPath ? { oldPath: params.oldPath } : {}),
+        position: params.position,
+        headSha: params.headSha,
+        code: params.code,
+        body,
+        ...(hostedComment ? { hostedComment } : {}),
+      };
       store.update((draft) => ({
         ...draft,
-        comments: [
-          ...draft.comments.filter((comment) => comment.id !== params.draftId),
-          {
-            id: params.draftId ?? uuidv4(),
-            path: params.path,
-            ...(params.oldPath ? { oldPath: params.oldPath } : {}),
-            position: params.position,
-            headSha: params.headSha,
-            code: params.code,
-            body,
-            ...(hostedComment ? { hostedComment } : {}),
-          },
-        ],
+        comments: [...draft.comments.filter((comment) => comment.id !== commentId), comment],
       }));
       await store.flush();
+      if (!hostedComment && detail.data?.capabilities.review.draftComment === true) {
+        const target = pullRequestTarget(params);
+        const result = await saveDraftComment({
+          ...target,
+          input: { ...target.input, comment },
+        });
+        if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+        store.update((draft) => ({
+          ...draft,
+          comments: draft.comments.map((entry) =>
+            entry.id === comment.id ? { ...entry, hostedComment: result.value } : entry,
+          ),
+        }));
+        await store.flush();
+      }
+      detail.refresh();
       navigation.goBack();
     } catch (cause) {
       Alert.alert(
         "Could not save the review comment",
-        cause instanceof Error ? cause.message : "Your draft has been kept. Try again.",
+        `${cause instanceof Error ? cause.message : "Saving failed."}\nYour draft is kept in T3. Try saving again.`,
       );
     } finally {
       if (locked) setReviewDraftBusy(params, false);

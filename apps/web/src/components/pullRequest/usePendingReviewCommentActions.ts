@@ -1,15 +1,18 @@
 import { useAtomValue } from "@effect/atom-react";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { useCallback } from "react";
 import type { EnvironmentId, PullRequestRef } from "@t3tools/contracts";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../ui/toast";
 import {
   pullRequestReviewKey,
+  savePendingReviewComment,
   usePullRequestReviewStore,
   type PendingReviewComment,
 } from "./pullRequestReviewStore";
 
-/** Saving a link stays private; discarding and submitting still operate on that same comment. */
+/** Saving a review comment stays private until the review is submitted. */
 export function usePendingReviewCommentActions(
   environmentId: EnvironmentId,
   reference: PullRequestRef,
@@ -26,25 +29,34 @@ export function usePendingReviewCommentActions(
   const remove = useAtomCommand(pullRequestEnvironment.discardDraftComment, {
     reportFailure: false,
   });
-  const copyLink = async (givenComment: PendingReviewComment) => {
-    const store = usePullRequestReviewStore.getState();
-    const comment =
-      store.drafts[key]?.find((entry) => entry.id === givenComment.id) ?? givenComment;
-    if (comment.hostedComment) return comment.hostedComment.url;
-    if (store.busyComments[key]?.includes(comment.id)) return null;
-    store.setCommentBusy(key, comment.id, true);
-    try {
-      const result = await save({ environmentId, input: { ...reference, comment } });
-      if (result._tag === "Failure") {
-        toastManager.add({ type: "error", title: "Could not save the pending comment link" });
+  const saveDraft = useCallback(
+    async (comment: PendingReviewComment) => {
+      try {
+        return await savePendingReviewComment(key, comment, async (draft) => {
+          const result = await save({ environmentId, input: { ...reference, comment: draft } });
+          if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+          return result.value;
+        });
+      } catch (cause) {
+        toastManager.add({
+          type: "error",
+          title: "Could not save the pending comment to GitHub",
+          description:
+            cause instanceof Error ? cause.message : "Your draft is kept in T3. Retry saving it.",
+        });
         return null;
       }
-      store.setHostedComment(key, comment.id, result.value);
-      return result.value.url;
-    } finally {
-      store.setCommentBusy(key, comment.id, false);
-    }
-  };
+    },
+    [key, save, environmentId, reference],
+  );
+  const add = useCallback(
+    (comment: PendingReviewComment, saveToHost: boolean) => {
+      usePullRequestReviewStore.getState().addComment(key, comment);
+      if (saveToHost) void saveDraft(comment);
+    },
+    [key, saveDraft],
+  );
+  const copyLink = async (comment: PendingReviewComment) => (await saveDraft(comment))?.url ?? null;
   const discard = async (givenComment: PendingReviewComment) => {
     const store = usePullRequestReviewStore.getState();
     const comment =
@@ -77,5 +89,5 @@ export function usePendingReviewCommentActions(
       if (!(await discard(comment))) return;
     }
   };
-  return { busy, canSave, canDiscard, copyLink, discard, discardAll };
+  return { busy, canSave, canDiscard, add, saveDraft, copyLink, discard, discardAll };
 }
