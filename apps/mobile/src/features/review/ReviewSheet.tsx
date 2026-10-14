@@ -1,6 +1,11 @@
 import { WorkingChangesReview } from "./WorkingChangesReview";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import {
+  StackActions,
+  useFocusEffect,
+  useNavigation,
+  type StaticScreenProps,
+} from "@react-navigation/native";
 import { AppActivityIndicator } from "../../components/AppActivityIndicator";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useReviewHeaderPresentation } from "./useReviewHeaderPresentation";
@@ -60,6 +65,11 @@ import { resolveReviewAvailability } from "./reviewAvailability";
 import { ReviewComparisonPicker } from "./ReviewComparisonPicker";
 import { ReviewFileTree } from "./ReviewFileTree";
 import { selectReviewFileDiff } from "./reviewPaneSelection";
+import {
+  readThreadReviewSelection,
+  rememberThreadReviewSelection,
+  workspaceThreadMemoryKey,
+} from "../workspace/workspacePaneMemory";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 
 export function ReviewHeader(
@@ -211,8 +221,8 @@ export function ReviewSheet(
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
 
-  const isOverview = props.openedFile === undefined;
-  const [defaultSelectionPending, setDefaultSelectionPending] = useState(isOverview);
+  const memoryKey = workspaceThreadMemoryKey(String(environmentId), String(threadId));
+  const [rememberedReview] = useState(() => readThreadReviewSelection(memoryKey));
   const {
     error,
     reviewSections,
@@ -228,14 +238,21 @@ export function ReviewSheet(
     threadId,
     reviewCache,
     selectedSectionId:
-      props.openedFile?.sectionId ?? (defaultSelectionPending ? "git:working-tree" : undefined),
+      props.openedFile?.sectionId ??
+      reviewCache.selectedSectionId ??
+      rememberedReview?.sectionId ??
+      "git:working-tree",
   });
-  useEffect(() => {
-    if (!isOverview) return;
-    selectSection("git:working-tree");
-    // eslint-disable-next-line react/set-state-in-effect -- Reset the comparison once when entering Git, while keeping subsequent navigation in the shared review cache.
-    setDefaultSelectionPending(false);
-  }, [isOverview, selectSection]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedSection) return;
+      rememberThreadReviewSelection(memoryKey, {
+        sectionId: selectedSection.id,
+        ...(props.openedFile?.path ? { path: props.openedFile.path } : {}),
+        ...(props.openedFile?.scope ? { scope: props.openedFile.scope } : {}),
+      });
+    }, [memoryKey, selectedSection, props.openedFile]),
+  );
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,
     sections: reviewSections,

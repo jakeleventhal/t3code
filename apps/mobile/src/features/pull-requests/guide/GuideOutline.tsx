@@ -1,16 +1,16 @@
 import type { PullRequestReviewGuide } from "@t3tools/contracts";
-import { stopFilePaths, reviewGuideStopProgress } from "@t3tools/client-runtime/review-guide-tour";
+import { reviewGuideStopProgress } from "@t3tools/client-runtime/review-guide-tour";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../../components/AppText";
 import { SymbolView } from "../../../components/AppSymbol";
-import { PullRequestMarkdown } from "../PullRequestMarkdown";
 import { ControlPillMenu } from "../../../components/ControlPillMenu";
+import { GuideFiles, type GuideFileMetadata } from "./GuideFiles";
+import { GuideViewOptionsButton } from "./GuideViewOptions";
 
-import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";
-
-/** The stops are a reading sequence, with file context kept beside each idea. */
+/** Compact chapter cards preserve separate native chapter navigation. */
 export function GuideOutline({
   guide,
+  files,
   onOpen,
   onRewrite,
   isViewed,
@@ -19,6 +19,7 @@ export function GuideOutline({
   onSetChapterViewed,
 }: {
   readonly guide: PullRequestReviewGuide;
+  readonly files: ReadonlyArray<GuideFileMetadata>;
   readonly onOpen: (position: number) => void;
   readonly onRewrite?: (() => void) | undefined;
   readonly isViewed: (path: string) => boolean;
@@ -28,151 +29,136 @@ export function GuideOutline({
     | ((paths: ReadonlyArray<string>, viewed: boolean) => void)
     | undefined;
 }) {
-  const { appearance, setCodeWordBreak } = useAppearancePreferences();
-  const files = new Set(guide.stops.flatMap(stopFilePaths));
+  const reviewedChapters = guide.stops.filter(
+    (stop) => reviewGuideStopProgress(stop, isViewed).reviewed,
+  ).length;
   return (
     <View>
-      <View className="mb-5 flex-row items-center justify-between">
-        <View className="flex-row items-baseline gap-2">
-          <Text className="text-base font-t3-semibold">{guide.stops.length} chapters</Text>
-          <Text className="text-sm text-foreground-muted">
-            through {files.size} {files.size === 1 ? "file" : "files"}
-          </Text>
+      <View className="mb-2 flex-row items-center justify-between">
+        <Text className="text-xs text-foreground-muted">
+          {reviewedChapters} of {guide.stops.length} chapters reviewed
+        </Text>
+        <View className="flex-row items-center">
+          <GuideViewOptionsButton />
+          {onRewrite ? (
+            <ControlPillMenu
+              title="Guide actions"
+              actions={[{ id: "rewrite", title: "Rewrite guide", image: "arrow.clockwise" }]}
+              onPressAction={() => onRewrite()}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Guide actions"
+                className="h-11 w-11 items-center justify-center rounded-lg active:bg-grouped-card"
+              >
+                <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
+              </Pressable>
+            </ControlPillMenu>
+          ) : null}
         </View>
-        <ControlPillMenu
-          title="Guide options"
-          actions={[
-            {
-              id: "word-wrap",
-              title: "Word wrap",
-              image: "text.alignleft",
-              state: appearance.codeWordBreak ? "on" : "off",
-            },
-            ...(onRewrite
-              ? [{ id: "rewrite", title: "Rewrite guide", image: "arrow.clockwise" }]
-              : []),
-          ]}
-          onPressAction={({ nativeEvent }) =>
-            nativeEvent.event === "word-wrap"
-              ? setCodeWordBreak(!appearance.codeWordBreak)
-              : onRewrite?.()
-          }
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Guide options"
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-grouped-card"
-          >
-            <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
-          </Pressable>
-        </ControlPillMenu>
       </View>
       {guide.stops.map((stop, position) => {
         const progress = reviewGuideStopProgress(stop, isViewed);
-        const paths = progress.paths;
-        const firstPath = paths[0];
-        const filename = firstPath?.split("/").at(-1);
+        const chapterFiles = files.filter((file) => progress.paths.includes(file.path));
+        const totals = chapterFiles.reduce(
+          (sum, file) => ({
+            additions: sum.additions + file.additions,
+            deletions: sum.deletions + file.deletions,
+          }),
+          { additions: 0, deletions: 0 },
+        );
+        const hasAllStats =
+          progress.paths.length > 0 && chapterFiles.length === progress.paths.length;
         return (
-          <View key={`${guide.headSha}:${JSON.stringify(stop)}`} className="mb-6">
+          <View
+            key={`${guide.headSha}:${JSON.stringify(stop)}`}
+            className="mb-3 gap-1 rounded-2xl border border-border-subtle bg-screen p-3"
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Chapter ${position + 1}: ${stop.title}`}
               onPress={() => onOpen(position)}
-              className="flex-row gap-4 active:opacity-60"
+              className="min-h-11 flex-row items-start gap-2 active:opacity-60"
             >
-              <View className="w-8 items-center">
-                <View className="h-8 w-8 items-center justify-center rounded-full border border-border bg-grouped-card">
-                  <Text className="text-sm font-t3-medium tabular-nums">{position + 1}</Text>
+              <View className="mt-1 h-6 w-6 items-center justify-center rounded-full border border-border-subtle">
+                {progress.reviewed ? (
+                  <SymbolView
+                    name="checkmark"
+                    size={11}
+                    tintColorClassName="accent-adaptive-emerald-600-400"
+                  />
+                ) : (
+                  <Text className="text-xs text-foreground-muted tabular-nums">{position + 1}</Text>
+                )}
+              </View>
+              <View className="min-w-0 flex-1">
+                <View className="min-h-7 flex-row items-start justify-between gap-2">
+                  <Text className="min-w-0 flex-1 text-sm leading-5 font-t3-semibold">
+                    {stop.title}
+                  </Text>
+                  <View className="h-5 flex-row items-center gap-2">
+                    {hasAllStats ? (
+                      <View className="flex-row gap-1">
+                        <Text className="text-xs tabular-nums text-adaptive-emerald-600-400">
+                          +{totals.additions}
+                        </Text>
+                        <Text className="text-xs tabular-nums text-danger-foreground">
+                          −{totals.deletions}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <SymbolView
+                      name="chevron.right"
+                      size={11}
+                      tintColorClassName="accent-icon-muted"
+                    />
+                  </View>
                 </View>
-                {position < guide.stops.length - 1 ? (
-                  <View className="min-h-5 w-px flex-1 bg-border-subtle" />
+                {stop.attention ? (
+                  <Text className="text-xs text-warning-foreground">Look closely</Text>
+                ) : null}
+                {stop.summary ? (
+                  <Text numberOfLines={3} className="mt-1 text-sm leading-5 text-foreground-muted">
+                    {stop.summary}
+                  </Text>
                 ) : null}
               </View>
-              <View className="min-w-0 flex-1 gap-2 pb-7 pt-0.5">
-                <Text className="text-base leading-6 font-t3-medium">{stop.title}</Text>
-                {stop.summary ? <PullRequestMarkdown markdown={stop.summary} /> : null}
-                <View className="flex-row items-center gap-1.5">
-                  {stop.attention ? (
-                    <SymbolView
-                      name="eye"
-                      size={14}
-                      tintColorClassName="accent-warning-foreground"
-                    />
-                  ) : null}
-                  <Text className="shrink text-xs text-foreground-muted" numberOfLines={1}>
-                    {filename ?? "Context"}
-                    {paths.length > 1 ? ` +${paths.length - 1}` : ""}
-                  </Text>
-                </View>
-              </View>
-              <View className="pt-2">
-                <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-muted" />
-              </View>
             </Pressable>
-            {paths.length && onSetChapterViewed ? (
+            {progress.paths.length ? (
               <Pressable
                 accessibilityRole="checkbox"
-                accessibilityState={{ checked: progress.reviewed }}
-                accessibilityLabel={`Mark chapter ${position + 1} reviewed`}
-                className="ml-12 mb-2 min-h-11 flex-row items-center gap-2"
-                onPress={() => onSetChapterViewed(paths, !progress.reviewed)}
+                accessibilityState={{ checked: progress.reviewed, disabled: !onSetChapterViewed }}
+                accessibilityLabel={`Mark chapter ${position + 1} ${progress.reviewed ? "unreviewed" : "reviewed"}`}
+                disabled={!onSetChapterViewed}
+                className="min-h-11 flex-row items-center gap-2"
+                onPress={() => onSetChapterViewed?.(progress.paths, !progress.reviewed)}
               >
-                <SymbolView
-                  name={progress.reviewed ? "checkmark.circle.fill" : "circle"}
-                  size={17}
-                  tintColorClassName="accent-icon-muted"
-                />
+                <View className="w-6 items-center">
+                  <SymbolView
+                    name={progress.reviewed ? "checkmark.square.fill" : "square"}
+                    size={18}
+                    tintColorClassName={
+                      progress.reviewed ? "accent-adaptive-emerald-600-400" : "accent-icon-muted"
+                    }
+                  />
+                </View>
                 <Text className="text-xs text-foreground-muted">
-                  {progress.reviewedCount} of {paths.length} files reviewed
+                  {progress.reviewedCount} of {progress.paths.length} files reviewed
                 </Text>
               </Pressable>
-            ) : null}
-            {paths.length ? (
-              <View className="ml-12 overflow-hidden rounded-xl border border-border-subtle">
-                {paths.map((path) => (
-                  <View key={path} className="flex-row items-center gap-2 px-3">
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={path}
-                      className="min-h-11 min-w-0 flex-1 justify-center"
-                      onPress={() => onOpenFile(path)}
-                    >
-                      <Text numberOfLines={1} className="text-xs">
-                        {path}
-                      </Text>
-                    </Pressable>
-                    {onToggleViewed ? (
-                      <Pressable
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: isViewed(path) }}
-                        accessibilityLabel={`Reviewed ${path}`}
-                        className="min-h-11 min-w-11 items-center justify-center"
-                        onPress={() => onToggleViewed(path)}
-                      >
-                        <SymbolView
-                          name={isViewed(path) ? "checkmark.circle.fill" : "circle"}
-                          size={17}
-                          tintColorClassName="accent-icon-muted"
-                        />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ))}
-              </View>
-            ) : null}
+            ) : (
+              <Text className="py-2 text-xs text-foreground-muted">Context, no code</Text>
+            )}
+            <GuideFiles
+              paths={progress.paths}
+              files={files}
+              isViewed={isViewed}
+              onToggleViewed={onToggleViewed}
+              onOpenFile={onOpenFile}
+            />
           </View>
         );
       })}
-      {guide.stops.length ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onOpen(0)}
-          className="min-h-11 flex-row items-center justify-end gap-2 active:opacity-60"
-        >
-          <Text className="text-sm font-t3-medium">Start tour</Text>
-          <SymbolView name="arrow.right" size={17} tintColorClassName="accent-foreground" />
-        </Pressable>
-      ) : null}
     </View>
   );
 }

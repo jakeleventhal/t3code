@@ -32,11 +32,16 @@ export function combinePullRequestDiffPages(
   pages: readonly PullRequestDiffPage[],
   cache: WeakMap<PullRequestDiffResult, ReviewParsedDiff>,
   scope: string,
+  ignoreWhitespace = false,
 ): ReviewParsedDiff {
   const parsed = pages.map((page) => {
     const cached = cache.get(page.result);
     if (cached) return cached;
-    const value = buildReviewParsedDiff(page.result.patch, `${scope}:${page.cursor ?? "first"}`);
+    const value = buildReviewParsedDiff(
+      page.result.patch,
+      `${scope}:${page.cursor ?? "first"}`,
+      ignoreWhitespace,
+    );
     cache.set(page.result, value);
     return value;
   });

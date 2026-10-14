@@ -8,6 +8,9 @@ import {
   readWorkspacePane,
   rememberWorkspacePane,
   resolveWorkspacePane,
+  rememberThreadWorkspaceLocation,
+  readThreadReviewSelection,
+  workspaceThreadMemoryKey,
   type WorkspacePane,
 } from "./workspacePaneMemory";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -33,7 +36,10 @@ type Props = StaticScreenProps<{
 
 function ThreadWorkspaceScreen(props: Props) {
   const navigation = useNavigation();
-  const paneKey = JSON.stringify([props.route.params.environmentId, props.route.params.threadId]);
+  const paneKey = workspaceThreadMemoryKey(
+    props.route.params.environmentId,
+    props.route.params.threadId,
+  );
   const [tab, setTab] = useState<WorkspacePane | null>(() =>
     props.route.params.path
       ? "files"
@@ -70,6 +76,37 @@ function ThreadWorkspaceScreen(props: Props) {
   const selectTab = (pane: WorkspacePane) => {
     setTab(pane);
     rememberWorkspacePane(paneKey, pane);
+    const params = props.route.params;
+    if (pane === "files") {
+      rememberThreadWorkspaceLocation({
+        name: params.path ? "ThreadFile" : "ThreadFiles",
+        params: {
+          environmentId: params.environmentId,
+          threadId: params.threadId,
+          ...(params.path ? { path: params.path } : {}),
+          ...(params.line ? { line: params.line } : {}),
+          ...(params.cwd ? { cwd: params.cwd } : {}),
+          ...(params.projectName ? { projectName: params.projectName } : {}),
+        },
+      });
+    } else {
+      const sectionId = params.reviewSectionId ?? readThreadReviewSelection(paneKey)?.sectionId;
+      rememberThreadWorkspaceLocation({
+        name:
+          params.reviewFilePath || params.reviewWorkingTreeScope
+            ? "ThreadReviewFile"
+            : "ThreadReview",
+        params: {
+          environmentId: params.environmentId,
+          threadId: params.threadId,
+          ...(sectionId ? { reviewSectionId: sectionId } : {}),
+          ...(params.reviewFilePath ? { reviewFilePath: params.reviewFilePath } : {}),
+          ...(params.reviewWorkingTreeScope
+            ? { reviewWorkingTreeScope: params.reviewWorkingTreeScope }
+            : {}),
+        },
+      });
+    }
   };
   const tabs = (
     <View className="w-full border-b border-border-subtle bg-sheet px-3 py-2">
