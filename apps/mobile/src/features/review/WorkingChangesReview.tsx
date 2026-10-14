@@ -1,3 +1,16 @@
+import {
+  applyWorkingChangesMutation,
+  type WorkingChangesState,
+} from "@t3tools/client-runtime/review-working-changes-state";
+import { OptimisticReviewMutationQueue } from "@t3tools/client-runtime/review-mutation-queue";
+import {
+  nativeWorkingChangesSnapshot,
+  nativeWorkingChangesStateForMutation,
+  nativeWorkingReaderFiles,
+  nativeWorkingRenderableFile,
+} from "./workingChangesProjection";
+import { reviewDiffEdits } from "@t3tools/client-runtime/review-diff-context";
+import { parseReviewInlineComments } from "./reviewCommentSelection";
 import * as Hash from "effect/Hash";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -29,17 +42,20 @@ import {
   resolveNativeReviewDiffView,
   type NativeReviewDiffViewHandle,
 } from "../diffs/nativeReviewDiffSurface";
-import { NATIVE_REVIEW_DIFF_CONTENT_WIDTH } from "./nativeReviewDiffAdapter";
+import {
+  NATIVE_REVIEW_DIFF_CONTENT_WIDTH,
+  getCachedNativeReviewDiffData,
+} from "./nativeReviewDiffAdapter";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useReviewDiffData } from "./useReviewDiffData";
 import { useNativeReviewDiffBridge } from "./useNativeReviewDiffBridge";
 import { useReviewCommentSelectionController } from "./useReviewCommentSelectionController";
-import { buildReviewParsedDiff, type ReviewSectionItem } from "./reviewModel";
 import {
-  applyWorkingChangesTreeMutation,
-  type WorkingChangesTreeState,
-} from "./workingChangesTreeState";
+  buildReviewParsedDiff,
+  type ReviewSectionItem,
+  type ReviewParsedDiff,
+} from "./reviewModel";
 import { WorkingChangesTree, type WorkingScope } from "./WorkingChangesTree";
 import { useWorkingChangesQuery } from "./useWorkingChangesQuery";
 import {
@@ -133,7 +149,15 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   );
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set(remembered.foldedPaths));
-  const [pending, setPending] = useState(false);
+  const [actionPending, setPending] = useState(false);
+  const [stagingCount, setStagingCount] = useState(0);
+  const pending = actionPending || stagingCount > 0;
+  type StageMutation = { scope: WorkingScope; paths: ReadonlyArray<string>; patch?: string };
+  const stagingQueue = useRef<OptimisticReviewMutationQueue<
+    WorkingChangesState,
+    StageMutation
+  > | null>(null);
+  const stagingWrites = useRef(0);
   const busy = useRef(false);
   const [message, setMessage] = useState(remembered.message);
   useEffect(() => {
@@ -146,81 +170,133 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   const [generating, setGenerating] = useState(false);
   const staged = useWorkingChanges(props, "staged", generation);
   const unstaged = useWorkingChanges(props, "unstaged", generation);
-  const scopes = { staged, unstaged };
-  const [optimisticTree, setOptimisticTree] = useState<
-    | (WorkingChangesTreeState & {
-        confirmed: boolean;
-        stagedBefore: typeof staged.query.data;
-        unstagedBefore: typeof unstaged.query.data;
-      })
-    | null
-  >(null);
+  const authoritative = useMemo<WorkingChangesState>(
+    () => ({
+      staged: nativeWorkingChangesSnapshot(staged.files, staged.hunks),
+      unstaged: nativeWorkingChangesSnapshot(unstaged.files, unstaged.hunks),
+    }),
+    [staged.files, staged.hunks, unstaged.files, unstaged.hunks],
+  );
+  const [optimistic, setOptimistic] = useState<{
+    state: WorkingChangesState;
+    confirmed: boolean;
+    stagedBefore: typeof staged.query.data;
+    unstagedBefore: typeof unstaged.query.data;
+  } | null>(null);
   const queryData = useRef({ staged: staged.query.data, unstaged: unstaged.query.data });
   useLayoutEffect(() => {
     queryData.current = { staged: staged.query.data, unstaged: unstaged.query.data };
   }, [staged.query.data, unstaged.query.data]);
-  const tree = optimisticTree ?? { staged: staged.files, unstaged: unstaged.files };
+  const state = optimistic?.state ?? authoritative;
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  const scopes = { staged, unstaged };
+  const scope =
+    props.openedFile?.scope ?? selection?.scope ?? (unstaged.files.length ? "unstaged" : "staged");
+  const selectedPath = props.openedFile
+    ? (props.openedFile.path ?? null)
+    : (selection?.path ?? null);
+  const selected = selection;
+  const readerKey = JSON.stringify(["git", scope, selectedPath]);
+  const readerKeyRef = useRef(readerKey);
+  useLayoutEffect(() => {
+    readerKeyRef.current = readerKey;
+  }, [readerKey]);
+  const [readerContext, setReaderContext] = useState<{
+    key: string;
+    state: WorkingChangesState;
+  } | null>(null);
+  const readerContextRef = useRef(readerContext);
+  useLayoutEffect(() => {
+    readerContextRef.current = readerContext;
+  }, [readerContext]);
+  const retained = readerContext?.key === readerKey ? readerContext.state[scope] : null;
+  const data = { ...scopes[scope], hunks: state[scope].hunksByPath };
+  const originals = useMemo(
+    () => new Map([...staged.files, ...unstaged.files].map((file) => [file.path, file])),
+    [staged.files, unstaged.files],
+  );
+  const tree = useMemo(
+    () => ({
+      staged: state.staged.files
+        .filter((file) => reviewDiffEdits(file) !== "[]" || file.cacheKey?.endsWith(":pending"))
+        .map((file) => nativeWorkingRenderableFile(file, originals.get(file.name))),
+      unstaged: state.unstaged.files
+        .filter((file) => reviewDiffEdits(file) !== "[]" || file.cacheKey?.endsWith(":pending"))
+        .map((file) => nativeWorkingRenderableFile(file, originals.get(file.name))),
+    }),
+    [state, originals],
+  );
   const [pullRefreshing, setPullRefreshing] = useState(false);
+  const observedRefresh = useRef({ staged: false, unstaged: false });
   useEffect(() => {
+    if (staged.query.isPending) observedRefresh.current.staged = true;
+    if (unstaged.query.isPending) observedRefresh.current.unstaged = true;
     if (staged.query.isPending || unstaged.query.isPending) return;
-    // eslint-disable-next-line react/set-state-in-effect -- The remote query completion ends a user-triggered refresh.
+    // eslint-disable-next-line react/set-state-in-effect -- A completed refresh acknowledges a user operation.
     setPullRefreshing(false);
-    if (!optimisticTree?.confirmed) return;
     if (
-      (staged.query.data !== optimisticTree.stagedBefore &&
-        unstaged.query.data !== optimisticTree.unstagedBefore) ||
-      staged.query.error ||
-      unstaged.query.error
-    ) {
-      setOptimisticTree(null);
-      busy.current = false;
-      setPending(false);
-    }
+      !optimistic?.confirmed ||
+      stagingWrites.current > 0 ||
+      staged.diff.isPending ||
+      unstaged.diff.isPending
+    )
+      return;
+    // Preserve the successful projection if reading Git fails; a refresh can recover it.
+    if (staged.query.error || unstaged.query.error) return;
+    const freshStaged =
+      staged.query.data !== optimistic.stagedBefore || observedRefresh.current.staged;
+    const freshUnstaged =
+      unstaged.query.data !== optimistic.unstagedBefore || observedRefresh.current.unstaged;
+    if (freshStaged && freshUnstaged) setOptimistic(null);
   }, [
-    optimisticTree,
+    optimistic,
     staged.query.data,
     unstaged.query.data,
     staged.query.isPending,
     unstaged.query.isPending,
     staged.query.error,
     unstaged.query.error,
+    staged.diff.isPending,
+    unstaged.diff.isPending,
   ]);
-  const selected =
-    selection && scopes[selection.scope].files.some((file) => file.path === selection.path)
-      ? selection
-      : selection &&
-          scopes[selection.scope === "staged" ? "unstaged" : "staged"].files.some(
-            (file) => file.path === selection.path,
-          )
-        ? {
-            ...selection,
-            scope: selection.scope === "staged" ? ("unstaged" as const) : ("staged" as const),
-          }
-        : null;
-  const scope =
-    props.openedFile && !props.openedFile.path
-      ? props.openedFile.scope
-      : (selected?.scope ?? (unstaged.files.length ? "unstaged" : "staged"));
-  const data = scopes[scope];
-  const selectedPath =
-    props.openedFile && !props.openedFile.path
-      ? null
-      : (selected?.path ?? props.openedFile?.path ?? null);
-  const readerKey = JSON.stringify(["git", scope, selectedPath]);
   const restoreAnchor = useMemo(
     () => getWorkingChangesReviewMemory(props.memoryKey).anchors[readerKey],
     [props.memoryKey, readerKey],
   );
   const files = useMemo(
     () =>
-      props.openedFile && !props.openedFile.path
-        ? data.files
-        : data.files.filter((file) => file.path === selectedPath),
-    [data.files, selectedPath, props.openedFile],
+      nativeWorkingReaderFiles(state[scope], retained)
+        .filter((file) => selectedPath === null || file.name === selectedPath)
+        .map((file) => nativeWorkingRenderableFile(file, originals.get(file.name))),
+    [state, scope, retained, selectedPath, originals],
+  );
+  const parsedReader = useMemo<ReviewParsedDiff>(
+    () => ({
+      kind: "files",
+      files,
+      fileCount: files.length,
+      additions: files.reduce((count, file) => count + file.additions, 0),
+      deletions: files.reduce((count, file) => count + file.deletions, 0),
+      notice: null,
+    }),
+    [files],
+  );
+  const nativeReader = useMemo(
+    () =>
+      getCachedNativeReviewDiffData({
+        parsedDiff: parsedReader,
+        comments: parseReviewInlineComments(props.draftMessage).filter(
+          (comment) => comment.sectionId === data.section.id,
+        ),
+      }),
+    [parsedReader, props.draftMessage, data.section.id],
   );
   const canStage = useAtomValue(reviewEnvironment.setStaged.permissionAtom(environmentId));
   const rendered = useMemo(() => {
-    const native = data.diff.nativeReviewDiffData;
+    const native = nativeReader;
     const paths = new Set(files.map((file) => file.path));
     const nativeFiles = native.files.filter((file) => paths.has(file.path));
     const ids = new Set(nativeFiles.map((file) => file.id));
@@ -240,11 +316,11 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
             // A tap from an older native frame must not act on a replaced patch or scope.
             id: `${row.id}:${scope}:${Hash.string(patch)}`,
             hunkAction: scope === "staged" ? ("Unstage hunk" as const) : ("Stage hunk" as const),
-            hunkActionDisabled: !canStage || pending,
+            hunkActionDisabled: !canStage || actionPending,
           };
         }),
     };
-  }, [data.diff.nativeReviewDiffData, data.hunks, files, scope, canStage, pending]);
+  }, [nativeReader, data.hunks, files, scope, canStage, actionPending]);
   const file = files.find((file) => file.id === visibleFileId) ?? files[0];
   const canRevert = useAtomValue(reviewEnvironment.revert.permissionAtom(environmentId));
   const canCommit = useAtomValue(reviewEnvironment.commit.permissionAtom(environmentId));
@@ -262,7 +338,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     props.onChanged();
   };
   const lock = () => {
-    if (busy.current) return false;
+    if (busy.current || stagingWrites.current > 0) return false;
     busy.current = true;
     setPending(true);
     return true;
@@ -272,68 +348,76 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     setPending(false);
   };
   const pathsFor = (scope: WorkingScope, path: string | null) =>
-    scopes[scope].files.flatMap((file) =>
+    tree[scope].flatMap((file) =>
       path === null || file.path === path || reviewFolderContains(path, file.path)
         ? [file.path, ...(file.previousPath ? [file.previousPath] : [])]
         : [],
     );
-  const optimisticallyUpdateTree = (
-    scope: WorkingScope,
-    paths: ReadonlyArray<string>,
-    revert = false,
-  ) => {
-    setOptimisticTree({
-      ...applyWorkingChangesTreeMutation(tree, { scope, paths, revert }),
+  const stateForMutation = () =>
+    nativeWorkingChangesStateForMutation(
+      stateRef.current,
+      readerContextRef.current?.key === readerKeyRef.current
+        ? readerContextRef.current.state
+        : null,
+    );
+  const projectMutation = (mutation: StageMutation & { revert?: boolean }) => {
+    const before = stateForMutation();
+    const next = applyWorkingChangesMutation(before, before[mutation.scope], mutation);
+    stateRef.current = next;
+    setOptimistic({
+      state: next,
       confirmed: false,
-      stagedBefore: staged.query.data,
-      unstagedBefore: unstaged.query.data,
+      stagedBefore: queryData.current.staged,
+      unstagedBefore: queryData.current.unstaged,
     });
+    setReaderContext({ key: readerKeyRef.current, state: next });
+    return before;
   };
-  const settleTreeMutation = (success: boolean) => {
-    if (success)
-      setOptimisticTree((current) =>
-        current
-          ? {
-              ...current,
-              confirmed: true,
-              stagedBefore: queryData.current.staged,
-              unstagedBefore: queryData.current.unstaged,
-            }
-          : null,
-      );
-    else {
-      setOptimisticTree(null);
-      unlock();
+  const updateStaging = (scope: WorkingScope, paths: ReadonlyArray<string>, patch?: string) => {
+    if (!canStage || !paths.length || busy.current) return;
+    if (stagingWrites.current === 0) {
+      const initial = stateForMutation();
+      stagingQueue.current = new OptimisticReviewMutationQueue(initial, {
+        apply: (current, mutation) =>
+          applyWorkingChangesMutation(current, initial[mutation.scope], mutation),
+        send: async (mutation) => {
+          const result = await stage({
+            environmentId,
+            input: {
+              cwd,
+              paths: [...new Set(mutation.paths)],
+              staged: mutation.scope === "unstaged",
+              ...(mutation.patch ? { patch: mutation.patch } : {}),
+            },
+          });
+          return result._tag === "Success";
+        },
+        onSnapshot: (next, count) => {
+          stateRef.current = next;
+          stagingWrites.current = count;
+          setStagingCount(count);
+          setOptimistic({
+            state: next,
+            confirmed: count === 0,
+            stagedBefore: queryData.current.staged,
+            unstagedBefore: queryData.current.unstaged,
+          });
+          const context = { key: readerKeyRef.current, state: next };
+          readerContextRef.current = context;
+          setReaderContext(context);
+          if (count === 0) {
+            observedRefresh.current = { staged: false, unstaged: false };
+            refresh();
+          }
+        },
+        onFailure: () =>
+          Alert.alert(
+            "Could not update staging",
+            "The file may have changed. Refresh and try again.",
+          ),
+      });
     }
-    refresh();
-  };
-  const updateStaging = async (
-    scope: WorkingScope,
-    paths: ReadonlyArray<string>,
-    patch?: string,
-  ) => {
-    if (!canStage || !paths.length || !lock()) return;
-    if (!patch) optimisticallyUpdateTree(scope, paths);
-    const result = await stage({
-      environmentId,
-      input: {
-        cwd,
-        paths: [...new Set(paths)],
-        staged: scope === "unstaged",
-        ...(patch ? { patch } : {}),
-      },
-    });
-    if (patch) {
-      unlock();
-      refresh();
-    } else settleTreeMutation(result._tag === "Success");
-    if (result._tag === "Failure")
-      Alert.alert("Could not update staging", "The file may have changed. Refresh and try again.");
-    else if (!patch)
-      setSelection((current) => ({
-        scope: scope === "unstaged" ? "staged" : "unstaged",
-        path: current && paths.includes(current.path) ? current.path : paths[0]!,
-      }));
+    stagingQueue.current?.enqueue({ scope, paths, ...(patch ? { patch } : {}) });
   };
   const confirmRevert = (path: string | null) => {
     const paths = pathsFor("unstaged", path);
@@ -349,9 +433,32 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
           onPress: () => {
             void (async () => {
               if (!lock()) return;
-              optimisticallyUpdateTree("unstaged", paths, true);
+              const before = projectMutation({ scope: "unstaged", paths, revert: true });
               const result = await revert({ environmentId, input: { cwd, paths } });
-              settleTreeMutation(result._tag === "Success");
+              if (result._tag === "Failure") {
+                stateRef.current = before;
+                setOptimistic({
+                  state: before,
+                  confirmed: true,
+                  stagedBefore: queryData.current.staged,
+                  unstagedBefore: queryData.current.unstaged,
+                });
+                setReaderContext({ key: readerKeyRef.current, state: before });
+              } else {
+                setOptimistic((current) =>
+                  current
+                    ? {
+                        ...current,
+                        confirmed: true,
+                        stagedBefore: queryData.current.staged,
+                        unstagedBefore: queryData.current.unstaged,
+                      }
+                    : null,
+                );
+              }
+              observedRefresh.current = { staged: false, unstaged: false };
+              unlock();
+              refresh();
               if (result._tag === "Failure")
                 Alert.alert("Could not revert changes", "Refresh and try again.");
             })();
@@ -361,7 +468,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     );
   };
   const generatePreview = async () => {
-    if (!canGenerate || !staged.files.length || !lock()) return;
+    if (!canGenerate || !tree.staged.length || !lock()) return;
     Keyboard.dismiss();
     setGenerating(true);
     const result = await generateMessage({ environmentId, input: { cwd } });
@@ -375,7 +482,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
       );
   };
   const runCommit = async (action: "commit" | "amend" | "commit-push") => {
-    if (!canCommit || (!staged.files.length && (action !== "amend" || !message.trim())) || !lock())
+    if (!canCommit || (!tree.staged.length && (action !== "amend" || !message.trim())) || !lock())
       return;
     Keyboard.dismiss();
     const result = await commit({ environmentId, input: { cwd, message, action } });
@@ -512,8 +619,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   };
   if (!props.openedFile) {
     const error = staged.query.error ?? unstaged.query.error;
-    const hasChanges =
-      tree.staged.length > 0 || tree.unstaged.length > 0 || optimisticTree !== null;
+    const hasChanges = tree.staged.length > 0 || tree.unstaged.length > 0 || optimistic !== null;
     return (
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -553,9 +659,9 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
                   accessibilityRole="button"
                   accessibilityLabel="Commit"
                   accessibilityState={{
-                    disabled: !canCommit || pending || !staged.files.length,
+                    disabled: !canCommit || pending || !tree.staged.length,
                   }}
-                  disabled={!canCommit || pending || !staged.files.length}
+                  disabled={!canCommit || pending || !tree.staged.length}
                   onPress={() => void runCommit("commit")}
                   className="min-h-11 flex-1 flex-row items-center justify-center gap-2 active:opacity-70"
                 >
@@ -574,20 +680,19 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
                     {
                       id: "commit",
                       title: "Commit",
-                      attributes: { disabled: !canCommit || pending || !staged.files.length },
+                      attributes: { disabled: !canCommit || pending || !tree.staged.length },
                     },
                     {
                       id: "amend",
                       title: "Commit (Amend)",
                       attributes: {
-                        disabled:
-                          !canCommit || pending || (!staged.files.length && !message.trim()),
+                        disabled: !canCommit || pending || (!tree.staged.length && !message.trim()),
                       },
                     },
                     {
                       id: "commit-push",
                       title: "Commit & Push",
-                      attributes: { disabled: !canCommit || pending || !staged.files.length },
+                      attributes: { disabled: !canCommit || pending || !tree.staged.length },
                     },
                   ]}
                   onPressAction={({ nativeEvent }) => {
@@ -617,7 +722,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
               staged={tree.staged}
               unstaged={tree.unstaged}
               selected={selected}
-              disabled={!canStage || pending}
+              disabled={!canStage || actionPending}
               revertDisabled={!canRevert || pending}
               onSelect={selectFile}
               onStage={(scope, path) => void updateStaging(scope, pathsFor(scope, path))}
@@ -666,7 +771,11 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
           <MaterialButton
             label={`${label} file`}
             tone="primary"
-            disabled={!canStage || pending}
+            disabled={
+              !canStage ||
+              actionPending ||
+              !tree[scope].some((changed) => changed.path === file.path)
+            }
             onPress={() => void updateStaging(scope, pathsFor(scope, file.path))}
           />
         ) : null}

@@ -1281,12 +1281,14 @@ function PullRequestCodeTab({
           )
         }
         onToggleResolved={() =>
-          void runThreadCommand("The conversation could not be updated", () =>
-            setThreadResolution({
-              environmentId,
-              input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
-            }),
-          )
+          void setThreadResolution({
+            environmentId,
+            input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
+          }).then((result) => {
+            if (result._tag === "Failure") {
+              toastManager.add({ type: "error", title: "The conversation could not be updated" });
+            }
+          })
         }
         onReacted={onRefresh}
         onAddToComposer={

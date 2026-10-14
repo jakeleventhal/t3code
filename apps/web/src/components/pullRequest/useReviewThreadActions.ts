@@ -74,12 +74,16 @@ export function useReviewThreadActions(
         edit({ environmentId, input: { ...reference, commentId, kind: "review-comment", body } }),
       ),
     onToggleResolved: () => {
-      void run("The conversation could not be updated", () =>
-        resolve({
-          environmentId,
-          input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
-        }),
-      );
+      // Resolution is projected across every view by the shared command. It may be queued
+      // without locking replies or other discussions while the host catches up.
+      void resolve({
+        environmentId,
+        input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
+      }).then((result) => {
+        if (result._tag === "Failure") {
+          toastManager.add({ type: "error", title: "The conversation could not be updated" });
+        }
+      });
     },
     onLoadMore: async (cursor: string) => {
       const result = await load({
