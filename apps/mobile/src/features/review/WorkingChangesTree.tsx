@@ -23,6 +23,7 @@ export function WorkingChangesTree({
   onSelect,
   onStage,
   onRevert,
+  onOpenScope,
   onRefresh,
   refreshing = false,
 }: {
@@ -34,6 +35,7 @@ export function WorkingChangesTree({
   onSelect: (scope: WorkingScope, path: string) => void;
   onStage: (scope: WorkingScope, path: string | null) => void;
   onRevert: (path: string | null) => void;
+  onOpenScope: (scope: WorkingScope) => void;
   onRefresh?: (() => void) | undefined;
   refreshing?: boolean;
 }) {
@@ -112,7 +114,7 @@ export function WorkingChangesTree({
               <View className="min-h-[42px] flex-row items-center border-b border-border-subtle pl-3">
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={row.scope === "staged" ? "Staged changes" : "Changes"}
+                  accessibilityLabel={row.scope === "staged" ? "Staged files" : "Unstaged files"}
                   accessibilityState={{ expanded: open[row.scope] }}
                   className="min-h-[42px] min-w-0 flex-1 flex-row items-center gap-2"
                   onPress={() =>
@@ -124,13 +126,22 @@ export function WorkingChangesTree({
                     size={12}
                     tintColorClassName="accent-icon-muted"
                   />
-                  <Text className="text-sm font-t3-semibold">
-                    {row.scope === "staged" ? "Staged changes" : "Changes"}
+                  <Text numberOfLines={1} className="min-w-0 flex-1 text-sm font-t3-semibold">
+                    {row.scope === "staged" ? "Staged files" : "Unstaged files"}
                   </Text>
                 </Pressable>
                 <Text className="rounded-md bg-secondary px-1.5 text-xs text-foreground-muted">
                   {(row.scope === "staged" ? staged : unstaged).length}
                 </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`View all ${row.scope} changes`}
+                  disabled={(row.scope === "staged" ? staged : unstaged).length === 0}
+                  onPress={() => onOpenScope(row.scope)}
+                  className="size-10 items-center justify-center active:bg-secondary"
+                >
+                  <SymbolView name="doc.text" size={17} tintColorClassName="accent-icon" />
+                </Pressable>
                 {actions(row.scope, null)}
               </View>
             );

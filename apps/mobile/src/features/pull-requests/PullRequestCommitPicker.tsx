@@ -72,7 +72,7 @@ export function PullRequestCommitPicker({
           <View className="gap-1 border-b border-border-subtle px-4 pb-3">
             <Text className="text-xs text-foreground-muted">
               {scope === null
-                ? "All commits"
+                ? "All"
                 : `${selected.length} ${selected.length === 1 ? "commit" : "commits"} selected`}
             </Text>
             {scope !== null && first ? (
@@ -93,7 +93,7 @@ export function PullRequestCommitPicker({
                 <SymbolView name="checkmark" size={13} tintColorClassName="accent-icon" />
               ) : null}
             </View>
-            <Text className="text-sm">All commits</Text>
+            <Text className="text-sm">All</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"

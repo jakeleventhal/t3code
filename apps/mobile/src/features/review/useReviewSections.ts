@@ -205,7 +205,21 @@ export function useReviewSections(input: {
     [reviewCache.threadKey],
   );
 
+  const liveGitUnavailableReason = fileAccess.isPending
+    ? null
+    : !canReadFiles
+      ? (fileAccess.error ??
+        "This connection cannot read files. Pair again with Read files access to view uncommitted and branch changes.")
+      : selectedThreadCwd === null
+        ? "This thread has no workspace to compare."
+        : (diffPreview.error ??
+          (diffPreview.data &&
+          !diffPreview.data.sources.some((source) => source.kind === "working-tree")
+            ? "The workspace is not available as a Git checkout. Recorded turn changes are still available."
+            : null));
+
   return {
+    liveGitUnavailableReason,
     error:
       diffPreview.error ??
       activeTurnDiff.error ??
