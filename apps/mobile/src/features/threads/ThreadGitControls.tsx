@@ -218,16 +218,12 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     }
   };
 
-  const openFiles = () => {
-    if (props.onOpenFilesInspector) {
-      props.onOpenFilesInspector();
-      return;
-    }
+  const openFiles = useCallback(() => {
     navigation.navigate("ThreadFiles", {
       environmentId: String(environmentId),
       threadId: String(threadId),
     });
-  };
+  }, [environmentId, navigation, threadId]);
 
   const openReview = () => {
     navigation.navigate("ThreadReview", {
@@ -388,11 +384,30 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
         ],
         title: "Git",
       },
-      sharesBackground: true,
-      type: "menu",
-      variant: "plain",
-    },
-  };
+      git: {
+        accessibilityLabel: "Open git",
+        icon: { name: "point.topleft.down.curvedto.point.bottomright.up", type: "sfSymbol" },
+        identifier: "thread-right-git",
+        label: "Git",
+        onPress: model.openReview,
+        sharesBackground: true,
+        type: "button",
+        variant: "plain",
+      },
+    }),
+    [
+      model.openFiles,
+      model.openReview,
+      props.canOpenFiles,
+      props.canOpenTerminal,
+      props.canOperateTerminal,
+      props.onOpenNewTerminal,
+      props.onOpenTerminal,
+      props.onRunProjectScript,
+      props.projectScripts,
+      props.terminalSessions,
+    ],
+  );
 }
 
 export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): HeaderItems {
@@ -535,14 +550,6 @@ function threadGitMenuDefinition(
         onPress: () => {
           void model.runQuickAction();
         },
-      },
-      {
-        id: "git-review",
-        title: "Review changes",
-        icon: "text.bubble",
-        disabled: !model.isRepo,
-        subtitle: "Turn diffs and worktree changes",
-        onPress: model.openReview,
       },
       {
         id: "git-more",

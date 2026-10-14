@@ -9,7 +9,6 @@ import * as Order from "effect/Order";
 export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
 
 const CHANGES_SECTION_ID = "git:branch-range";
-const CHANGES_TITLE = "Changes";
 const UNCOMMITTED_SUBTITLE = "Staged, unstaged, and untracked files";
 
 export interface ReviewSectionItem {
@@ -442,14 +441,15 @@ export function buildReviewSectionItems(input: {
     truncated: section.truncated,
     isLoading: false,
   }));
-  const hasChangesItem = gitItems.some((item) => item.id === CHANGES_SECTION_ID);
+  // Keep the initial uncommitted comparison selected as its preview arrives.
+  const hasChangesItem = gitItems.some((item) => item.kind === "working-tree");
   const visibleGitItems =
     input.loadingGitSections && !hasChangesItem
       ? [
           {
-            id: CHANGES_SECTION_ID,
-            kind: "branch-range",
-            title: CHANGES_TITLE,
+            id: "git:working-tree",
+            kind: "working-tree",
+            title: "Uncommitted changes",
             subtitle: null,
             diff: null,
             isLoading: true,
@@ -461,10 +461,17 @@ export function buildReviewSectionItems(input: {
   return [...turnItems, ...visibleGitItems];
 }
 
+/** Opens Git on uncommitted changes, with branch and turn fallbacks for other sources. */
 export function getDefaultReviewSectionId(
   sections: ReadonlyArray<ReviewSectionItem>,
 ): string | null {
-  return (sections.find((section) => section.id === CHANGES_SECTION_ID) ?? sections[0])?.id ?? null;
+  return (
+    (
+      sections.find((section) => section.kind === "working-tree") ??
+      sections.find((section) => section.id === CHANGES_SECTION_ID) ??
+      sections[0]
+    )?.id ?? null
+  );
 }
 
 export function buildReviewParsedDiff(

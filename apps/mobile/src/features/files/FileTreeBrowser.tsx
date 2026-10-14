@@ -1,9 +1,9 @@
 import { Button } from "../../components/ui/Button";
 import { LegendList } from "@legendapp/list/react-native";
 import type { ProjectEntry } from "@t3tools/contracts";
-import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
-import { SymbolView } from "../../components/ui/AppSymbol";
-import { useEffect, useRef, useState } from "react";
+import { AppActivityIndicator } from "../../components/AppActivityIndicator";
+import { SymbolView } from "../../components/AppSymbol";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -119,6 +119,7 @@ export function FileTreeBrowser(props: {
   readonly onPreviewFile?: (path: string) => void;
   readonly onRefresh: () => void;
   readonly onSelectFile: (path: string) => void;
+  readonly toolbar?: ReactNode;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingSelection, setPendingSelection] = useState<{
@@ -242,6 +243,7 @@ export function FileTreeBrowser(props: {
       renderItem={renderItem}
       ListHeaderComponent={
         <>
+          {props.toolbar}
           {props.error && props.entries.length > 0 ? (
             <Text accessibilityRole="alert" className="mx-4 my-2 text-xs text-foreground-muted">
               {props.error}

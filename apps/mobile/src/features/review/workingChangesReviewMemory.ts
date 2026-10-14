@@ -11,7 +11,6 @@ export interface WorkingChangesAnchor {
 }
 
 interface WorkingChangesReviewMemory {
-  readonly view: "files" | "git";
   readonly selection: { readonly scope: WorkingScope; readonly path: string } | null;
   readonly foldedPaths: ReadonlyArray<string>;
   readonly message: string;
@@ -20,7 +19,6 @@ interface WorkingChangesReviewMemory {
 
 const workingChangesReviewMemoryAtom = Atom.family((key: string) =>
   Atom.make<WorkingChangesReviewMemory>({
-    view: "git",
     selection: null,
     foldedPaths: [],
     message: "",

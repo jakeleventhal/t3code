@@ -7,14 +7,9 @@ import {
   requiresDefaultBranchConfirmation,
 } from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import {
-  CommonActions,
-  StackActions,
-  useNavigation,
-  type StaticScreenProps,
-} from "@react-navigation/native";
-import { SymbolView } from "../../../components/ui/AppSymbol";
-import { useEffect, useState } from "react";
+import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { SymbolView } from "../../../components/AppSymbol";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
 import { ScreenStack } from "react-native-screens";
@@ -41,8 +36,7 @@ import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
-import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
-import { menuItemIconName, statusSummary } from "./gitSheetComponents";
+import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
 import {
   LinkedPullRequestRow,
   linkedPullRequestKey,
@@ -202,20 +196,9 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     const status = gitStatus.data;
     if (status == null) {
       return undefined;
-    }
-    if (item.dialogAction === "commit" && status.hasWorkingTreeChanges) {
-      const fileCount = status.workingTree?.files.length ?? 0;
-      return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
-    }
-    if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
-      const ahead = status.aheadCount ?? 0;
-      return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
-    }
-    if (item.kind === "open_pr" && status.pr?.number != null) {
-      return `PR #${status.pr.number} ${status.pr.state ?? "open"}`;
-    }
-    return undefined;
-  };
+    },
+    [gitStatus.data],
+  );
 
   const behindCount = gitStatus.data?.behindCount ?? 0;
 
@@ -271,21 +254,8 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
             onPress={() => void gitActions.onPullSelectedThreadBranch()}
           />
         ) : null}
-        <ListRow
-          icon="text.bubble"
-          label="Review changes"
-          description="Inspect changes, uncommitted edits, and turn diffs"
-          disabled={busy || !isRepo}
-          onPress={() => {
-            const params = { environmentId, threadId };
-            navigation.dispatch(
-              resolveGitOverviewReviewNavigationAction(presentation) === "replace"
-                ? StackActions.replace("ThreadReview", params)
-                : CommonActions.navigate("ThreadReview", params),
-            );
-          }}
-        />
-        <ListRow
+        {Platform.OS !== "android" ? <View className="ml-12 h-px bg-border" /> : null}
+        <SheetListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label="Branches & worktrees"
           description={

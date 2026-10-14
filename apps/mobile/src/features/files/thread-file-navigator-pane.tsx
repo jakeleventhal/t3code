@@ -1,9 +1,9 @@
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { environmentSession } from "../../state/session";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { SymbolView } from "../../components/ui/AppSymbol";
-import { ScreenContent } from "../../components/ui/ScreenContent";
-import { useCallback, useMemo, useState, type ComponentProps } from "react";
+import { SymbolView } from "../../components/AppSymbol";
+import { MaterialScreenContent } from "../../components/MaterialScreenContent";
+import { useCallback, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";
 import {
   Screen,
@@ -32,6 +32,7 @@ export function ThreadFileNavigatorPane(props: {
   readonly projectName: string;
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
+  readonly toolbar?: ReactNode;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const { toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
@@ -105,6 +106,7 @@ export function ThreadFileNavigatorPane(props: {
       onPreviewFile={handlePreviewFile}
       onRefresh={entriesQuery.refresh}
       onSelectFile={props.onSelectFile}
+      toolbar={props.toolbar}
     />
   );
 

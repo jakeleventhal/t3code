@@ -4,14 +4,14 @@ import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
-import { AppBar } from "../../components/ui/AppBar";
-import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
-import type { ReviewSectionItem } from "./reviewModel";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { useReviewHeaderPresentation } from "./useReviewHeaderPresentation";
 import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
 import {
   type Ref,
   type ReactElement,
+  type ReactNode,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -19,6 +19,7 @@ import {
 } from "react";
 import {
   FlatList,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -65,30 +66,19 @@ import { useNativeReviewDiffBridge } from "./useNativeReviewDiffBridge";
 import { useReviewCommentSelectionController } from "./useReviewCommentSelectionController";
 import { resolveReviewAvailability } from "./reviewAvailability";
 import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
-import { buildReviewSectionMenu } from "./review-section-menu";
+import { ReviewComparisonPicker } from "./ReviewComparisonPicker";
+import { ReviewFileTree } from "./ReviewFileTree";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 
 function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
     readonly iconColor: string;
-    readonly sectionMenu: ReturnType<typeof buildReviewSectionMenu>;
-    readonly showSectionToolbar: boolean;
     readonly showChangedFilesToggle: boolean;
-    readonly onSelectSection: (sectionId: string) => void;
     readonly onReturnToThread: () => void;
   },
 ) {
   const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const presentation = useReviewHeaderPresentation(props);
-  const sectionAction = (section: ReviewSectionItem | null, title: string): AppBarMenuItem => ({
-    id: section ? `section:${section.id}` : `unavailable:${title}`,
-    title,
-    disabled: section === null,
-    selected: section !== null && section.id === props.selectedSection?.id,
-    onPress: () => {
-      if (section) props.onSelectSection(section.id);
-    },
-  });
   return (
     <AppBar
       title={presentation.title}
@@ -113,38 +103,12 @@ function ReviewHeader(
       }
       menus={[
         ...(presentation.gitMenu ? [presentation.gitMenu] : []),
-        ...(props.showSectionToolbar
+        ...(presentation.refreshAction
           ? [
               {
-                title: "Select diff",
-                icon: presentation.menuIcon,
-                items: [
-                  {
-                    id: "sections",
-                    inline: true,
-                    items: [
-                      sectionAction(props.sectionMenu.branchChanges, "Changes"),
-                      sectionAction(props.sectionMenu.workingTree, "Uncommitted"),
-                      sectionAction(props.sectionMenu.latestTurn, "Latest turn"),
-                    ],
-                  },
-                  ...(props.sectionMenu.turns.length > 0
-                    ? [
-                        {
-                          id: "turns",
-                          title: "Turn",
-                          items: props.sectionMenu.turns.map((section) => ({
-                            id: `section:${section.id}`,
-                            title: section.title,
-                            subtitle: section.subtitle ?? undefined,
-                            selected: section.id === props.selectedSection?.id,
-                            onPress: () => props.onSelectSection(section.id),
-                          })),
-                        },
-                      ]
-                    : []),
-                  ...(presentation.refreshAction ? [presentation.refreshAction] : []),
-                ],
+                title: "Git actions",
+                icon: "ellipsis" as const,
+                items: [presentation.refreshAction],
               },
             ]
           : []),
@@ -435,13 +399,14 @@ type ReviewSheetProps = StaticScreenProps<{
   readonly threadId: ThreadId;
 }>;
 
-export function ReviewSheet(props: ReviewSheetProps) {
+export function ReviewSheet(props: ReviewSheetProps & { readonly workspaceTabs?: ReactNode }) {
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
   useAdaptiveWorkspacePaneRole("inspector");
-  const { panes, showAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { panes, showAuxiliaryPane, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { themeAppearance: selectedTheme } = useAppearancePreferences();
+  const { themeAppearance: selectedTheme, themeVariables } = useAppearancePreferences();
+  const [showFiles, setShowFiles] = useState(false);
   const headerIcon = String(useUniwindTheme()["--color-icon"]);
   const { environmentId, threadId } = props.route.params;
   const environment = useEnvironmentPresentation(environmentId);
@@ -452,7 +417,8 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const columnMetrics = useNativeColumnLayoutMetrics();
   const safeArea = columnMetrics?.safeArea ?? insets;
-  const topContentInset = Platform.OS === "ios" ? safeArea.top : 0;
+  const toolbarInset = Platform.OS === "ios" ? safeArea.top : 0;
+  const topContentInset = 0;
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
 
@@ -519,11 +485,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
     cachedExpandedFileIds: selectedSection?.id
       ? reviewCache.expandedFileIdsBySection[selectedSection.id]
       : undefined,
-    cachedViewedFileIds: selectedSection?.id
-      ? reviewCache.viewedFileIdsBySection[selectedSection.id]
-      : undefined,
+    cachedViewedFileIds: undefined,
   });
-  const { collapsedFileIds, toggleExpandedFile, toggleViewedFile, viewedFileIds } = fileVisibility;
+  const { collapsedFileIds, toggleExpandedFile } = fileVisibility;
   const commentSelection = useReviewCommentSelectionController({
     environmentId,
     threadId,
@@ -536,7 +500,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     diff: selectedSection?.diff,
     data: nativeReviewDiffData,
     collapsedFileIds,
-    viewedFileIds,
+    viewedFileIds: [],
     selectedRowIds: commentSelection.selectedRowIds,
     canHighlight: parsedDiff.kind === "files",
   });
@@ -569,20 +533,21 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
   };
 
-  const handleNativeToggleViewedFile = (
-    event: NativeSyntheticEvent<{ readonly fileId?: string }>,
-  ) => {
-    const { fileId } = event.nativeEvent;
-    if (fileId) {
-      toggleViewedFile(fileId);
-    }
-  };
+  const handleNativeToggleFile = useCallback(
+    (event: NativeSyntheticEvent<{ readonly fileId?: string }>) => {
+      const { fileId } = event.nativeEvent;
+      if (fileId) {
+        loadVisibleFile(fileId, true);
+        toggleExpandedFile(fileId);
+      }
+    },
+    [toggleExpandedFile, loadVisibleFile],
+  );
 
   const parsedDiffNotice =
     parsedDiff.kind === "files" || parsedDiff.kind === "raw" ? parsedDiff.notice : null;
   const hasCachedSelectedDiff = selectedSection?.diff != null;
   const hasAnyCachedDiff = reviewSections.some((section) => section.diff != null);
-  const sectionMenu = buildReviewSectionMenu(reviewSections);
   const { showConnectionNotice, showSectionToolbar } = resolveReviewAvailability({
     hasEnvironmentPresentation: environment.isReady,
     isEnvironmentConnected: isEnvironmentReady,
@@ -655,7 +620,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   ]
     .filter(Boolean)
     .join(" · ");
-  const headerTitleText = selectedSection?.title ?? "Review changes";
+  const headerTitleText = "Git";
 
   return (
     <>
@@ -667,17 +632,30 @@ export function ReviewSheet(props: ReviewSheetProps) {
         androidSubtitle={androidHeaderSubtitle}
         iconColor={headerIcon}
         selectedThreadCwd={selectedThreadCwd}
-        sectionMenu={sectionMenu}
         selectedSection={selectedSection}
-        showSectionToolbar={showSectionToolbar}
         showChangedFilesToggle={showChangedFilesToggle}
         onRefresh={handlePullToRefresh}
-        onSelectSection={selectSection}
         onReturnToThread={handleReturnToThread}
       />
 
       <ScreenContent>
         <View className="flex-1 bg-sheet android:bg-sheet-solid">
+          <View style={{ paddingTop: toolbarInset }}>
+            {props.workspaceTabs}
+            {showSectionToolbar ? (
+              <ReviewComparisonPicker
+                sections={reviewSections}
+                selected={selectedSection}
+                onSelect={selectSection}
+                onBrowse={
+                  selectedSection?.kind !== "working-tree" && reviewFiles.length
+                    ? () =>
+                        panes.supportsAuxiliaryPane ? toggleAuxiliaryPane() : setShowFiles(true)
+                    : undefined
+                }
+              />
+            ) : null}
+          </View>
           {showConnectionNotice ? (
             <View className="flex-1" style={{ paddingTop: topContentInset }}>
               <EnvironmentConnectionNotice
@@ -745,6 +723,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     tokensPatchJson={nativeBridge.tokensPatchJson}
                     tokensResetKey={nativeBridge.tokensResetKey}
                     viewedFileIdsJson={nativeBridge.viewedFileIdsJson}
+                    showViewedCheckbox={false}
                     onDebug={handleNativeDebug}
                     onPressLine={commentSelection.onPressLine}
                     enableLineRangeSelection
@@ -752,7 +731,6 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     onVisibleFileChange={handleVisibleFileChange}
                     onToggleComment={nativeBridge.onToggleComment}
                     onToggleFile={handleNativeToggleFile}
-                    onToggleViewedFile={handleNativeToggleViewedFile}
                   />
                 </View>
               </View>
@@ -873,7 +851,42 @@ export function ReviewSheet(props: ReviewSheetProps) {
             onClear={commentSelection.clearSelection}
           />
         </View>
-      </ScreenContent>
+      </MaterialScreenContent>
+      <Modal
+        visible={showFiles}
+        presentationStyle="fullScreen"
+        animationType="slide"
+        onRequestClose={() => setShowFiles(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: themeVariables["--color-screen"],
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          }}
+        >
+          <View className="min-h-11 flex-row items-center gap-2 border-b border-border-subtle px-3">
+            <Text className="min-w-0 flex-1 text-sm font-t3-medium">Changed files</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close changed files"
+              onPress={() => setShowFiles(false)}
+              className="size-11 items-center justify-center"
+            >
+              <SymbolView name="xmark" size={19} tintColorClassName="accent-icon" />
+            </Pressable>
+          </View>
+          <ReviewFileTree
+            files={reviewFiles}
+            onSelectFile={(path) => {
+              const file = reviewFiles.find((file) => file.path === path);
+              if (file) handleSelectFile(file.id);
+              setShowFiles(false);
+            }}
+          />
+        </View>
+      </Modal>
     </>
   );
 }

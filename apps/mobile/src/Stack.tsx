@@ -53,7 +53,12 @@ import { useAgentNotificationNavigation } from "./features/agent-awareness/notif
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
-import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
+import { ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
+import {
+  ThreadFilesWorkspaceScreen,
+  ThreadGitWorkspaceScreen,
+  ThreadFileWorkspaceScreen,
+} from "./features/workspace/ThreadWorkspaceScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
 import { selectedPullRequestKey } from "./features/pull-requests/pullRequestSelection";
 import {
@@ -61,7 +66,6 @@ import {
   HardwareKeyboardCommandProvider,
 } from "./features/keyboard/HardwareKeyboardCommandProvider";
 import { ReviewCommentComposerSheet } from "./features/review/ReviewCommentComposerSheet";
-import { ReviewSheet } from "./features/review/ReviewSheet";
 import { ThreadTerminalRouteScreen } from "./features/terminal/ThreadTerminalRouteScreen";
 import { DevicePreviewRouteScreen } from "./features/devices/DevicePreviewRouteScreen";
 import { BrowserPreviewRouteScreen } from "./features/browser/BrowserPreviewRouteScreen";
@@ -800,7 +804,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     ThreadReview: createNativeStackScreen({
-      screen: ReviewSheet,
+      screen: ThreadGitWorkspaceScreen,
       linking: `${THREAD_LINKING_PREFIX}/review`,
       options: GLASS_HEADER_OPTIONS,
     }),
@@ -818,7 +822,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     ThreadFiles: createNativeStackScreen({
-      screen: ThreadFilesTreeScreen,
+      screen: ThreadFilesWorkspaceScreen,
       linking: `${THREAD_LINKING_PREFIX}/files`,
       options: {
         ...GLASS_HEADER_OPTIONS,
@@ -826,7 +830,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     ThreadFile: createNativeStackScreen({
-      screen: ThreadFileScreen,
+      screen: ThreadFileWorkspaceScreen,
       linking: `${THREAD_LINKING_PREFIX}/files/:path*`,
       options: GLASS_HEADER_OPTIONS,
     }),
