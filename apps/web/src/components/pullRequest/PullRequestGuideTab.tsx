@@ -18,6 +18,7 @@ import { guideRunKey, useGuideRunStore } from "./guide/guideRunStore";
 import { GuideProseContext } from "./guide/GuideProse";
 import { GuideTour } from "./guide/GuideTour";
 import { useReviewGuideWriter } from "./guide/useReviewGuideWriter";
+import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
 import {
   nextPendingReviewCommentId,
   pullRequestReviewKey,
@@ -69,7 +70,7 @@ export function PullRequestGuideTab({
   const runKey = guideRunKey(environmentId, reference);
   const reviewKey = pullRequestReviewKey(reference);
   const pending = usePendingReviewComments(reference, detail.reviewThreads);
-  const addComment = usePullRequestReviewStore((store) => store.addComment);
+  const { add: addComment } = usePendingReviewCommentActions(environmentId, reference);
   const removeComment = usePullRequestReviewStore((store) => store.removeComment);
   const commenting = useMemo<ExcerptCommenting | null>(
     () =>
@@ -94,13 +95,16 @@ export function PullRequestGuideTab({
               canCopyLink: detail.capabilities.review.draftComment === true,
             },
             onComment: ({ path, oldPath, position, body }) =>
-              addComment(reviewKey, {
-                id: nextPendingReviewCommentId(),
-                path,
-                ...(oldPath === null ? {} : { oldPath }),
-                position,
-                body,
-              }),
+              addComment(
+                {
+                  id: nextPendingReviewCommentId(),
+                  path,
+                  ...(oldPath === null ? {} : { oldPath }),
+                  position,
+                  body,
+                },
+                detail.capabilities.review.draftComment === true,
+              ),
             onRemove: (commentId) => removeComment(reviewKey, commentId),
             onAskAgent: onAskAboutLines,
           },

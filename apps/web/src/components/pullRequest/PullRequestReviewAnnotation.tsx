@@ -103,10 +103,8 @@ export function PendingReviewCommentCard({
   canCopyLink: boolean;
   onAddToComposer?: (() => void) | undefined;
 }) {
-  const { busy, canSave, canDiscard, copyLink, discard } = usePendingReviewCommentActions(
-    environmentId,
-    reference,
-  );
+  const { busy, canSave, canDiscard, saveDraft, copyLink, discard } =
+    usePendingReviewCommentActions(environmentId, reference);
   return (
     <div
       className={cn(CARD_CLASS, "border-dashed")}
@@ -118,7 +116,20 @@ export function PendingReviewCommentCard({
           <ClockIcon className="size-3" />
           Pending
         </Badge>
-        <span>Sent when you submit the review</span>
+        <span>
+          {comment.hostedComment
+            ? "Saved on GitHub · private until submitted"
+            : canCopyLink
+              ? busy
+                ? "Saving to GitHub…"
+                : "Only saved in T3"
+              : "Sent when you submit the review"}
+        </span>
+        {canCopyLink && canSave && !comment.hostedComment && !busy ? (
+          <Button size="xs" variant="ghost" onClick={() => void saveDraft(comment)}>
+            Retry save
+          </Button>
+        ) : null}
         <div className="ml-auto flex items-center gap-1">
           <PullRequestCommentActions
             body={comment.body}

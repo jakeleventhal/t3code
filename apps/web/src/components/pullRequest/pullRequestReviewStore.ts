@@ -1,8 +1,8 @@
 /**
  * A review being written, held until it is sent.
  *
- * Local drafts stay in this tab. Copying a comment link saves that comment in the host's
- * private pending review and retains its identity for later discard or submission. Host
+ * New comments save to the host's private pending review and retain their identity for later
+ * discard or submission. Local drafts remain available if saving fails. Host
  * drafts are also read back from the detail, so reloading keeps saved pending comments.
  */
 import { useMemo } from "react";
@@ -133,6 +133,29 @@ export const usePullRequestReviewStore = create<PullRequestReviewStoreState>()((
     }),
 }));
 
+/** Save once per local comment, keeping unsaved text available for retry after a failed request. */
+export async function savePendingReviewComment(
+  key: string,
+  given: PendingReviewComment,
+  save: (
+    comment: PendingReviewComment,
+  ) => Promise<NonNullable<PendingReviewComment["hostedComment"]>>,
+) {
+  const store = usePullRequestReviewStore.getState();
+  const comment = store.drafts[key]?.find((entry) => entry.id === given.id) ?? given;
+  if (comment.hostedComment) return comment.hostedComment;
+  if (store.busyComments[key]?.includes(comment.id)) return null;
+  store.setCommentBusy(key, comment.id, true);
+  try {
+    const hosted = await save(comment);
+    store.setHostedComment(key, comment.id, hosted);
+    return hosted;
+  } finally {
+    store.setCommentBusy(key, comment.id, false);
+  }
+}
+
+/** The comments a pull request's draft holds, stable across renders while it is empty. */
 export function usePendingReviewComments(
   reference: PullRequestRef,
   threads?: ReadonlyArray<PullRequestReviewThread>,

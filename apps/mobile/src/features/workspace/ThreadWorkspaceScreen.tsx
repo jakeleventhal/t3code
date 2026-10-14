@@ -3,6 +3,13 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useState } from "react";
 import { View } from "react-native";
+import { AppActivityIndicator } from "../../components/AppActivityIndicator";
+import {
+  readWorkspacePane,
+  rememberWorkspacePane,
+  resolveWorkspacePane,
+  type WorkspacePane,
+} from "./workspacePaneMemory";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
@@ -24,9 +31,16 @@ type Props = StaticScreenProps<{
   readonly reviewWorkingTreeScope?: "staged" | "unstaged";
 }>;
 
-function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "git" }) {
+function ThreadWorkspaceScreen(props: Props) {
   const navigation = useNavigation();
-  const [tab, setTab] = useState(props.initialTab);
+  const paneKey = JSON.stringify([props.route.params.environmentId, props.route.params.threadId]);
+  const [tab, setTab] = useState<WorkspacePane | null>(() =>
+    props.route.params.path
+      ? "files"
+      : props.route.params.reviewSectionId
+        ? "git"
+        : readWorkspacePane(paneKey),
+  );
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
   const { selectedThreadCwd: cwd } = useSelectedThreadWorktree();
@@ -46,16 +60,28 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
   // Status counts each changed path once, including edits that cancel between
   // the index and working tree, and updates through the existing Git subscription.
   const count = status.data?.workingTree?.files.length;
+  const statusUnavailable =
+    !access.isPending && (!access.canReadFiles || cwd === null || status.error !== null);
+  const selectedTab = resolveWorkspacePane(tab, count ?? (statusUnavailable ? 0 : undefined));
+  if (selectedTab !== null && selectedTab !== tab) {
+    setTab(selectedTab);
+    rememberWorkspacePane(paneKey, selectedTab);
+  }
+  const selectTab = (pane: WorkspacePane) => {
+    setTab(pane);
+    rememberWorkspacePane(paneKey, pane);
+  };
   const tabs = (
-    <View className="border-b border-border-subtle bg-sheet px-3 py-2">
+    <View className="w-full border-b border-border-subtle bg-sheet px-3 py-2">
       <SegmentedControl
         size="compact"
+        className="w-full"
         options={[
-          { value: "files" as const, label: "Files" },
           { value: "git" as const, label: "Git", ...(count === undefined ? {} : { badge: count }) },
+          { value: "files" as const, label: "Files" },
         ]}
-        selected={tab}
-        onSelect={setTab}
+        selected={selectedTab ?? "files"}
+        onSelect={selectTab}
         role="tab"
       />
     </View>
@@ -64,7 +90,7 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
     <ReviewHeader
       environmentId={environmentId}
       threadId={threadId}
-      title={tab === "files" ? "Files" : "Git"}
+      title={selectedTab === "git" ? "Git" : "Files"}
       subtitle=""
       androidSubtitle=""
       selectedThreadCwd={cwd}
@@ -73,7 +99,17 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
       onReturnToThread={() => navigation.goBack()}
     />
   );
-  return tab === "files" ? (
+  if (selectedTab === null)
+    return (
+      <View className="flex-1 bg-sheet">
+        {workspaceHeader}
+        {tabs}
+        <View className="flex-1 items-center justify-center">
+          <AppActivityIndicator accessibilityLabel="Loading workspace" />
+        </View>
+      </View>
+    );
+  return selectedTab === "files" ? (
     props.route.params.path ? (
       <ThreadFileScreen
         route={{ params: { ...props.route.params, path: props.route.params.path } }}
@@ -110,7 +146,6 @@ export function ThreadFilesWorkspaceScreen(props: Props) {
     <ThreadWorkspaceScreen
       key={`${props.route.params.environmentId}:${props.route.params.threadId}`}
       {...props}
-      initialTab="files"
     />
   );
 }
@@ -120,7 +155,6 @@ export function ThreadGitWorkspaceScreen(props: Props) {
     <ThreadWorkspaceScreen
       key={`${props.route.params.environmentId}:${props.route.params.threadId}`}
       {...props}
-      initialTab="git"
     />
   );
 }
@@ -132,7 +166,6 @@ export function ThreadFileWorkspaceScreen(props: Parameters<typeof ThreadFileScr
     <ThreadWorkspaceScreen
       key={`${props.route.params.environmentId}:${threadId}`}
       route={{ params: { ...props.route.params, threadId } }}
-      initialTab="files"
     />
   );
 }
