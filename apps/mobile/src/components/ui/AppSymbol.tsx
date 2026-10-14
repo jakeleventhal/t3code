@@ -25,8 +25,7 @@ import IconArrowsDiagonal2 from "@tabler/icons-react-native/IconArrowsDiagonal2"
 import IconArrowsMinimize from "@tabler/icons-react-native/IconArrowsMinimize";
 import IconBan from "@tabler/icons-react-native/IconBan";
 import IconArrowsVertical from "@tabler/icons-react-native/IconArrowsVertical";
-import IconFold from "@tabler/icons-react-native/IconFold";
-import IconUnfold from "@tabler/icons-react-native/IconUnfold";
+import { DiffCollapseIcon, DiffExpandIcon } from "./DiffDisclosureIcons";
 import IconSquare from "@tabler/icons-react-native/IconSquare";
 import IconSquareCheckFilled from "@tabler/icons-react-native/IconSquareCheckFilled";
 import IconBellRinging from "@tabler/icons-react-native/IconBellRinging";
@@ -198,8 +197,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "chevron.right": IconChevronRight,
   "chevron.up": IconChevronUp,
   "arrow.up.and.down": IconArrowsVertical,
-  "diff.collapse": IconFold,
-  "diff.expand": IconUnfold,
+  "diff.collapse": DiffCollapseIcon,
+  "diff.expand": DiffExpandIcon,
   desktopcomputer: IconDeviceDesktop,
   doc: IconFileText,
   "doc.on.doc": IconCopy,

@@ -5,8 +5,7 @@ import IconGitPullRequestClosed from "@tabler/icons-react-native/IconGitPullRequ
 import IconGitPullRequestDraft from "@tabler/icons-react-native/IconGitPullRequestDraft";
 import type { SFSymbol } from "expo-symbols";
 import IconGitPullRequest from "@tabler/icons-react-native/IconGitPullRequest";
-import IconFold from "@tabler/icons-react-native/IconFold";
-import IconUnfold from "@tabler/icons-react-native/IconUnfold";
+import { DiffCollapseIcon, DiffExpandIcon } from "./DiffDisclosureIcons";
 import IconFileDiff from "@tabler/icons-react-native/IconFileDiff";
 import { SymbolView as ExpoSymbolView } from "expo-symbols";
 import { withUniwind } from "uniwind";
@@ -16,8 +15,8 @@ export type { SFSymbol } from "expo-symbols";
 export type { AppSymbolName } from "./AppSymbol";
 
 const CUSTOM_ICONS = {
-  "diff.collapse": IconFold,
-  "diff.expand": IconUnfold,
+  "diff.collapse": DiffCollapseIcon,
+  "diff.expand": DiffExpandIcon,
   "file.diff": IconFileDiff,
   "arrow.triangle.pull": IconGitPullRequest,
   "arrow.triangle.merge": IconGitMerge,

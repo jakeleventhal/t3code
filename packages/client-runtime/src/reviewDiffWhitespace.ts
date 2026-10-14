@@ -1,5 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs/types";
-import { parseReviewDiffFromFiles } from "./reviewDiffMetadata.js";
+import { parseReviewDiffFromFiles } from "./reviewDiffMetadata.ts";
 
 /** Hide whitespace using the same diff arithmetic on web and native. */
 export function hideWhitespaceChanges(file: FileDiffMetadata): FileDiffMetadata {
