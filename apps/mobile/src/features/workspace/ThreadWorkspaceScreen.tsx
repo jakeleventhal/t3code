@@ -1,17 +1,16 @@
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { StaticScreenProps } from "@react-navigation/native";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
-import { reviewEnvironment } from "../../state/review";
+import { vcsEnvironment } from "../../state/vcs";
 import { environmentSession } from "../../state/session";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "../files/ThreadFilesRouteScreen";
 import { ReviewSheet } from "../review/ReviewSheet";
-import { getCachedReviewParsedDiff } from "../review/reviewState";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
@@ -35,22 +34,14 @@ function ThreadWorkspaceScreen(props: Props & { readonly initialTab: "files" | "
     session: session.data,
     sessionError: session.error,
   });
-  const preview = useEnvironmentQuery(
+  const status = useEnvironmentQuery(
     access.canReadFiles && cwd !== null
-      ? reviewEnvironment.diffPreview({ environmentId, input: { cwd } })
+      ? vcsEnvironment.status({ environmentId, input: { cwd } })
       : null,
   );
-  const source = preview.data?.sources.find((item) => item.kind === "working-tree");
-  const count = useMemo(() => {
-    if (!source) return undefined;
-    if (source.files) return source.files.length;
-    const parsed = getCachedReviewParsedDiff({
-      threadKey: `${environmentId}:${threadId}`,
-      sectionId: "working-tree",
-      diff: source.diff,
-    });
-    return parsed.kind === "files" ? parsed.files.length : 0;
-  }, [environmentId, threadId, source]);
+  // Status counts each changed path once, including edits that cancel between
+  // the index and working tree, and updates through the existing Git subscription.
+  const count = status.data?.workingTree?.files.length;
   const tabs = (
     <View className="border-b border-border-subtle bg-sheet px-3 py-2">
       <SegmentedControl
