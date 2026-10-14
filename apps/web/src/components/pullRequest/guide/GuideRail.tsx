@@ -126,7 +126,15 @@ export function GuideRail({
                   Look closely
                 </Badge>
               ) : null}
-              <span>{stopSubline(stop)}</span>
+              {onSetViewed && paths.length > 0 ? (
+                index !== position ? (
+                  <span>
+                    {progress.reviewedCount} of {paths.length} files reviewed
+                  </span>
+                ) : null
+              ) : (
+                <span>{stopSubline(stop)}</span>
+              )}
             </>
           ),
         };

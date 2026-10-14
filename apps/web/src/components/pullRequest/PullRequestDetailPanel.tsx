@@ -500,6 +500,7 @@ export function PullRequestDetailPanel({
   const [threadPickerOpen, setThreadPickerOpen] = useState(false);
   // Counted up by the guide's last stop to open the composer on the review.
   const [openReviewRequest, setOpenReviewRequest] = useState(0);
+  const [viewControlsTarget, setViewControlsTarget] = useState<HTMLDivElement | null>(null);
   const [tab, setTab] = useState<DetailTab>("summary");
   const [codeCommitScope, setCodeCommitScope] = useState<{
     readonly pullRequestKey: string;
@@ -1846,7 +1847,10 @@ export function PullRequestDetailPanel({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col bg-background">
+    <div
+      data-pull-request-panel
+      className="relative flex h-full min-h-0 w-full flex-col bg-background"
+    >
       {threadPickerOpen && detail ? (
         <PullRequestThreadLinks
           key={`${environmentId}:${detail.url}`}
@@ -2749,7 +2753,8 @@ export function PullRequestDetailPanel({
                 />
               )
             ) : null}
-            <span className="ml-auto">
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <div ref={setViewControlsTarget} />
               <PullRequestMarkdownContext value={markdownContext}>
                 <PullRequestCommentsPopover
                   environmentId={environmentId}
@@ -2761,7 +2766,7 @@ export function PullRequestDetailPanel({
                   onAddPendingToComposer={addPendingToComposer}
                 />
               </PullRequestMarkdownContext>
-            </span>
+            </div>
           </PullRequestDetailTabBar>
         ) : null}
       </div>
@@ -2850,6 +2855,7 @@ export function PullRequestDetailPanel({
                   environmentId={environmentId}
                   reference={reference}
                   active={tab === "guide"}
+                  viewControlsTarget={tab === "guide" ? viewControlsTarget : null}
                   title={detail.title}
                   detail={detail}
                   workspaceRoot={detail.workspaceRoot}
@@ -2870,12 +2876,14 @@ export function PullRequestDetailPanel({
                   }
                   onOpenFile={openFileInCode}
                   onTourShown={onGuideShown}
-                  fallback={
+                  fallback={(status) => (
                     <Suspense
                       fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}
                     >
                       <PullRequestCodeTab
                         guideFallback
+                        guideStatus={status}
+                        viewControlsTarget={tab === "guide" ? viewControlsTarget : null}
                         scrollerRef={scrollerRefs.guide}
                         onAddToAgentSelection={(input) =>
                           addSelectionToAgent(input, { keepGuide: true })
@@ -2889,7 +2897,7 @@ export function PullRequestDetailPanel({
                         refreshToken={codeRefreshToken}
                       />
                     </Suspense>
-                  }
+                  )}
                 />
               </div>
             ) : null}
@@ -2898,6 +2906,7 @@ export function PullRequestDetailPanel({
                 <Suspense fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}>
                   <PullRequestCodeTab
                     scrollerRef={scrollerRefs.code}
+                    viewControlsTarget={tab === "code" ? viewControlsTarget : null}
                     onAddToAgentSelection={addSelectionToAgent}
                     environmentId={environmentId}
                     reference={reference}

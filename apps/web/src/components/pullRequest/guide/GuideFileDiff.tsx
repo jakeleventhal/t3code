@@ -11,7 +11,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { hideWhitespaceChanges, resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 
-import { DIFF_VIEW_UNSAFE_CSS } from "../../diffs/StyledDiffCodeView";
+import { GUIDE_DIFF_UNSAFE_CSS } from "./guideDiffStyles";
 
 /**
  * A whole file's diff inside a stop, for a file the guide vouched for without excerpting. The row
@@ -42,7 +42,7 @@ export function GuideFileDiff({
       theme: resolveDiffThemeName(resolvedTheme),
       themeType: resolvedTheme,
       preferredHighlighter: PREFERRED_HIGHLIGHTER,
-      unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
+      unsafeCSS: GUIDE_DIFF_UNSAFE_CSS,
       loadDiffFiles,
     }),
     [loadDiffFiles, resolvedTheme, settings.diffLayout, settings.wordWrap],

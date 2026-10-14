@@ -5714,9 +5714,9 @@ export default function ChatView(props: ChatViewProps) {
       )
     : linkedThreadPullRequestKey;
   const activeRunningTurnId = activeRuntime?.activeRunId ?? null;
-  const proactivePanelObservationRef = useRef<ReturnType<
-    typeof observeProactivePanelUserChoice
-  > | null>(null);
+  const proactivePanelObservationsRef = useRef(
+    new Map<string, ReturnType<typeof observeProactivePanelUserChoice>>(),
+  );
   const observedThreadPullRequestRef = useRef<{
     readonly threadKey: string;
     readonly reference: ThreadLinkedPullRequest | null;
@@ -5724,17 +5724,19 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     if (!isServerThread || activeThreadKey === null || activeThreadRef === null) {
-      proactivePanelObservationRef.current = null;
       observedThreadPullRequestRef.current = null;
       return;
     }
     const panels = useRightPanelStore.getState();
-    const observation = observeProactivePanelUserChoice(proactivePanelObservationRef.current, {
-      threadKey: activeThreadKey,
-      runningTurnId: activeRunningTurnId,
-      userActionRevision: panels.getUserActionRevision(activeThreadRef),
-    });
-    proactivePanelObservationRef.current = observation;
+    const observation = observeProactivePanelUserChoice(
+      proactivePanelObservationsRef.current.get(activeThreadKey) ?? null,
+      {
+        threadKey: activeThreadKey,
+        runningTurnId: activeRunningTurnId,
+        userActionRevision: panels.getUserActionRevision(activeThreadRef),
+      },
+    );
+    proactivePanelObservationsRef.current.set(activeThreadKey, observation);
     const {
       runningTurnId: previousRunningTurnId,
       targetKey: previousTargetKey,
@@ -5769,10 +5771,10 @@ export default function ChatView(props: ChatViewProps) {
       proactivePanelsEnabled &&
       shouldOpenProactivePullRequest(previousTargetKey, proactivePullRequestsKey);
     const shouldDeferLink = eligibleLink && !pullRequestsCapabilityKnown;
-    proactivePanelObservationRef.current = {
+    proactivePanelObservationsRef.current.set(activeThreadKey, {
       ...observation,
       targetKey: shouldDeferLink ? (previousTargetKey ?? null) : proactivePullRequestsKey,
-    };
+    });
     if (eligibleLink && pullRequestsCapabilityKnown) {
       if (
         pullRequestsSurfaceAvailable &&
@@ -5823,12 +5825,12 @@ export default function ChatView(props: ChatViewProps) {
           activeSurfaceKind: openSurface?.kind ?? null,
         })
       : "ignore";
-    proactivePanelObservationRef.current = {
-      ...proactivePanelObservationRef.current,
+    proactivePanelObservationsRef.current.set(activeThreadKey, {
+      ...proactivePanelObservationsRef.current.get(activeThreadKey)!,
       // Preserve first-entry eligibility while capabilities, checkpoint or repository load.
       runningTurnId:
         diffAction === "defer" || shouldDeferLink ? previousRunningTurnId : activeRunningTurnId,
-    };
+    });
     if (diffAction !== "open" || newlyCompletedTurnId === null) return;
     if (!panels.openProactive(activeThreadRef, { id: "diff", kind: "diff" }, userActionRevision)) {
       return;
