@@ -91,3 +91,61 @@ it("keeps an earlier cleared region when staging again after confirmation", () =
   expect(lines.every((row) => row.change === "context")).toBe(true);
   expect(lines.some((row) => row.content === "before")).toBe(true);
 });
+
+it("removes completed hunks and the final file from an all-files reader without retained context", () => {
+  const unstaged = snapshot(header + first + second);
+  const initial = { staged: { files: [], hunksByPath: new Map() }, unstaged };
+  const partiallyStaged = applyWorkingChangesMutation(initial, unstaged, {
+    scope: "unstaged",
+    paths: ["src/example.ts"],
+    patch: header + first,
+    retainContext: false,
+  });
+  const remaining = nativeWorkingReaderFiles(partiallyStaged.unstaged, null).map((file) =>
+    nativeWorkingRenderableFile(file),
+  );
+  const lines = remaining[0]!.rows.filter((row) => row.kind === "line");
+  expect(lines.some((row) => row.content === "newFirst")).toBe(false);
+  expect(lines.some((row) => row.content === "newSecond" && row.change === "add")).toBe(true);
+  const remainingHunks = partiallyStaged.unstaged.hunksByPath.get("src/example.ts")!;
+  expect(remainingHunks).toHaveLength(1);
+  const completed = applyWorkingChangesMutation(partiallyStaged, partiallyStaged.unstaged, {
+    scope: "unstaged",
+    paths: ["src/example.ts"],
+    // The second click uses the newly projected hunk, not its stale pre-stage context.
+    patch: remainingHunks[0],
+    retainContext: false,
+  });
+  expect(nativeWorkingReaderFiles(completed.unstaged, null)).toEqual([]);
+  expect(nativeWorkingReaderFiles({ files: [], hunksByPath: new Map() }, null)).toEqual([]);
+});
+
+it.each(["unstage", "revert"] as const)(
+  "clears the last %s hunk in multi-file view while retaining it in single-file view",
+  (operation) => {
+    const changed = snapshot(header + first);
+    const empty = { files: [], hunksByPath: new Map() };
+    const scope = operation === "unstage" ? "staged" : "unstaged";
+    const current = {
+      staged: operation === "unstage" ? changed : empty,
+      unstaged: operation === "revert" ? changed : empty,
+    };
+    const cleared = applyWorkingChangesMutation(current, changed, {
+      scope,
+      paths: ["src/example.ts"],
+      patch: header + first,
+      revert: operation === "revert",
+      retainContext: true,
+    });
+    expect(nativeWorkingReaderFiles(cleared[scope], null)).toEqual([]);
+    const singleFile = nativeWorkingReaderFiles(empty, cleared[scope]).map((file) =>
+      nativeWorkingRenderableFile(file),
+    );
+    expect(singleFile.map((file) => file.path)).toEqual(["src/example.ts"]);
+    expect(
+      singleFile[0]?.rows
+        .filter((row) => row.kind === "line")
+        .every((row) => row.change === "context"),
+    ).toBe(true);
+  },
+);

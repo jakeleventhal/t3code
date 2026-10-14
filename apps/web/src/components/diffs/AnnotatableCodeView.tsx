@@ -364,7 +364,7 @@ export function AnnotatableCodeView({
                 ]
               : []),
             ...(revertAvailable
-              ? [{ id: "revert-lines", label: `Revert ${singleLine ? "line" : "lines"}` }]
+              ? [{ id: "revert-lines", label: `Revert ${singleLine ? "line" : "selected lines"}` }]
               : []),
           ],
           { x: event.clientX, y: event.clientY },

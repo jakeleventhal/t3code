@@ -28,6 +28,7 @@ export function ReviewFileTree({
   reviewActionLabels,
   onRefresh,
   refreshing = false,
+  showViewedCheckbox = false,
 }: {
   files: ReadonlyArray<ReviewFileTreeItem>;
   reviewFiles?: ReadonlyArray<ReviewFileTreeItem>;
@@ -36,6 +37,7 @@ export function ReviewFileTree({
   onSetViewed?: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | undefined;
   onRefresh?: (() => void) | undefined;
   refreshing?: boolean;
+  showViewedCheckbox?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [width, setWidth] = useState(0);
@@ -228,7 +230,35 @@ export function ReviewFileTree({
               >
                 {status}
               </Text>
-              {file.reviewed ? (
+              {showViewedCheckbox ? (
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={`Mark ${file.path} as ${file.reviewed ? "unviewed" : "viewed"}`}
+                  accessibilityState={{ checked: file.reviewed === true, disabled: !onSetViewed }}
+                  disabled={!onSetViewed}
+                  className="min-h-11 min-w-11 items-center justify-center"
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    onSetViewed?.([file.path], !file.reviewed);
+                  }}
+                >
+                  <View
+                    className={
+                      file.reviewed
+                        ? "size-4 items-center justify-center rounded border border-adaptive-emerald-600-400 bg-adaptive-emerald-600-400"
+                        : "size-4 rounded border border-border"
+                    }
+                  >
+                    {file.reviewed ? (
+                      <SymbolView
+                        name="checkmark"
+                        size={11}
+                        tintColorClassName="accent-primary-foreground"
+                      />
+                    ) : null}
+                  </View>
+                </Pressable>
+              ) : file.reviewed ? (
                 <SymbolView
                   name="checkmark"
                   size={14}

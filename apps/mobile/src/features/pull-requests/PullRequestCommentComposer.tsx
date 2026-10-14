@@ -6,7 +6,10 @@ import { PullRequestAttachments } from "./PullRequestAttachments";
 import type { PullRequestParams } from "./usePullRequestDiff";
 import { useReviewAttachmentInsertion } from "./useReviewAttachmentInsertion";
 
-/** One compact field and attached upload/send toolbar for every native review composer. */
+/**
+ * One compact field and attached upload/send toolbar for every native review composer. `inline`
+ * drops the outer card so a reply can sit inside a comment card, as on desktop.
+ */
 export function PullRequestCommentComposer({
   params,
   value,
@@ -22,6 +25,7 @@ export function PullRequestCommentComposer({
   onBusyChange,
   autoFocus = false,
   minimumHeight = 80,
+  variant = "card",
 }: {
   params: PullRequestParams;
   value: string;
@@ -37,12 +41,19 @@ export function PullRequestCommentComposer({
   onBusyChange?: (busy: boolean) => void;
   autoFocus?: boolean;
   minimumHeight?: number;
+  variant?: "card" | "inline";
 }) {
   const insertion = useReviewAttachmentInsertion(value, onChangeText);
   const [uploading, setUploading] = useState(false);
   const [height, setHeight] = useState(minimumHeight);
   return (
-    <View className="overflow-hidden rounded-2xl border border-border-subtle bg-grouped-card">
+    <View
+      className={
+        variant === "inline"
+          ? "flex-row items-end border-t border-border-subtle pr-1"
+          : "overflow-hidden rounded-2xl border border-border-subtle bg-grouped-card"
+      }
+    >
       <TextInput
         {...insertion.inputProps}
         accessibilityLabel={label}
@@ -61,10 +72,20 @@ export function PullRequestCommentComposer({
           );
           setHeight((current) => (current === next ? current : next));
         }}
-        className="min-h-0 rounded-none border-0 bg-transparent px-3 py-3 text-base text-foreground"
+        className={
+          variant === "inline"
+            ? "min-h-0 flex-1 rounded-none border-0 bg-transparent px-3 py-2.5 text-sm text-foreground"
+            : "min-h-0 rounded-none border-0 bg-transparent px-3 py-3 text-base text-foreground"
+        }
         style={{ height, textAlignVertical: "top" }}
       />
-      <View className="min-h-12 flex-row items-center gap-2 border-t border-border-subtle px-2 py-1">
+      <View
+        className={
+          variant === "inline"
+            ? "flex-row items-center"
+            : "min-h-12 flex-row items-center gap-2 border-t border-border-subtle px-2 py-1"
+        }
+      >
         <PullRequestAttachments
           params={params}
           disabled={!editable || busy}
@@ -74,7 +95,7 @@ export function PullRequestCommentComposer({
           }}
           onAppend={insertion.insert}
         />
-        <View className="flex-1" />
+        {variant === "inline" ? null : <View className="flex-1" />}
         <ControlPill
           icon="arrow.up"
           accessibilityLabel={submitLabel}

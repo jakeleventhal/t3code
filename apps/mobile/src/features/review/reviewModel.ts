@@ -1,3 +1,4 @@
+import { hideWhitespaceChanges } from "@t3tools/client-runtime/review-diff-whitespace";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
@@ -477,6 +478,7 @@ export function getDefaultReviewSectionId(
 export function buildReviewParsedDiff(
   diff: string | null | undefined,
   cacheScope: string,
+  ignoreWhitespace = false,
 ): ReviewParsedDiff {
   const normalized = diff?.trim();
   if (!normalized) {
@@ -499,7 +501,7 @@ export function buildReviewParsedDiff(
     const files = pipe(
       parsedPatches,
       Arr.flatMap((patch) => patch.files),
-      Arr.map(mapRenderableFile),
+      Arr.map((file) => mapRenderableFile(ignoreWhitespace ? hideWhitespaceChanges(file) : file)),
     );
 
     if (files.length === 0) {

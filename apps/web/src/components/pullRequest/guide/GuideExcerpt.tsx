@@ -372,7 +372,7 @@ export function GuideExcerpt({
               </div>
             )}
             renderHeaderMetadata={() => (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 {onSetViewed ? (
                   <label className="flex items-center gap-1.5">
                     <Checkbox
