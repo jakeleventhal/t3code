@@ -16,7 +16,6 @@ import {
 import { useMemo, useState, type ReactNode } from "react";
 
 import { getDiffLineStat } from "~/lib/diffRendering";
-import { cn } from "~/lib/utils";
 
 import { DiffWorkerPoolProvider } from "../../DiffWorkerPoolProvider";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
@@ -97,17 +96,14 @@ export function GuideStop({
     note: stop.files.find((file) => file.path === path)?.note,
   }));
 
-  const hasNotes = lettered.length > 0;
   const [filePanels, setFilePanels] = useState<Record<string, { viewed: boolean; open: boolean }>>(
     {},
   );
 
   return (
-    // On a maximized panel the notes take a sticky column of their own beside the stop; a stop
-    // without notes keeps the whole width. Narrower, they follow the excerpts.
-    <div
-      className={cn("grid gap-8", hasNotes && "@min-[90rem]/guide:grid-cols-[minmax(0,1fr)_20rem]")}
-    >
+    // The chapter explanation stays beside the diff, above its notes. Narrow panels put that
+    // same column after the files rather than squeezing the diff between two sidebars.
+    <div className="grid min-w-0 gap-5 @min-[56rem]/guide:grid-cols-[minmax(0,1fr)_18rem]">
       <article className="flex min-w-0 flex-col gap-5">
         <ReviewChapterHeader
           index={index}
@@ -117,6 +113,7 @@ export function GuideStop({
           rail={stopList}
           onStep={onStep}
           keyboardHints
+          wideRail
         />
         {progress.paths.length && onSetViewed ? (
           <ReviewChapterProgress
@@ -127,25 +124,7 @@ export function GuideStop({
         ) : null}
         <div className="flex max-w-[60rem] flex-col gap-2">
           <h2 className="text-lg font-semibold text-foreground">{stop.title}</h2>
-          {stop.summary.trim() !== "" ? (
-            <div className="text-sm text-muted-foreground">
-              <GuideProse text={stop.summary} />
-            </div>
-          ) : null}
         </div>
-
-        {stop.attention !== null ? (
-          // A call for the reader to make, not a warning, so it reads as a plain notice.
-          <Alert controlAlignment="first-line">
-            <EyeIcon />
-            <AlertTitle>{ATTENTION_LABELS[stop.attention.kind]}</AlertTitle>
-            <AlertDescription>
-              <div>
-                <GuideProse text={stop.attention.note} />
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : null}
 
         {stop.excerpts.length > 0 ? (
           <div className="flex min-w-0 flex-col gap-4">
@@ -167,7 +146,6 @@ export function GuideStop({
             </DiffWorkerPoolProvider>
           </div>
         ) : null}
-        <GuideNotes notes={lettered} className="@min-[90rem]/guide:hidden" />
 
         {otherFiles.length > 0 ? (
           <section className="flex flex-col gap-1.5">
@@ -305,11 +283,28 @@ export function GuideStop({
           ) : null}
         </footer>
       </article>
-      {hasNotes ? (
-        <aside className="hidden @min-[90rem]/guide:block @min-[90rem]/guide:sticky @min-[90rem]/guide:top-4 @min-[90rem]/guide:self-start">
-          <GuideNotes notes={lettered} />
-        </aside>
-      ) : null}
+      <aside className="flex min-w-0 flex-col gap-5 @min-[56rem]/guide:sticky @min-[56rem]/guide:top-4 @min-[56rem]/guide:max-h-[calc(100vh-8rem)] @min-[56rem]/guide:self-start @min-[56rem]/guide:overflow-y-auto">
+        {stop.summary.trim() !== "" ? (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium text-foreground">Chapter summary</h3>
+            <div className="text-sm text-muted-foreground">
+              <GuideProse text={stop.summary} />
+            </div>
+          </section>
+        ) : null}
+        {stop.attention !== null ? (
+          <Alert controlAlignment="first-line">
+            <EyeIcon />
+            <AlertTitle>{ATTENTION_LABELS[stop.attention.kind]}</AlertTitle>
+            <AlertDescription>
+              <div>
+                <GuideProse text={stop.attention.note} />
+              </div>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        <GuideNotes notes={lettered} />
+      </aside>
     </div>
   );
 }

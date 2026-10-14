@@ -228,6 +228,8 @@ export function toggleReviewCommit(
   if (at === last) return commits.slice(first, last);
   return at - first < last - at ? commits.slice(at + 1, last + 1) : commits.slice(first, at);
 }
+export { reviewSelectedLinesPatch } from "./reviewLineStaging.ts";
+
 /** Raw git patch hunks with their file headers, usable by both surfaces for partial staging. */
 export function reviewPatchHunks(
   patch: string,

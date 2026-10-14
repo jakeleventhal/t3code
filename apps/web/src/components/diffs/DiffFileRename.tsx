@@ -12,7 +12,7 @@ function keyedRenameSegments(previous: string, path: string) {
   });
 }
 
-/** Both complete names remain available when the diff header has truncated the rename. */
+/** Renames keep both names inline; narrow headers scroll instead of hiding path segments. */
 export function DiffFileRename({ file }: { file: FileDiffMetadata }) {
   const previous = resolveFileDiffPreviousPath(file);
   const path = resolveFileDiffPath(file);
@@ -20,7 +20,12 @@ export function DiffFileRename({ file }: { file: FileDiffMetadata }) {
   return (
     <Popover>
       <PopoverTrigger
-        render={<button type="button" className="min-w-0 max-w-full truncate text-left text-xs" />}
+        render={
+          <button
+            type="button"
+            className="block min-w-0 max-w-full overflow-x-auto whitespace-nowrap text-left text-xs [scrollbar-width:thin]"
+          />
+        }
         aria-label={`Renamed from ${previous} to ${path}`}
       >
         {keyedRenameSegments(previous, path).map((part) => (
