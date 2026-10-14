@@ -1,6 +1,10 @@
 # Review changes
 
-Open **Review changes** from a thread’s Git menu, then choose **Uncommitted** to review the working copy. Use **Files** for the combined changed-file tree or **Git** for separate staged and unstaged trees. On mobile, open the file browser to access the trees and commit controls. Select a file to inspect its diff, then stage approved files or individual hunks; unstage them to return them to the remaining work. Partially staged files appear in both Git trees. The Git tab counts each changed file once. File, folder, and section actions stage, unstage, or revert their changes; reverting asks for confirmation and keeps staged changes. Use **Commit** or choose **Commit (Amend)** or **Commit & Push** from its dropdown to run that action on staged changes. Leave the message blank to generate one from staged content, or use the sparkle button to generate an editable preview. Staging leaves file contents intact.
+On desktop, open **Review changes** from a thread’s Git menu and choose **Uncommitted** to review the working copy. Use **Files** for the combined changed-file tree or **Git** for separate staged and unstaged trees.
+
+On mobile, open **Git** from the thread toolbar and choose uncommitted changes, branch changes, or a turn comparison. Git opens directly on its file tree. Select a file to inspect its diff; Back returns to the tree. The **Files** tab browses the full workspace and file contents.
+
+For uncommitted changes, stage files or individual hunks; unstage them to return them to the remaining work. Partially staged files appear in both Git trees, and the Git tab counts each changed file once. File, folder, and section actions stage, unstage, or revert their changes; reverting asks for confirmation and keeps staged changes. Use **Commit** or choose **Commit (Amend)** or **Commit & Push** from its dropdown to run that action on staged changes. Leave the message blank to generate one from staged content, or use the sparkle button to generate an editable preview. Staging leaves file contents intact.
 
 ## Review a pull request
 
