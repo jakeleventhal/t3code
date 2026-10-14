@@ -132,6 +132,88 @@ describe("shared review workspace", () => {
     expect(isReviewFileVisible({ commentsOnly: true, hideReviewed: true }, true, true)).toBe(false);
     expect(isReviewFileVisible({ commentsOnly: true, hideReviewed: false }, true, true)).toBe(true);
   });
+  it("counts unpublished comments once while keeping unresolved replies in their conversation", () => {
+    const threads = [
+      {
+        path: "src/a.ts",
+        isResolved: false,
+        comments: [{ id: "published" }, { id: "reply" }],
+      },
+      {
+        path: "src/a.ts",
+        isResolved: false,
+        comments: [{ id: "private", pendingReviewId: "review" }],
+      },
+      {
+        path: "src/a.ts",
+        isResolved: true,
+        comments: [{ id: "resolved" }],
+      },
+    ];
+    const counts = reviewCommentCounts([{ path: "src/a.ts" }], threads, [
+      { path: "src/a.ts", id: "local-copy", hostedComment: { commentId: "private" } },
+      { path: "src/a.ts", id: "private", hostedComment: { commentId: "private" } },
+      { path: "src/a.ts", id: "unsaved-one" },
+      { path: "src/a.ts", id: "unsaved-two" },
+    ]);
+    expect(counts.get("src/a.ts")).toEqual({ total: 5, unresolved: 4 });
+    expect(reviewCommentCounts([{ path: "src/a.ts" }], threads).get("src/a.ts")).toEqual({
+      total: 3,
+      unresolved: 2,
+    });
+  });
+  it("keeps pending replies actionable in resolved conversations and renamed files", () => {
+    const counts = reviewCommentCounts(
+      [{ path: "src/new.ts", previousPath: "src/old.ts" }],
+      [
+        {
+          path: "src/old.ts",
+          isResolved: true,
+          comments: [
+            { id: "resolved" },
+            { id: "pending-one", pendingReviewId: "review" },
+            { id: "pending-two", pendingReviewId: "review" },
+          ],
+        },
+      ],
+    );
+    expect(counts.get("src/new.ts")).toEqual({ total: 3, unresolved: 2 });
+    expect(counts.has("src/old.ts")).toBe(false);
+    expect(
+      isReviewFileVisible(
+        { commentsOnly: true },
+        false,
+        (counts.get("src/new.ts")?.unresolved ?? 0) > 0,
+      ),
+    ).toBe(true);
+  });
+  it("does not resurrect removed host drafts or count a submitted draft twice", () => {
+    const files = [{ path: "a.ts" }];
+    const privateThread = {
+      path: "a.ts",
+      isResolved: false,
+      comments: [{ id: "private", pendingReviewId: "review" }],
+    };
+    expect(reviewCommentCounts(files, [privateThread], []).has("a.ts")).toBe(false);
+    const publishedThread = {
+      ...privateThread,
+      comments: [{ id: "private" }],
+    };
+    expect(
+      reviewCommentCounts(
+        files,
+        [publishedThread],
+        [{ path: "a.ts", id: "local-copy", hostedComment: { commentId: "private" } }],
+      ).get("a.ts"),
+    ).toEqual({ total: 1, unresolved: 1 });
+    expect(
+      reviewCommentCounts(
+        files,
+        [{ ...publishedThread, isResolved: true }],
+        [{ path: "a.ts", id: "local-copy", hostedComment: { commentId: "private" } }],
+      ).get("a.ts"),
+    ).toEqual({ total: 1, unresolved: 0 });
+  });
   it("fills commit gaps, trims endpoints and keeps a contiguous range after interior removal", () => {
     const commits = ["a", "b", "c", "d", "e"];
     expect(toggleReviewCommit(commits, ["b"], "e")).toEqual(["b", "c", "d", "e"]);

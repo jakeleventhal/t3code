@@ -823,6 +823,7 @@ export function PullRequestDiffContent({
     const counts = reviewCommentCounts(
       original.files.map((file) => ({ path: file.path, previousPath: file.previousPath })),
       activity.data?.reviewThreads ?? [],
+      reviewDraft.comments,
     );
     const files = orderReviewFiles(
       original.files.filter(
@@ -850,6 +851,7 @@ export function PullRequestDiffContent({
     result.parsed,
     isGuideChapter,
     activity.data,
+    reviewDraft.comments,
     commentsOnly,
     hideReviewed,
     grouped,

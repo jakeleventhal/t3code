@@ -560,6 +560,9 @@ export function PullRequestDetailPanel({
       summary: (node: HTMLDivElement | null) => {
         scrollerByTab.current.summary = node;
       },
+      guide: (node: HTMLDivElement | null) => {
+        scrollerByTab.current.guide = node;
+      },
       code: (node: HTMLDivElement | null) => {
         scrollerByTab.current.code = node;
       },
@@ -2766,6 +2769,26 @@ export function PullRequestDetailPanel({
                   }
                   onOpenFile={openFileInCode}
                   onTourShown={onGuideShown}
+                  fallback={
+                    <Suspense
+                      fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}
+                    >
+                      <PullRequestCodeTab
+                        guideFallback
+                        scrollerRef={scrollerRefs.guide}
+                        onAddToAgentSelection={(input) =>
+                          addSelectionToAgent(input, { keepGuide: true })
+                        }
+                        environmentId={environmentId}
+                        reference={reference}
+                        detail={detail}
+                        selectedCommitOid={null}
+                        onSelectedCommitChange={selectCodeCommit}
+                        onRefresh={refreshDetail}
+                        refreshToken={codeRefreshToken}
+                      />
+                    </Suspense>
+                  }
                 />
               </div>
             ) : null}

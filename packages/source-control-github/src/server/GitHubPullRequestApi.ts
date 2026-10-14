@@ -14,6 +14,7 @@ import * as Request from "effect/Request";
 import * as RequestResolver from "effect/RequestResolver";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import {
   resolvePullRequestAuthorFilter,
@@ -1452,23 +1453,39 @@ export const make = Effect.gen(function* () {
       );
 
   const draftReviewGate = Semaphore.makeUnsafe(1);
-  const readPendingReview = Effect.fn("GitHubPullRequestApi.readPendingReview")(function* (input: {
-    cwd: string;
-    host: string;
-    repository: string;
-    number: number;
-  }) {
+  // A failed read is safe to repeat; a failed save may already have created its comment.
+  const retryPendingReviewRead = <A>(read: Effect.Effect<A, GitHubApi.GitHubApiError>) =>
+    read.pipe(
+      Effect.retry({
+        times: 2,
+        schedule: Schedule.exponential("250 millis"),
+        while: (error) =>
+          error._tag === "GitHubApiRequestError" ||
+          (error._tag === "GitHubApiResponseError" && [500, 502, 503, 504].includes(error.status)),
+      }),
+    );
+  const readPendingReview = Effect.fn("GitHubPullRequestApi.readPendingReview")(function* (
+    input: {
+      cwd: string;
+      host: string;
+      repository: string;
+      number: number;
+    },
+    includePositions = true,
+  ) {
     const { owner, name } = parseRepositorySelector(input.repository);
-    const response = yield* api.graphql({
-      host: input.host,
-      operation: "pendingReview",
-      query: `query PendingReview($owner:String!,$name:String!,$number:Int!) {
+    const response = yield* api
+      .graphql({
+        host: input.host,
+        operation: "pendingReview",
+        query: `query PendingReview($owner:String!,$name:String!,$number:Int!) {
         repository(owner:$owner,name:$name) { pullRequest(number:$number) {
           id reviews(first:100,states:PENDING) { nodes { id fullDatabaseId body viewerDidAuthor } }
         } }
       }`,
-      variables: { owner, name, number: input.number },
-    });
+        variables: { owner, name, number: input.number },
+      })
+      .pipe(retryPendingReviewRead);
     const decoded = yield* decodePendingReviews(response).pipe(
       Effect.mapError((cause) => readError(input.cwd, "pendingReview", cause)),
     );
@@ -1477,11 +1494,13 @@ export const make = Effect.gen(function* () {
     const comments: Array<typeof PendingReviewCommentSchema.Type> = [];
     if (review) {
       for (let page = 1; page <= 10; page++) {
-        const read = yield* api.rest({
-          host: input.host,
-          operation: "pendingReview",
-          path: `repos/${owner}/${name}/pulls/${input.number}/reviews/${review.fullDatabaseId}/comments?per_page=100&page=${page}`,
-        });
+        const read = yield* api
+          .rest({
+            host: input.host,
+            operation: "pendingReview",
+            path: `repos/${owner}/${name}/pulls/${input.number}/reviews/${review.fullDatabaseId}/comments?per_page=100&page=${page}`,
+          })
+          .pipe(retryPendingReviewRead);
         const rows = yield* decodePendingReviewComments(read.body).pipe(
           Effect.mapError((cause) => readError(input.cwd, "pendingReview", cause)),
         );
@@ -1499,16 +1518,17 @@ export const make = Effect.gen(function* () {
     // through GraphQL, which is also how the reader pins those same private comments.
     const needsPositions = new Set(
       comments
-        .filter((comment) => comment.line == null || comment.side == null)
+        .filter((comment) => includePositions && (comment.line == null || comment.side == null))
         .map((comment) => comment.node_id),
     );
     const commentIndices = new Map(comments.map((comment, index) => [comment.node_id, index]));
     let cursor: string | null = null;
     for (let page = 0; needsPositions.size > 0 && page < REVIEW_THREAD_PAGES; page++) {
-      const response: string = yield* api.graphql({
-        host: input.host,
-        operation: "pendingReview",
-        query: `query PendingReviewPositions($owner:String!,$name:String!,$number:Int!,$cursor:String) {
+      const response: string = yield* api
+        .graphql({
+          host: input.host,
+          operation: "pendingReview",
+          query: `query PendingReviewPositions($owner:String!,$name:String!,$number:Int!,$cursor:String) {
           repository(owner:$owner,name:$name) { pullRequest(number:$number) {
             reviewThreads(first:100,after:$cursor) {
               pageInfo { hasNextPage endCursor }
@@ -1516,8 +1536,9 @@ export const make = Effect.gen(function* () {
             }
           } }
         }`,
-        variables: { owner, name, number: input.number, cursor },
-      });
+          variables: { owner, name, number: input.number, cursor },
+        })
+        .pipe(retryPendingReviewRead);
       const decoded = yield* decodeDraftThreadPositions(response).pipe(
         Effect.mapError((cause) => readError(input.cwd, "pendingReview", cause)),
       );
@@ -1674,16 +1695,15 @@ export const make = Effect.gen(function* () {
   const discardDraftComment = Effect.fn("GitHubPullRequestApi.discardDraftComment")(function* (
     input: Parameters<GitHubPullRequestApi["Service"]["discardDraftComment"]>[0],
   ) {
-    const pending = yield* readPendingReview(input);
-    if (
-      pending.review?.id !== input.reviewId ||
-      !pending.comments.some((comment) => comment.node_id === input.commentId)
-    )
+    const pending = yield* readPendingReview(input, false);
+    if (!pending.review) return;
+    if (pending.review.id !== input.reviewId)
       return yield* readError(
         input.cwd,
         "discardDraftComment",
         new Error("This comment is no longer in your pending review. Refresh the pull request."),
       );
+    if (!pending.comments.some((comment) => comment.node_id === input.commentId)) return;
     // Removing the final comment also removes an otherwise empty draft, so it does not block
     // a later review. Preserve a review summary and any other pending comments.
     const deleteReview = pending.comments.length === 1 && pending.review.body.trim().length === 0;

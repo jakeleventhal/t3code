@@ -44,7 +44,6 @@ export function useReviewFilePatches({
     source?.kind,
     source?.diffHash,
     baseRef,
-    ignoreWhitespace,
     workingTreeScope,
   ]);
   const [requested, setRequested] = useState({ scope, indices: [0, 1, 2, 3] });
@@ -73,7 +72,9 @@ export function useReviewFilePatches({
                     request: {
                       cwd,
                       ...(baseRef ? { baseRef } : {}),
-                      ignoreWhitespace,
+                      // Keep the original patch for line and hunk actions. Whitespace
+                      // filtering changes only the displayed metadata below.
+                      ignoreWhitespace: false,
                       ...(workingTreeScope ? { workingTreeScope } : {}),
                       file: {
                         path: file.path,
@@ -85,17 +86,7 @@ export function useReviewFilePatches({
                 }),
               };
             }),
-    [
-      environmentId,
-      cwd,
-      source,
-      files,
-      indices,
-      scope,
-      baseRef,
-      ignoreWhitespace,
-      workingTreeScope,
-    ],
+    [environmentId, cwd, source, files, indices, scope, baseRef, workingTreeScope],
   );
   const previousPreview = useRef({ scope, revision, queries: [] as typeof queries });
   useEffect(() => {
@@ -118,6 +109,7 @@ export function useReviewFilePatches({
           AsyncResult.map(result, (source) => {
             let patch = getRenderablePatch(source.diff, `diff-panel:${theme}`, {
               compactPartialHunkOffsets: true,
+              ignoreWhitespace,
             });
             if (patch?.kind === "files" && patch.files.length === 1 && source.files?.length === 1) {
               const stat = source.files[0]!;
@@ -130,7 +122,7 @@ export function useReviewFilePatches({
           }),
         ),
       ),
-    [theme],
+    [theme, ignoreWhitespace],
   );
   const patches = useAtomValue(
     useMemo(
@@ -192,7 +184,14 @@ export function useReviewFilePatches({
             return {
               name: file.path,
               ...(file.previousPath ? { prevName: file.previousPath } : {}),
-              type: file.previousPath ? "rename-changed" : "change",
+              type:
+                file.status === "added"
+                  ? "new"
+                  : file.status === "deleted"
+                    ? "deleted"
+                    : file.previousPath || file.status === "renamed"
+                      ? "rename-changed"
+                      : "change",
               hunks: [],
               additionLines: [],
               deletionLines: [],

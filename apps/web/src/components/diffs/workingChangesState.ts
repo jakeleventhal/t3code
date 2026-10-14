@@ -1,11 +1,17 @@
 import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
 import { orderReviewFiles } from "@t3tools/client-runtime/review-workspace";
+import {
+  projectReviewDiffContext,
+  UNKNOWN_REVIEW_LINE,
+} from "@t3tools/client-runtime/review-diff-context";
 import { fnv1a32, getRenderablePatch, resolveFileDiffPath } from "~/lib/diffRendering";
 
 type Scope = "staged" | "unstaged";
 export type WorkingChangesSnapshot = {
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly hunksByPath: ReadonlyMap<string, ReadonlyArray<string>>;
+  /** Cleared comparisons stay open in the reader, but never appear in the Git tree. */
+  readonly retainedFiles?: ReadonlyArray<FileDiffMetadata>;
 };
 export type WorkingChangesState = Record<Scope, WorkingChangesSnapshot>;
 
@@ -59,8 +65,10 @@ function optimisticFile(
   after: ReadonlyArray<string>,
   fallback: FileDiffMetadata,
   header: string,
+  anchorSide: "additions" | "deletions",
 ) {
-  if (before.join("") === after.join("")) return null;
+  const contextFile = projectReviewDiffContext(before, after, fallback, anchorSide);
+  if (before.join("") === after.join("")) return { file: null, hunks: [], contextFile };
   // Unknown unchanged lines establish coordinates only. Zero context prevents them from
   // entering the optimistic render or a staging patch; Git supplies real context on refresh.
   const generated = parseDiffFromFile(
@@ -97,12 +105,9 @@ function optimisticFile(
   const file = parsed?.kind === "files" ? parsed.files[0] : undefined;
   return file
     ? {
-        file: {
-          ...file,
-          name: fallback.name,
-          ...(fallback.prevName ? { prevName: fallback.prevName } : {}),
-        },
+        file: contextFile,
         hunks,
+        contextFile,
       }
     : null;
 }
@@ -121,11 +126,33 @@ function stagePatch(
     hunk.after.forEach((line, at) => known.set(hunk.newAt + at, line));
   for (const hunk of patchHunks(unstaged))
     hunk.before.forEach((line, at) => known.set(hunk.oldAt + at, line));
+  // Pierre upgrades metadata in place after expanding context. Use those contents
+  // too, so staging preserves the expanded file rather than a fresh partial patch.
+  if (!fallback.isPartial) {
+    const lines = scope === "unstaged" ? fallback.deletionLines : fallback.additionLines;
+    lines.forEach((line, at) => known.set(at, line));
+  } else {
+    for (const hunk of fallback.hunks) {
+      const start = scope === "unstaged" ? hunk.deletionStart : hunk.additionStart;
+      const at = scope === "unstaged" ? hunk.deletionLineIndex : hunk.additionLineIndex;
+      const count = scope === "unstaged" ? hunk.deletionCount : hunk.additionCount;
+      const lines = scope === "unstaged" ? fallback.deletionLines : fallback.additionLines;
+      const noEOF = scope === "unstaged" ? hunk.noEOFCRDeletions : hunk.noEOFCRAdditions;
+      lines
+        .slice(at, at + count)
+        .forEach((line, offset) =>
+          known.set(
+            start - 1 + offset,
+            line.endsWith("\n") || (noEOF && offset === count - 1) ? line : `${line}\n`,
+          ),
+        );
+    }
+  }
   let lineCount = 0;
   for (const at of known.keys()) lineCount = Math.max(lineCount, at + 1);
   const index = Array.from(
     { length: lineCount },
-    (_, at) => known.get(at) ?? `\u0000unknown:${at}\n`,
+    (_, at) => known.get(at) ?? `${UNKNOWN_REVIEW_LINE}${at}\n`,
   );
   const head = applyPatch(index, staged, true);
   const working = applyPatch(index, unstaged);
@@ -137,12 +164,14 @@ function stagePatch(
       nextIndex,
       current.staged.files.find((file) => resolveFileDiffPath(file) === path) ?? fallback,
       header,
+      scope === "staged" ? "deletions" : "additions",
     ),
     unstaged: optimisticFile(
       nextIndex,
       working,
       current.unstaged.files.find((file) => resolveFileDiffPath(file) === path) ?? fallback,
       header,
+      "additions",
     ),
   };
 }
@@ -166,16 +195,20 @@ export function applyWorkingChangesMutation(
   );
   const sourceHunks = new Map(current[mutation.scope].hunksByPath);
   const destinationHunks = new Map(current[destination].hunksByPath);
+  const retainedFiles = new Map(
+    (current[mutation.scope].retainedFiles ?? []).map((file) => [resolveFileDiffPath(file), file]),
+  );
   for (const file of affected) {
     const path = resolveFileDiffPath(file);
     if (mutation.patch) {
       const changed = stagePatch(current, path, mutation.patch, mutation.scope, file);
       const source = changed[mutation.scope];
       const target = changed[destination];
-      if (source) sourceFiles.set(path, source.file);
+      if (source?.file) sourceFiles.set(path, source.file);
       else sourceFiles.delete(path);
+      if (source) retainedFiles.set(path, source.contextFile);
       sourceHunks.set(path, source?.hunks ?? []);
-      if (target) destinationFiles.set(path, target.file);
+      if (target?.file) destinationFiles.set(path, target.file);
       else destinationFiles.delete(path);
       destinationHunks.set(path, target?.hunks ?? []);
     } else {
@@ -191,20 +224,30 @@ export function applyWorkingChangesMutation(
               header + raw.map((hunk) => hunk.slice(hunk.indexOf("@@ "))).join(""),
               mutation.scope,
               file,
-            )[destination]
+            )
           : null;
+        const cleared = changed?.[mutation.scope]?.contextFile;
+        if (cleared) retainedFiles.set(path, cleared);
         const complete = combined.files.find(
           (candidate) =>
             resolveFileDiffPath(candidate) === path && !candidate.cacheKey?.endsWith(":pending"),
         );
-        destinationFiles.set(path, changed?.file ?? complete ?? file);
-        destinationHunks.set(path, changed?.hunks ?? combined.hunksByPath.get(path) ?? raw);
+        if (changed) {
+          const target = changed[destination]?.file;
+          if (target) destinationFiles.set(path, target);
+          else destinationFiles.delete(path);
+        } else destinationFiles.set(path, complete ?? file);
+        destinationHunks.set(
+          path,
+          changed?.[destination]?.hunks ?? combined.hunksByPath.get(path) ?? raw,
+        );
       }
     }
   }
   const source = {
     files: orderReviewFiles([...sourceFiles.values()], resolveFileDiffPath),
     hunksByPath: sourceHunks,
+    retainedFiles: [...retainedFiles.values()],
   };
   const target = {
     files: orderReviewFiles([...destinationFiles.values()], resolveFileDiffPath),

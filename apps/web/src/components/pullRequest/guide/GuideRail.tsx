@@ -1,3 +1,7 @@
+import type { FileDiffMetadata } from "@pierre/diffs";
+
+import { getDiffLineStat } from "~/lib/diffRendering";
+
 import type { PullRequestReviewGuideStop } from "@t3tools/contracts";
 import {
   stopFilePaths,
@@ -6,7 +10,8 @@ import {
 } from "@t3tools/client-runtime/review-guide-tour";
 
 import { Badge } from "../../ui/badge";
-import { ReviewChapterRail } from "../ReviewChapterRail";
+import { ReviewChapterProgress } from "../ReviewChapterHeader";
+import { ReviewChapterRail, ReviewChapterFileLink } from "../ReviewChapterRail";
 
 /** The Guide table of contents uses the same chapter navigation as grouped Code review. */
 export function GuideRail({
@@ -16,7 +21,11 @@ export function GuideRail({
   onSelect,
   isViewed,
   onSetViewed,
+  files,
+  onSelectFile,
 }: {
+  files: ReadonlyMap<string, FileDiffMetadata>;
+  onSelectFile: (path: string) => void;
   stops: ReadonlyArray<PullRequestReviewGuideStop>;
   position: number;
   seen: ReadonlySet<number>;
@@ -39,6 +48,33 @@ export function GuideRail({
               },
             }
           : {}),
+        selectedContent:
+          index === position ? (
+            <div className="flex min-w-0 flex-col gap-2 px-2 pb-2">
+              {onSetViewed && stopFilePaths(stop).length > 0 ? (
+                <ReviewChapterProgress
+                  reviewedCount={reviewGuideStopProgress(stop, isViewed).reviewedCount}
+                  fileCount={stopFilePaths(stop).length}
+                  onSetReviewed={(value) => onSetViewed(stopFilePaths(stop), value)}
+                />
+              ) : null}
+              <ul className="flex min-w-0 flex-col gap-0.5">
+                {stopFilePaths(stop).map((path) => {
+                  const file = files.get(path);
+                  const stat = file === undefined ? null : getDiffLineStat([file]);
+                  return (
+                    <li key={path}>
+                      <ReviewChapterFileLink
+                        path={path}
+                        stat={stat}
+                        onSelect={() => onSelectFile(path)}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null,
         detail: (
           <>
             {stop.attention !== null ? (
