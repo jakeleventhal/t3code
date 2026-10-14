@@ -120,7 +120,7 @@ function makeInput(reviewCache = makeReviewCache()) {
   };
 }
 
-function renderSections(input: ReturnType<typeof makeInput>) {
+function renderSections(input: Parameters<typeof useReviewSections>[0]) {
   const result = useReviewSections(input);
   const effects = state.effects.splice(0);
   effects.forEach((effect) => effect());
@@ -207,4 +207,19 @@ it("keeps a cached checkpoint available when the filesystem access check fails",
   const checkpoint = renderSections(makeInput());
   expect(checkpoint.selectedSection?.diff).toBe(checkpointDiff);
   expect(checkpoint.error).toBeNull();
+});
+
+it("keeps an opened file on its requested comparison without changing the overview selection", () => {
+  const input = makeInput();
+  const opened = renderSections({ ...input, selectedSectionId: "turn:1" });
+  expect(opened.selectedSection?.diff).toBe(checkpointDiff);
+  expect(input.reviewCache.selectedSectionId).toBe("git:working-tree");
+  expect(setReviewSelectedSectionId).not.toHaveBeenCalled();
+});
+
+it("does not expose a forced local comparison after filesystem access is denied", () => {
+  state.session = { authenticated: true, scopes: [] };
+  const opened = renderSections({ ...makeInput(), selectedSectionId: "git:working-tree" });
+  expect(opened.selectedSection?.diff).toBe(checkpointDiff);
+  expect(opened.reviewSections.some((section) => section.kind === "working-tree")).toBe(false);
 });

@@ -12,13 +12,13 @@ import {
   Alert,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { MaterialButton } from "../../components/MaterialButton";
@@ -51,6 +51,8 @@ type Props = {
   draftMessage: string;
   revision?: string;
   onChanged: () => void;
+  openedFile?: { readonly scope: WorkingScope; readonly path: string } | undefined;
+  onOpenFile: (file: { readonly scope: WorkingScope; readonly path: string }) => void;
 };
 
 function useWorkingChanges(props: Props, scope: WorkingScope | undefined, generation: number) {
@@ -113,7 +115,7 @@ function useWorkingChanges(props: Props, scope: WorkingScope | undefined, genera
   return { query, source, section, diff, files, hunks };
 }
 
-/** Files and Git share one reader; a touch-sized drawer replaces desktop's side panel. */
+/** The Git overview owns staging; selecting a file opens its scoped diff. */
 export function WorkingChangesReview(props: Props) {
   const memoryKey = JSON.stringify([props.environmentId, props.threadId, props.cwd]);
   return <WorkingChangesReader key={memoryKey} {...props} memoryKey={memoryKey} />;
@@ -123,8 +125,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
   const { environmentId, threadId, cwd } = props;
   const [remembered] = useState(() => getWorkingChangesReviewMemory(props.memoryKey));
   const [generation, setGeneration] = useState(0);
-  const [showFiles, setShowFiles] = useState(false);
-  const [selection, setSelection] = useState(remembered.selection);
+  const [selection, setSelection] = useState(props.openedFile ?? remembered.selection);
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set(remembered.foldedPaths));
   const [pending, setPending] = useState(false);
@@ -155,7 +156,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
         : null;
   const scope = selected?.scope ?? (unstaged.files.length ? "unstaged" : "staged");
   const data = scopes[scope];
-  const selectedPath = selected?.path ?? data.files[0]?.path ?? null;
+  const selectedPath = selected?.path ?? props.openedFile?.path ?? null;
   const readerKey = JSON.stringify(["git", scope, selectedPath]);
   const restoreAnchor = useMemo(
     () => getWorkingChangesReviewMemory(props.memoryKey).anchors[readerKey],
@@ -336,10 +337,10 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     collapsedFileIds: [...foldedFileIds],
     viewedFileIds: [],
     selectedRowIds: commentSelection.selectedRowIds,
-    canHighlight: !showFiles,
+    canHighlight: props.openedFile !== undefined,
   });
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
-  const { themeAppearance, themeVariables } = useAppearancePreferences();
+  const { themeAppearance } = useAppearancePreferences();
   const loadingChanges = [staged, unstaged].some(
     ({ query }) => query.isPending && query.data === null,
   );
@@ -422,8 +423,145 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
     target.diff.loadVisibleFile(path);
     setFolded((current) => new Set([...current].filter((foldedPath) => foldedPath !== path)));
     commentSelection.clearSelection();
-    setShowFiles(false);
+    props.onOpenFile({ scope, path });
   };
+  if (!props.openedFile) {
+    const error = staged.query.error ?? unstaged.query.error;
+    const hasChanges = staged.files.length > 0 || unstaged.files.length > 0;
+    return (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        {error ? <Text className="px-4 py-3 text-xs text-danger-foreground">{error}</Text> : null}
+        {hasChanges ? (
+          <>
+            <View className="gap-2 px-3 py-2">
+              <View className="min-h-11 flex-row items-center rounded-xl border border-border-subtle bg-card">
+                <TextInput
+                  accessibilityLabel="Commit message"
+                  value={message}
+                  onChangeText={setMessage}
+                  editable={!pending}
+                  multiline
+                  placeholder="Message (blank generates one)"
+                  textAlignVertical="top"
+                  className="min-h-11 min-w-0 flex-1 px-3 py-2 text-sm"
+                  style={{ maxHeight: 144 }}
+                />
+                {staged.files.length ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Generate commit message"
+                    accessibilityState={{ disabled: !canGenerate || pending }}
+                    disabled={!canGenerate || pending}
+                    onPress={() => void generatePreview()}
+                    className="size-11 items-center justify-center"
+                  >
+                    <SymbolView name="sparkles" size={21} tintColorClassName="accent-icon" />
+                  </Pressable>
+                ) : null}
+              </View>
+              <View className="min-h-11 flex-row overflow-hidden rounded-xl bg-primary">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Commit"
+                  accessibilityState={{
+                    disabled: !canCommit || pending || !staged.files.length,
+                  }}
+                  disabled={!canCommit || pending || !staged.files.length}
+                  onPress={() => void runCommit("commit")}
+                  className="min-h-11 flex-1 flex-row items-center justify-center gap-2 active:opacity-70"
+                >
+                  <SymbolView
+                    name="checkmark"
+                    size={18}
+                    tintColorClassName="accent-primary-foreground"
+                  />
+                  <Text className="font-t3-medium text-primary-foreground">
+                    {generating ? "Generating…" : pending ? "Working…" : "Commit"}
+                  </Text>
+                </Pressable>
+                <ControlPillMenu
+                  title="Commit options"
+                  actions={[
+                    {
+                      id: "commit",
+                      title: "Commit",
+                      attributes: { disabled: !canCommit || pending || !staged.files.length },
+                    },
+                    {
+                      id: "amend",
+                      title: "Commit (Amend)",
+                      attributes: {
+                        disabled:
+                          !canCommit || pending || (!staged.files.length && !message.trim()),
+                      },
+                    },
+                    {
+                      id: "commit-push",
+                      title: "Commit & Push",
+                      attributes: { disabled: !canCommit || pending || !staged.files.length },
+                    },
+                  ]}
+                  onPressAction={({ nativeEvent }) => {
+                    if (
+                      nativeEvent.event === "commit" ||
+                      nativeEvent.event === "amend" ||
+                      nativeEvent.event === "commit-push"
+                    )
+                      void runCommit(nativeEvent.event);
+                  }}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Commit options"
+                    className="size-11 items-center justify-center border-l border-primary-foreground/30"
+                  >
+                    <SymbolView
+                      name="chevron.down"
+                      size={16}
+                      tintColorClassName="accent-primary-foreground"
+                    />
+                  </Pressable>
+                </ControlPillMenu>
+              </View>
+            </View>
+            <WorkingChangesTree
+              staged={staged.files}
+              unstaged={unstaged.files}
+              selected={selected}
+              disabled={!canStage || pending}
+              revertDisabled={!canRevert || pending}
+              onSelect={selectFile}
+              onStage={(scope, path) => void updateStaging(scope, pathsFor(scope, path))}
+              onRevert={confirmRevert}
+              onRefresh={refresh}
+              refreshing={staged.query.isPending || unstaged.query.isPending}
+            />
+          </>
+        ) : (
+          <ScrollView
+            alwaysBounceVertical
+            refreshControl={
+              <RefreshControl
+                refreshing={staged.query.isPending || unstaged.query.isPending}
+                onRefresh={refresh}
+              />
+            }
+          >
+            <Text className="px-4 py-3 text-xs text-foreground-muted">
+              {loadingChanges
+                ? "Loading changes…"
+                : error
+                  ? "Changes are unavailable."
+                  : "No uncommitted changes."}
+            </Text>
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
+    );
+  }
   const label = scope === "staged" ? "Unstage" : "Stage";
   return (
     <View className="flex-1">
@@ -445,14 +583,6 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
             </Pressable>
           </>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Browse changed files"
-          onPress={() => setShowFiles(true)}
-          className="size-11 items-center justify-center"
-        >
-          <SymbolView name="sidebar.right" size={21} tintColorClassName="accent-icon" />
-        </Pressable>
       </View>
       {commentSelection.selectionAction ? (
         <View className="flex-row items-center gap-2 px-4 py-2">
@@ -611,138 +741,10 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
               ? "Loading changes…"
               : files.length
                 ? "The native diff viewer is unavailable."
-                : "No uncommitted changes."}
+                : "No changes remaining in this file."}
           </Text>
         )}
       </View>
-      <Modal
-        visible={showFiles}
-        presentationStyle="fullScreen"
-        animationType="slide"
-        onRequestClose={() => setShowFiles(false)}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: themeVariables["--color-screen"] }}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <View className="flex-row items-center gap-2 border-b border-border-subtle px-3 py-2">
-              <Text className="min-w-0 flex-1 text-sm font-t3-medium">Uncommitted changes</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close changed files"
-                onPress={() => setShowFiles(false)}
-                className="size-11 items-center justify-center"
-              >
-                <SymbolView name="xmark" size={19} tintColorClassName="accent-icon" />
-              </Pressable>
-            </View>
-            <>
-              <View className="gap-2 px-3 py-2">
-                <View className="min-h-11 flex-row items-center rounded-xl border border-border-subtle bg-card">
-                  <TextInput
-                    accessibilityLabel="Commit message"
-                    value={message}
-                    onChangeText={setMessage}
-                    editable={!pending}
-                    multiline
-                    placeholder="Message (blank generates one)"
-                    textAlignVertical="top"
-                    className="min-h-11 min-w-0 flex-1 px-3 py-2 text-sm"
-                    style={{ maxHeight: 144 }}
-                  />
-                  {staged.files.length ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Generate commit message"
-                      accessibilityState={{ disabled: !canGenerate || pending }}
-                      disabled={!canGenerate || pending}
-                      onPress={() => void generatePreview()}
-                      className="size-11 items-center justify-center"
-                    >
-                      <SymbolView name="sparkles" size={21} tintColorClassName="accent-icon" />
-                    </Pressable>
-                  ) : null}
-                </View>
-                <View className="min-h-11 flex-row overflow-hidden rounded-xl bg-primary">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Commit"
-                    accessibilityState={{
-                      disabled: !canCommit || pending || !staged.files.length,
-                    }}
-                    disabled={!canCommit || pending || !staged.files.length}
-                    onPress={() => void runCommit("commit")}
-                    className="min-h-11 flex-1 flex-row items-center justify-center gap-2 active:opacity-70"
-                  >
-                    <SymbolView
-                      name="checkmark"
-                      size={18}
-                      tintColorClassName="accent-primary-foreground"
-                    />
-                    <Text className="font-t3-medium text-primary-foreground">
-                      {generating ? "Generating…" : pending ? "Working…" : "Commit"}
-                    </Text>
-                  </Pressable>
-                  <ControlPillMenu
-                    title="Commit options"
-                    actions={[
-                      {
-                        id: "commit",
-                        title: "Commit",
-                        attributes: { disabled: !canCommit || pending || !staged.files.length },
-                      },
-                      {
-                        id: "amend",
-                        title: "Commit (Amend)",
-                        attributes: {
-                          disabled:
-                            !canCommit || pending || (!staged.files.length && !message.trim()),
-                        },
-                      },
-                      {
-                        id: "commit-push",
-                        title: "Commit & Push",
-                        attributes: { disabled: !canCommit || pending || !staged.files.length },
-                      },
-                    ]}
-                    onPressAction={({ nativeEvent }) => {
-                      if (
-                        nativeEvent.event === "commit" ||
-                        nativeEvent.event === "amend" ||
-                        nativeEvent.event === "commit-push"
-                      )
-                        void runCommit(nativeEvent.event);
-                    }}
-                  >
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Commit options"
-                      className="size-11 items-center justify-center border-l border-primary-foreground/30"
-                    >
-                      <SymbolView
-                        name="chevron.down"
-                        size={16}
-                        tintColorClassName="accent-primary-foreground"
-                      />
-                    </Pressable>
-                  </ControlPillMenu>
-                </View>
-              </View>
-              <WorkingChangesTree
-                staged={staged.files}
-                unstaged={unstaged.files}
-                selected={selected ?? (selectedPath ? { scope, path: selectedPath } : null)}
-                disabled={!canStage || pending}
-                revertDisabled={!canRevert || pending}
-                onSelect={selectFile}
-                onStage={(scope, path) => void updateStaging(scope, pathsFor(scope, path))}
-                onRevert={confirmRevert}
-              />
-            </>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
     </View>
   );
 }
