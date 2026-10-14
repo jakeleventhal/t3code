@@ -1934,6 +1934,16 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
+export const WsReviewMutationRpcGroup = RpcGroup.make(
+  WsPullRequestsUploadAttachmentRpc,
+  WsPullRequestsSaveDraftCommentRpc,
+  WsPullRequestsDiscardDraftCommentRpc,
+  WsReviewSetStagedRpc,
+  WsReviewCommitRpc,
+  WsReviewGenerateCommitMessageRpc,
+  WsReviewRevertRpc,
+).middleware(RpcScopeAuthorization);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,

@@ -1,4 +1,5 @@
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 
@@ -99,6 +100,7 @@ import {
   type PullRequestRef,
   WS_METHODS,
   WsRpcGroup,
+  WsReviewMutationRpcGroup,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import {
@@ -546,6 +548,16 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+const ServerReviewMutationRpcGroup = WsReviewMutationRpcGroup.middleware(RpcInstrumentation);
+const ServerCoreWsRpcGroup = ServerWsRpcGroup.omit(
+  WS_METHODS.pullRequestsUploadAttachment,
+  WS_METHODS.pullRequestsSaveDraftComment,
+  WS_METHODS.pullRequestsDiscardDraftComment,
+  WS_METHODS.reviewSetStaged,
+  WS_METHODS.reviewCommit,
+  WS_METHODS.reviewGenerateCommitMessage,
+  WS_METHODS.reviewRevert,
+);
 // When a resuming client's cursor is more than this many events behind the
 // current head, skip the per-event catch-up replay and send a fresh shell
 // snapshot instead. Replaying each intervening event costs a shell refetch;
@@ -1201,7 +1213,7 @@ const layerWsRpc = (
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  Layer.effectContext(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1828,7 +1840,7 @@ const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = ServerCoreWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -2535,16 +2547,10 @@ const layerWsRpc = (
           ),
         [WS_METHODS.pullRequestsUpdate]: (input) =>
           withPullRequestViewer(input, pullRequests.update(input)),
-        [WS_METHODS.pullRequestsUploadAttachment]: (input) =>
-          withPullRequestViewer(input, pullRequests.uploadAttachment(input)),
         [WS_METHODS.pullRequestsComment]: (input) =>
           withPullRequestViewer(input, pullRequests.comment(input)),
         [WS_METHODS.pullRequestsUpdateComment]: (input) =>
           withPullRequestViewer(input, pullRequests.updateComment(input)),
-        [WS_METHODS.pullRequestsSaveDraftComment]: (input) =>
-          withPullRequestViewer(input, pullRequests.saveDraftComment(input)),
-        [WS_METHODS.pullRequestsDiscardDraftComment]: (input) =>
-          withPullRequestViewer(input, pullRequests.discardDraftComment(input)),
         [WS_METHODS.pullRequestsSubmitReview]: (input) =>
           withPullRequestViewer(input, pullRequests.submitReview(input)),
         [WS_METHODS.pullRequestsReplyToThread]: (input) =>
@@ -2892,10 +2898,6 @@ const layerWsRpc = (
           gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-        [WS_METHODS.reviewSetStaged]: (input) => review.setStaged(input),
-        [WS_METHODS.reviewCommit]: (input) => review.commit(input),
-        [WS_METHODS.reviewGenerateCommitMessage]: (input) => review.generateCommitMessage(input),
-        [WS_METHODS.reviewRevert]: (input) => review.revert(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
         [WS_METHODS.terminalOpen]: (input) => terminalManager.open(input),
@@ -3155,7 +3157,22 @@ const layerWsRpc = (
             ),
           ),
       });
-      return handlers;
+      const reviewMutationHandlers = ServerReviewMutationRpcGroup.of({
+        [WS_METHODS.pullRequestsUploadAttachment]: (input) =>
+          withPullRequestViewer(input, pullRequests.uploadAttachment(input)),
+        [WS_METHODS.pullRequestsSaveDraftComment]: (input) =>
+          withPullRequestViewer(input, pullRequests.saveDraftComment(input)),
+        [WS_METHODS.pullRequestsDiscardDraftComment]: (input) =>
+          withPullRequestViewer(input, pullRequests.discardDraftComment(input)),
+        [WS_METHODS.reviewSetStaged]: (input) => review.setStaged(input),
+        [WS_METHODS.reviewCommit]: (input) => review.commit(input),
+        [WS_METHODS.reviewGenerateCommitMessage]: (input) => review.generateCommitMessage(input),
+        [WS_METHODS.reviewRevert]: (input) => review.revert(input),
+      });
+      return Context.merge(
+        yield* ServerCoreWsRpcGroup.toHandlers(handlers),
+        yield* ServerReviewMutationRpcGroup.toHandlers(reviewMutationHandlers),
+      );
     }),
   );
 
