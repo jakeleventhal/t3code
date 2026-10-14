@@ -69,7 +69,7 @@ export function SegmentedControl<Value extends number | string>(
             accessibilityState={{ selected: active }}
             onPress={() => props.onSelect(option.value)}
             className={cn(
-              "flex-1 items-center justify-center rounded-full",
+              "flex-1 flex-row items-center justify-center gap-1.5 rounded-full",
               compact ? "h-9" : "h-11",
             )}
           >
@@ -81,6 +81,11 @@ export function SegmentedControl<Value extends number | string>(
             >
               {option.label}
             </Text>
+            {option.badge !== undefined ? (
+              <Text className="rounded-md bg-primary/10 px-1 text-2xs font-t3-medium text-primary-text">
+                {option.badge}
+              </Text>
+            ) : null}
           </Pressable>
         );
       })}

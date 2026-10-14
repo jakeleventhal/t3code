@@ -32,6 +32,7 @@ interface DiffCommentAnnotationEntry {
 
 interface DiffCommentAnnotationGroup {
   entries: DiffCommentAnnotationEntry[];
+  hunkIndex?: number;
 }
 
 type DiffCommentLineAnnotation = DiffLineAnnotation<DiffCommentAnnotationGroup>;
@@ -89,6 +90,7 @@ interface AnnotatableCodeViewProps {
   renderCodeViewFooter?: () => ReactNode;
   unsafeCSSExtra?: string;
   renderHeaderMetadata?: (fileDiff: FileDiffMetadata) => ReactNode;
+  renderHunkAction?: ((fileDiff: FileDiffMetadata, hunkIndex: number) => ReactNode) | undefined;
   renderHeaderFilenameSuffix: (fileDiff: FileDiffMetadata) => ReactNode;
   renderHeaderPrefix: (
     fileDiff: FileDiffMetadata,
@@ -115,6 +117,7 @@ export function AnnotatableCodeView({
   renderCodeViewFooter,
   unsafeCSSExtra,
   renderHeaderMetadata,
+  renderHunkAction,
   renderHeaderFilenameSuffix,
   renderHeaderPrefix,
   onRevealSearchMatch,
@@ -158,6 +161,18 @@ export function AnnotatableCodeView({
           }, []);
         const annotations =
           draft?.fileKey === fileKey ? [...persisted, draft.annotation] : persisted;
+        if (renderHunkAction) {
+          fileDiff.hunks.forEach((hunk, hunkIndex) => {
+            const additions = hunk.additionCount > 0;
+            const count = additions ? hunk.additionCount : hunk.deletionCount;
+            if (count === 0) return;
+            annotations.push({
+              side: additions ? "additions" : "deletions",
+              lineNumber: (additions ? hunk.additionStart : hunk.deletionStart) + count - 1,
+              metadata: { entries: [], hunkIndex },
+            });
+          });
+        }
         return {
           id: fileKey,
           type: "diff",
@@ -166,16 +181,17 @@ export function AnnotatableCodeView({
           collapsed,
           version: fnv1a32(
             `${fileVersion}:${collapsed ? "1" : "0"}:${annotations
-              .flatMap((annotation) =>
-                annotation.metadata.entries.map(
+              .flatMap((annotation) => [
+                String(annotation.metadata.hunkIndex ?? ""),
+                ...annotation.metadata.entries.map(
                   (entry) => `${entry.id}:${entry.rangeLabel}:${entry.text}`,
                 ),
-              )
+              ])
               .join(":")}`,
           ),
         };
       }),
-    [draft, files, reviewComments, sectionId],
+    [draft, files, reviewComments, sectionId, renderHunkAction],
   );
 
   const removeEntry = useCallback(
@@ -280,7 +296,10 @@ export function AnnotatableCodeView({
           ? renderHeaderPrefix(item.fileDiff, item.id, item.collapsed === true)
           : null
       }
-      renderAnnotation={(annotation) => {
+      renderAnnotation={(annotation, item) => {
+        if (annotation.metadata.hunkIndex !== undefined && item.type === "diff") {
+          return renderHunkAction?.(item.fileDiff, annotation.metadata.hunkIndex);
+        }
         const hasDraft = annotation.metadata.entries.some((entry) => entry.kind === "draft");
         return (
           <div

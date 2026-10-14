@@ -7,6 +7,8 @@ import { resolveFileDiffPath } from "~/lib/diffRendering";
 export interface DiffFileTreeEntry {
   readonly path: string;
   readonly status: GitStatus;
+  readonly reviewed?: boolean;
+  readonly unresolvedComments?: number;
 }
 
 function toGitStatus(file: FileDiffMetadata): GitStatus {

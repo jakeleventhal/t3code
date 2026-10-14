@@ -1,3 +1,5 @@
+import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
+import { PullRequestAttachments } from "./PullRequestAttachments";
 import { useAtomCommand } from "~/state/use-atom-command";
 /**
  * The review half of the floating composer: the summary and the verdict that sends it, together
@@ -5,7 +7,12 @@ import { useAtomCommand } from "~/state/use-atom-command";
  * trigger and mode toggle, and each pending card can be dropped from the diff, so neither is
  * repeated here. The popover around it belongs to PullRequestComposer.
  */
-import type { EnvironmentId, PullRequestRef, PullRequestReviewVerdict } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestRef,
+  PullRequestReviewThread,
+  PullRequestReviewVerdict,
+} from "@t3tools/contracts";
 import { CheckIcon, MessageSquareIcon, XCircleIcon } from "lucide-react";
 import { useState, type ReactNode, type RefObject } from "react";
 
@@ -50,6 +57,7 @@ const VERDICTS: ReadonlyArray<{
 export function PullRequestReviewForm({
   environmentId,
   reference,
+  reviewThreads,
   verdicts,
   requestChangesSummaryRequired,
   textareaRef,
@@ -59,6 +67,7 @@ export function PullRequestReviewForm({
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
+  reviewThreads: ReadonlyArray<PullRequestReviewThread>;
   verdicts: ReadonlyArray<PullRequestReviewVerdict>;
   requestChangesSummaryRequired: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -66,9 +75,14 @@ export function PullRequestReviewForm({
   onPendingChange: (pending: boolean) => void;
   onSubmitted: () => void;
 }) {
+  const { busy: draftBusy } = usePendingReviewCommentActions(environmentId, reference);
+  const [uploading, setUploading] = useState(false);
   const [requestedVerdict, setRequestedVerdict] = useState<PullRequestReviewVerdict>("comment");
-  const comments = usePendingReviewComments(reference);
+  const comments = usePendingReviewComments(reference, reviewThreads);
   const reviewKey = pullRequestReviewKey(reference);
+  const pendingReviewId = reviewThreads
+    .flatMap((thread) => thread.comments)
+    .find((comment) => comment.pendingReviewId)?.pendingReviewId;
   // The panel stays mounted while the selected pull request changes. Keeping summaries beside
   // the keyed line-comment drafts makes the selected pull request's body correct on the first
   // render, before an effect could reset state left behind by the previous one.
@@ -85,7 +99,7 @@ export function PullRequestReviewForm({
     offered.find((verdict) => verdict.value === requestedVerdict) ?? offered[0];
 
   const submit = async (verdict: (typeof VERDICTS)[number]) => {
-    if (pending) return;
+    if (pending || uploading || draftBusy) return;
     const submittedBody = body;
     const submittedComments = comments;
     onPendingChange(true);
@@ -94,6 +108,7 @@ export function PullRequestReviewForm({
       input: {
         ...reference,
         verdict: verdict.value,
+        ...(pendingReviewId ? { pendingReviewId } : {}),
         body: submittedBody,
         comments: submittedComments,
       },
@@ -119,12 +134,16 @@ export function PullRequestReviewForm({
   const canSubmit = (verdict: PullRequestReviewVerdict) =>
     verdict === "request-changes" && requestChangesSummaryRequired
       ? body.trim().length > 0
-      : verdict === "approve" || body.trim().length > 0 || comments.length > 0;
+      : verdict === "approve" ||
+        body.trim().length > 0 ||
+        comments.length > 0 ||
+        pendingReviewId !== undefined;
 
   return (
     <>
       <Textarea
         ref={textareaRef}
+        disabled={pending || uploading || draftBusy}
         rows={3}
         value={body}
         placeholder={
@@ -135,10 +154,18 @@ export function PullRequestReviewForm({
         aria-label="Review summary"
         onChange={(event) => setSummary(reviewKey, event.target.value)}
       />
+      <PullRequestAttachments
+        environmentId={environmentId}
+        reference={reference}
+        disabled={pending}
+        onBusyChange={setUploading}
+        textareaRef={textareaRef}
+        onTextChange={(text) => setSummary(reviewKey, text)}
+      />
       <div className="mt-2 flex justify-between gap-2">
         <Select
           value={selectedVerdict?.value ?? null}
-          disabled={pending}
+          disabled={pending || uploading || draftBusy}
           onValueChange={(value) => {
             if (value !== null) setRequestedVerdict(value);
           }}
@@ -162,7 +189,12 @@ export function PullRequestReviewForm({
         </Select>
         <Button
           size="xs"
-          disabled={pending || selectedVerdict === undefined || !canSubmit(selectedVerdict.value)}
+          disabled={
+            pending ||
+            uploading ||
+            selectedVerdict === undefined ||
+            !canSubmit(selectedVerdict.value)
+          }
           onClick={() => {
             if (selectedVerdict !== undefined) void submit(selectedVerdict);
           }}

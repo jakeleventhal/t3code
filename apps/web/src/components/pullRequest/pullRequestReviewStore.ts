@@ -1,12 +1,17 @@
 /**
  * A review being written, held until it is sent.
  *
- * Nothing here reaches the host: a review is one request carrying every line comment and the
- * verdict together, so a half-written one is invisible to everyone else — including on the
- * hosts that have no pending review of their own. That also means a draft lives only as long
- * as the tab does, which is why this is deliberately not persisted.
+ * Local drafts stay in this tab. Copying a comment link saves that comment in the host's
+ * private pending review and retains its identity for later discard or submission. Host
+ * drafts are also read back from the detail, so reloading keeps saved pending comments.
  */
-import type { PullRequestRef, PullRequestReviewCommentDraft } from "@t3tools/contracts";
+import { useMemo } from "react";
+import { pendingReviewCommentsFromThreads } from "@t3tools/client-runtime/review-editing";
+import type {
+  PullRequestRef,
+  PullRequestReviewCommentDraft,
+  PullRequestReviewThread,
+} from "@t3tools/contracts";
 import { create } from "zustand";
 
 export type PendingReviewComment = PullRequestReviewCommentDraft & { readonly id: string };
@@ -36,6 +41,13 @@ export function pullRequestReviewKey(reference: PullRequestRef): string {
 
 interface PullRequestReviewStoreState {
   readonly drafts: Readonly<Record<string, ReadonlyArray<PendingReviewComment>>>;
+  readonly busyComments: Readonly<Record<string, ReadonlyArray<string>>>;
+  readonly setCommentBusy: (key: string, id: string, busy: boolean) => void;
+  readonly setHostedComment: (
+    key: string,
+    id: string,
+    hosted: NonNullable<PendingReviewComment["hostedComment"]>,
+  ) => void;
   readonly summaries: Readonly<Record<string, string>>;
   readonly addComment: (key: string, comment: PendingReviewComment) => void;
   readonly removeComment: (key: string, commentId: string) => void;
@@ -49,6 +61,26 @@ const EMPTY: ReadonlyArray<PendingReviewComment> = [];
 
 export const usePullRequestReviewStore = create<PullRequestReviewStoreState>()((set) => ({
   drafts: {},
+  busyComments: {},
+  setCommentBusy: (key, id, busy) =>
+    set((state) => {
+      const previous = state.busyComments[key] ?? [];
+      return {
+        busyComments: {
+          ...state.busyComments,
+          [key]: busy ? [...new Set([...previous, id])] : previous.filter((entry) => entry !== id),
+        },
+      };
+    }),
+  setHostedComment: (key, id, hostedComment) =>
+    set((state) => ({
+      drafts: {
+        ...state.drafts,
+        [key]: (state.drafts[key] ?? []).map((comment) =>
+          comment.id === id ? { ...comment, hostedComment } : comment,
+        ),
+      },
+    })),
   summaries: {},
   addComment: (key, comment) =>
     set((state) => ({
@@ -88,8 +120,15 @@ export const usePullRequestReviewStore = create<PullRequestReviewStoreState>()((
 /** The comments a pull request's draft holds, stable across renders while it is empty. */
 export function usePendingReviewComments(
   reference: PullRequestRef,
+  threads?: ReadonlyArray<PullRequestReviewThread>,
 ): ReadonlyArray<PendingReviewComment> {
-  return usePullRequestReviewStore(
+  const local = usePullRequestReviewStore(
     (store) => store.drafts[pullRequestReviewKey(reference)] ?? EMPTY,
   );
+  return useMemo(() => {
+    const remote = pendingReviewCommentsFromThreads(threads ?? []);
+    if (remote.length === 0) return local;
+    const localHostIds = new Set(local.map((comment) => comment.hostedComment?.commentId));
+    return [...local, ...remote.filter((comment) => !localHostIds.has(comment.id))];
+  }, [local, threads]);
 }
