@@ -54,6 +54,8 @@ export const ReviewDiffFileStat = Schema.Struct({
   previousPath: Schema.NullOr(Schema.String),
   additions: Schema.Number,
   deletions: Schema.Number,
+  /** Available before its patch is loaded. Absent on older servers. */
+  status: Schema.optionalKey(Schema.Literals(["added", "deleted", "modified", "renamed"])),
 });
 export type ReviewDiffFileStat = typeof ReviewDiffFileStat.Type;
 

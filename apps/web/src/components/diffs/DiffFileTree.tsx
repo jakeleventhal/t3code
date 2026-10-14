@@ -128,7 +128,7 @@ export function DiffFileTree({
       if (!reviewed && count === 0) return null;
       return {
         text: `${reviewed ? "✓" : ""}${count > 0 ? ` ${count}` : ""}`.trim(),
-        title: `${reviewed ? "Reviewed. " : ""}${count > 0 ? `${count} unresolved comments` : ""}`,
+        title: `${reviewed ? "Reviewed. " : ""}${count > 0 ? `${count} unresolved or pending comments` : ""}`,
       };
     },
   });

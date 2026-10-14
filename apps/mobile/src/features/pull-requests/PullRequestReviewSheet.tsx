@@ -12,7 +12,11 @@ import {
   PullRequestPendingBadge,
   PullRequestPendingCommentActions,
 } from "./PullRequestPendingComment";
-import { setReviewDraftBusy, usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
+import {
+  setReviewDraftBusy,
+  retireReviewDraftComments,
+  usePullRequestReviewDraft,
+} from "./usePullRequestReviewDraft";
 import { reviewPositionLabel } from "./pullRequestDiffComments";
 import { AppText as Text } from "../../components/AppText";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -133,6 +137,7 @@ export function PullRequestReviewSheet({
               })
             : await comment({ ...target, input: { ...target.input, body } });
         if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+        if (reviewing) retireReviewDraftComments(params, submitted.comments);
         store.update((current) =>
           reviewing
             ? clearSubmittedReview(current, submitted)

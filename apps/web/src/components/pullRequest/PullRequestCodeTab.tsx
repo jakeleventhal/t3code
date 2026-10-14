@@ -90,7 +90,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
-import { ReviewChapterRail } from "./ReviewChapterRail";
+import { ReviewChapterRail, ReviewChapterFileLink } from "./ReviewChapterRail";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
@@ -124,7 +124,7 @@ import {
 } from "./pullRequestDiff.logic";
 import { PullRequestDiffStat, PullRequestMetaLine } from "./pullRequestPresentation";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
-import { PullRequestDiffDisplayControls } from "./PullRequestDiffDisplayControls";
+import { DiffDisplayControls } from "../diffs/DiffDisplayControls";
 import {
   nextPendingReviewCommentId,
   pullRequestReviewKey,
@@ -222,7 +222,10 @@ function PullRequestCodeTab({
   onRefresh,
   refreshToken = 0,
   revealRequest = null,
+  guideFallback = false,
 }: {
+  /** Before a Guide is ready, show every file without Code-only filters or grouping. */
+  guideFallback?: boolean;
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
@@ -261,7 +264,9 @@ function PullRequestCodeTab({
     false,
     Schema.Boolean,
   );
-  const { commentsOnly, hideReviewed, groupByType } = settings.pullRequestViewing;
+  const commentsOnly = !guideFallback && settings.pullRequestViewing.commentsOnly;
+  const hideReviewed = !guideFallback && settings.pullRequestViewing.hideReviewed;
+  const groupByType = !guideFallback && settings.pullRequestViewing.groupByType;
   const [selectedChapter, setSelectedChapter] = useState<ReviewFileGroup>("implementation");
   const [chapterRailOpen, setChapterRailOpen] = useState(false);
   const canSetChapterViewed = useAtomValue(
@@ -495,12 +500,29 @@ function PullRequestCodeTab({
   // Placing a conversation takes more than its file being in the diff: its line has to fall
   // inside a hunk that was rendered. One that does not is drawn nowhere, so it belongs in the
   // off-diff list rather than disappearing between the two.
-  const visibleHostThreads = useMemo(() => {
-    const ids = new Set(pendingComments.map((comment) => comment.hostedComment?.commentId));
-    return detail.reviewThreads.filter(
-      (thread) => !thread.comments.some((comment) => ids.has(comment.id)),
-    );
-  }, [detail.reviewThreads, pendingComments]);
+  const visibleHostThreads = useMemo(
+    () =>
+      detail.reviewThreads.flatMap((thread) => {
+        const comments = thread.comments.filter((comment) => !comment.pendingReviewId);
+        if (comments.length === 0) return [];
+        if (comments.length === thread.comments.length) return [thread];
+        return [
+          {
+            ...thread,
+            comments,
+            ...(thread.commentCount === undefined
+              ? {}
+              : {
+                  commentCount: Math.max(
+                    comments.length,
+                    thread.commentCount - (thread.comments.length - comments.length),
+                  ),
+                }),
+          },
+        ];
+      }),
+    [detail.reviewThreads],
+  );
 
   const placedThreadIds = useMemo(() => {
     const placed = new Set<string>();
@@ -624,8 +646,9 @@ function PullRequestCodeTab({
           previousPath: resolveFileDiffPreviousPath(file),
         })),
         detail.reviewThreads,
+        pendingComments,
       ),
-    [files, detail.reviewThreads],
+    [files, detail.reviewThreads, pendingComments],
   );
   const filteredFiles = useMemo(
     () =>
@@ -1338,7 +1361,7 @@ function PullRequestCodeTab({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {/* A host that reports no commits has nothing to scope by, and a dropdown whose only
             entry is the scope already showing is a control that does nothing. */}
-        {orderedCommits.length > 0 ? (
+        {!guideFallback && orderedCommits.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={<Button size="xs" variant="secondary" />}
@@ -1505,39 +1528,49 @@ function PullRequestCodeTab({
         </PullRequestMetaLine>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <PullRequestDiffDisplayControls onWhitespaceChange={changeIgnoreWhitespace}>
-          <DropdownMenuCheckboxItem
-            checked={commentsOnly}
-            onCheckedChange={(checked) =>
-              updateClientSettings({
-                pullRequestViewing: { ...settings.pullRequestViewing, commentsOnly: checked },
-              })
-            }
-          >
-            Files with unresolved comments
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={hideReviewed}
-            disabled={!filesViewed.enabled}
-            onCheckedChange={(checked) =>
-              updateClientSettings({
-                pullRequestViewing: { ...settings.pullRequestViewing, hideReviewed: checked },
-              })
-            }
-          >
-            Hide reviewed files
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={groupByType}
-            onCheckedChange={(checked) =>
-              updateClientSettings({
-                pullRequestViewing: { ...settings.pullRequestViewing, groupByType: checked },
-              })
-            }
-          >
-            Group by file type
-          </DropdownMenuCheckboxItem>
-        </PullRequestDiffDisplayControls>
+        <DiffDisplayControls
+          onWhitespaceChange={changeIgnoreWhitespace}
+          filters={
+            guideFallback
+              ? []
+              : [
+                  {
+                    label: "Hide reviewed",
+                    checked: hideReviewed,
+                    disabled: !filesViewed.enabled,
+                    onCheckedChange: (checked) =>
+                      updateClientSettings({
+                        pullRequestViewing: {
+                          ...settings.pullRequestViewing,
+                          hideReviewed: checked,
+                        },
+                      }),
+                  },
+                  {
+                    label: "Hide without unresolved comments",
+                    checked: commentsOnly,
+                    onCheckedChange: (checked) =>
+                      updateClientSettings({
+                        pullRequestViewing: {
+                          ...settings.pullRequestViewing,
+                          commentsOnly: checked,
+                        },
+                      }),
+                  },
+                  {
+                    label: "Group by file type",
+                    checked: groupByType,
+                    onCheckedChange: (checked) =>
+                      updateClientSettings({
+                        pullRequestViewing: {
+                          ...settings.pullRequestViewing,
+                          groupByType: checked,
+                        },
+                      }),
+                  },
+                ]
+          }
+        />
         {fileKeys.length > 0 ? (
           <Tooltip>
             <TooltipTrigger
@@ -1680,7 +1713,51 @@ function PullRequestCodeTab({
   const chapterRail = chapter ? (
     <ReviewChapterRail
       ariaLabel="Code review chapters"
-      chapters={chapterSummaries}
+      chapters={chapterSummaries.map((summary, index) => {
+        const members = chapters[index]?.files ?? [];
+        const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
+        return {
+          ...summary,
+          selectedContent:
+            index === chapterPosition ? (
+              <div className="flex min-w-0 flex-col gap-2 px-2 pb-2">
+                <ReviewChapterProgress
+                  reviewedCount={reviewedCount}
+                  fileCount={members.length}
+                  disabled={!chapterReviewComplete}
+                  onSetReviewed={
+                    filesViewed.enabled && canSetChapterViewed
+                      ? (reviewed) => {
+                          for (const file of members)
+                            setFileViewed(file.fileKey, file.path, reviewed);
+                        }
+                      : null
+                  }
+                />
+                {!chapterReviewComplete ? (
+                  <p className="text-xs text-muted-foreground">
+                    Load all files to review this chapter.
+                  </p>
+                ) : null}
+                <ul className="flex min-w-0 flex-col gap-0.5">
+                  {members.map((file) => {
+                    const stat =
+                      sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
+                    return (
+                      <li key={file.fileKey}>
+                        <ReviewChapterFileLink
+                          path={file.path}
+                          stat={stat}
+                          onSelect={() => revealFile(file.path)}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null,
+        };
+      })}
       position={chapterPosition}
       onSelect={selectChapter}
     />
@@ -1697,21 +1774,6 @@ function PullRequestCodeTab({
         onStep={(delta) => selectChapter(chapterPosition + delta)}
       />
       <h2 className="text-lg font-semibold text-foreground">{chapter.title}</h2>
-      <ReviewChapterProgress
-        reviewedCount={chapter.files.filter((file) => isFileViewed(file.path)).length}
-        fileCount={chapter.files.length}
-        disabled={!chapterReviewComplete}
-        onSetReviewed={
-          filesViewed.enabled && canSetChapterViewed
-            ? (reviewed) => {
-                for (const file of chapter.files) setFileViewed(file.fileKey, file.path, reviewed);
-              }
-            : null
-        }
-      />
-      {!chapterReviewComplete ? (
-        <p className="text-xs text-muted-foreground">Load all files to review this chapter.</p>
-      ) : null}
     </div>
   ) : null;
   return (

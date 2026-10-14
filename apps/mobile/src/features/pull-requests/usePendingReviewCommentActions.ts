@@ -9,6 +9,7 @@ import type { PendingReviewComment } from "./pullRequestReviewDrafts";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
 import {
   readReviewDraft,
+  retireReviewDraftComments,
   setReviewDraftBusy,
   usePullRequestReviewDraftCommands,
 } from "./usePullRequestReviewDraft";
@@ -70,6 +71,7 @@ export function usePendingReviewCommentActions(params: PullRequestParams) {
         });
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       }
+      retireReviewDraftComments(params, [comment]);
       store.update((draft) => ({
         ...draft,
         comments: draft.comments.filter((entry) => entry.id !== comment.id),

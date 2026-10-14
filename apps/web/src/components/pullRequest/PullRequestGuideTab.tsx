@@ -5,7 +5,7 @@ import type {
   PullRequestReviewGuideStop,
 } from "@t3tools/contracts";
 import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, type ReactNode } from "react";
 
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -44,7 +44,10 @@ export function PullRequestGuideTab({
   onFinishReview,
   onOpenFile,
   onTourShown,
+  fallback,
 }: {
+  /** The ordinary diff reader keeps the whole change available until the guide arrives. */
+  fallback: ReactNode;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   /** The pull request's title for the notice when a guide is ready, null until the detail loads. */
@@ -172,26 +175,23 @@ export function PullRequestGuideTab({
     ) : null;
 
   if (guide === null) {
-    if (query.isPending && data === null) {
-      return (
-        <div className="flex min-h-48 items-center justify-center">
-          <Spinner />
-        </div>
-      );
-    }
     return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
-        <p className="text-sm font-medium text-foreground">
-          {running ? "Writing a review guide" : "No review guide yet"}
-        </p>
-        <p className="max-w-md text-xs text-muted-foreground">
-          {failure ??
-            query.error ??
-            (running
-              ? "An agent is reading the change. A large one takes a few minutes. You can leave; you will be told when it is ready."
-              : "A guide is a tour of the change: stops through the code in reading order, with the calls only a maintainer can make.")}
-        </p>
-        {writeButton(failure === null ? "Write guide" : "Try again", "sm")}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-2">
+          <p role="status" className="text-xs text-muted-foreground">
+            {failure ??
+              query.error ??
+              (running
+                ? "Generating guide. You can review the files below."
+                : query.isPending
+                  ? "Loading guide..."
+                  : "No review guide yet.")}
+          </p>
+          {!running && !query.isPending
+            ? writeButton(failure === null ? "Write guide" : "Try again", "xs")
+            : null}
+        </div>
+        <div className="min-h-0 flex-1">{fallback}</div>
       </div>
     );
   }
