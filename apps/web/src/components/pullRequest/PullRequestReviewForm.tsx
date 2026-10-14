@@ -193,6 +193,7 @@ export function PullRequestReviewForm({
           size="xs"
           disabled={
             pending ||
+            draftBusy ||
             uploading ||
             selectedVerdict === undefined ||
             !canSubmit(selectedVerdict.value)

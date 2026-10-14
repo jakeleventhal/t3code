@@ -5,11 +5,20 @@ import {
   mergePendingReviewComments,
   type PendingReviewComment,
   pullRequestReviewKey,
+  savePendingReviewComment,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
 
 function comment(id: string, body = id): PendingReviewComment {
   return { id, body, path: "src/app.ts", position: { kind: "added", newLine: 1 } };
+}
+
+function pendingSave() {
+  let resolve!: (hosted: NonNullable<PendingReviewComment["hostedComment"]>) => void;
+  const promise = new Promise<NonNullable<PendingReviewComment["hostedComment"]>>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
 }
 
 function hostedThread(pending = true): PullRequestReviewThread {
@@ -35,7 +44,72 @@ function hostedThread(pending = true): PullRequestReviewThread {
 
 describe("pull request review drafts", () => {
   beforeEach(() => {
-    usePullRequestReviewStore.setState({ drafts: {}, summaries: {}, removedHostComments: {} });
+    usePullRequestReviewStore.setState({
+      drafts: {},
+      summaries: {},
+      removedHostComments: {},
+      busyComments: {},
+    });
+  });
+
+  it("saves concurrent additions as private host drafts and suppresses a duplicate in-flight save", async () => {
+    const store = usePullRequestReviewStore.getState();
+    store.addComment("review-a", comment("first"));
+    store.addComment("review-a", comment("second"));
+    const first = pendingSave();
+    const second = pendingSave();
+    const one = savePendingReviewComment("review-a", comment("first"), () => first.promise);
+    const two = savePendingReviewComment("review-a", comment("second"), () => second.promise);
+    expect(usePullRequestReviewStore.getState().busyComments["review-a"]).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(
+      await savePendingReviewComment("review-a", comment("first"), () => {
+        throw new Error("duplicate request");
+      }),
+    ).toBeNull();
+    first.resolve({
+      reviewId: "review",
+      commentId: "host-first",
+      url: "https://github.com/o/r/pull/1#r1",
+    });
+    await one;
+    expect(usePullRequestReviewStore.getState().busyComments["review-a"]).toEqual(["second"]);
+    second.resolve({
+      reviewId: "review",
+      commentId: "host-second",
+      url: "https://github.com/o/r/pull/1#r2",
+    });
+    await two;
+    expect(
+      usePullRequestReviewStore
+        .getState()
+        .drafts["review-a"]?.map((entry) => entry.hostedComment?.commentId),
+    ).toEqual(["host-first", "host-second"]);
+  });
+
+  it("keeps a failed draft for retry and reuses a saved host identity without another request", async () => {
+    const local = comment("failed", "Keep this feedback");
+    usePullRequestReviewStore.getState().addComment("review-a", local);
+    await expect(
+      savePendingReviewComment("review-a", local, async () => {
+        throw new Error("offline");
+      }),
+    ).rejects.toThrow("offline");
+    expect(usePullRequestReviewStore.getState().drafts["review-a"]).toEqual([local]);
+    expect(usePullRequestReviewStore.getState().busyComments["review-a"]).toEqual([]);
+    const hosted = {
+      reviewId: "review",
+      commentId: "host",
+      url: "https://github.com/o/r/pull/1#r1",
+    };
+    expect(await savePendingReviewComment("review-a", local, async () => hosted)).toEqual(hosted);
+    expect(
+      await savePendingReviewComment("review-a", local, () => {
+        throw new Error("already saved");
+      }),
+    ).toEqual(hosted);
   });
 
   it("removes only the line comments included in a submitted snapshot", () => {
