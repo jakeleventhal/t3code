@@ -1,5 +1,9 @@
 import type { PullRequestReviewGuideStop } from "@t3tools/contracts";
-import { stopSubline } from "@t3tools/client-runtime/review-guide-tour";
+import {
+  stopFilePaths,
+  reviewGuideStopProgress,
+  stopSubline,
+} from "@t3tools/client-runtime/review-guide-tour";
 
 import { Badge } from "../../ui/badge";
 import { ReviewChapterRail } from "../ReviewChapterRail";
@@ -10,11 +14,15 @@ export function GuideRail({
   position,
   seen,
   onSelect,
+  isViewed,
+  onSetViewed,
 }: {
   stops: ReadonlyArray<PullRequestReviewGuideStop>;
   position: number;
   seen: ReadonlySet<number>;
   onSelect: (position: number) => void;
+  isViewed: (path: string) => boolean;
+  onSetViewed: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | null;
 }) {
   return (
     <ReviewChapterRail
@@ -22,6 +30,15 @@ export function GuideRail({
       chapters={stops.map((stop, index) => ({
         title: stop.title,
         reviewed: seen.has(index),
+        ...(onSetViewed
+          ? {
+              review: {
+                reviewedCount: reviewGuideStopProgress(stop, isViewed).reviewedCount,
+                fileCount: stopFilePaths(stop).length,
+                onSetReviewed: (value: boolean) => onSetViewed(stopFilePaths(stop), value),
+              },
+            }
+          : {}),
         detail: (
           <>
             {stop.attention !== null ? (

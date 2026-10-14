@@ -74,11 +74,7 @@ function useWorkingChanges(props: Props, scope: WorkingScope | undefined, genera
       id: `working-tree:${scope ?? "all"}`,
       kind: "working-tree",
       title:
-        scope === "staged"
-          ? "Staged files"
-          : scope === "unstaged"
-            ? "Unstaged files"
-            : "All changed files",
+        scope === "staged" ? "Staged" : scope === "unstaged" ? "Unstaged" : "All changed files",
       subtitle: null,
       diff: source?.diff ?? null,
       source,

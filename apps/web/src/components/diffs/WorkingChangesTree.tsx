@@ -1,6 +1,6 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { reviewFileTreeRows } from "@t3tools/client-runtime/review-workspace";
-import { ChevronDown, ChevronRight, Minus, Plus, Undo2 } from "lucide";
+import { ChevronDown, ChevronRight, Minus, Plus, Undo2, PanelsTopLeft } from "lucide";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "~/hooks/useTheme";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
@@ -25,6 +25,7 @@ export function WorkingChangesTree({
   onSelect,
   onStage,
   onRevert,
+  onViewAll,
 }: {
   staged: ReadonlyArray<DiffFileTreeEntry>;
   unstaged: ReadonlyArray<DiffFileTreeEntry>;
@@ -34,6 +35,7 @@ export function WorkingChangesTree({
   onSelect: (scope: Scope, path: string) => void;
   onStage: (scope: Scope, path: string | null) => void;
   onRevert: (path: string | null) => void;
+  onViewAll: (scope: Scope) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const list = useRef<LegendListRef | null>(null);
@@ -113,16 +115,34 @@ export function WorkingChangesTree({
                   className="size-3.5"
                   icon={open[row.scope] ? ChevronDown : ChevronRight}
                 />
-                {row.scope === "staged" ? "Staged changes" : "Changes"}
+                {row.scope === "staged" ? "Staged" : "Unstaged"}
               </button>
               <Badge variant="info" size="sm">
                 {sections[row.scope].length}
               </Badge>
+              <Button
+                size="icon-micro"
+                variant="ghost"
+                aria-label={`View all ${row.scope} changes`}
+                disabled={sections[row.scope].length === 0}
+                onClick={() => onViewAll(row.scope)}
+              >
+                <MorphIcon icon={PanelsTopLeft} />
+              </Button>
               {actions(row.scope, null)}
             </div>
           );
         const folder = row.kind === "folder";
         const active = selected?.scope === row.scope && selected.path === row.path;
+        const status = folder ? "modified" : row.file.status;
+        const statusColor =
+          status === "added" || status === "untracked"
+            ? "light-dark(#16a994, #00cab1)"
+            : status === "deleted"
+              ? "light-dark(#ff2e3f, #ff6762)"
+              : status === "renamed"
+                ? "light-dark(#d5a910, #ffd452)"
+                : "light-dark(#1ca1c7, #08c0ef)";
         return (
           <div
             data-git-scope={row.scope}
@@ -159,14 +179,19 @@ export function WorkingChangesTree({
                 <PierreEntryIcon pathValue={row.path} kind="file" theme={resolvedTheme} />
               )}
               <ReviewPath path={row.path} className="min-w-0 flex-1 truncate">
-                {folder ? row.label.replaceAll("/", " / ") : row.path.split("/").at(-1)}
+                <span
+                  style={{ color: folder ? undefined : statusColor, colorScheme: resolvedTheme }}
+                >
+                  {folder ? row.label.replaceAll("/", " / ") : row.path.split("/").at(-1)}
+                </span>
               </ReviewPath>
             </button>
             <div className="pointer-events-none absolute right-6 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
               {actions(row.scope, row.path)}
             </div>
             <span
-              className="w-3 shrink-0 text-center text-muted-foreground"
+              className={`w-3 shrink-0 text-center ${folder ? "opacity-50" : ""}`}
+              style={{ color: statusColor, colorScheme: resolvedTheme }}
               aria-label={folder ? "Contains changes" : row.file.status}
             >
               {folder

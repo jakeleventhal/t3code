@@ -34,6 +34,9 @@ import {
   ChevronDownIcon,
   ExternalLinkIcon,
   FileDiffIcon,
+  FileTextIcon,
+  ListOrderedIcon,
+  DiffIcon,
   FolderGit2Icon,
   GitBranchIcon,
   HammerIcon,
@@ -227,10 +230,10 @@ const ACTION_FAILURE_HINTS: Record<PullRequestAction, string> = {
 const UPDATE_BRANCH_REBASE_FAILURE_HINT =
   "The host refused it. A rebase stops at the first commit that does not apply cleanly; updating with a merge commit may still work.";
 
-const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
-  { value: "summary", label: "Overview" },
-  { value: "guide", label: "Guide" },
-  { value: "code", label: "Code" },
+const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string; icon: ReactNode }> = [
+  { value: "summary", label: "Overview", icon: <FileTextIcon aria-hidden /> },
+  { value: "guide", label: "Guide", icon: <ListOrderedIcon aria-hidden /> },
+  { value: "code", label: "Code", icon: <DiffIcon aria-hidden /> },
 ];
 
 // The diff viewer pulls in its worker pool, so load it only when the reader approaches Code.

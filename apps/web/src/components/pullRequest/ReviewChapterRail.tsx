@@ -1,7 +1,36 @@
 import { CheckIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { ContextMenuItem } from "@t3tools/contracts";
+
+import { readLocalApi } from "~/localApi";
 
 import { cn } from "~/lib/utils";
+
+interface ReviewChapter {
+  title: string;
+  detail: ReactNode;
+  reviewed: boolean;
+  review?: {
+    reviewedCount: number;
+    fileCount: number;
+    disabled?: boolean;
+    onSetReviewed: (reviewed: boolean) => void;
+  };
+}
+
+function showChapterReviewMenu(chapter: ReviewChapter, position: { x: number; y: number }) {
+  const review = chapter.review;
+  if (!review || review.disabled || review.fileCount === 0) return;
+  const items: ContextMenuItem<"viewed" | "unviewed">[] = [];
+  if (review.reviewedCount < review.fileCount)
+    items.push({ id: "viewed", label: "Mark all as viewed" });
+  if (review.reviewedCount > 0) items.push({ id: "unviewed", label: "Mark all as unviewed" });
+  void readLocalApi()
+    ?.contextMenu.show(items, position)
+    .then((action) => {
+      if (action !== null) review.onSetReviewed(action === "viewed");
+    });
+}
 
 /** Shared table of contents for generated Guide chapters and file-type Code chapters. */
 export function ReviewChapterRail({
@@ -10,7 +39,7 @@ export function ReviewChapterRail({
   onSelect,
   ariaLabel,
 }: {
-  chapters: ReadonlyArray<{ title: string; detail: ReactNode; reviewed: boolean }>;
+  chapters: ReadonlyArray<ReviewChapter>;
   position: number;
   onSelect: (position: number) => void;
   ariaLabel: string;
@@ -23,7 +52,23 @@ export function ReviewChapterRail({
       </p>
       <ol className="flex flex-col gap-0.5">
         {chapters.map((chapter, index) => (
-          <li key={index}>
+          <li
+            key={index}
+            onContextMenu={(event) => {
+              const review = chapter.review;
+              if (!review || review.disabled || review.fileCount === 0) return;
+              event.preventDefault();
+              showChapterReviewMenu(chapter, { x: event.clientX, y: event.clientY });
+            }}
+            onKeyDown={(event) => {
+              const review = chapter.review;
+              if (!review || review.disabled || review.fileCount === 0) return;
+              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+              event.preventDefault();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              showChapterReviewMenu(chapter, { x: bounds.left, y: bounds.bottom });
+            }}
+          >
             <button
               type="button"
               aria-current={position === index ? "step" : undefined}

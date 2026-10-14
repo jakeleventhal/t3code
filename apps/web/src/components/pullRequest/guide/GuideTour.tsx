@@ -128,14 +128,22 @@ export function GuideTour({
         ref={scrollRef}
         className="@container/guide min-h-0 flex-1 overflow-y-auto scrollbar-gutter-both"
       >
-        <div className="mx-auto grid max-w-[100rem] gap-6 px-4 py-4 @min-[56rem]/guide:grid-cols-[16rem_minmax(0,1fr)] @min-[90rem]/guide:gap-8 @min-[90rem]/guide:px-6">
+        <div className="mx-auto grid max-w-[100rem] gap-6 px-4 py-4 @min-[80rem]/guide:grid-cols-[14rem_minmax(0,1fr)] @min-[90rem]/guide:gap-8 @min-[90rem]/guide:px-6">
           {/* Beside the stop on a wide panel; narrow, the stop folds the same list open under its
             header instead. */}
-          <aside className="sticky top-4 self-start @max-[56rem]/guide:hidden">
+          <aside className="sticky top-4 self-start @max-[80rem]/guide:hidden">
             <GuideRail
               stops={guide.stops}
               position={position}
               seen={reviewedStops}
+              isViewed={viewed.isViewed}
+              onSetViewed={
+                allowed && viewed.enabled
+                  ? (paths, value) => {
+                      for (const path of paths) viewed.setViewed(path, value);
+                    }
+                  : null
+              }
               onSelect={goTo}
             />
           </aside>
@@ -169,6 +177,14 @@ export function GuideTour({
                     stops={guide.stops}
                     position={position}
                     seen={reviewedStops}
+                    isViewed={viewed.isViewed}
+                    onSetViewed={
+                      allowed && viewed.enabled
+                        ? (paths, value) => {
+                            for (const path of paths) viewed.setViewed(path, value);
+                          }
+                        : null
+                    }
                     onSelect={goTo}
                   />
                 }

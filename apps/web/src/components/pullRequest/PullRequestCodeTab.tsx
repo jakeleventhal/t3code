@@ -744,27 +744,7 @@ function PullRequestCodeTab({
     chapters.findIndex((chapter) => chapter.id === selectedChapter),
   );
   const chapter = chapters[chapterPosition] ?? null;
-  const chapterFiles = useMemo(
-    () =>
-      chapter ? annotatedFiles.filter((file) => reviewFileGroup(file.path) === chapter.id) : [],
-    [annotatedFiles, chapter],
-  );
   const chapterReviewComplete = nextCursor === null && !diffQuery.isPending;
-  const chapterSummaries = useMemo(
-    () =>
-      chapters.map((candidate) => {
-        const members = annotatedFiles.filter(
-          (file) => reviewFileGroup(file.path) === candidate.id,
-        );
-        const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
-        return {
-          title: candidate.title,
-          reviewed: chapterReviewComplete && reviewedCount === members.length,
-          detail: `${reviewedCount} of ${members.length} files reviewed${chapterReviewComplete ? "" : " (loaded)"}`,
-        };
-      }),
-    [chapters, annotatedFiles, isFileViewed, chapterReviewComplete],
-  );
   const items = useMemo<CodeViewDiffItem<ReviewAnnotationGroup>[]>(
     () =>
       (chapter?.files ?? filteredFiles).map(
@@ -825,20 +805,6 @@ function PullRequestCodeTab({
         ),
       ),
     [parsedSlices],
-  );
-  const chapterStat = useMemo(
-    () =>
-      chapterFiles.reduce(
-        (total, file) => {
-          const stat = sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
-          return {
-            additions: total.additions + stat.additions,
-            deletions: total.deletions + stat.deletions,
-          };
-        },
-        { additions: 0, deletions: 0 },
-      ),
-    [chapterFiles, sourceFileStats],
   );
   const fileKeys = useMemo(() => items.map((item) => item.id), [items]);
   const collapsedFileKeys = useMemo(
@@ -944,6 +910,58 @@ function PullRequestCodeTab({
       );
     },
     [effectiveFoldOverride, foldOverride, setViewed],
+  );
+
+  const chapterSummaries = useMemo(
+    () =>
+      chapters.map((candidate) => {
+        const members = candidate.files;
+        const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
+        const stat = members.reduce(
+          (total, file) => {
+            const next = sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
+            return {
+              additions: total.additions + next.additions,
+              deletions: total.deletions + next.deletions,
+            };
+          },
+          { additions: 0, deletions: 0 },
+        );
+        return {
+          title: candidate.title,
+          reviewed: chapterReviewComplete && reviewedCount === members.length,
+          detail: (
+            <>
+              <span>
+                {reviewedCount} of {members.length} files reviewed
+                {chapterReviewComplete ? "" : " (loaded)"}
+              </span>
+              <PullRequestDiffStat additions={stat.additions} deletions={stat.deletions} />
+            </>
+          ),
+          ...(filesViewed.enabled && canSetChapterViewed
+            ? {
+                review: {
+                  reviewedCount,
+                  fileCount: members.length,
+                  disabled: !chapterReviewComplete,
+                  onSetReviewed: (reviewed: boolean) => {
+                    for (const file of members) setFileViewed(file.fileKey, file.path, reviewed);
+                  },
+                },
+              }
+            : {}),
+        };
+      }),
+    [
+      chapters,
+      isFileViewed,
+      chapterReviewComplete,
+      sourceFileStats,
+      filesViewed.enabled,
+      canSetChapterViewed,
+      setFileViewed,
+    ],
   );
 
   const requestTreeReveal = useCodeViewFileReveal(viewer, scopeKey, fileKeys);
@@ -1772,6 +1790,34 @@ function PullRequestCodeTab({
     />
   ) : null;
 
+  const chapterHeader = chapter ? (
+    <div className="space-y-2 border-b border-border/60 px-4 py-3">
+      <ReviewChapterHeader
+        index={chapterPosition}
+        count={chapters.length}
+        railOpen={chapterRailOpen}
+        onRailOpenChange={setChapterRailOpen}
+        rail={chapterRail}
+        onStep={(delta) => selectChapter(chapterPosition + delta)}
+      />
+      <h2 className="text-lg font-semibold text-foreground">{chapter.title}</h2>
+      <ReviewChapterProgress
+        reviewedCount={chapter.files.filter((file) => isFileViewed(file.path)).length}
+        fileCount={chapter.files.length}
+        disabled={!chapterReviewComplete}
+        onSetReviewed={
+          filesViewed.enabled && canSetChapterViewed
+            ? (reviewed) => {
+                for (const file of chapter.files) setFileViewed(file.fileKey, file.path, reviewed);
+              }
+            : null
+        }
+      />
+      {!chapterReviewComplete ? (
+        <p className="text-xs text-muted-foreground">Load all files to review this chapter.</p>
+      ) : null}
+    </div>
+  ) : null;
   return (
     <div className="@container/guide flex h-full min-h-0 flex-col">
       {toolbar}
@@ -1841,43 +1887,6 @@ function PullRequestCodeTab({
           </aside>
         ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {chapter ? (
-            <div className="shrink-0 space-y-2 border-b border-border/60 px-4 py-3">
-              <ReviewChapterHeader
-                index={chapterPosition}
-                count={chapters.length}
-                railOpen={chapterRailOpen}
-                onRailOpenChange={setChapterRailOpen}
-                rail={chapterRail}
-                onStep={(delta) => selectChapter(chapterPosition + delta)}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-foreground">{chapter.title}</h2>
-                <PullRequestDiffStat
-                  additions={chapterStat.additions}
-                  deletions={chapterStat.deletions}
-                />
-              </div>
-              <ReviewChapterProgress
-                reviewedCount={chapterFiles.filter((file) => isFileViewed(file.path)).length}
-                fileCount={chapterFiles.length}
-                disabled={!chapterReviewComplete}
-                onSetReviewed={
-                  filesViewed.enabled && canSetChapterViewed
-                    ? (reviewed) => {
-                        for (const file of chapterFiles)
-                          setFileViewed(file.fileKey, file.path, reviewed);
-                      }
-                    : null
-                }
-              />
-              {!chapterReviewComplete ? (
-                <p className="text-xs text-muted-foreground">
-                  Load all files to review this chapter.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
           {/* Relative wrapper so the review overlay floats over the diff rather than pushing it
               up; the viewer inside still owns its own scrolling. */}
         <div
@@ -1928,6 +1937,7 @@ function PullRequestCodeTab({
               // The viewer owns the scroll container, so the sentinel that asks for the next slice
               // has to live inside it — at the end of the files, where reaching it means the reader
               // is running out of diff.
+              renderCodeViewHeader={() => chapterHeader}
               renderCodeViewFooter={renderCodeViewFooter}
               renderHeaderPrefix={renderHeaderPrefix}
               renderHeaderMetadata={renderHeaderMetadata}

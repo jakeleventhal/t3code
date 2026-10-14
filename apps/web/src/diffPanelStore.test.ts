@@ -93,6 +93,36 @@ describe("diffPanelStore", () => {
     });
   });
 
+  it("opens new threads to Uncommitted when there are local changes", () => {
+    useDiffPanelStore.getState().initializeGitScope(THREAD_REF, true);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "unstaged" });
+  });
+
+  it("opens clean threads to Changes and keeps the initial choice after status changes", () => {
+    const store = useDiffPanelStore.getState();
+    store.initializeGitScope(THREAD_REF, false);
+    store.initializeGitScope(THREAD_REF, true);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: null });
+  });
+
+  it("preserves explicit selections when returning to a thread with local changes", () => {
+    const store = useDiffPanelStore.getState();
+    store.selectBranchBaseRef(THREAD_REF, "origin/release");
+    store.initializeGitScope(THREAD_REF, true);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: "origin/release" });
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"));
+    store.initializeGitScope(THREAD_REF, true);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF).kind,
+    ).toBe("turn");
+  });
+
   it("keeps a custom base when a generic open selects Changes again", () => {
     const store = useDiffPanelStore.getState();
     store.selectBranchBaseRef(THREAD_REF, "origin/release");

@@ -264,8 +264,19 @@ export default function DiffPanel({
       : null,
   );
   const diffSelection = useDiffPanelStore((state) =>
-    selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
+    selectThreadDiffPanelSelection(
+      state.byThreadKey,
+      routeThreadRef,
+      gitStatusQuery.data?.hasWorkingTreeChanges ?? false,
+    ),
   );
+  useEffect(() => {
+    if (routeThreadRef && gitStatusQuery.data) {
+      useDiffPanelStore
+        .getState()
+        .initializeGitScope(routeThreadRef, gitStatusQuery.data.hasWorkingTreeChanges);
+    }
+  }, [routeThreadRef, gitStatusQuery.data]);
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadRef);
   const orderedTurnDiffSummaries = turnDiffSummaries.toSorted((left, right) => {
@@ -1017,7 +1028,8 @@ export default function DiffPanel({
         )
       ) : selectedRunId === null && selectedGitScope === "unstaged" && activeCwd ? (
         <WorkingChangesReview
-          key={`${activeThread.environmentId}:${activeCwd}`}
+          key={`${activeThread.environmentId}:${activeThread.id}:${activeCwd}`}
+          navigationKey={`${activeThread.environmentId}:${activeThread.id}`}
           environmentId={activeThread.environmentId}
           cwd={activeCwd}
           composerDraftTarget={composerDraftTarget}
