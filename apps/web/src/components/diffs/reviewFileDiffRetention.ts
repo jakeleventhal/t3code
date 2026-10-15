@@ -9,6 +9,7 @@ export interface ReviewSnapshotIdentity {
   readonly kind: string | undefined;
   readonly baseRef: string | null;
   readonly ignoreWhitespace: boolean;
+  readonly workingTreeScope?: "staged" | "unstaged" | undefined;
 }
 
 /** Identity of a review that survives a new git snapshot. The diff hash is not part of it. */
@@ -19,6 +20,7 @@ export function reviewSnapshotFamily(input: ReviewSnapshotIdentity): string {
     input.kind,
     input.baseRef,
     input.ignoreWhitespace,
+    input.workingTreeScope ?? null,
   ]);
 }
 
