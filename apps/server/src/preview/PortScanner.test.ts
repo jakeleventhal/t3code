@@ -1,6 +1,7 @@
 import * as NodeNet from "node:net";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { it as effectIt } from "@effect/vitest";
 import {
   CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS,
@@ -11,7 +12,6 @@ import {
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Net from "@t3tools/shared/Net";
 import * as Cause from "effect/Cause";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1242,6 +1242,7 @@ effectIt.effect(
     const layer = PortScanner.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          NodePath.layer,
           layerNoProc,
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
@@ -1301,10 +1302,11 @@ effectIt.effect(
       expect(spawnedArgs).toEqual([
         ["-ano", "-p", "tcp"],
         ["-ano", "-p", "tcpv6"],
+        ["serve", "status", "--json"],
         ["/FO", "CSV", "/NH", "/FI", "PID eq 1234"],
       ]);
 
-      // The failed lookup retries; the result is then cached, so later polls spawn only netstat.
+      // The failed process-name lookup retries, then later scans reuse its cached result.
       expect(summarize(yield* scanner.scan())).toEqual([
         { port: 5173, pid: 1234, processName: "node" },
         { port: 43123, pid: 1234, processName: "node" },
@@ -1328,6 +1330,7 @@ effectIt.effect("ignores a partial Windows netstat snapshot when one query exits
   const layer = PortScanner.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        NodePath.layer,
         layerNoProc,
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
