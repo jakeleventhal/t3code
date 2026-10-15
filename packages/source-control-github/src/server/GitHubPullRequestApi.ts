@@ -2721,7 +2721,13 @@ export const make = Effect.gen(function* () {
             maxResponseBytes: DIFF_MAX_OUTPUT_BYTES,
             timeout: DIFF_TIMEOUT,
           });
-          return { patch: response.body, truncated: response.truncated, nextCursor: null };
+          if (response.truncated)
+            return yield* readError(
+              input.cwd,
+              "getPullRequestDiff",
+              new Error("The selected commit range was too large to read."),
+            );
+          return { patch: response.body, truncated: false, nextCursor: null };
         });
       }
       const filesPage = (page: number) =>
