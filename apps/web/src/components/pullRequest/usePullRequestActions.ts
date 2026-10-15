@@ -1,3 +1,4 @@
+import { reviewCommentContextId } from "~/lib/composerContextRecords";
 import { useAtomCommand } from "~/state/use-atom-command";
 /**
  * The actions a pull request offers, extracted from the detail panel so smaller surfaces — the
@@ -311,18 +312,22 @@ export function usePullRequestHandoffs({
     // since edited is theirs rather than the hand-off's.
     const draft = store.getComposerDraft(session.draftId);
     const existingComments = draft?.reviewComments ?? [];
-    const prompt = handoffPrompt(
-      {
-        prompt: stripPullRequestHandoffReferences(draft?.prompt ?? "", existingComments),
-        lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
-      },
-      task.prompt,
+    const prompt = stripPullRequestHandoffReferences(
+      handoffPrompt(
+        {
+          prompt: draft?.prompt ?? "",
+          lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
+        },
+        task.prompt,
+      ),
+      existingComments,
     );
     // Remember the hand-off's own contribution, not the merged prompt: only that sentence is
     // this session's to take back next time, and the reader's text around it is not.
     lastHandoffPromptByDraft.set(session.draftId, {
       text: task.prompt,
       prefix: prompt.slice(0, prompt.length - task.prompt.length),
+      contextIds: (task.reviewComments ?? []).map((comment) => reviewCommentContextId(comment.id)),
     });
     store.setPrompt(session.draftId, prompt);
     store.setReviewComments(

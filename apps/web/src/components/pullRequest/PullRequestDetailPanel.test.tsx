@@ -199,6 +199,7 @@ import {
 import { usePullRequestHandoffs } from "./usePullRequestActions";
 import {
   collectInlineContextIds,
+  stripInlineContextReferences,
   insertInlineContextReference,
 } from "~/lib/composerContextReferences";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
@@ -526,6 +527,29 @@ describe.each([
       },
     );
 
+    it.each([false, true])(
+      "preserves ambiguous earlier copies (including citation: %s)",
+      async (copyCitation) => {
+        const store = useComposerDraftStore.getState();
+        store.setPrompt(target, "Keep my draft");
+        await act(async () => render());
+        await click("Explain this PR");
+        const original = store.getComposerDraft(target)!.prompt;
+        const request = "Explain this pull request.";
+        const copied = copyCitation ? original.slice("Keep my draft\n\n".length) : request;
+        store.setPrompt(
+          target,
+          original.replace(request, `${copied}\n\nKeep this note.\n\n${request}`),
+        );
+        await click("Ask a question");
+        const prompt = store.getComposerDraft(target)!.prompt;
+        expect(prompt.match(/Explain this pull request\./gu)).toHaveLength(2);
+        expect(stripInlineContextReferences(prompt)).toContain(
+          `${request}${copyCitation ? " " : ""}\n\nKeep this note.\n\n${request}`,
+        );
+      },
+    );
+
     it("preserves indentation and trailing spaces around the replaced request", async () => {
       const store = useComposerDraftStore.getState();
       store.setPrompt(target, "Keep my draft  ");
@@ -679,6 +703,26 @@ it.each([0, "Keep my draft\n\n".length, "Keep my draft\n\nExplain this pull requ
     expect(collectInlineContextIds(draft.prompt)).toContain(reviewCommentContextId(comment.id));
   },
 );
+
+it("preserves an earlier reader copy through PR-row quick actions", async () => {
+  const store = useComposerDraftStore.getState();
+  store.setPrompt(newDraftId, "Keep my draft");
+  await act(async () => {
+    renderer = create(<QuickActions />);
+  });
+  await click("Explain this PR");
+  const request = "Explain this pull request.";
+  store.setPrompt(
+    newDraftId,
+    store
+      .getComposerDraft(newDraftId)!
+      .prompt.replace(request, `${request}\n\nKeep this note.\n\n${request}`),
+  );
+  await click("Ask a question");
+  const prompt = store.getComposerDraft(newDraftId)!.prompt;
+  expect(prompt.match(/Explain this pull request\./gu)).toHaveLength(2);
+  expect(prompt).toContain(`${request}\n\nKeep this note.\n\n${request}`);
+});
 
 it("changes the title only for the active tab's main scroller", async () => {
   const scrollers = new Map<string, { scrollTop: number; scrollHeight: number }>();
