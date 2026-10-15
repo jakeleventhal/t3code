@@ -1456,11 +1456,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let row = rows[rowIndex]
     if row.kind == "hunk", row.hunkAction != nil {
       let rect = CGRect(x: 0, y: rowOffsets[rowIndex] - verticalOffset, width: viewportWidth, height: height(for: row))
-      if row.hunkRevertAction == true, hunkRevertRect(in: rect).contains(point) {
-        if row.hunkRevertActionDisabled != true { onPressHunk?(row.id, "revert") }
-      } else if hunkActionRect(in: rect).contains(point), row.hunkActionDisabled != true {
-        onPressHunk?(row.id, "stage")
-      }
+      handleHunkTap(row: row, rect: rect, point: point)
       return
     }
     if row.kind == "comment" {
@@ -1486,6 +1482,14 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let rowY = rowOffsets[rowIndex] - verticalOffset
     let rect = CGRect(x: 0, y: rowY, width: max(bounds.width, viewportWidth), height: height(for: row))
     handleFileHeaderTap(row: row, rect: rect, point: point)
+  }
+
+  private func handleHunkTap(row: ReviewDiffNativeRow, rect: CGRect, point: CGPoint) {
+    if row.hunkRevertAction == true, hunkRevertRect(in: rect).contains(point) {
+      if row.hunkRevertActionDisabled != true { onPressHunk?(row.id, "revert") }
+    } else if hunkActionRect(in: rect).contains(point), row.hunkActionDisabled != true {
+      onPressHunk?(row.id, "stage")
+    }
   }
 
   @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
@@ -2236,9 +2240,12 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       context.setStrokeColor(theme.border.cgColor)
       context.setLineWidth(1 / traitCollection.displayScale)
       UIBezierPath(roundedRect: button, cornerRadius: 6).stroke()
-      drawCenteredText(action, rect: button,
+      drawCenteredText(
+        action,
+        rect: button,
         color: row.fileActionDisabled == true ? theme.mutedText : theme.hunkText,
-        font: .systemFont(ofSize: 12, weight: .semibold))
+        font: .systemFont(ofSize: 12, weight: .semibold)
+      )
     }
   }
 
@@ -2577,9 +2584,12 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       let button = hunkRevertRect(in: rect).insetBy(dx: 6, dy: 6)
       theme.headerBackground.setFill()
       UIBezierPath(roundedRect: button, cornerRadius: 6).fill()
-      drawCenteredText("Revert hunk", rect: button,
+      drawCenteredText(
+        "Revert hunk",
+        rect: button,
         color: row.hunkRevertActionDisabled == true ? theme.mutedText : theme.deleteText,
-        font: .systemFont(ofSize: 13, weight: .semibold))
+        font: .systemFont(ofSize: 13, weight: .semibold)
+      )
     }
   }
 
