@@ -19,7 +19,6 @@ import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
 import { devServerDescription, devServerLabel, type ResolvedDevServer } from "../../lib/devServers";
-import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useEnvironmentScope } from "../../state/session";
 import {
   basename,
@@ -403,7 +402,6 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       props.canOpenTerminal,
       props.canOperateTerminal,
       props.devServers,
-      props.gitStatus,
       props.onOpenDevServer,
       props.onOpenNewTerminal,
       props.onMergeBack,
