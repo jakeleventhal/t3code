@@ -53,13 +53,24 @@ const view = {
   running: false,
   startError: null,
   error: null,
+  canWrite: true,
 };
 
 describe("guide notice transitions", () => {
-  it("does not flash an empty guide before the first response", () => {
+  it("moves from loading into automatic generation without a manual action", () => {
     expect(guideNoticeState({ ...view, isPending: true }).kind).toBe("loading");
     expect(
       guideNoticeState({ ...view, data: { guide: null, run: null, currentHeadSha: "head" } }).kind,
+    ).toBe("writing");
+  });
+
+  it("waits for write access without claiming generation has started", () => {
+    expect(
+      guideNoticeState({
+        ...view,
+        canWrite: false,
+        data: { guide: null, run: null, currentHeadSha: "head" },
+      }).kind,
     ).toBe("empty");
   });
 

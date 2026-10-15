@@ -16,6 +16,20 @@ export function GuideNotice({ state }: { readonly state: ReturnType<typeof useRe
   const compact = state.data?.guide != null;
   const failed = notice.kind === "failed" || notice.kind === "unavailable";
   const busy = notice.kind === "loading" || notice.kind === "writing";
+  if (notice.kind === "loading" || notice.kind === "empty") {
+    return (
+      <View className="mb-3 gap-1 py-2" accessibilityLiveRegion="polite">
+        <Text className="text-base font-t3-semibold text-foreground-muted">
+          {notice.kind === "loading" ? "Loading guide…" : "Waiting to generate guide"}
+        </Text>
+        <Text className="text-xs text-foreground-muted">
+          {notice.kind === "loading"
+            ? "Checking for a saved guide. You can explore the files below."
+            : "The guide starts automatically when connected with write access."}
+        </Text>
+      </View>
+    );
+  }
   if (notice.kind === "writing") {
     return (
       <View className="mb-3 gap-1 py-2">
