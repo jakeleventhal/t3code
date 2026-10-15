@@ -13,6 +13,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 
 import { GuideRail } from "./GuideRail";
+import { GuideChapterPanel } from "./GuideChapterPanel";
 import { GuideStop, type GuideStopHandle } from "./GuideStop";
 import { DiffDisplayControls } from "../../diffs/DiffDisplayControls";
 import type { ExcerptCommenting } from "./GuideExcerpt";
@@ -130,7 +131,7 @@ export function GuideTour({
     <div className="@container/guide flex h-full min-h-0 flex-col">
       {viewControlsTarget ? createPortal(<DiffDisplayControls />, viewControlsTarget) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="w-80 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
+        <GuideChapterPanel>
           <GuideRail
             files={diff.files}
             onSelectFile={selectFile}
@@ -147,7 +148,7 @@ export function GuideTour({
             }
             onSelect={goTo}
           />
-        </aside>
+        </GuideChapterPanel>
         <main
           data-guide-diff-scroll
           ref={scrollRef}

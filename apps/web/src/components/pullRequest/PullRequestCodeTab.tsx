@@ -92,6 +92,7 @@ import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
 import { ReviewChapterRail, ReviewChapterFileLink } from "./ReviewChapterRail";
+import { GuideChapterPanel } from "./guide/GuideChapterPanel";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
@@ -1832,11 +1833,7 @@ function PullRequestCodeTab({
     <div className="flex h-full min-h-0 flex-col">
       {toolbar}
       <div className="@container/guide flex min-h-0 flex-1">
-        {guideFallback && guideStatus ? (
-          <aside className="w-80 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
-            {guideStatus}
-          </aside>
-        ) : null}
+        {guideFallback && guideStatus ? <GuideChapterPanel>{guideStatus}</GuideChapterPanel> : null}
         <div ref={scrollerRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
           {guideFallback && guideStatus ? (
             <div className="px-4 py-3 @min-[56rem]/guide:hidden">{guideStatus}</div>
@@ -2044,13 +2041,13 @@ function PullRequestCodeTab({
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {chapter ? (
-          <aside
-            className={cn(
-              "shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden",
-              guideFallback ? "w-80" : "w-64",
-            )}
-          >
+        {chapter && guideFallback ? (
+          <GuideChapterPanel>
+            {guideStatus}
+            {chapterRail}
+          </GuideChapterPanel>
+        ) : chapter ? (
+          <aside className="w-64 shrink-0 overflow-y-auto border-r border-border/60 px-3 py-4 @max-[56rem]/guide:hidden">
             {guideStatus}
             {chapterRail}
           </aside>
