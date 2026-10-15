@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { SegmentedControl } from "../../components/SegmentedControl";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { PullRequestThreadCard } from "./PullRequestCommentCard";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import {
@@ -27,6 +28,7 @@ export function PullRequestCommentsSheet({
   onClose: () => void;
 }) {
   const navigation = useNavigation();
+  const { themeVariables: colors } = useAppearancePreferences();
   const draft = usePullRequestReviewDraft(params);
   const [status, setStatus] = useState<"resolved" | "unresolved" | "pending">("unresolved");
   // Threads come from the optimistic activity projection, so a resolve moves its card between
@@ -42,8 +44,16 @@ export function PullRequestCommentsSheet({
     selectedStatus === "resolved" ? resolved : selectedStatus === "unresolved" ? unresolved : [];
   const pending = selectedStatus === "pending" ? draft.comments : [];
   const options = [
-    { value: "unresolved" as const, label: "Unresolved", badge: unresolved.length },
-    { value: "resolved" as const, label: "Resolved", badge: resolved.length },
+    {
+      value: "unresolved" as const,
+      label: "Unresolved",
+      ...(draft.activityLoaded ? { badge: unresolved.length } : {}),
+    },
+    {
+      value: "resolved" as const,
+      label: "Resolved",
+      ...(draft.activityLoaded ? { badge: resolved.length } : {}),
+    },
     ...(draft.comments.length
       ? [{ value: "pending" as const, label: "Pending", badge: draft.comments.length }]
       : []),
@@ -55,12 +65,17 @@ export function PullRequestCommentsSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-screen">
+      {/* SafeAreaView forwards className to a native view without Uniwind styling. */}
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors["--color-screen"] }}>
         <View className="flex-row items-center gap-3 px-4 pt-4 pb-1">
           <View className="min-w-0 flex-1">
             <Text className="text-base font-t3-bold">Comments</Text>
             <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-              {counts.open} open · {counts.resolved} resolved
+              {draft.activityLoaded
+                ? `${counts.open} open · ${counts.resolved} resolved`
+                : draft.activityError
+                  ? "Could not load comments"
+                  : "Loading comments…"}
               {draft.comments.length ? ` · ${draft.comments.length} pending` : ""}
             </Text>
           </View>
@@ -84,8 +99,9 @@ export function PullRequestCommentsSheet({
           />
         </View>
         {/* Replies are written inside the cards, so the list must clear the keyboard. */}
-        <KeyboardAvoidingView automaticOffset behavior="padding" className="flex-1">
+        <KeyboardAvoidingView automaticOffset behavior="padding" style={{ flex: 1 }}>
           <ScrollView
+            style={{ flex: 1 }}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ padding: 12, gap: 8 }}
           >
@@ -130,7 +146,25 @@ export function PullRequestCommentsSheet({
                 onBeforeNavigate={onClose}
               />
             ))}
-            {!threads.length && !pending.length ? (
+            {draft.activityError ? (
+              <View className="gap-2">
+                <Text accessibilityRole="alert" className="text-sm text-danger-foreground">
+                  {draft.activityError}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={draft.refreshActivity}
+                  className="min-h-11 justify-center active:opacity-70"
+                >
+                  <Text className="text-sm font-t3-medium">Try again</Text>
+                </Pressable>
+              </View>
+            ) : !draft.activityLoaded && selectedStatus !== "pending" ? (
+              <Text accessibilityLiveRegion="polite" className="text-sm text-foreground-muted">
+                Loading comments…
+              </Text>
+            ) : null}
+            {draft.activityLoaded && !draft.activityError && !threads.length && !pending.length ? (
               <Text className="text-sm text-foreground-muted">
                 {selectedStatus === "resolved"
                   ? "No resolved comments."
