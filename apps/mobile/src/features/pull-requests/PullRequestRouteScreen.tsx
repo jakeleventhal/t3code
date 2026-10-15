@@ -37,7 +37,12 @@ import {
   PR_ROW_EXIT,
   PR_POSITION_LAYOUT,
 } from "./pullRequestAnimations";
-import { openOnProviderLabel } from "./pullRequestActions";
+import {
+  canPerformPullRequestAction,
+  openOnProviderLabel,
+  PR_ACTION_ICONS,
+  PR_ACTION_LABELS,
+} from "./pullRequestActions";
 import * as Clipboard from "expo-clipboard";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { MaterialIconButton } from "../../components/MaterialIconButton";
@@ -45,6 +50,7 @@ import { MaterialButton } from "../../components/MaterialButton";
 import { usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
+import { usePullRequestAction } from "./usePullRequestAction";
 import { annotatePullRequestDiff, reviewPosition } from "./pullRequestDiffComments";
 import { usePullRequestFileFilter } from "./usePullRequestFileFilter";
 import { usePullRequestViewingPreferences } from "./usePullRequestViewingPreferences";
@@ -130,6 +136,7 @@ import {
 import { PullRequestMergeControls } from "./PullRequestMergeControls";
 import { PullRequestStackCard } from "./PullRequestStackCard";
 import { usePullRequestStack, type PullRequestStackState } from "./usePullRequestStack";
+import { usePullRequestEnvironmentFallback } from "./usePullRequestEnvironmentFallback";
 
 const EMPTY_IDS: readonly string[] = [];
 
@@ -311,6 +318,7 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
   const insets = useSafeAreaInsets();
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
   const params = route.params;
+  usePullRequestEnvironmentFallback(params);
   const connected = usePullRequestConnected(params.environmentId);
   const viewMemoryKey = pullRequestReviewKey(params);
   const [section, setSection] = useState<"overview" | "diff" | "guide">(
@@ -378,6 +386,15 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
   const summary = params.initialSummary;
   const identity = pr ?? summary;
   const permissions = usePullRequestPermissions(params, pr);
+  const action = usePullRequestAction(params, pr);
+  const showsDeleteBranch = pr !== null && canPerformPullRequestAction(pr, "delete-branch");
+  const confirmDeleteBranch = () =>
+    pr &&
+    action.confirm(
+      "delete-branch",
+      PR_ACTION_LABELS["delete-branch"],
+      `Delete ${pr.headBranch} from ${pr.headRepositoryNameWithOwner ?? pr.repository}? Local branches and worktrees are not changed.`,
+    );
   const stack = usePullRequestStack(params, pr);
   const refreshActivity = useAtomRefresh(composerPullRequests.activity(requestTarget(params)));
   const refreshGuide = useAtomRefresh(composerPullRequests.reviewGuide(requestTarget(params)));
@@ -459,6 +476,18 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
                     },
                   ]
                 : []),
+              ...(showsDeleteBranch
+                ? [
+                    {
+                      accessibilityLabel: PR_ACTION_LABELS["delete-branch"],
+                      icon: PR_ACTION_ICONS["delete-branch"],
+                      disabled: !action.available("delete-branch"),
+                      destructive: true,
+                      overflowOnly: true,
+                      onPress: confirmDeleteBranch,
+                    },
+                  ]
+                : []),
             ]}
           />
         ) : null}
@@ -505,6 +534,25 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
               >
                 <NativeHeaderToolbar.Label>
                   {openOnProviderLabel(pr.provider)}
+                </NativeHeaderToolbar.Label>
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
+            {showsDeleteBranch ? (
+              <NativeHeaderToolbar.MenuAction
+                icon={PR_ACTION_ICONS["delete-branch"]}
+                destructive
+                disabled={!action.available("delete-branch")}
+                subtitle={
+                  action.busy
+                    ? "Deleting…"
+                    : connected
+                      ? pr.headBranch
+                      : "Reconnect to delete this branch."
+                }
+                onPress={confirmDeleteBranch}
+              >
+                <NativeHeaderToolbar.Label>
+                  {PR_ACTION_LABELS["delete-branch"]}
                 </NativeHeaderToolbar.Label>
               </NativeHeaderToolbar.MenuAction>
             ) : null}
