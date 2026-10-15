@@ -416,8 +416,13 @@ describe.each([
     );
 
     it.each([
-      ["Explain this PR", "Ask a question", "Explain this pull request.", ""],
-      ["Fix check", "Explain this PR", "Fix the failing check", "Explain this pull request."],
+      ["Fix findings in this thread", "Ask a question", "Fix the actionable findings", ""],
+      [
+        "Fix check",
+        "Fix findings in this thread",
+        "Fix the failing check",
+        "Fix the actionable findings",
+      ],
     ])(
       "replaces %s with %s after appending line comments",
       async (first, second, obsolete, incoming) => {
@@ -450,31 +455,32 @@ describe.each([
     it("keeps edits to a general request when replacing it after a line comment", async () => {
       const store = useComposerDraftStore.getState();
       await act(async () => render());
-      await click("Explain this PR");
+      await click("Fix check");
       store.setPrompt(
         target,
         store
           .getComposerDraft(target)!
           .prompt.replace(
-            "Explain this pull request.",
-            "Explain this pull request, especially the cache.",
+            "Fix the failing check quoted below.",
+            "Investigate the failing check, especially the cache.",
           ),
       );
       await click("Code");
       await click("Add to agent");
       await click("Ask a question");
       const draft = store.getComposerDraft(target)!;
-      expect(draft.prompt).toContain("Explain this pull request, especially the cache.");
+      expect(draft.prompt).toContain("Investigate the failing check, especially the cache.");
       expect(draft.prompt).toContain("Fix this line");
       expect(draft.prompt).toContain("[a.ts L1](t3-context://v1/review-comment/");
     });
 
-    it("replaces Explain with Ask without accumulating general context chips", async () => {
+    it("keeps one question context across a general repair request", async () => {
       await act(async () => render());
-      await click("Explain this PR");
+      await click("Ask a question");
+      await click("Fix findings in this thread");
       await click("Ask a question");
       const draft = useComposerDraftStore.getState().getComposerDraft(target)!;
-      expect(draft.prompt).not.toContain("Explain this pull request.");
+      expect(draft.prompt).not.toContain("Fix the actionable findings");
       expect(draft.reviewComments).toHaveLength(1);
       expect(draft.reviewComments[0]?.text).toContain("Answer the question");
       expect(collectInlineContextIds(draft.prompt)).toHaveLength(1);
