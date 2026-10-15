@@ -192,7 +192,14 @@ export function useReviewFilePatches({
               placeholder: {
                 name: file.path,
                 ...(file.previousPath ? { prevName: file.previousPath } : {}),
-                type: file.previousPath ? "rename-changed" : "change",
+                type:
+                  file.status === "added"
+                    ? "new"
+                    : file.status === "deleted"
+                      ? "deleted"
+                      : file.previousPath || file.status === "renamed"
+                        ? "rename-changed"
+                        : "change",
                 hunks: [],
                 additionLines: [],
                 deletionLines: [],
@@ -203,9 +210,7 @@ export function useReviewFilePatches({
               },
             });
           })
-        : (preview?.kind === "files" ? preview.files : []).toSorted((a, b) =>
-            filePathCollator.compare(resolveFileDiffPath(a), resolveFileDiffPath(b)),
-          ),
+        : orderReviewFiles(preview?.kind === "files" ? preview.files : [], resolveFileDiffPath),
     [source, files, patches, scope, preview, previousByPath],
   );
   const nextRetainedFiles = source
@@ -248,6 +253,7 @@ export function useReviewFilePatches({
           return [
             file.path,
             {
+              pending: patch === undefined || patch._tag === "Initial" || patch.waiting,
               error:
                 patch?._tag === "Failure" ||
                 (patch?._tag === "Success" &&
