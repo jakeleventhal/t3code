@@ -869,14 +869,18 @@ export function handoffPrompt(
   const last = existing.lastHandoffPrompt ?? "";
   // Line comments may have been appended after the last general request. Remove only its
   // unchanged paragraph, wherever it now sits, leaving the reader's edits and comments alone.
-  const start = last.length === 0 ? -1 : existing.prompt.lastIndexOf(last);
-  const before = existing.prompt.slice(0, start);
-  const after = existing.prompt.slice(start + last.length);
-  const ownsParagraph =
-    start >= 0 && (start === 0 || before.endsWith("\n\n")) && /^[ \t]*(?:\n\n|$)/u.test(after);
-  const kept = ownsParagraph
-    ? [before.trimEnd(), after.trimStart()].filter(Boolean).join("\n\n")
-    : existing.prompt;
+  let kept = existing.prompt;
+  let start = last.length === 0 ? -1 : existing.prompt.lastIndexOf(last);
+  while (start >= 0) {
+    const before = existing.prompt.slice(0, start);
+    const after = existing.prompt.slice(start + last.length);
+    if ((start === 0 || before.endsWith("\n\n")) && /^[ \t]*(?:\n\n|$)/u.test(after)) {
+      kept = [before.trimEnd(), after.trimStart()].filter(Boolean).join("\n\n");
+      break;
+    }
+    // A later comment can quote the request inline; keep looking for the original paragraph.
+    start = start === 0 ? -1 : existing.prompt.lastIndexOf(last, start - 1);
+  }
   if (kept.trim().length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;
 }

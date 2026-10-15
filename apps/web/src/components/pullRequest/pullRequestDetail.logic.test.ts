@@ -1550,6 +1550,36 @@ describe("a second ask into the same composer", () => {
     ).toBe("You said Explain this pull request.\n\nFix the selected line.\n\nWhy the cache key?");
   });
 
+  it.each([
+    "You said Explain this pull request. Why?",
+    "Explain this pull request. Is that still needed?",
+    "You said Explain this pull request. and repeated Explain this pull request.",
+  ])("replaces the original request while keeping an appended quote: %s", (quote) => {
+    expect(
+      handoffPrompt(
+        {
+          prompt: `Keep my draft\n\nExplain this pull request.\n\n${quote}`,
+          lastHandoffPrompt: "Explain this pull request.",
+        },
+        "Why the cache key?",
+      ),
+    ).toBe(`Keep my draft\n\n${quote}\n\nWhy the cache key?`);
+  });
+
+  it("keeps an edited request and its appended quote when no unchanged paragraph remains", () => {
+    const prompt =
+      "Explain this pull request. Focus on caching.\n\nYou said Explain this pull request.";
+    expect(
+      handoffPrompt(
+        {
+          prompt,
+          lastHandoffPrompt: "Explain this pull request.",
+        },
+        "Why the cache key?",
+      ),
+    ).toBe(`${prompt}\n\nWhy the cache key?`);
+  });
+
   it("takes back only its own sentence when the next ask is empty", () => {
     expect(
       handoffPrompt(
