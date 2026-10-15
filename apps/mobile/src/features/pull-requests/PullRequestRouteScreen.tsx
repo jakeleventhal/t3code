@@ -979,23 +979,17 @@ export function PullRequestDiffContent({
   ]);
   const chapters = useMemo(
     () =>
-      grouped && visibleParsed.kind === "files"
-        ? reviewFileChapters(visibleParsed.files, (file) => file.path)
+      grouped && filter.parsed.kind === "files" && visibleParsed.kind === "files"
+        ? reviewFileChapters(filter.parsed.files, (file) => file.path, visibleParsed.files)
         : [],
-    [grouped, visibleParsed],
+    [grouped, filter.parsed, visibleParsed],
   );
   const activeChapter = chapters.find((chapter) => chapter.id === chapterId) ?? chapters[0];
-  const chapterFiles = useMemo(
-    () =>
-      activeChapter && result.parsed.kind === "files"
-        ? result.parsed.files.filter((file) => reviewFileGroup(file.path) === activeChapter.id)
-        : [],
-    [activeChapter, result.parsed],
-  );
+  const chapterFiles = useMemo(() => activeChapter?.files ?? [], [activeChapter]);
   const reviewedChapterFiles = chapterFiles.filter((file) => viewed.isViewed(file.path)).length;
   const parsed = useMemo(() => {
     if (!activeChapter || visibleParsed.kind !== "files") return visibleParsed;
-    const files = activeChapter.files;
+    const files = activeChapter.visibleFiles;
     return {
       ...visibleParsed,
       files,
@@ -1084,7 +1078,7 @@ export function PullRequestDiffContent({
     setLastChapter(activeChapterId);
     if (activeChapter) {
       if (!jumpPath || reviewFileGroup(jumpPath) !== activeChapter.id)
-        setJumpPath(activeChapter.files[0]?.path ?? "");
+        setJumpPath(activeChapter.visibleFiles[0]?.path ?? "");
       setSelectedRowId(null);
       setRangeEndRowId(null);
       setCollapsedIds(EMPTY_IDS);
@@ -1268,7 +1262,7 @@ export function PullRequestDiffContent({
     const chapter = chapters[position];
     if (!chapter) return;
     setChapterId(chapter.id);
-    setJumpPath(chapter.files[0]?.path ?? "");
+    setJumpPath(chapter.visibleFiles[0]?.path ?? "");
     setSelectedRowId(null);
     setRangeEndRowId(null);
     jumpStarted.current = false;
