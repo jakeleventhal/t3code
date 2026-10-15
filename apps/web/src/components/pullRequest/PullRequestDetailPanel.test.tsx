@@ -136,26 +136,29 @@ vi.mock("./PullRequestCodeTab", () => ({
     scrollerRef,
   }: ComponentProps<typeof import("./PullRequestCodeTab").default>) => (
     <div ref={scrollerRef} data-test-scroll="code">
-      <button
-        onClick={() =>
-          onAddToAgentSelection?.({
-            request: "Fix this line",
-            comment: {
-              id: "note-1",
-              sectionId: "file:a.ts",
-              sectionTitle: "a.ts",
-              filePath: "a.ts",
-              startIndex: 0,
-              endIndex: 0,
-              rangeLabel: "L1",
-              text: "Please fix",
-              diff: "+broken()",
-            },
-          })
-        }
-      >
-        Add to agent
-      </button>
+      {[1, 2].map((line) => (
+        <button
+          key={line}
+          onClick={() =>
+            onAddToAgentSelection?.({
+              request: line === 1 ? "Fix this line" : "Fix the second line",
+              comment: {
+                id: `pull-request-selection:a.ts:${line}:${line}`,
+                sectionId: "file:a.ts",
+                sectionTitle: "a.ts",
+                filePath: "a.ts",
+                startIndex: line - 1,
+                endIndex: line - 1,
+                rangeLabel: `L${line}`,
+                text: "Please fix",
+                diff: "+broken()",
+              },
+            })
+          }
+        >
+          {line === 1 ? "Add to agent" : "Add second comment"}
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -342,7 +345,9 @@ describe.each([
     if (action === "Add to agent") {
       expect(draft?.prompt).toContain("Fix this line");
       expect(draft?.reviewComments).toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: "note-1", diff: "+broken()" })]),
+        expect.arrayContaining([
+          expect.objectContaining({ id: "pull-request-selection:a.ts:1:1", diff: "+broken()" }),
+        ]),
       );
     }
     if (target) {
@@ -353,6 +358,30 @@ describe.each([
       expect(newThread).toHaveBeenCalled();
     }
   });
+
+  if (target) {
+    it("preserves both comments and their citations when adding a second line comment", async () => {
+      const store = useComposerDraftStore.getState();
+      store.setPrompt(target, "Keep my draft");
+      await act(async () => render());
+      await click("Code");
+      await click("Add to agent");
+      const firstPrompt = store.getComposerDraft(target)?.prompt;
+      expect(firstPrompt).toContain("Fix this line");
+      expect(firstPrompt).toContain("[a.ts L1](t3-context://v1/review-comment/");
+
+      await click("Add second comment");
+      const draft = store.getComposerDraft(target);
+      expect(draft?.prompt).toContain(firstPrompt);
+      expect(draft?.prompt).toContain("Fix the second line");
+      expect(draft?.prompt).toContain("[a.ts L2](t3-context://v1/review-comment/");
+      expect(draft?.reviewComments?.map((comment) => comment.id)).toEqual([
+        "pull-request-selection:a.ts:1:1",
+        "pull-request-context:1",
+        "pull-request-selection:a.ts:2:2",
+      ]);
+    });
+  }
 });
 
 it("changes the title only for the active tab's main scroller", async () => {
