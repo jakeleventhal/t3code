@@ -22,7 +22,7 @@ export function ThreadHeader(
   const returnToList = useWorkspaceListNavigation("threads");
   const navigation = useNavigation();
   const { layout, panes } = useAdaptiveWorkspaceLayout();
-  const { onOpenTerminal, onMergeBack } = props.gitControls;
+  const { devServers, onOpenDevServer, onOpenTerminal, onMergeBack } = props.gitControls;
   const native = useThreadHeaderOptions(props);
   const androidHeaderActions = useMemo<ReadonlyArray<ScreenHeaderAction>>(() => {
     const actions: ScreenHeaderAction[] = [];
@@ -53,6 +53,14 @@ export function ThreadHeader(
         onPress: () => onOpenTerminal(null),
       });
     }
+    if (devServers.length > 0) {
+      const firstReachable = devServers.find((entry) => entry.reachable) ?? devServers[0]!;
+      actions.push({
+        accessibilityLabel: "Open dev server",
+        icon: "globe",
+        onPress: () => void onOpenDevServer(firstReachable),
+      });
+    }
     actions.push({
       accessibilityLabel: "Open git",
       icon: "point.topleft.down.curvedto.point.bottomright.up",
@@ -71,6 +79,8 @@ export function ThreadHeader(
     }
     return actions;
   }, [
+    devServers,
+    onOpenDevServer,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     onOpenTerminal,
