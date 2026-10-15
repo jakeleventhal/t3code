@@ -15,18 +15,27 @@ export function PullRequestSavedViewsMenu({
   onApply,
 }: {
   scope: PullRequestSavedViewScope;
-  onApply: (view: PullRequestSavedView) => void;
+  onApply: (view: PullRequestSavedView) => Promise<void>;
 }) {
   const { views, ready, update } = usePullRequestSavedViews();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const explicitlySelected = views.find((view) => view.id === selectedId);
-  const matchingView =
-    explicitlySelected && pullRequestViewMatches(explicitlySelected, scope)
-      ? explicitlySelected
-      : views.find((view) => pullRequestViewMatches(view, scope));
-  const selectedView = matchingView ?? explicitlySelected;
+  const selectedView =
+    views.find((view) => view.id === selectedId) ??
+    views.find((view) => pullRequestViewMatches(view, scope));
   const modified = selectedView !== undefined && !pullRequestViewMatches(selectedView, scope);
+
+  async function applyView(view: PullRequestSavedView) {
+    setBusy(true);
+    try {
+      await onApply(view);
+      setSelectedId(view.id);
+    } catch {
+      Alert.alert("Could not apply PR view", "The device could not save your filters. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function persist(
     transform: (
@@ -75,7 +84,7 @@ export function PullRequestSavedViewsMenu({
     ...views.map((view) => ({
       id: `apply:${view.id}`,
       title: view.name,
-      state: matchingView?.id === view.id ? ("on" as const) : ("off" as const),
+      state: selectedView?.id === view.id && !modified ? ("on" as const) : ("off" as const),
     })),
     { id: "save", title: "Save current view…" },
     ...(selectedView
@@ -100,8 +109,7 @@ export function PullRequestSavedViewsMenu({
         if (!ready || busy) return;
         const view = views.find((item) => `apply:${item.id}` === id);
         if (view) {
-          setSelectedId(view.id);
-          onApply(view);
+          void applyView(view);
           return;
         }
         if (id === "save") editName();
