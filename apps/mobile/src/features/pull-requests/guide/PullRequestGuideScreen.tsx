@@ -72,11 +72,11 @@ export function PullRequestGuideContent({
       ) : (
         <>
           {guide ? (
-            <GuideNotice state={state} />
+            <GuideNotice state={state} active={active} />
           ) : (
             <View className="flex-row items-start gap-2">
               <View className="min-w-0 flex-1">
-                <GuideNotice state={state} />
+                <GuideNotice state={state} active={active} />
               </View>
               <GuideViewOptionsButton />
             </View>

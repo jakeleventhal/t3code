@@ -14,8 +14,14 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { AppText as Text } from "../../../components/AppText";
 import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";
 
-/** Match the desktop heading's three glimmer sweeps; stop when hidden or motion is reduced. */
-export function GuideGeneratingHeading({ rewriting = false }: { readonly rewriting?: boolean }) {
+/** Glimmer throughout generation; pause while hidden, backgrounded, or motion is reduced. */
+export function GuideGeneratingHeading({
+  rewriting = false,
+  visible = true,
+}: {
+  readonly rewriting?: boolean;
+  readonly visible?: boolean;
+}) {
   const label = rewriting ? "Rewriting guide…" : "Generating guide…";
   const { themeVariables: colors } = useAppearancePreferences();
   const focused = useIsFocused();
@@ -40,12 +46,12 @@ export function GuideGeneratingHeading({ rewriting = false }: { readonly rewriti
   useEffect(() => {
     cancelAnimation(progress);
     progress.set(0);
-    if (reduceMotion || !active || !focused || !width) return;
+    if (reduceMotion || !active || !focused || !visible || !width) return;
     progress.set(
-      withRepeat(withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.ease) }), 3),
+      withRepeat(withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.ease) }), -1),
     );
     return () => cancelAnimation(progress);
-  }, [active, focused, progress, reduceMotion, width]);
+  }, [active, focused, progress, reduceMotion, visible, width]);
   const animated = useAnimatedStyle(() => ({
     transform: [{ translateX: -width + progress.get() * width * 2 }],
   }));
@@ -61,7 +67,7 @@ export function GuideGeneratingHeading({ rewriting = false }: { readonly rewriti
       >
         {label}
       </Text>
-      {!reduceMotion && active && focused && width > 0 ? (
+      {!reduceMotion && active && focused && visible && width > 0 ? (
         <MaskedView
           pointerEvents="none"
           accessible={false}
