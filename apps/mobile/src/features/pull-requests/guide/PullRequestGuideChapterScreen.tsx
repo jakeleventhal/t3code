@@ -127,7 +127,10 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
                 </Text>
               </Pressable>
               {expanded ? (
-                <PullRequestMarkdownRepository value={params.repository} params={params}>
+                <PullRequestMarkdownRepository
+                  value={detail.data?.provider === "github" ? detail.data.url : null}
+                  params={params}
+                >
                   <View className="gap-2 pt-2">
                     {stop.attention ? <PullRequestMarkdown markdown={stop.attention.note} /> : null}
                     {stop.notes.map((note) => (

@@ -108,7 +108,7 @@ function useWorkingChanges(
     }),
   );
   const refresh = query.refresh;
-  const revision = scope ? props.revision : null;
+  const revision = props.revision;
   useEffect(() => {
     refresh();
   }, [refresh, revision, generation]);
