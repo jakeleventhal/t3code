@@ -386,6 +386,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       iosMajorVersion: 18,
       appVersion: "1.0.0",
       pushToken: "apns-token",
+      pushToStartToken: "push-to-start-token",
       preferences: {
         liveActivitiesEnabled: false,
         notificationsEnabled: true,
