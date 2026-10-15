@@ -32,6 +32,15 @@ describe("review snapshot identity", () => {
     expect(reviewDiffViewerKey("section", null)).toBe("section:preview");
   });
 
+  it("resets loaded files when switching between staged and unstaged changes", () => {
+    const staged = reviewSnapshotFamily({ ...identity, workingTreeScope: "staged" });
+    const unstaged = reviewSnapshotFamily({ ...identity, workingTreeScope: "unstaged" });
+    expect(unstaged).not.toBe(staged);
+    expect(reviewPatchIndicesForFamily({ family: staged, indices: [0, 7] }, unstaged)).toEqual([
+      0, 1, 2, 3,
+    ]);
+  });
+
   it("keeps loaded file indexes when the snapshot family is unchanged", () => {
     const family = reviewSnapshotFamily(identity);
     expect(reviewPatchIndicesForFamily({ family, indices: [0, 1, 2, 3, 8] }, family)).toEqual([
