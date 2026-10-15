@@ -1049,6 +1049,7 @@ export function PullRequestDetailPanel({
   type ThreadTask = {
     prompt: string;
     reviewComments?: ReadonlyArray<ReviewCommentContext>;
+    append?: boolean;
   };
 
   const attachTarget = composerDraftTarget ?? null;
@@ -1068,6 +1069,20 @@ export function PullRequestDetailPanel({
   const writeTaskToComposer = (target: ScopedThreadRef | DraftId, task: ThreadTask) => {
     const store = useComposerDraftStore.getState();
     const draft = store.getComposerDraft(target);
+    // Line comments accumulate in the draft, including their citations.
+    if (task.append) {
+      store.setPrompt(
+        target,
+        handoffPrompt({ prompt: draft?.prompt ?? "", lastHandoffPrompt: undefined }, task.prompt),
+      );
+      for (const comment of task.reviewComments ?? []) {
+        store.addReviewComment(target, comment, {
+          allowDuplicateReference: true,
+          insertAtCaret: false,
+        });
+      }
+      return;
+    }
     const key = composerTargetKey(target);
     const previousCommentIds = new Set((draft?.reviewComments ?? []).map((comment) => comment.id));
     const repeatedCommentIds = new Set(
@@ -1115,6 +1130,8 @@ export function PullRequestDetailPanel({
       ));
     if (session === null) return null;
     if (task === null) return session;
+    // General asks replace the previous handoff; line comments append to the draft.
+    // Text the reader typed or edited survives either kind of handoff.
     writeTaskToComposer(session.draftId, task);
     return session;
   };
@@ -1356,17 +1373,20 @@ export function PullRequestDetailPanel({
     if (!detail) return;
     void startAsk(
       `selection:${selection.comment.id}`,
-      buildAddSelectionToAgentHandoff({
-        number: detail.number,
-        title: detail.title,
-        url: detail.url,
-        headBranch: detail.headBranch,
-        baseBranch: detail.baseBranch,
-        state: detail.state,
-        isDraft: detail.isDraft,
-        comment: selection.comment,
-        request: selection.request,
-      }),
+      {
+        ...buildAddSelectionToAgentHandoff({
+          number: detail.number,
+          title: detail.title,
+          url: detail.url,
+          headBranch: detail.headBranch,
+          baseBranch: detail.baseBranch,
+          state: detail.state,
+          isDraft: detail.isDraft,
+          comment: selection.comment,
+          request: selection.request,
+        }),
+        append: true,
+      },
       options,
     );
   };
