@@ -1464,7 +1464,9 @@ describe("a second ask into the same composer", () => {
 
   it("empties what the last ask left, so the two are never sent as one question", () => {
     const handed = "Explain this pull request.";
-    expect(handoffPrompt({ prompt: handed, lastHandoffPrompt: handed }, "")).toBe("");
+    expect(
+      handoffPrompt({ prompt: handed, lastHandoffPrompt: { text: handed, start: 0 } }, ""),
+    ).toBe("");
   });
 
   it("removes the previous handoff chip before replacing its prompt", () => {
@@ -1487,9 +1489,12 @@ describe("a second ask into the same composer", () => {
 
   it("replaces the last ask's prompt with this one's", () => {
     const handed = "Explain this pull request.";
-    expect(handoffPrompt({ prompt: handed, lastHandoffPrompt: handed }, "Why the cache key?")).toBe(
-      "Why the cache key?",
-    );
+    expect(
+      handoffPrompt(
+        { prompt: handed, lastHandoffPrompt: { text: handed, start: 0 } },
+        "Why the cache key?",
+      ),
+    ).toBe("Why the cache key?");
   });
 
   it("leaves a sentence the reader typed themselves where it is", () => {
@@ -1500,7 +1505,13 @@ describe("a second ask into the same composer", () => {
 
   it("keeps what the reader wrote next to the chip an earlier ask left", () => {
     expect(
-      handoffPrompt({ prompt: "why is the cache keyed on the branch?", lastHandoffPrompt: "" }, ""),
+      handoffPrompt(
+        {
+          prompt: "why is the cache keyed on the branch?",
+          lastHandoffPrompt: { text: "", start: 0 },
+        },
+        "",
+      ),
     ).toBe("why is the cache keyed on the branch?");
   });
 
@@ -1509,7 +1520,7 @@ describe("a second ask into the same composer", () => {
       handoffPrompt(
         {
           prompt: "Explain this pull request, the caching especially.",
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: { text: "Explain this pull request.", start: 0 },
         },
         "",
       ),
@@ -1530,7 +1541,10 @@ describe("a second ask into the same composer", () => {
       handoffPrompt(
         {
           prompt: "check the migration first\n\nExplain this pull request.",
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: {
+            text: "Explain this pull request.",
+            start: "check the migration first\n\n".length,
+          },
         },
         "Why the cache key?",
       ),
@@ -1543,7 +1557,10 @@ describe("a second ask into the same composer", () => {
         {
           prompt:
             "You said Explain this pull request.\n\nExplain this pull request.\n\nFix the selected line.",
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: {
+            text: "Explain this pull request.",
+            start: "You said Explain this pull request.\n\n".length,
+          },
         },
         "Why the cache key?",
       ),
@@ -1559,7 +1576,10 @@ describe("a second ask into the same composer", () => {
       handoffPrompt(
         {
           prompt: `Keep my draft\n\nExplain this pull request.\n\n${quote}`,
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: {
+            text: "Explain this pull request.",
+            start: "Keep my draft\n\n".length,
+          },
         },
         "Why the cache key?",
       ),
@@ -1573,11 +1593,49 @@ describe("a second ask into the same composer", () => {
       handoffPrompt(
         {
           prompt,
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: { text: "Explain this pull request.", start: 0 },
         },
         "Why the cache key?",
       ),
     ).toBe(`${prompt}\n\nWhy the cache key?`);
+  });
+
+  it.each(["", "Keep my draft  \n\n"])("preserves surrounding whitespace after %s", (prefix) => {
+    expect(
+      handoffPrompt(
+        {
+          prompt: `${prefix}Explain this pull request.\n\n    const answer = 42;  \n\treturn answer;`,
+          lastHandoffPrompt: { text: "Explain this pull request.", start: prefix.length },
+        },
+        "",
+      ),
+    ).toBe(`${prefix}    const answer = 42;  \n\treturn answer;`);
+  });
+
+  it("keeps identical reader text when the recorded insertion was edited", () => {
+    const prompt = "Explain this pull request, especially caching.\n\nExplain this pull request.";
+    expect(
+      handoffPrompt(
+        {
+          prompt,
+          lastHandoffPrompt: { text: "Explain this pull request.", start: 0 },
+        },
+        "",
+      ),
+    ).toBe(prompt);
+  });
+
+  it("keeps a moved insertion instead of deleting a different match", () => {
+    const prompt = "New reader prefix\n\nExplain this pull request.";
+    expect(
+      handoffPrompt(
+        {
+          prompt,
+          lastHandoffPrompt: { text: "Explain this pull request.", start: 0 },
+        },
+        "",
+      ),
+    ).toBe(prompt);
   });
 
   it("takes back only its own sentence when the next ask is empty", () => {
@@ -1585,7 +1643,10 @@ describe("a second ask into the same composer", () => {
       handoffPrompt(
         {
           prompt: "check the migration first\n\nExplain this pull request.",
-          lastHandoffPrompt: "Explain this pull request.",
+          lastHandoffPrompt: {
+            text: "Explain this pull request.",
+            start: "check the migration first\n\n".length,
+          },
         },
         "",
       ),

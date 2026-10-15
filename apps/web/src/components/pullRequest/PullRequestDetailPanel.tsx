@@ -149,6 +149,7 @@ import {
   buildFixFindingsHandoff,
   buildResolveConflictsPrompt,
   handoffPrompt,
+  type HandoffPromptInsertion,
   handoffReviewComments,
   latestPullRequestReviewOutcomes,
   loadingPullRequestCheckoutCommand,
@@ -248,11 +249,11 @@ const loadCodeTab = () => import("./PullRequestCodeTab");
 const PullRequestCodeTab = lazy(loadCodeTab);
 
 /**
- * What the last hand-off wrote into each draft, kept outside React because the panel that wrote it
- * is closed by the time the next one opens. It is how a prompt the reader has since edited is told
- * apart from the one they were handed: only the sentence still exactly as written may be replaced.
+ * What and where the last hand-off wrote into each draft, kept outside React because its panel
+ * may close before the next one opens. Only the unchanged insertion at that position is replaced;
+ * identical paragraphs elsewhere belong to the reader.
  */
-const lastHandoffPromptByDraft = new Map<string, string>();
+const lastHandoffPromptByDraft = new Map<string, HandoffPromptInsertion>();
 
 const composerTargetKey = (target: ScopedThreadRef | DraftId): string =>
   typeof target === "string" ? target : scopedThreadKey(target);
@@ -1095,7 +1096,10 @@ export function PullRequestDetailPanel({
       },
       task.prompt,
     );
-    lastHandoffPromptByDraft.set(key, task.prompt);
+    lastHandoffPromptByDraft.set(key, {
+      text: task.prompt,
+      start: prompt.length - task.prompt.length,
+    });
     store.setPrompt(target, prompt);
     store.setReviewComments(
       target,

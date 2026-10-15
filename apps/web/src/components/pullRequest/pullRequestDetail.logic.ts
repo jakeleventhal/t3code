@@ -853,6 +853,22 @@ export function stripPullRequestHandoffReferences(
   return next;
 }
 
+export interface HandoffPromptInsertion {
+  readonly text: string;
+  /** Offset in the prompt with general handoff references removed. */
+  readonly start: number;
+}
+
+/**
+ * The prompt the composer should hold once a hand-off lands there.
+ *
+ * A hand-off owns what an earlier hand-off wrote and nothing else: pressing Ask and then Explain
+ * used to stack both in the composer, and the reader sent a question nobody wrote. What says an
+ * earlier one wrote it is the recorded text and position — only that unchanged insertion is
+ * replaced. A reader who typed their own question, or edited the one they were given, has written
+ * something no hand-off may take away: an empty ask leaves it alone, and one carrying a prompt
+ * goes underneath it.
+ */
 export function handoffPrompt(
   existing: {
     readonly prompt: string;
@@ -861,25 +877,29 @@ export function handoffPrompt(
      * merged prompt it landed in, or a draft that held the reader's text before the first
      * hand-off would read as all hand-off and be replaced wholesale by the second.
      */
-    readonly lastHandoffPrompt: string | undefined;
+    readonly lastHandoffPrompt: HandoffPromptInsertion | undefined;
   },
   incoming: string,
 ): string {
   if (existing.prompt.trim().length === 0) return incoming;
-  const last = existing.lastHandoffPrompt ?? "";
-  // Line comments may have been appended after the last general request. Remove only its
-  // unchanged paragraph, wherever it now sits, leaving the reader's edits and comments alone.
+  const last = existing.lastHandoffPrompt;
   let kept = existing.prompt;
-  let start = last.length === 0 ? -1 : existing.prompt.lastIndexOf(last);
-  while (start >= 0) {
-    const before = existing.prompt.slice(0, start);
-    const after = existing.prompt.slice(start + last.length);
-    if ((start === 0 || before.endsWith("\n\n")) && /^[ \t]*(?:\n\n|$)/u.test(after)) {
-      kept = [before.trimEnd(), after.trimStart()].filter(Boolean).join("\n\n");
-      break;
+  // Only the insertion we recorded may be removed. If edits moved or changed it, keep the text
+  // rather than guessing which identical reader-authored paragraph might belong to us.
+  if (last && last.text.length > 0 && last.start >= 0) {
+    const before = existing.prompt.slice(0, last.start);
+    const after = existing.prompt.slice(last.start + last.text.length);
+    if (
+      existing.prompt.slice(last.start, last.start + last.text.length) === last.text &&
+      (last.start === 0 || before.endsWith("\n\n")) &&
+      /^[ \t]*(?:\n\n|$)/u.test(after)
+    ) {
+      // Remove the separators around our insertion, preserving the reader's indentation and
+      // trailing spaces on both sides.
+      const prefix = last.start === 0 ? "" : before.slice(0, -2);
+      const suffix = after.replace(/^[ \t]*(?:\n\n|$)/u, "");
+      kept = [prefix, suffix].filter(Boolean).join("\n\n");
     }
-    // A later comment can quote the request inline; keep looking for the original paragraph.
-    start = start === 0 ? -1 : existing.prompt.lastIndexOf(last, start - 1);
   }
   if (kept.trim().length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;
