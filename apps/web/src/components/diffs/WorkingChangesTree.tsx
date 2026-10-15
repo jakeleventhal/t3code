@@ -14,6 +14,7 @@ import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { MorphIcon } from "../MorphIcon";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Menu, MenuItem, MenuPopup } from "../ui/menu";
 import { ReviewPath } from "./ReviewPath";
 import type { DiffFileTreeEntry } from "./diffFileTree.logic";
 
@@ -52,6 +53,18 @@ export function WorkingChangesTree({
     rows: selected ? [{ ...selected, kind: "file" }] : [],
     anchor: selected ? { ...selected, kind: "file" } : null,
   }));
+  const [contextMenu, setContextMenu] = useState<{
+    row: ReviewTreeRow;
+    x: number;
+    y: number;
+  } | null>(null);
+  const menuAnchor = useMemo(
+    () =>
+      contextMenu
+        ? { getBoundingClientRect: () => new DOMRect(contextMenu.x, contextMenu.y, 0, 0) }
+        : undefined,
+    [contextMenu],
+  );
   const lastRevealed = useRef<string | null>(null);
   const sections = { staged, unstaged };
   const sectionPaths = useMemo(
@@ -88,6 +101,14 @@ export function WorkingChangesTree({
     () => selection.rows.filter((row) => row.kind === "folder"),
     [selection.rows],
   );
+  const isInSelection = (row: ReviewTreeRow) =>
+    selectedKeys.has(reviewTreeRowKey(row)) ||
+    selectedFolders.some(
+      (folder) => folder.scope === row.scope && reviewFolderContains(folder.path, row.path),
+    );
+  const contextPaths = contextMenu
+    ? reviewTreeActionFiles(sectionPaths[contextMenu.row.scope], selection.rows, contextMenu.row)
+    : [];
   const revealScope = selected?.scope;
   const revealPath = selected?.path;
   const revealKey = selected ? reviewTreeRowKey(selected) : null;
@@ -112,12 +133,7 @@ export function WorkingChangesTree({
     });
   const actions = (scope: Scope, row: ReviewTreeRow | null) => {
     const path = row?.path ?? null;
-    const groupTarget =
-      row &&
-      (selectedKeys.has(reviewTreeRowKey(row)) ||
-        selectedFolders.some(
-          (folder) => folder.scope === scope && reviewFolderContains(folder.path, row.path),
-        ));
+    const groupTarget = row && isInSelection(row);
     const label =
       groupTarget && (selection.rows.length > 1 || row.kind === "folder")
         ? "selected files"
@@ -221,6 +237,12 @@ export function WorkingChangesTree({
               style={{
                 paddingLeft: `calc(6.4px + min(${row.depth * 18.7}px, max(0px, 100% - 180px)))`,
               }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!isInSelection(row)) setSelection({ rows: [row], anchor: row });
+                setContextMenu({ row, x: event.clientX, y: event.clientY });
+              }}
             >
               {folder ? (
                 <button
@@ -292,6 +314,42 @@ export function WorkingChangesTree({
           );
         }}
       />
+      <Menu
+        open={contextMenu !== null}
+        onOpenChange={(open) => {
+          if (!open) setContextMenu(null);
+        }}
+      >
+        <MenuPopup anchor={menuAnchor} align="start">
+          {contextMenu ? (
+            <>
+              <MenuItem
+                disabled={disabled || contextPaths.length === 0}
+                onClick={() => {
+                  onStage(contextMenu.row.scope, contextPaths);
+                  setContextMenu(null);
+                }}
+              >
+                <MorphIcon icon={contextMenu.row.scope === "staged" ? Minus : Plus} />
+                {contextMenu.row.scope === "staged" ? "Unstage changes" : "Stage changes"}
+              </MenuItem>
+              {contextMenu.row.scope === "unstaged" ? (
+                <MenuItem
+                  variant="destructive"
+                  disabled={revertDisabled || contextPaths.length === 0}
+                  onClick={() => {
+                    onRevert(contextPaths);
+                    setContextMenu(null);
+                  }}
+                >
+                  <MorphIcon icon={Undo2} />
+                  Revert changes
+                </MenuItem>
+              ) : null}
+            </>
+          ) : null}
+        </MenuPopup>
+      </Menu>
     </div>
   );
 }
