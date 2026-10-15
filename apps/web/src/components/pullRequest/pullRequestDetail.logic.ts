@@ -37,7 +37,10 @@ import {
 
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
-import { removeInlineContextReference } from "~/lib/composerContextReferences";
+import {
+  removeInlineContextReference,
+  stripInlineContextReferences,
+} from "~/lib/composerContextReferences";
 
 export const PULL_REQUEST_MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
   merge: "Merge",
@@ -855,8 +858,13 @@ export function stripPullRequestHandoffReferences(
 
 export interface HandoffPromptInsertion {
   readonly text: string;
-  /** Offset in the prompt with general handoff references removed. */
-  readonly start: number;
+  /** The text preceding this insertion, before later caret citations add their own padding. */
+  readonly prefix: string;
+}
+
+/** Citation links and their whitespace padding do not change which request follows this prose. */
+function handoffPrefixProse(prefix: string): string {
+  return stripInlineContextReferences(prefix).replace(/\s/gu, "");
 }
 
 /**
@@ -864,7 +872,7 @@ export interface HandoffPromptInsertion {
  *
  * A hand-off owns what an earlier hand-off wrote and nothing else: pressing Ask and then Explain
  * used to stack both in the composer, and the reader sent a question nobody wrote. What says an
- * earlier one wrote it is the recorded text and position — only that unchanged insertion is
+ * earlier one wrote it is the recorded text and preceding prose — only that unchanged insertion is
  * replaced. A reader who typed their own question, or edited the one they were given, has written
  * something no hand-off may take away: an empty ask leaves it alone, and one carrying a prompt
  * goes underneath it.
@@ -884,22 +892,27 @@ export function handoffPrompt(
   if (existing.prompt.trim().length === 0) return incoming;
   const last = existing.lastHandoffPrompt;
   let kept = existing.prompt;
-  // Only the insertion we recorded may be removed. If edits moved or changed it, keep the text
-  // rather than guessing which identical reader-authored paragraph might belong to us.
-  if (last && last.text.length > 0 && last.start >= 0) {
-    const before = existing.prompt.slice(0, last.start);
-    const after = existing.prompt.slice(last.start + last.text.length);
+  // Anchor to the preceding prose rather than a byte offset: caret citations can move the
+  // unchanged request. A later reader-authored copy has different preceding prose.
+  const expectedPrefix = last ? handoffPrefixProse(last.prefix) : "";
+  const previousText = last?.text ?? "";
+  let start = previousText.length > 0 ? existing.prompt.indexOf(previousText) : -1;
+  while (start >= 0) {
+    const before = existing.prompt.slice(0, start);
+    const after = existing.prompt.slice(start + previousText.length);
+    const prefixProse = handoffPrefixProse(before);
     if (
-      existing.prompt.slice(last.start, last.start + last.text.length) === last.text &&
-      (last.start === 0 || before.endsWith("\n\n")) &&
-      /^[ \t]*(?:\n\n|$)/u.test(after)
+      prefixProse === expectedPrefix &&
+      /^[ \t]*(?:\n\n|$)/u.test(stripInlineContextReferences(after))
     ) {
-      // Remove the separators around our insertion, preserving the reader's indentation and
+      // Remove the separators around our insertion, preserving citations, indentation and
       // trailing spaces on both sides.
-      const prefix = last.start === 0 ? "" : before.slice(0, -2);
+      const prefix = before.endsWith("\n\n") ? before.slice(0, -2) : before;
       const suffix = after.replace(/^[ \t]*(?:\n\n|$)/u, "");
       kept = [prefix, suffix].filter(Boolean).join("\n\n");
+      break;
     }
+    start = existing.prompt.indexOf(previousText, start + previousText.length);
   }
   if (kept.trim().length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;

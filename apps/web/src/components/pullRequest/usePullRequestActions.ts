@@ -233,9 +233,9 @@ export type PullRequestHandoffDetail = Pick<
 >;
 
 /**
- * What and where the last hand-off wrote into each draft, kept outside React because its panel
- * may close before the next one opens. Only the unchanged insertion at that position is replaced;
- * identical paragraphs elsewhere belong to the reader.
+ * What the last hand-off wrote and which prose preceded it, kept outside React because its panel
+ * may close before the next one opens. Citation insertions may shift it; identical paragraphs
+ * elsewhere still belong to the reader.
  */
 const lastHandoffPromptByDraft = new Map<DraftId, HandoffPromptInsertion>();
 
@@ -285,7 +285,7 @@ export function usePullRequestHandoffs({
     // this session's to take back next time, and the reader's text around it is not.
     lastHandoffPromptByDraft.set(session.draftId, {
       text: task.prompt,
-      start: prompt.length - task.prompt.length,
+      prefix: prompt.slice(0, prompt.length - task.prompt.length),
     });
     store.setPrompt(session.draftId, prompt);
     store.setReviewComments(

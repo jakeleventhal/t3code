@@ -249,9 +249,9 @@ const loadCodeTab = () => import("./PullRequestCodeTab");
 const PullRequestCodeTab = lazy(loadCodeTab);
 
 /**
- * What and where the last hand-off wrote into each draft, kept outside React because its panel
- * may close before the next one opens. Only the unchanged insertion at that position is replaced;
- * identical paragraphs elsewhere belong to the reader.
+ * What the last hand-off wrote and which prose preceded it, kept outside React because its panel
+ * may close before the next one opens. Citation insertions may shift it; identical paragraphs
+ * elsewhere still belong to the reader.
  */
 const lastHandoffPromptByDraft = new Map<string, HandoffPromptInsertion>();
 
@@ -1098,7 +1098,7 @@ export function PullRequestDetailPanel({
     );
     lastHandoffPromptByDraft.set(key, {
       text: task.prompt,
-      start: prompt.length - task.prompt.length,
+      prefix: prompt.slice(0, prompt.length - task.prompt.length),
     });
     store.setPrompt(target, prompt);
     store.setReviewComments(
