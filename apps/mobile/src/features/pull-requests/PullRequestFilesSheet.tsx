@@ -3,6 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { ReviewFileTree, type ReviewFileTreeItem } from "../review/ReviewFileTree";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 /** Shows exactly the file set in the reader, including its chapter and filters. */
 export function PullRequestFilesSheet({
@@ -22,6 +23,7 @@ export function PullRequestFilesSheet({
   readonly onSetViewed?: (paths: ReadonlyArray<string>, viewed: boolean) => void;
   readonly onLoadMore?: () => void;
 }) {
+  const { themeVariables: colors } = useAppearancePreferences();
   return (
     <Modal
       visible={open}
@@ -29,7 +31,7 @@ export function PullRequestFilesSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-screen">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors["--color-screen"] }}>
         <View className="flex-row items-center gap-2 border-b border-border-subtle px-4 py-1">
           <SymbolView name="folder" size={18} tintColorClassName="accent-icon-muted" />
           <Text className="min-w-0 flex-1 text-base font-t3-semibold">{title}</Text>

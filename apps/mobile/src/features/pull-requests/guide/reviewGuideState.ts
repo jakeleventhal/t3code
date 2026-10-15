@@ -19,6 +19,7 @@ export function guideNoticeState(state: {
   readonly running: boolean;
   readonly startError: string | null;
   readonly error: string | null;
+  readonly canWrite: boolean;
 }) {
   const { guide, stale, failure } = reviewGuideState(state.data);
   if (state.running) {
@@ -62,6 +63,16 @@ export function guideNoticeState(state: {
       title: "New changes since this guide",
       description: "You can read the previous guide, or rewrite it for the latest changes.",
       action: "Rewrite guide",
+    };
+  }
+  // The screen starts the writer automatically; do not offer a manual action between
+  // the initial empty response and the generation effect committing its busy state.
+  if (!guide && state.canWrite) {
+    return {
+      kind: "writing" as const,
+      title: "Generating guide",
+      description: "Explore the files while the guide is written.",
+      action: "Writing guide…",
     };
   }
   return {
