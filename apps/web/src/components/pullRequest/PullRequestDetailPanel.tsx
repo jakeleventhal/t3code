@@ -1084,16 +1084,9 @@ export function PullRequestDetailPanel({
       return;
     }
     const key = composerTargetKey(target);
-    const previousCommentIds = new Set((draft?.reviewComments ?? []).map((comment) => comment.id));
-    const repeatedCommentIds = new Set(
-      (task.reviewComments ?? [])
-        .filter((comment) => previousCommentIds.has(comment.id))
-        .map((comment) => comment.id),
-    );
     const promptWithoutPreviousHandoff = stripPullRequestHandoffReferences(
       draft?.prompt ?? "",
       draft?.reviewComments ?? [],
-      repeatedCommentIds,
     );
     const prompt = handoffPrompt(
       {
@@ -1108,13 +1101,6 @@ export function PullRequestDetailPanel({
       target,
       handoffReviewComments(draft?.reviewComments ?? [], task.reviewComments ?? []),
     );
-    for (const comment of task.reviewComments ?? []) {
-      if (!repeatedCommentIds.has(comment.id)) continue;
-      store.addReviewComment(target, comment, {
-        allowDuplicateReference: true,
-        insertAtCaret: false,
-      });
-    }
   };
 
   const openThreadWithTask = async (

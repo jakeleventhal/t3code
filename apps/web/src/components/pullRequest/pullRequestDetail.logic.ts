@@ -834,6 +834,10 @@ export interface FixFindingsHandoff {
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
 }
 
+/**
+ * General handoffs own `pull-request-` chips. Line comments use `pr-line-`, so replacing a
+ * general request keeps the lines the reader added, just as it keeps their own diff annotations.
+ */
 const HANDOFF_COMMENT_ID_PREFIX = "pull-request-";
 
 export function stripPullRequestHandoffReferences(
@@ -863,14 +867,16 @@ export function handoffPrompt(
 ): string {
   if (existing.prompt.trim().length === 0) return incoming;
   const last = existing.lastHandoffPrompt ?? "";
-  const kept =
-    last.length === 0
-      ? existing.prompt
-      : existing.prompt === last
-        ? ""
-        : existing.prompt.endsWith(`\n\n${last}`)
-          ? existing.prompt.slice(0, -(last.length + 2))
-          : existing.prompt;
+  // Line comments may have been appended after the last general request. Remove only its
+  // unchanged paragraph, wherever it now sits, leaving the reader's edits and comments alone.
+  const start = last.length === 0 ? -1 : existing.prompt.lastIndexOf(last);
+  const before = existing.prompt.slice(0, start);
+  const after = existing.prompt.slice(start + last.length);
+  const ownsParagraph =
+    start >= 0 && (start === 0 || before.endsWith("\n\n")) && /^[ \t]*(?:\n\n|$)/u.test(after);
+  const kept = ownsParagraph
+    ? [before.trimEnd(), after.trimStart()].filter(Boolean).join("\n\n")
+    : existing.prompt;
   if (kept.trim().length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;
 }
@@ -1061,7 +1067,7 @@ function pullRequestContextComment(
   instructions: ReadonlyArray<string>,
 ): ReviewCommentContext {
   return {
-    id: `pull-request-context:${input.number}`,
+    id: `pull-request-context:${encodeURIComponent(input.url)}`,
     sectionId: `pull-request:${input.number}`,
     sectionTitle: `PR #${input.number}`,
     filePath: `PR #${input.number}`,
@@ -1152,7 +1158,20 @@ export function buildAddSelectionToAgentHandoff(input: {
 }): FixFindingsHandoff {
   return {
     prompt: bounded(input.request),
-    reviewComments: [pullRequestContextComment(input, []), { ...input.comment, text: "" }],
+    // A line comment belongs to the reader's draft, so general handoff replacement must keep it.
+    // The URL scopes both chips by host, repository and PR, including when Code and Guide share
+    // a composer. Keep the producer's file/range ID within that scope.
+    reviewComments: [
+      {
+        ...pullRequestContextComment(input, []),
+        id: `pr-line-context:${encodeURIComponent(input.url)}`,
+      },
+      {
+        ...input.comment,
+        id: `pr-line-selection:${encodeURIComponent(input.url)}:${input.comment.id}`,
+        text: "",
+      },
+    ],
   };
 }
 

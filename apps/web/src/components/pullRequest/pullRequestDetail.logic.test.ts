@@ -1537,6 +1537,19 @@ describe("a second ask into the same composer", () => {
     ).toBe("check the migration first\n\nWhy the cache key?");
   });
 
+  it("replaces its paragraph after the reader quoted the same sentence", () => {
+    expect(
+      handoffPrompt(
+        {
+          prompt:
+            "You said Explain this pull request.\n\nExplain this pull request.\n\nFix the selected line.",
+          lastHandoffPrompt: "Explain this pull request.",
+        },
+        "Why the cache key?",
+      ),
+    ).toBe("You said Explain this pull request.\n\nFix the selected line.\n\nWhy the cache key?");
+  });
+
   it("takes back only its own sentence when the next ask is empty", () => {
     expect(
       handoffPrompt(
