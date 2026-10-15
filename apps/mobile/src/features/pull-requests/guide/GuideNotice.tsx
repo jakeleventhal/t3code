@@ -10,7 +10,14 @@ import { GuideGeneratingHeading } from "./GuideGeneratingHeading";
 
 const NOTICE_ENTER = FadeIn.delay(180).duration(120).reduceMotion(ReduceMotion.System);
 
-export function GuideNotice({ state }: { readonly state: ReturnType<typeof useReviewGuide> }) {
+/** Keep the action in one place as loading, writing, and retry states change. */
+export function GuideNotice({
+  state,
+  active = true,
+}: {
+  readonly state: ReturnType<typeof useReviewGuide>;
+  readonly active?: boolean;
+}) {
   const notice = guideNoticeState(state);
   if (notice.kind === "ready") return null;
   const compact = state.data?.guide != null;
@@ -33,7 +40,7 @@ export function GuideNotice({ state }: { readonly state: ReturnType<typeof useRe
   if (notice.kind === "writing") {
     return (
       <View className="mb-3 gap-1 py-2">
-        <GuideGeneratingHeading rewriting={compact} />
+        <GuideGeneratingHeading rewriting={compact} visible={active} />
         <Text className="text-xs text-foreground-muted">
           {compact
             ? "Keep reading while the guide updates."
