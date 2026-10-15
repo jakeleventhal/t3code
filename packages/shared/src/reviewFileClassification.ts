@@ -7,13 +7,29 @@ const REVIEW_FILE_GROUPS = [
   { id: "generated", title: "Generated" },
 ] as const;
 
-/** Nonempty chapters in the same order on web and native review surfaces. */
-export function reviewFileChapters<T>(files: ReadonlyArray<T>, getPath: (file: T) => string) {
+/** Chapter membership stays complete while viewing options filter the files shown in its reader. */
+export function reviewFileChapters<T>(
+  files: ReadonlyArray<T>,
+  getPath: (file: T) => string,
+  visibleFiles?: ReadonlyArray<T>,
+) {
   return REVIEW_FILE_GROUPS.flatMap((group) => {
     const chapterFiles = files.filter((file) => reviewFileGroup(getPath(file)) === group.id);
-    return chapterFiles.length > 0 ? [{ ...group, files: chapterFiles }] : [];
+    return chapterFiles.length > 0
+      ? [
+          {
+            ...group,
+            files: chapterFiles,
+            visibleFiles:
+              visibleFiles === undefined
+                ? chapterFiles
+                : visibleFiles.filter((file) => reviewFileGroup(getPath(file)) === group.id),
+          },
+        ]
+      : [];
   });
 }
+
 export function isReviewTestFile(path: string): boolean {
   const parts = path.replaceAll("\\", "/").split("/");
   const name = parts.at(-1) ?? "";

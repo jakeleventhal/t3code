@@ -681,8 +681,9 @@ function PullRequestCodeTab({
     [annotatedFiles, hideReviewed, commentsOnly, isFileViewed, commentCounts, revealRequest?.path],
   );
   const chapters = useMemo(
-    () => (groupByType ? reviewFileChapters(filteredFiles, (file) => file.path) : []),
-    [filteredFiles, groupByType],
+    () =>
+      groupByType ? reviewFileChapters(annotatedFiles, (file) => file.path, filteredFiles) : [],
+    [annotatedFiles, filteredFiles, groupByType],
   );
   const chapterPosition = Math.max(
     0,
@@ -692,7 +693,7 @@ function PullRequestCodeTab({
   const chapterReviewComplete = nextCursor === null && !diffQuery.isPending;
   const items = useMemo<CodeViewDiffItem<ReviewAnnotationGroup>[]>(
     () =>
-      (chapter?.files ?? filteredFiles).map(
+      (chapter?.visibleFiles ?? filteredFiles).map(
         ({ fileKey, path, fileDiff, annotations, annotationsVersion }) => {
           const collapsed = isFileDiffCollapsed(
             fileKey,
@@ -1070,12 +1071,18 @@ function PullRequestCodeTab({
   // screen on any tab re-render (a drag-selection, a keystroke in the draft, a review-store
   // update), which is the jank this file is otherwise clean of.
   const refreshDiffQuery = diffQuery.refresh;
+  const hasVisibleItems = items.length > 0;
   const renderCodeViewFooter = useCallback(
     () =>
-      // Only while something is still owed. A finished diff whose query fails on a later
-      // refresh — a reconnect re-runs every one of them — is whole on screen already, and
-      // saying otherwise sends the reader looking for files that are all there.
-      nextCursor === null ? null : (
+      // An empty filtered chapter keeps its navigation and totals. Loading failures belong
+      // only to an outstanding cursor, rather than a failed refresh of a finished diff.
+      nextCursor === null ? (
+        !hasVisibleItems ? (
+          <p className="px-4 py-5 text-sm text-muted-foreground">
+            No files match the viewing options.
+          </p>
+        ) : null
+      ) : (
         <div
           ref={setSentinel}
           className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
@@ -1092,7 +1099,7 @@ function PullRequestCodeTab({
           ) : null}
         </div>
       ),
-    [nextCursor, diffQuery.error, diffQuery.isPending, refreshDiffQuery],
+    [nextCursor, hasVisibleItems, diffQuery.error, diffQuery.isPending, refreshDiffQuery],
   );
 
   const renderHeaderPrefix = useCallback(
@@ -1751,7 +1758,7 @@ function PullRequestCodeTab({
     );
   }
 
-  if (items.length === 0 && nextCursor === null) {
+  if (items.length === 0 && nextCursor === null && chapter === null) {
     return withToolbar(
       <p className="px-4 py-5 text-sm text-muted-foreground">
         {files.length > 0
@@ -1828,7 +1835,7 @@ function PullRequestCodeTab({
                 ) : null}
                 {guideFallback ? (
                   <ul className="flex min-w-0 flex-col gap-0.5">
-                    {members.map((file) => (
+                    {chapters[index]?.visibleFiles.map((file) => (
                       <li key={file.path}>
                         <ReviewChapterFileLink
                           path={file.path}
