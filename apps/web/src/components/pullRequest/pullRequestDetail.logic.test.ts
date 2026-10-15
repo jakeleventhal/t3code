@@ -1644,6 +1644,20 @@ describe("a second ask into the same composer", () => {
     ).toBe(`${reference} `);
   });
 
+  it("preserves ambiguous identical paragraphs without an ownership citation", () => {
+    const prefix = "Keep my draft\n\n";
+    const prompt = `${prefix}Explain this pull request.\n\nKeep this note.\n\nExplain this pull request.`;
+    expect(
+      handoffPrompt(
+        {
+          prompt,
+          lastHandoffPrompt: { text: "Explain this pull request.", prefix },
+        },
+        "",
+      ),
+    ).toBe(prompt);
+  });
+
   it("keeps an insertion when its preceding prose was edited", () => {
     const prompt = "New reader prefix\n\nExplain this pull request.";
     expect(

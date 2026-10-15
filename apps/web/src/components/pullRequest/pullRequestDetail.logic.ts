@@ -1,3 +1,4 @@
+import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
@@ -860,6 +861,8 @@ export interface HandoffPromptInsertion {
   readonly text: string;
   /** The text preceding this insertion, before later caret citations add their own padding. */
   readonly prefix: string;
+  /** Chips generated with this request, used to disambiguate identical reader paragraphs. */
+  readonly contextIds?: ReadonlyArray<string>;
 }
 
 /** Citation links and their whitespace padding do not change which request follows this prose. */
@@ -892,27 +895,48 @@ export function handoffPrompt(
   if (existing.prompt.trim().length === 0) return incoming;
   const last = existing.lastHandoffPrompt;
   let kept = existing.prompt;
-  // Anchor to the preceding prose rather than a byte offset: caret citations can move the
-  // unchanged request. A later reader-authored copy has different preceding prose.
   const expectedPrefix = last ? handoffPrefixProse(last.prefix) : "";
   const previousText = last?.text ?? "";
+  const contextIds = new Set(last?.contextIds ?? []);
+  const paragraphs = [];
   let start = previousText.length > 0 ? existing.prompt.indexOf(previousText) : -1;
   while (start >= 0) {
     const before = existing.prompt.slice(0, start);
     const after = existing.prompt.slice(start + previousText.length);
-    const prefixProse = handoffPrefixProse(before);
+    const beforeProse = stripInlineContextReferences(before).replace(/[ \t]+$/u, "");
     if (
-      prefixProse === expectedPrefix &&
+      (beforeProse.length === 0 || beforeProse.endsWith("\n\n")) &&
       /^[ \t]*(?:\n\n|$)/u.test(stripInlineContextReferences(after))
     ) {
-      // Remove the separators around our insertion, preserving citations, indentation and
-      // trailing spaces on both sides.
-      const prefix = before.endsWith("\n\n") ? before.slice(0, -2) : before;
-      const suffix = after.replace(/^[ \t]*(?:\n\n|$)/u, "");
-      kept = [prefix, suffix].filter(Boolean).join("\n\n");
-      break;
+      const separator = after.indexOf("\n\n");
+      const attached = after.slice(0, separator < 0 ? undefined : separator);
+      paragraphs.push({
+        before,
+        after,
+        ownsContext: collectComposerContextReferences(attached).some((reference) =>
+          contextIds.has(reference.contextId),
+        ),
+      });
     }
     start = existing.prompt.indexOf(previousText, start + previousText.length);
+  }
+  // An earlier reader copy can occupy the original prose position. Only a unique attached
+  // handoff citation distinguishes identical paragraphs; otherwise keep all ambiguous text.
+  const anchored = paragraphs.filter((paragraph) => paragraph.ownsContext);
+  const paragraph =
+    paragraphs.length === 1 ? paragraphs[0] : anchored.length === 1 ? anchored[0] : undefined;
+  if (paragraph && handoffPrefixProse(paragraph.before) === expectedPrefix) {
+    // Remove the separators around our insertion, preserving citations, indentation and
+    // trailing spaces on both sides.
+    const prefix = paragraph.before.endsWith("\n\n")
+      ? paragraph.before.slice(0, -2)
+      : paragraph.before;
+    let after = paragraph.after;
+    for (const contextId of contextIds) {
+      after = removeInlineContextReference(after, contextId).prompt;
+    }
+    const suffix = after.replace(/^[ \t]*(?:\n\n|$)/u, "");
+    kept = [prefix, suffix].filter(Boolean).join("\n\n");
   }
   if (kept.trim().length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;

@@ -1,3 +1,4 @@
+import { reviewCommentContextId } from "~/lib/composerContextRecords";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
@@ -1085,20 +1086,20 @@ export function PullRequestDetailPanel({
       return;
     }
     const key = composerTargetKey(target);
-    const promptWithoutPreviousHandoff = stripPullRequestHandoffReferences(
-      draft?.prompt ?? "",
+    const prompt = stripPullRequestHandoffReferences(
+      handoffPrompt(
+        {
+          prompt: draft?.prompt ?? "",
+          lastHandoffPrompt: lastHandoffPromptByDraft.get(key),
+        },
+        task.prompt,
+      ),
       draft?.reviewComments ?? [],
-    );
-    const prompt = handoffPrompt(
-      {
-        prompt: promptWithoutPreviousHandoff,
-        lastHandoffPrompt: lastHandoffPromptByDraft.get(key),
-      },
-      task.prompt,
     );
     lastHandoffPromptByDraft.set(key, {
       text: task.prompt,
       prefix: prompt.slice(0, prompt.length - task.prompt.length),
+      contextIds: (task.reviewComments ?? []).map((comment) => reviewCommentContextId(comment.id)),
     });
     store.setPrompt(target, prompt);
     store.setReviewComments(

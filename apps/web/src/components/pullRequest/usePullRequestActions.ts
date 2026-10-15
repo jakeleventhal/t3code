@@ -1,3 +1,4 @@
+import { reviewCommentContextId } from "~/lib/composerContextRecords";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -274,18 +275,22 @@ export function usePullRequestHandoffs({
     if (task === null) return session;
     const draft = store.getComposerDraft(session.draftId);
     const existingComments = draft?.reviewComments ?? [];
-    const prompt = handoffPrompt(
-      {
-        prompt: stripPullRequestHandoffReferences(draft?.prompt ?? "", existingComments),
-        lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
-      },
-      task.prompt,
+    const prompt = stripPullRequestHandoffReferences(
+      handoffPrompt(
+        {
+          prompt: draft?.prompt ?? "",
+          lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
+        },
+        task.prompt,
+      ),
+      existingComments,
     );
     // Remember the hand-off's own contribution, not the merged prompt: only that sentence is
     // this session's to take back next time, and the reader's text around it is not.
     lastHandoffPromptByDraft.set(session.draftId, {
       text: task.prompt,
       prefix: prompt.slice(0, prompt.length - task.prompt.length),
+      contextIds: (task.reviewComments ?? []).map((comment) => reviewCommentContextId(comment.id)),
     });
     store.setPrompt(session.draftId, prompt);
     store.setReviewComments(
