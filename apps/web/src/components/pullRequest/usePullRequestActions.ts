@@ -34,7 +34,13 @@ import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
 import { toastManager } from "../ui/toast";
-import { handoffPrompt, handoffReviewComments, readableFailure } from "./pullRequestDetail.logic";
+import {
+  handoffPrompt,
+  handoffReviewComments,
+  readableFailure,
+  stripPullRequestHandoffReferences,
+  type HandoffPromptInsertion,
+} from "./pullRequestDetail.logic";
 import { pullRequestEntryKey, type EnvironmentPullRequestEntry } from "./pullRequestList.logic";
 
 /** Resolve on demand so hidden quick actions do not rebuild the legacy project grouping. */
@@ -251,11 +257,11 @@ export type PullRequestHandoffDetail = Pick<
 >;
 
 /**
- * What the last hand-off wrote into each draft, kept outside React because the panel that wrote it
- * is closed by the time the next one opens. It is how a prompt the reader has since edited is told
- * apart from the one they were handed: only the sentence still exactly as written may be replaced.
+ * What and where the last hand-off wrote into each draft, kept outside React because its panel
+ * may close before the next one opens. Only the unchanged insertion at that position is replaced;
+ * identical paragraphs elsewhere belong to the reader.
  */
-const lastHandoffPromptByDraft = new Map<DraftId, string>();
+const lastHandoffPromptByDraft = new Map<DraftId, HandoffPromptInsertion>();
 
 /**
  * The hand-offs from a pull request into a thread: a question that needs nothing checked out, and
@@ -307,14 +313,17 @@ export function usePullRequestHandoffs({
     const existingComments = draft?.reviewComments ?? [];
     const prompt = handoffPrompt(
       {
-        prompt: draft?.prompt ?? "",
+        prompt: stripPullRequestHandoffReferences(draft?.prompt ?? "", existingComments),
         lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
       },
       task.prompt,
     );
     // Remember the hand-off's own contribution, not the merged prompt: only that sentence is
     // this session's to take back next time, and the reader's text around it is not.
-    lastHandoffPromptByDraft.set(session.draftId, task.prompt);
+    lastHandoffPromptByDraft.set(session.draftId, {
+      text: task.prompt,
+      start: prompt.length - task.prompt.length,
+    });
     store.setPrompt(session.draftId, prompt);
     store.setReviewComments(
       session.draftId,

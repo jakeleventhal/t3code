@@ -191,7 +191,12 @@ vi.mock("./PullRequestCodeTab", () => ({
 }));
 
 import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
-import { pullRequestPanelContext } from "./pullRequestDetail.logic";
+import {
+  buildAskAboutPullRequestHandoff,
+  buildExplainPullRequestHandoff,
+  pullRequestPanelContext,
+} from "./pullRequestDetail.logic";
+import { usePullRequestHandoffs } from "./usePullRequestActions";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
 
@@ -472,6 +477,41 @@ describe.each([
       expect(draft.prompt).toContain("[a.ts L1](t3-context://v1/review-comment/");
     });
 
+    it.each(["", "Explain this pull request.\n\nKeep preceding note."])(
+      "removes the generated request while keeping identical reader paragraphs after %s",
+      async (prefix) => {
+        const store = useComposerDraftStore.getState();
+        store.setPrompt(target, prefix);
+        await act(async () => render());
+        await click("Explain this PR");
+        store.setPrompt(
+          target,
+          `${store.getComposerDraft(target)!.prompt}\n\nKeep this note.\n\nExplain this pull request.`,
+        );
+        await click("Ask a question");
+        const prompt = store.getComposerDraft(target)!.prompt;
+        expect(prompt).toContain(
+          `${prefix ? `${prefix}\n\n` : ""}Keep this note.\n\nExplain this pull request.`,
+        );
+        if (!prefix) expect(prompt.startsWith("Keep this note.")).toBe(true);
+      },
+    );
+
+    it("preserves indentation and trailing spaces around the replaced request", async () => {
+      const store = useComposerDraftStore.getState();
+      store.setPrompt(target, "Keep my draft  ");
+      await act(async () => render());
+      await click("Explain this PR");
+      store.setPrompt(
+        target,
+        `${store.getComposerDraft(target)!.prompt}\n\n    const answer = 42;  \n\treturn answer;`,
+      );
+      await click("Ask a question");
+      expect(store.getComposerDraft(target)!.prompt).toContain(
+        "Keep my draft  \n\n    const answer = 42;  \n\treturn answer;",
+      );
+    });
+
     it("replaces Explain with Ask without accumulating general context chips", async () => {
       await act(async () => render());
       await click("Explain this PR");
@@ -537,6 +577,38 @@ describe.each([
       ]);
     });
   }
+});
+
+it("preserves reader copies and indentation through PR row quick actions", async () => {
+  function QuickActions() {
+    const handoffs = usePullRequestHandoffs({ environmentId: threadRef.environmentId, detail });
+    return (
+      <>
+        <button
+          onClick={() => handoffs.startAsk("explain", buildExplainPullRequestHandoff(detail))}
+        >
+          Explain this PR
+        </button>
+        <button onClick={() => handoffs.startAsk("ask", buildAskAboutPullRequestHandoff(detail))}>
+          Ask a question
+        </button>
+      </>
+    );
+  }
+  const store = useComposerDraftStore.getState();
+  store.setPrompt(newDraftId, "Keep my draft  ");
+  await act(async () => {
+    renderer = create(<QuickActions />);
+  });
+  await click("Explain this PR");
+  store.setPrompt(
+    newDraftId,
+    `${store.getComposerDraft(newDraftId)!.prompt}\n\n    const answer = 42;\n\nExplain this pull request.`,
+  );
+  await click("Ask a question");
+  expect(store.getComposerDraft(newDraftId)!.prompt).toContain(
+    "Keep my draft  \n\n    const answer = 42;\n\nExplain this pull request.",
+  );
 });
 
 it("changes the title only for the active tab's main scroller", async () => {
