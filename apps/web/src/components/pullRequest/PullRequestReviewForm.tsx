@@ -135,7 +135,10 @@ export function PullRequestReviewForm({
   const canSubmit = (verdict: PullRequestReviewVerdict, summary: string) =>
     verdict === "request-changes" && requestChangesSummaryRequired
       ? summary.trim().length > 0
-      : verdict === "approve" || summary.trim().length > 0 || comments.length > 0 || pendingReviewId !== undefined;
+      : verdict === "approve" ||
+        summary.trim().length > 0 ||
+        comments.length > 0 ||
+        pendingReviewId !== undefined;
   // The placeholder asks for exactly what the submit button is waiting on.
   const placeholder =
     selectedVerdict === undefined || canSubmit(selectedVerdict.value, "")
@@ -158,7 +161,7 @@ export function PullRequestReviewForm({
       <PullRequestAttachments
         environmentId={environmentId}
         reference={reference}
-        disabled={pending || uploading || draftBusy}
+        disabled={pending}
         onBusyChange={setUploading}
         textareaRef={textareaRef}
         onTextChange={(text) => setSummary(reviewKey, text)}
@@ -193,7 +196,11 @@ export function PullRequestReviewForm({
         <Button
           size="xs"
           disabled={
-            pending || uploading || draftBusy || selectedVerdict === undefined || !canSubmit(selectedVerdict.value, body)
+            pending ||
+            uploading ||
+            draftBusy ||
+            selectedVerdict === undefined ||
+            !canSubmit(selectedVerdict.value, body)
           }
           onClick={() => {
             if (selectedVerdict !== undefined) void submit(selectedVerdict);

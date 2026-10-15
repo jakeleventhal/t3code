@@ -49,6 +49,7 @@ import {
   PanelRightIcon,
   PlayIcon,
   RotateCcwIcon,
+  Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
 import {
