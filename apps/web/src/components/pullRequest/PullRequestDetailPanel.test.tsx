@@ -197,7 +197,10 @@ import {
   pullRequestPanelContext,
 } from "./pullRequestDetail.logic";
 import { usePullRequestHandoffs } from "./usePullRequestActions";
-import { collectInlineContextIds } from "~/lib/composerContextReferences";
+import {
+  collectInlineContextIds,
+  insertInlineContextReference,
+} from "~/lib/composerContextReferences";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
 
 const detail: PullRequestDetailView = {
@@ -296,6 +299,32 @@ async function click(label: string) {
       stopPropagation() {},
     }),
   );
+}
+
+function addCommentAtCaret(target: ScopedThreadRef | DraftId, position: number) {
+  const store = useComposerDraftStore.getState();
+  const comment = {
+    id: "file-comment:caret",
+    sectionId: "file:caret.ts",
+    sectionTitle: "caret.ts",
+    filePath: "caret.ts",
+    startIndex: 0,
+    endIndex: 0,
+    rangeLabel: "L1",
+    text: "Check this annotation",
+    diff: "+const answer = 42;",
+  };
+  store.setContextInsertionHandler(target, (references) => {
+    store.setPrompt(
+      target,
+      insertInlineContextReference(store.getComposerDraft(target)!.prompt, position, references[0]!)
+        .prompt,
+    );
+    return true;
+  });
+  store.addReviewComment(target, comment);
+  store.setContextInsertionHandler(target, null);
+  return comment;
 }
 
 const actions = [
@@ -512,6 +541,28 @@ describe.each([
       );
     });
 
+    it.each([0, "Keep my draft\n\n".length, "Keep my draft\n\nExplain this pull request.".length])(
+      "replaces its request after a caret citation at %s",
+      async (position) => {
+        const store = useComposerDraftStore.getState();
+        store.setPrompt(target, "Keep my draft");
+        await act(async () => render());
+        await click("Explain this PR");
+        store.setPrompt(
+          target,
+          `${store.getComposerDraft(target)!.prompt}\n\nKeep this note.\n\nExplain this pull request.`,
+        );
+        const comment = addCommentAtCaret(target, position);
+        await click("Ask a question");
+        const draft = store.getComposerDraft(target)!;
+        expect(draft.prompt.match(/Explain this pull request\./gu)).toHaveLength(1);
+        expect(draft.prompt).toContain("Keep this note.\n\nExplain this pull request.");
+        expect(draft.prompt).toContain("Keep my draft");
+        expect(draft.reviewComments).toContainEqual(comment);
+        expect(collectInlineContextIds(draft.prompt)).toContain(reviewCommentContextId(comment.id));
+      },
+    );
+
     it("replaces Explain with Ask without accumulating general context chips", async () => {
       await act(async () => render());
       await click("Explain this PR");
@@ -579,22 +630,21 @@ describe.each([
   }
 });
 
+function QuickActions() {
+  const handoffs = usePullRequestHandoffs({ environmentId: threadRef.environmentId, detail });
+  return (
+    <>
+      <button onClick={() => handoffs.startAsk("explain", buildExplainPullRequestHandoff(detail))}>
+        Explain this PR
+      </button>
+      <button onClick={() => handoffs.startAsk("ask", buildAskAboutPullRequestHandoff(detail))}>
+        Ask a question
+      </button>
+    </>
+  );
+}
+
 it("preserves reader copies and indentation through PR row quick actions", async () => {
-  function QuickActions() {
-    const handoffs = usePullRequestHandoffs({ environmentId: threadRef.environmentId, detail });
-    return (
-      <>
-        <button
-          onClick={() => handoffs.startAsk("explain", buildExplainPullRequestHandoff(detail))}
-        >
-          Explain this PR
-        </button>
-        <button onClick={() => handoffs.startAsk("ask", buildAskAboutPullRequestHandoff(detail))}>
-          Ask a question
-        </button>
-      </>
-    );
-  }
   const store = useComposerDraftStore.getState();
   store.setPrompt(newDraftId, "Keep my draft  ");
   await act(async () => {
@@ -610,6 +660,25 @@ it("preserves reader copies and indentation through PR row quick actions", async
     "Keep my draft  \n\n    const answer = 42;\n\nExplain this pull request.",
   );
 });
+
+it.each([0, "Keep my draft\n\n".length, "Keep my draft\n\nExplain this pull request.".length])(
+  "replaces PR-row requests after a caret citation at %s",
+  async (position) => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(newDraftId, "Keep my draft");
+    await act(async () => {
+      renderer = create(<QuickActions />);
+    });
+    await click("Explain this PR");
+    const comment = addCommentAtCaret(newDraftId, position);
+    await click("Ask a question");
+    const draft = store.getComposerDraft(newDraftId)!;
+    expect(draft.prompt).not.toContain("Explain this pull request.");
+    expect(draft.prompt).toContain("Keep my draft");
+    expect(draft.reviewComments).toContainEqual(comment);
+    expect(collectInlineContextIds(draft.prompt)).toContain(reviewCommentContextId(comment.id));
+  },
+);
 
 it("changes the title only for the active tab's main scroller", async () => {
   const scrollers = new Map<string, { scrollTop: number; scrollHeight: number }>();
