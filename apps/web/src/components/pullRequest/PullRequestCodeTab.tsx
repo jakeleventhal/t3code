@@ -49,7 +49,6 @@ import { useResizableWidth } from "~/hooks/useResizableWidth";
 import { RightPanelResizeHandle } from "../preview/RightPanelResizeHandle";
 import {
   isReviewFileVisible,
-  reviewFolderContains,
   reviewCommentCounts,
   toggleReviewCommit,
   reviewCommitSelection,
@@ -2141,15 +2140,12 @@ function PullRequestCodeTab({
                   : folderReviewEntries
               }
               onSelectFile={revealFile}
-              onReviewFolder={
-                filesViewed.enabled
-                  ? (path, reviewed) => {
-                      const prefix = path.endsWith("/") ? path : `${path}/`;
+              onReviewFiles={
+                filesViewed.enabled && canSetChapterViewed
+                  ? (paths, reviewed) => {
+                      const selectedPaths = new Set(paths);
                       for (const item of annotatedFiles) {
-                        if (
-                          reviewFolderContains(prefix, item.path) &&
-                          (chapter === null || reviewFileGroup(item.path) === chapter.id)
-                        )
+                        if (selectedPaths.has(item.path))
                           setFileViewed(item.fileKey, item.path, reviewed);
                       }
                     }

@@ -19,6 +19,7 @@ import {
   collectDirectoryPaths,
   diffFileTreeModel,
   diffFileTreePositions,
+  diffFileTreeReviewEntries,
   type DiffFileTreeEntry,
 } from "./diffFileTree.logic";
 
@@ -26,7 +27,7 @@ export type { DiffFileTreeEntry } from "./diffFileTree.logic";
 
 interface DiffFileTreeProps {
   readonly entries: ReadonlyArray<DiffFileTreeEntry>;
-  /** All files affected by a folder review action, including files hidden by filters. */
+  /** All files affected by review actions, including folder descendants hidden by filters. */
   readonly reviewEntries?: ReadonlyArray<DiffFileTreeEntry>;
   /** Called with the file's path when the reader picks a file row. */
   readonly onSelectFile: (path: string) => void;
@@ -37,7 +38,7 @@ interface DiffFileTreeProps {
   readonly footer?: ReactNode;
   readonly className?: string;
   readonly headerLabel?: string;
-  readonly onReviewFolder?: ((path: string, reviewed: boolean) => void) | undefined;
+  readonly onReviewFiles?: ((paths: ReadonlyArray<string>, reviewed: boolean) => void) | undefined;
 }
 
 export function DiffFileTree({
@@ -51,7 +52,7 @@ export function DiffFileTree({
   footer,
   className,
   headerLabel = "Files",
-  onReviewFolder,
+  onReviewFiles,
 }: DiffFileTreeProps) {
   const { resolvedTheme } = useTheme();
   const paths = entries.map((entry) => entry.path);
@@ -282,16 +283,18 @@ export function DiffFileTree({
         }}
         className="min-h-0 flex-1 overflow-hidden"
         style={pierreTreeStyle(resolvedTheme)}
-        {...(onReviewFolder
+        {...(onReviewFiles
           ? {
               renderContextMenu: (item, context) => {
-                if (item.kind !== "directory" || !onReviewFolder) return null;
-                const prefix = item.path.endsWith("/") ? item.path : `${item.path}/`;
-                const descendants = reviewEntriesRef.current.filter((entry) =>
-                  entry.path.startsWith(prefix),
+                const matches = diffFileTreeReviewEntries(
+                  reviewEntriesRef.current,
+                  model.getSelectedPaths(),
+                  item.path,
                 );
-                const canMarkReviewed = descendants.some((entry) => !entry.reviewed);
-                const canMarkUnreviewed = descendants.some((entry) => entry.reviewed);
+                if (matches.length === 0) return null;
+                const paths = matches.map((entry) => entry.path);
+                const canMarkReviewed = matches.some((entry) => !entry.reviewed);
+                const canMarkUnreviewed = matches.some((entry) => entry.reviewed);
                 return (
                   <Menu
                     open
@@ -304,29 +307,25 @@ export function DiffFileTree({
                       data-file-tree-context-menu-root="true"
                       align="start"
                     >
-                      {onReviewFolder ? (
-                        <>
-                          {canMarkReviewed ? (
-                            <MenuItem
-                              onClick={() => {
-                                onReviewFolder(item.path, true);
-                                context.close();
-                              }}
-                            >
-                              Mark as reviewed
-                            </MenuItem>
-                          ) : null}
-                          {canMarkUnreviewed ? (
-                            <MenuItem
-                              onClick={() => {
-                                onReviewFolder(item.path, false);
-                                context.close();
-                              }}
-                            >
-                              Mark as unreviewed
-                            </MenuItem>
-                          ) : null}
-                        </>
+                      {canMarkReviewed ? (
+                        <MenuItem
+                          onClick={() => {
+                            onReviewFiles(paths, true);
+                            context.close();
+                          }}
+                        >
+                          Mark as reviewed
+                        </MenuItem>
+                      ) : null}
+                      {canMarkUnreviewed ? (
+                        <MenuItem
+                          onClick={() => {
+                            onReviewFiles(paths, false);
+                            context.close();
+                          }}
+                        >
+                          Mark as unreviewed
+                        </MenuItem>
                       ) : null}
                     </MenuPopup>
                   </Menu>
