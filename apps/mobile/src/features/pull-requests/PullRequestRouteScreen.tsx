@@ -358,7 +358,12 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
     rememberPullRequestView(viewMemoryKey, { section: next });
   };
   const topInset = insets.top;
-  if (!guidesEnabled && section === "guide") setSection("overview");
+  if (!guidesEnabled && section === "guide") {
+    setSection("overview");
+    setVisitedSections((current) =>
+      current.has("overview") ? current : new Set(current).add("overview"),
+    );
+  }
   useLayoutEffect(() => {
     if (!guidesEnabled && requestedSection.current === "guide") {
       requestedSection.current = "overview";

@@ -6,7 +6,7 @@ import { GuideViewOptionsButton } from "./GuideViewOptions";
 import { AppText as Text } from "../../../components/AppText";
 import { GuideOutline } from "./GuideOutline";
 import { GuideGeneratingFiles } from "./GuideGeneratingFiles";
-import { reviewGuideState } from "./reviewGuideState";
+import { reviewGuideState, shouldAutoGenerateGuide } from "./reviewGuideState";
 import { GuideNotice } from "./GuideNotice";
 import Animated from "react-native-reanimated";
 import { PR_ROW_ENTER, PR_ROW_EXIT, PR_ROW_LAYOUT } from "../pullRequestAnimations";
@@ -55,14 +55,8 @@ export function PullRequestGuideContent({
     if (active && hasMissingFiles && diff.canLoadMore) loadMore();
   }, [active, hasMissingFiles, diff.canLoadMore, loadMore]);
   const attempted = useRef<string | null>(null);
-  const generationKey = `${params.environmentId}:${params.repository}:${params.number}`;
-  const shouldGenerate =
-    active &&
-    state.data !== null &&
-    !guide &&
-    !state.running &&
-    state.canWrite &&
-    state.data.run?._tag !== "Failed";
+  const generationKey = `${params.environmentId}:${params.repository}:${params.number}:${state.data?.currentHeadSha}`;
+  const shouldGenerate = active && shouldAutoGenerateGuide(state);
   const generate = useEffectEvent(() => {
     void state.write();
   });

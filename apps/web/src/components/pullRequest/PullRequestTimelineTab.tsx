@@ -733,7 +733,7 @@ export function PullRequestTimelineTab({
             environmentId={environmentId}
             reference={reference}
             canCopyLink={
-              detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
+              detail.capabilities.review.draftComment === true && detail.viewerPermissions.comment
             }
             onAddToComposer={
               onAddPendingToComposer ? () => onAddPendingToComposer(comment) : undefined

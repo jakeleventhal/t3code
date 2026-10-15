@@ -1863,9 +1863,7 @@ export function PullRequestDetailPanel({
               {handoffSummary.state === "open" && handoffSummary.mergeability === "conflicting"
                 ? resolveConflictsControl
                 : null}
-              {primaryAction === "auto-merge-armed" && showsMergeNow
-                ? renderMergeControl(false)
-                : null}
+              {showsMergeNow ? renderMergeControl(false) : null}
               {checkoutControl}
             </TooltipProvider>
           ) : undefined
@@ -2169,9 +2167,7 @@ export function PullRequestDetailPanel({
               ) : null}
               {/* Keep checkout beside the menu so host actions arriving on its left cannot
                   move a different action under the reader's pointer. */}
-              {primaryAction === "auto-merge-armed" && showsMergeNow
-                ? renderMergeControl(false)
-                : null}
+              {showsMergeNow ? renderMergeControl(false) : null}
               {checkoutControl}
               <Menu>
                 <Tooltip>
@@ -2291,9 +2287,10 @@ export function PullRequestDetailPanel({
                       ) : null}
                       {showsMergeMethods ? (
                         <>
-                          {showsDraftToggle || showsMergeNow || showsAutoMerge ? (
-                            <MenuSeparator />
-                          ) : null}
+                          {/* Only below the draft control. A host with no draft of its own, or
+                              a draft whose control is already the header button, would leave
+                              this against the separator that opened the group. */}
+                          {showsDraftToggle || showsAutoMerge ? <MenuSeparator /> : null}
                           <MenuRadioGroup
                             value={selectedMergeMethod}
                             onValueChange={(method) => {
@@ -2320,7 +2317,7 @@ export function PullRequestDetailPanel({
                       ) : null}
                       {pullRequestActionMenuHasGroup(
                         showsDraftToggle,
-                        showsAutoMerge || showsMergeNow,
+                        showsAutoMerge,
                         showsMergeMethods,
                       ) ? (
                         <MenuSeparator />

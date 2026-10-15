@@ -2850,25 +2850,29 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
-  it.effect("admin override merges immediately instead of entering the merge queue", () =>
+  it.effect.each([true, false, undefined])(
+    "provider respects the merge queue unless adminOverride is true (%s)",
+    (adminOverride) =>
     Effect.gen(function* () {
       route([
         "query PullRequestActionState",
         actionState({ isMergeQueueEnabled: true, mergeStateStatus: "BLOCKED" }),
       ]);
-      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
-      yield* api.runPullRequestAction({
+        const provider = yield* GitHubPullRequestProvider.make;
+        yield* provider.runAction({
         cwd: "/w",
         repository: "acme/web",
         host: "github.com",
         number: 7,
         action: "merge",
-        adminOverride: true,
+          ...(adminOverride === undefined ? {} : { adminOverride }),
       });
-      expect(variablesOf("mergePullRequest(")).toEqual([
+        const direct = variablesOf("mergePullRequest(");
+        const queued = variablesOf("enablePullRequestAutoMerge(");
+        expect(adminOverride ? direct : queued).toEqual([
         { input: { pullRequestId: "PR_7", mergeMethod: "MERGE" } },
       ]);
-      expect(variablesOf("enablePullRequestAutoMerge(")).toEqual([]);
+        expect(adminOverride ? queued : direct).toEqual([]);
     }),
   );
 
@@ -3542,6 +3546,32 @@ layer("GitHubPullRequestApi.layer", (it) => {
       expect(pathAt(0)).toBe("repos/acme/web/commits/aaaa1111");
       expect(pathAt(1)).toBe("repos/acme/web/compare/cccc3333...bbbb2222");
       expect(result.nextCursor).toBeNull();
+    }),
+  );
+
+  it.effect("rejects a commit range cut off in the middle of a file", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(output(JSON.stringify({ sha: "aaaa1111", parents: [{ sha: "cccc3333" }] }))),
+      );
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(output("diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-before\n+af", true)),
+      );
+      const api = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const error = yield* api
+        .getPullRequestDiff({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          commit: "aaaa1111..bbbb2222",
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "GitHubPullRequestReadError",
+        operation: "getPullRequestDiff",
+      });
+      expect(String(error.cause)).toContain("selected commit range was too large");
     }),
   );
 

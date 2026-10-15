@@ -578,6 +578,7 @@ export const make = Effect.gen(function* () {
             ? {}
             : { expectedStackHeads: input.expectedStackHeads }),
           ...(input.mergeMethod === undefined ? {} : { mergeMethod: input.mergeMethod }),
+          ...(input.adminOverride === true ? { adminOverride: true } : {}),
           ...(input.updateMethod === undefined ? {} : { updateMethod: input.updateMethod }),
         })
         .pipe(Effect.mapError(fail("runAction"))),

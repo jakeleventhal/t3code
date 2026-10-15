@@ -100,6 +100,18 @@ describe("diffPanelStore", () => {
     ).toEqual({ kind: "unstaged" });
   });
 
+  it("keeps the unsaved Uncommitted snapshot stable until initialization", () => {
+    const { byThreadKey, initializeGitScope } = useDiffPanelStore.getState();
+    const initial = selectThreadDiffPanelSelection(byThreadKey, THREAD_REF, true);
+    expect(initial).toEqual({ kind: "unstaged" });
+    expect(selectThreadDiffPanelSelection(byThreadKey, THREAD_REF, true)).toBe(initial);
+
+    initializeGitScope(THREAD_REF, true);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF, true),
+    ).toBe(initial);
+  });
+
   it("opens clean threads to Changes and keeps the initial choice after status changes", () => {
     const store = useDiffPanelStore.getState();
     store.initializeGitScope(THREAD_REF, false);

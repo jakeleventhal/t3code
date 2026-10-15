@@ -105,10 +105,7 @@ export const make = Effect.gen(function* () {
     return yield* new VcsRepositoryDetectionError({
       operation,
       cwd,
-      detail:
-        operation === "ReviewService.getDiffPreview"
-          ? "Review diff preview cwd must stay within the configured workspace root."
-          : "Review diff file contents cwd must stay within the configured workspace root.",
+      detail: "Review operations must stay within the configured workspace root.",
     });
   });
 

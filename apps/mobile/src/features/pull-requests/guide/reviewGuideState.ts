@@ -13,6 +13,17 @@ export function reviewGuideState(data: PullRequestReviewGuideResult | null) {
   };
 }
 
+/** The generating notice and auto-start effect must agree on failures from older heads. */
+export function shouldAutoGenerateGuide(state: {
+  readonly data: PullRequestReviewGuideResult | null;
+  readonly running: boolean;
+  readonly canWrite: boolean;
+}) {
+  const { guide, failure } = reviewGuideState(state.data);
+  return state.data !== null && !guide && !state.running && state.canWrite && failure === null;
+}
+
+/** A pending refresh must not hide cached content, or a new run reveal an old failure. */
 export function guideNoticeState(state: {
   readonly data: PullRequestReviewGuideResult | null;
   readonly isPending: boolean;
@@ -67,7 +78,7 @@ export function guideNoticeState(state: {
   }
   // The screen starts the writer automatically; do not offer a manual action between
   // the initial empty response and the generation effect committing its busy state.
-  if (!guide && state.canWrite) {
+  if (shouldAutoGenerateGuide(state)) {
     return {
       kind: "writing" as const,
       title: "Generating guide",

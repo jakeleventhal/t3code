@@ -12,6 +12,7 @@ export type DiffPanelSelection =
 
 // New panes use Uncommitted when Git reports local edits; saved choices always win.
 const DEFAULT_SELECTION: DiffPanelSelection = { kind: "branch", baseRef: null };
+const UNSTAGED_SELECTION: DiffPanelSelection = Object.freeze({ kind: "unstaged" });
 
 interface DiffPanelStoreState {
   byThreadKey: Record<string, DiffPanelSelection>;
@@ -41,7 +42,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
           return {
             byThreadKey: {
               ...state.byThreadKey,
-              [threadKey]: hasWorkingTreeChanges ? { kind: "unstaged" } : DEFAULT_SELECTION,
+              [threadKey]: hasWorkingTreeChanges ? UNSTAGED_SELECTION : DEFAULT_SELECTION,
             },
           };
         }),
@@ -174,6 +175,6 @@ export function selectThreadDiffPanelSelection(
   if (!ref) return DEFAULT_SELECTION;
   return (
     byThreadKey[scopedThreadKey(ref)] ??
-    (hasWorkingTreeChanges ? { kind: "unstaged" } : DEFAULT_SELECTION)
+    (hasWorkingTreeChanges ? UNSTAGED_SELECTION : DEFAULT_SELECTION)
   );
 }
