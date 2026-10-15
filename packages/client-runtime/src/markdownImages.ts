@@ -1,4 +1,5 @@
 import { isWindowsAbsolutePath, stripSlashPrefixedWindowsDrive } from "@t3tools/shared/path";
+import { mediaKindFromPath } from "@t3tools/shared/filePreview";
 
 import {
   normalizeMarkdownLinkDestination,
@@ -9,6 +10,7 @@ import { parseFileUrlHref } from "@t3tools/shared/fileLinks";
 
 const DIRECT_IMAGE_SOURCE_PATTERN = /^(?:https?:|data:|blob:|\/\/)/i;
 const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+const EMBEDDABLE_LINK_SCHEME_PATTERN = /^(?:https?|file):/i;
 
 export type MarkdownImageSource =
   | { readonly _tag: "Direct"; readonly uri: string }
@@ -68,4 +70,21 @@ export function classifyMarkdownImageSource(
   if (!workspaceRoot) return { _tag: "Blocked" };
 
   return { _tag: "WorkspaceFile", path: joinWorkspacePath(workspaceRoot, path) };
+}
+
+/**
+ * The media a link could be embedded as: an image or video reached over the web, through a
+ * `file:` URL, or by path. Any other scheme is not media even when it ends in an image
+ * extension; an editor or citation link is still a link.
+ */
+export function markdownLinkMediaKind(target: string): "image" | "video" | null {
+  const source = normalizeMarkdownLinkDestination(target);
+  if (
+    URI_SCHEME_PATTERN.test(source) &&
+    !EMBEDDABLE_LINK_SCHEME_PATTERN.test(source) &&
+    !isWindowsAbsolutePath(source)
+  ) {
+    return null;
+  }
+  return mediaKindFromPath(source);
 }
