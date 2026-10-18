@@ -8,7 +8,7 @@ import type {
 } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useState, type ReactNode, type Ref } from "react";
 
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { fnv1a32, resolveFileDiffPath, resolveFileDiffPreviousPath } from "~/lib/diffRendering";
@@ -202,8 +202,7 @@ export function AnnotatableCodeView({
     setDraftText("");
     setSelectedLines(null);
   }
-  const items = useMemo<CodeViewDiffItem<DiffCommentAnnotationGroup>[]>(
-    () =>
+  const items = ((): CodeViewDiffItem<DiffCommentAnnotationGroup>[] =>
       files.map(({ fileDiff, filePath, fileKey, fileVersion, collapsed }) => {
       const persisted = reviewComments
         .filter(
@@ -223,8 +222,7 @@ export function AnnotatableCodeView({
             text: comment.text,
           });
         }, []);
-        const annotations =
-          draft?.fileKey === fileKey ? [...persisted, draft.annotation] : persisted;
+      const annotations = draft?.fileKey === fileKey ? [...persisted, draft.annotation] : persisted;
         if (renderHunkAction) {
           fileDiff.hunks.forEach((hunk, hunkIndex) => {
             const change = hunk.hunkContent.findLast((content) => content.type === "change");
@@ -263,9 +261,7 @@ export function AnnotatableCodeView({
             .join(":")}`,
         ),
       };
-      }),
-    [draft, files, reviewComments, sectionId, renderHunkAction],
-  );
+    }))();
 
   const removeEntry = (entryId: string) => {
     setSelectedLines(null);

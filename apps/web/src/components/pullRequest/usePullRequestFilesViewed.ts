@@ -1,6 +1,5 @@
 import { useReviewFileProgress } from "@t3tools/client-runtime/review-file-progress";
 import type { EnvironmentId, PullRequestRef } from "@t3tools/contracts";
-import { useCallback } from "react";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -24,14 +23,11 @@ export function usePullRequestFilesViewed({
     enabled ? pullRequestEnvironment.filesViewed({ environmentId, input: reference }) : null,
   );
   const write = useAtomCommand(pullRequestEnvironment.setFilesViewed, { reportFailure: false });
-  const save = useCallback(
-    (files: ReadonlyArray<{ path: string; viewed: boolean }>) =>
-      write({ environmentId, input: { ...reference, files } }),
-    [environmentId, reference, write],
-  );
-  const onError = useCallback(() => {
+  const save = (files: ReadonlyArray<{ path: string; viewed: boolean }>) =>
+    write({ environmentId, input: { ...reference, files } });
+  const onError = () => {
     toastManager.add({ type: "error", title: "Could not update viewed files" });
-  }, []);
+  };
   return useReviewFileProgress({
     scopeKey: `${environmentId} ${reference.projectId} ${reference.host ?? ""} ${reference.repository} ${reference.number}`,
     enabled,

@@ -1,4 +1,3 @@
-import { useCallback, useMemo } from "react";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { useAtomValue } from "@effect/atom-react";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
@@ -365,10 +364,10 @@ export default function DiffPanel({
   );
   const refreshPreviewQuery = branchDiffPreview.refresh;
   const [workingRefresh, setWorkingRefresh] = useState(0);
-  const refreshDiffFromUserAction = useCallback(() => {
+  const refreshDiffFromUserAction = () => {
     setWorkingRefresh((value) => value + 1);
     refreshPreviewQuery();
-  }, [refreshPreviewQuery]);
+  };
 
   const preview = branchDiffPreview.data;
   const gitDiff = selectedGitSource?.diff;
@@ -488,12 +487,8 @@ export default function DiffPanel({
       : undefined,
     preview: renderablePatch,
   });
-  const renderableFiles = useMemo(
-    () =>
-      unorderedFiles.toSorted((left, right) =>
+  const renderableFiles = unorderedFiles.toSorted((left, right) =>
         compareReviewFilePaths(resolveFileDiffPath(left), resolveFileDiffPath(right)),
-      ),
-    [unorderedFiles],
   );
   const refreshBranchDiffPreview = refreshDiffFromUserAction;
   const previewOpenHandledRef = useRef(false);

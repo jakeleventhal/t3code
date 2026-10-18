@@ -5,7 +5,6 @@
  * discard or submission. Local drafts remain available if saving fails. Host
  * drafts are also read back from the detail, so reloading keeps saved pending comments.
  */
-import { useMemo } from "react";
 import { pendingReviewCommentsFromThreads } from "@t3tools/client-runtime/review-editing";
 import type {
   PullRequestRef,
@@ -163,10 +162,7 @@ export function usePendingReviewComments(
   const key = pullRequestReviewKey(reference);
   const local = usePullRequestReviewStore((store) => store.drafts[key] ?? EMPTY);
   const removedIds = usePullRequestReviewStore((store) => store.removedHostComments[key]);
-  return useMemo(
-    () => mergePendingReviewComments(local, threads ?? [], removedIds ?? []),
-    [local, threads, removedIds],
-  );
+  return mergePendingReviewComments(local, threads ?? [], removedIds ?? []);
 }
 
 /** Reconcile a cached host snapshot with successful local removals and published comments. */

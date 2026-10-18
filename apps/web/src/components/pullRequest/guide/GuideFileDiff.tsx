@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import {
   cloneFileDiffMetadata,
   type FileDiffContentsLoader,
@@ -24,12 +23,10 @@ export function GuideFileDiff({
   const settings = useClientSettings();
   // Loading the unchanged lines rewrites the diff it is given; the excerpts read the same file
   // as a patch, so this view expands a copy of its own.
-  const expandable = useMemo(
-    () => cloneFileDiffMetadata(settings.diffIgnoreWhitespace ? hideWhitespaceChanges(file) : file),
-    [file, settings.diffIgnoreWhitespace],
+  const expandable = cloneFileDiffMetadata(
+    settings.diffIgnoreWhitespace ? hideWhitespaceChanges(file) : file,
   );
-  const options = useMemo(
-    () => ({
+  const options = {
       diffStyle: settings.diffLayout === "split" ? ("split" as const) : ("unified" as const),
     lineDiffType: "none" as const,
       overflow: settings.wordWrap ? ("wrap" as const) : ("scroll" as const),
@@ -39,9 +36,7 @@ export function GuideFileDiff({
     preferredHighlighter: PREFERRED_HIGHLIGHTER,
       unsafeCSS: GUIDE_DIFF_UNSAFE_CSS,
     loadDiffFiles,
-    }),
-    [loadDiffFiles, resolvedTheme, settings.diffLayout, settings.wordWrap],
-  );
+  };
   return (
     <div className="border-t border-border/60">
       <FileDiff fileDiff={expandable} options={options} />

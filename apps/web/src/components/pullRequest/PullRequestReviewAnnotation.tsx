@@ -450,12 +450,16 @@ export function ReviewThreadCard({
                 placeholder="Leave a reply…"
                 aria-label="Reply to this conversation"
                 onChange={(event) => setReply(event.target.value)}
-                onKeyDown={submitKeys({
-                  value: reply,
-                  pending: pending || uploading,
-                  onSubmit: () => void send(),
-                  onCancel: () => replyInputRef.current?.blur(),
-                })}
+                onKeyDown={(event) =>
+                  submitKeys({
+                    value: reply,
+                    pending: pending || uploading,
+                    onSubmit: () => void send(),
+                    onCancel: () => {
+                      replyInputRef.current?.blur();
+                    },
+                  })(event)
+                }
               />
               <div className="flex h-6 shrink-0 items-center gap-1">
                 <PullRequestAttachments

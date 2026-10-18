@@ -1,5 +1,3 @@
-import * as ServerSettings from "../serverSettings.ts";
-import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -61,8 +59,6 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const workflow = yield* GitWorkflowService.GitWorkflowService;
-  const settings = yield* ServerSettings.ServerSettingsService;
-  const projectStore = yield* ProjectStore.ProjectStoreV2;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);

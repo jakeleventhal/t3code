@@ -13,7 +13,7 @@ import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
@@ -158,7 +158,7 @@ export default function FileBrowserPanel({
   const panelPath = (relativePath: string) =>
     hostFolder ? joinHostPath(cwd, relativePath) : relativePath;
   const { resolvedTheme } = useTheme();
-  const selectionCSS = useMemo(() => {
+  const selectionCSS = (() => {
     if (!selectedPath) return PIERRE_TREE_UNSAFE_CSS;
     const path = selectedPath.replace(/\/$/, "");
     return `${PIERRE_TREE_UNSAFE_CSS}
@@ -173,7 +173,7 @@ export default function FileBrowserPanel({
         border-radius: var(--radius-md);
       }
     `;
-  }, [selectedPath]);
+  })();
   const composerRef = useComposerHandleContext();
   const fileContextMenu = useFileContextMenu(environmentId);
   const {

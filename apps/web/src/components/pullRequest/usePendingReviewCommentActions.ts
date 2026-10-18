@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { useCallback } from "react";
 import type { EnvironmentId, PullRequestRef } from "@t3tools/contracts";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -29,33 +28,27 @@ export function usePendingReviewCommentActions(
   const remove = useAtomCommand(pullRequestEnvironment.discardDraftComment, {
     reportFailure: false,
   });
-  const saveDraft = useCallback(
-    async (comment: PendingReviewComment) => {
-      try {
-        return await savePendingReviewComment(key, comment, async (draft) => {
-          const result = await save({ environmentId, input: { ...reference, comment: draft } });
-          if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-          return result.value;
-        });
-      } catch (cause) {
-        toastManager.add({
-          type: "error",
-          title: "Could not save the pending comment to GitHub",
-          description:
-            cause instanceof Error ? cause.message : "Your draft is kept in T3. Retry saving it.",
-        });
-        return null;
-      }
-    },
-    [key, save, environmentId, reference],
-  );
-  const add = useCallback(
-    (comment: PendingReviewComment, saveToHost: boolean) => {
-      usePullRequestReviewStore.getState().addComment(key, comment);
-      if (saveToHost) void saveDraft(comment);
-    },
-    [key, saveDraft],
-  );
+  const saveDraft = async (comment: PendingReviewComment) => {
+    try {
+      return await savePendingReviewComment(key, comment, async (draft) => {
+        const result = await save({ environmentId, input: { ...reference, comment: draft } });
+        if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+        return result.value;
+      });
+    } catch (cause) {
+      toastManager.add({
+        type: "error",
+        title: "Could not save the pending comment to GitHub",
+        description:
+          cause instanceof Error ? cause.message : "Your draft is kept in T3. Retry saving it.",
+      });
+      return null;
+    }
+  };
+  const add = (comment: PendingReviewComment, saveToHost: boolean) => {
+    usePullRequestReviewStore.getState().addComment(key, comment);
+    if (saveToHost) void saveDraft(comment);
+  };
   const copyLink = async (comment: PendingReviewComment) => (await saveDraft(comment))?.url ?? null;
   const discard = async (givenComment: PendingReviewComment) => {
     const store = usePullRequestReviewStore.getState();

@@ -8,15 +8,7 @@ import {
   MessageCircleQuestionIcon,
   MessageSquareIcon,
 } from "lucide-react";
-import {
-  useId,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type Ref,
-} from "react";
+import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { getDiffLineStat } from "~/lib/diffRendering";
 import { useTheme } from "~/hooks/useTheme";
@@ -87,7 +79,7 @@ export function GuideStop({
   onSetViewed: ((paths: ReadonlyArray<string>, viewed: boolean) => void) | null;
 }) {
   const { resolvedTheme } = useTheme();
-  const { byExcerpt } = useMemo(() => letterStopNotes(stop), [stop]);
+  const { byExcerpt } = letterStopNotes(stop);
   const otherFiles = stopFilePaths(stop).map((path) => ({
     path,
     note: stop.files.find((file) => file.path === path)?.note,

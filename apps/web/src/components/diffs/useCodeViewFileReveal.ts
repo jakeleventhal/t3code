@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import type { CodeViewScrollTarget } from "@pierre/diffs";
 import { useEffect, useRef, useState } from "react";
 
@@ -32,9 +31,6 @@ export function useCodeViewFileReveal<TScope>(
     handledRequest.current = request;
   }, [request, scope, viewer, readyFileKeys]);
 
-  return useCallback(
-    (fileKey: string, target?: CodeViewScrollTarget) =>
-      setRequest({ fileKey, scope, ...(target ? { target } : {}) }),
-    [scope],
-  );
+  return (fileKey: string, target?: CodeViewScrollTarget) =>
+    setRequest({ fileKey, scope, ...(target ? { target } : {}) });
 }

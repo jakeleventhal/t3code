@@ -5,7 +5,7 @@ import type {
   PullRequestReviewGuideStop,
 } from "@t3tools/contracts";
 import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { observeVisibleAnimation } from "~/lib/visibleAnimation";
@@ -75,55 +75,41 @@ export function PullRequestGuideTab({
   const pending = usePendingReviewComments(reference, detail.reviewThreads);
   const { add: addComment } = usePendingReviewCommentActions(environmentId, reference);
   const removeComment = usePullRequestReviewStore((store) => store.removeComment);
-  const commenting = useMemo<ExcerptCommenting | null>(
-    () =>
-      !canComment && onAskAboutLines === null
-        ? null
-        : {
-            canComment,
-            canCommentRanges,
-            renderAttachments: (onTextChange, onBusyChange, textareaRef) => (
-              <PullRequestAttachments
-                environmentId={environmentId}
-                reference={reference}
-                onTextChange={onTextChange}
-                textareaRef={textareaRef}
-                onBusyChange={onBusyChange}
-              />
-            ),
-            pending,
-            pendingCommentTarget: {
-              environmentId,
-              reference,
-              canCopyLink: detail.capabilities.review.draftComment === true,
-            },
-            onComment: ({ path, oldPath, position, body }) =>
-              addComment(
-                {
-                  id: nextPendingReviewCommentId(),
-                  path,
-                  ...(oldPath === null ? {} : { oldPath }),
-                  position,
-                  body,
-                },
-                detail.capabilities.review.draftComment === true,
-              ),
-            onRemove: (commentId) => removeComment(reviewKey, commentId),
-            onAskAgent: onAskAboutLines,
+  const commenting = ((): ExcerptCommenting | null =>
+    !canComment && onAskAboutLines === null
+      ? null
+      : {
+          canComment,
+          canCommentRanges,
+          renderAttachments: (onTextChange, onBusyChange, textareaRef) => (
+            <PullRequestAttachments
+              environmentId={environmentId}
+              reference={reference}
+              onTextChange={onTextChange}
+              textareaRef={textareaRef}
+              onBusyChange={onBusyChange}
+            />
+          ),
+          pending,
+          pendingCommentTarget: {
+            environmentId,
+            reference,
+            canCopyLink: detail.capabilities.review.draftComment === true,
           },
-    [
-      addComment,
-      canComment,
-      canCommentRanges,
-      detail,
-      environmentId,
-      reference,
-      onAskAboutLines,
-      pending,
-      removeComment,
-      reviewKey,
-    ],
-  );
+          onComment: ({ path, oldPath, position, body }) =>
+            addComment(
+              {
+                id: nextPendingReviewCommentId(),
+                path,
+                ...(oldPath === null ? {} : { oldPath }),
+                position,
+                body,
+              },
+              detail.capabilities.review.draftComment === true,
+            ),
+          onRemove: (commentId) => removeComment(reviewKey, commentId),
+          onAskAgent: onAskAboutLines,
+        })();
   useEffect(() => {
     if (!active) return;
     useGuideRunStore.getState().setShown(runKey);

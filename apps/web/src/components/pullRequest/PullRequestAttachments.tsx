@@ -48,6 +48,7 @@ export function PullRequestAttachments({
         transfer.current.abort?.();
       }
     },
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A new PR or environment must cancel the previous upload.
     [environmentId, reference.projectId, reference.repository, reference.host, reference.number],
   );
   const canAttach =

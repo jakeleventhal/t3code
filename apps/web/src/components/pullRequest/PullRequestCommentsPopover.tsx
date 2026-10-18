@@ -6,7 +6,7 @@ import type {
   PullRequestThreadComment,
 } from "@t3tools/contracts";
 import { FileCode2Icon, MessageSquareIcon, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -49,25 +49,21 @@ export function PullRequestCommentsPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
-  const anchor = useMemo(
-    () =>
-      trigger
-        ? {
-            contextElement: trigger,
-            getBoundingClientRect: () => {
-              const button = trigger.getBoundingClientRect();
-              const panel = trigger.closest("[data-pull-request-panel]")?.getBoundingClientRect();
-              return new DOMRect(
-                panel?.left ?? button.left,
-                button.top,
-                panel?.width ?? button.width,
-                button.height,
-              );
-            },
-          }
-        : undefined,
-    [trigger],
-  );
+  const anchor = trigger
+    ? {
+        contextElement: trigger,
+        getBoundingClientRect: () => {
+          const button = trigger.getBoundingClientRect();
+          const panel = trigger.closest("[data-pull-request-panel]")?.getBoundingClientRect();
+          return new DOMRect(
+            panel?.left ?? button.left,
+            button.top,
+            panel?.width ?? button.width,
+            button.height,
+          );
+        },
+      }
+    : undefined;
   const [selectedStatus, setSelectedStatus] = useState<"resolved" | "unresolved" | "pending">(
     "unresolved",
   );

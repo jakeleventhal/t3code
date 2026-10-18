@@ -1,4 +1,3 @@
-import { useCallback, useMemo } from "react";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
@@ -719,8 +718,7 @@ export function PullRequestDetailPanel({
   >({});
   const condensed = condensedByTab[tab] ?? false;
   const scrollerByTab = useRef<Partial<Record<PullRequestDetailTab, HTMLDivElement | null>>>({});
-  const scrollerRefs = useMemo(
-    () => ({
+  const [scrollerRefs] = useState(() => ({
     summary: (node: HTMLDivElement | null) => {
       scrollerByTab.current.summary = node;
     },
@@ -730,9 +728,7 @@ export function PullRequestDetailPanel({
     code: (node: HTMLDivElement | null) => {
       scrollerByTab.current.code = node;
     },
-    }),
-    [],
-  );
+  }));
   const foldRef = useRef<HTMLDivElement | null>(null);
   const condensedRowRef = useRef<HTMLDivElement | null>(null);
   // Save the target before collapse: the browser may clamp scrollTop as the viewport grows,
@@ -807,10 +803,12 @@ export function PullRequestDetailPanel({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
-  const autoMergeMethod = detail?.autoMergeMethod;
-  useEffect(() => {
-    if (autoMergeMethod !== undefined) setMergeMethod(autoMergeMethod);
-  }, [autoMergeMethod, pullRequestKey]);
+  const autoMergeKey = `${pullRequestKey}:${detail?.autoMergeMethod ?? ""}`;
+  const [seenAutoMergeKey, setSeenAutoMergeKey] = useState<string | null>(null);
+  if (seenAutoMergeKey !== autoMergeKey) {
+    setSeenAutoMergeKey(autoMergeKey);
+    if (detail?.autoMergeMethod !== undefined) setMergeMethod(detail.autoMergeMethod);
+  }
   const repositoryUrl = detail === null ? null : changeRequestRepositoryUrl(detail.url);
   const hostClient = sourceControlClients.get(detail?.provider);
   const openOnHostText = openOnHostLabel(hostClient);
@@ -863,11 +861,11 @@ export function PullRequestDetailPanel({
   const refreshDetailQuery = detailQuery.refresh;
   const refreshActivityQuery = activityQuery.refresh;
   const refreshNativeStackQuery = nativeStackQuery.refresh;
-  const refreshDetail = useCallback(() => {
+  const refreshDetail = () => {
     refreshDetailQuery();
     refreshActivityQuery();
     refreshNativeStackQuery();
-  }, [refreshActivityQuery, refreshDetailQuery, refreshNativeStackQuery]);
+  };
   const [refreshToken, setRefreshToken] = useState(0);
   const [activityRevision, setActivityRevision] = useState<{
     readonly key: string;

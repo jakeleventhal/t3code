@@ -13,7 +13,7 @@ import type {
   PullRequestReviewPosition,
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 
 import { useRenderedAppearance } from "~/hooks/useTheme";
 import { PierreEntryIcon } from "../../chat/PierreEntryIcon";
@@ -203,7 +203,7 @@ function ExcerptDiff({
 }) {
   const resolvedTheme = useRenderedAppearance();
   const settings = useClientSettings();
-  const slice = useMemo(() => {
+  const slice = (() => {
     if (file === null) return null;
     const rows = fileDiffRows(file);
     const shown = excerptRows(rows, excerpt);
@@ -221,14 +221,14 @@ function ExcerptDiff({
       deletions: new Set(shown.flatMap((row) => (row.oldLine === null ? [] : [row.oldLine]))),
     };
     return { fileDiff, rows: shown, shown: shown.length, total: rows.length, drawn };
-  }, [excerpt, file, settings.diffIgnoreWhitespace]);
+  })();
   const loadExcerptFiles = excerptLoader(excerpt, slice.rows, loadDiffFiles);
 
   // The excerpt expands against an old side of its own: the file's real old side differs from
   // the new one wherever another hunk changed it, and the renderer needs the two to agree around
   // the lines it shows. A slice across hunks has nothing consistent to expand into.
   const sliceRows = slice?.rows ?? null;
-  const loadExcerptFiles = useMemo<FileDiffContentsLoader | null>(() => {
+  const loadExcerptFiles = ((): FileDiffContentsLoader | null => {
     if (sliceRows === null || sliceRows.some((row) => row.hunk !== sliceRows[0]?.hunk)) {
       return null;
     }
@@ -245,10 +245,10 @@ function ExcerptDiff({
         },
       };
     };
-  }, [excerpt.end, excerpt.side, excerpt.start, loadDiffFiles, sliceRows]);
+  })();
 
   // Notes, queued comments and the draft share one annotation per line, as in the Code tab.
-  const annotations = useMemo(() => {
+  const annotations = (() => {
     const groups = new Map<string, DiffLineAnnotation<ExcerptAnnotation>>();
     const at = (side: "additions" | "deletions", line: number) => {
       const key = `${side}:${line}`;
@@ -292,20 +292,17 @@ function ExcerptDiff({
       update(toViewerSide(anchor.side), anchor.line, (metadata) => ({ ...metadata, draft: true }));
     }
     return [...groups.values()];
-  }, [commenting?.pending, draft, excerpt.path, excerpt.side, notes, slice]);
+  })();
 
   // Positions and the agent's copy of the lines come from the whole file's diff, so a comment
   // lands where the Code tab would put it rather than on the excerpt's cut-down patch.
-  const beginComment = useCallback(
-    (range: SelectedLineRange | null) => {
+  const beginComment = (range: SelectedLineRange | null) => {
       if (range === null || file === null) return;
       const end = resolveDiffReviewPosition(file, range.end, range.endSide ?? range.side);
       const start = resolveDiffReviewPosition(file, range.start, range.side);
       if (end === null) return;
       setDraft({ range, position: start ? reviewPositionRange(start, end) : end });
-    },
-    [file],
-  );
+  };
   const interactive =
     commenting !== null &&
     draft === null &&
@@ -329,8 +326,7 @@ function ExcerptDiff({
     if (comment !== null) onAskAgent(comment, request);
   };
 
-  const options = useMemo(
-    () => ({
+  const options = {
       diffStyle: settings.diffLayout === "split" ? ("split" as const) : ("unified" as const),
     lineDiffType: "none" as const,
       overflow: settings.wordWrap ? ("wrap" as const) : ("scroll" as const),
@@ -347,16 +343,7 @@ function ExcerptDiff({
     ...(loadExcerptFiles === null
       ? { hunkSeparators: "simple" as const }
       : { loadDiffFiles: loadExcerptFiles }),
-    }),
-    [
-      resolvedTheme,
-      interactive,
-      beginComment,
-      loadExcerptFiles,
-      settings.diffLayout,
-      settings.wordWrap,
-    ],
-  );
+  };
 
   return (
     <figure className="flex min-w-0 flex-col gap-1.5">
