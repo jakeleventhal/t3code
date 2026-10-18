@@ -17,14 +17,14 @@ import type {
 import { useState, type ReactNode } from "react";
 import { Alert, Linking, Modal, Pressable, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { SymbolView } from "../../components/AppSymbol";
-import { AppText as Text } from "../../components/AppText";
+import { Menu } from "../../components/ui/Menu";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
-import { ControlPill } from "../../components/ControlPill";
+import { ControlPill } from "../../components/ui/ControlPill";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 /** Native controls share reaction vocabulary and optimistic counts with desktop. */
@@ -152,7 +152,7 @@ export function PullRequestCommentControls({
     </Pressable>
   ));
   const reactionPicker = canReact ? (
-    <ControlPillMenu
+    <Menu
       title="Add reaction"
       actions={PULL_REQUEST_REACTION_ORDER.map((content) => ({
         id: content,
@@ -177,10 +177,10 @@ export function PullRequestCommentControls({
       >
         <SymbolView name="face.smiling" size={18} tintColorClassName="accent-icon-muted" />
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   ) : null;
   const commentMenu = (
-    <ControlPillMenu
+    <Menu
       title="Comment actions"
       actions={[
         ...(onResolve
@@ -247,7 +247,7 @@ export function PullRequestCommentControls({
       >
         <SymbolView name="ellipsis" size={16} tintColorClassName="accent-icon-muted" />
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   );
   const actions = (
     <View className="flex-row items-center">

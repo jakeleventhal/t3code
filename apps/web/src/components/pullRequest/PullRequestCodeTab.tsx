@@ -125,7 +125,6 @@ import {
   type DiffFoldOverride,
 } from "./pullRequestDiff.logic";
 import { PullRequestDiffStat, PullRequestMetaLine } from "./pullRequestPresentation";
-import { PullRequestDiffUnavailableState } from "./PullRequestDiffUnavailableState";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
 import { DiffDisplayControls } from "../diffs/DiffDisplayControls";
 import {
@@ -136,6 +135,7 @@ import {
 } from "./pullRequestReviewStore";
 import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
 
+/** Everything pinned to one line of one file: what is already there, and what is being added. */
 interface ReviewAnnotationGroup {
   readonly threads: ReadonlyArray<PullRequestReviewThread>;
   readonly pending: ReadonlyArray<PendingReviewComment>;
@@ -144,11 +144,14 @@ interface ReviewAnnotationGroup {
 
 type ReviewAnnotation = DiffLineAnnotation<ReviewAnnotationGroup>;
 
+/** Commits per press of "Show more" in the scope menu. */
 const COMMIT_PAGE_SIZE = 10;
 
 const PULL_REQUEST_FILE_TREE_STORAGE_KEY = "t3code.pullRequestFileTreeOpen";
 
+/** One answer from the host: a whole number of files, and where the next one carries on. */
 interface DiffSlice {
+  /** What was asked for, null being the first slice. Identifies the slice among the loaded ones. */
   readonly cursor: string | null;
   readonly patch: string;
   readonly truncated: boolean;
@@ -167,81 +170,10 @@ const REPLACE_FILE_COUNTS_CSS = `
   display: none !important;
 }`;
 
+/** Nothing loaded yet, as one identity, so the memos below do not see a new array every render. */
 const NO_SLICES: ReadonlyArray<DiffSlice> = [];
 
-// Each slice is parsed once per cache key and the parse lives as long as the slice does, so a
-// slice arriving costs one parse rather than one per slice already on screen.
-const sliceParses = new WeakMap<DiffSlice, Map<string, RenderablePatch | null>>();
-
-function parseSlice(slice: DiffSlice, cacheKey: string, ignoreWhitespace: boolean) {
-  let parses = sliceParses.get(slice);
-  if (parses === undefined) {
-    parses = new Map();
-    sliceParses.set(slice, parses);
-  }
-  if (parses.has(cacheKey)) return parses.get(cacheKey) ?? null;
-  const parsed = getRenderablePatch(slice.patch, cacheKey, {
-    compactPartialHunkOffsets: true,
-    ignoreWhitespace,
-  });
-  parses.set(cacheKey, parsed);
-  return parsed;
-}
-
-interface FileViewedToggleState {
-  readonly enabled: boolean;
-  readonly isViewed: (path: string) => boolean;
-  readonly isStale: (path: string) => boolean;
-  readonly setFileViewed: (fileKey: string, path: string, viewed: boolean) => void;
-}
-
-// Header portals are memoized on the render props; the viewed toggle reads its state through
-// context so a press redraws the toggles, not every header on screen.
-const FileViewedToggleContext = createContext<FileViewedToggleState | null>(null);
-
-function FileViewedToggle({
-  fileKey,
-  path,
-  stat,
-}: {
-  readonly fileKey: string;
-  readonly path: string;
-  readonly stat: ReactNode;
-}) {
-  const viewedFiles = use(FileViewedToggleContext);
-  if (viewedFiles === null || !viewedFiles.enabled) return stat;
-  const viewed = viewedFiles.isViewed(path);
-  const stale = viewedFiles.isStale(path);
-  return (
-    <span className="flex items-center gap-3">
-      {stat}
-      <label
-        data-viewed-toggle=""
-        className="flex cursor-pointer select-none items-center gap-1.5 text-2xs text-muted-foreground"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Checkbox
-          aria-label={stale ? "Changed" : "Viewed"}
-          checked={viewed}
-          onCheckedChange={(next) => viewedFiles.setFileViewed(fileKey, path, next === true)}
-        />
-        {stale ? (
-          <Tooltip>
-            <TooltipTrigger render={<span className="text-warning-foreground" />}>
-              Changed
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">
-              This file has been pushed to since you marked it viewed.
-            </TooltipPopup>
-          </Tooltip>
-        ) : (
-          <span className="@max-xs:hidden">Viewed</span>
-        )}
-      </label>
-    </span>
-  );
-}
-
+/** A group while it is still gathering what belongs on its line. */
 interface MutableAnnotationGroup {
   readonly side: PullRequestDiffSide;
   readonly line: number;
@@ -253,17 +185,31 @@ interface MutableAnnotationGroup {
 interface DraftAnchor {
   readonly fileKey: string;
   readonly path: string;
+  /** What the file was called before the change, for the hosts that resolve a position by both. */
   readonly oldPath: string | null;
   readonly position: PullRequestReviewPosition;
   /** The selected lines used for the comment and composer context. */
   readonly range: SelectedLineRange;
 }
 
+/** A range of the diff and the reader's request for the agent. */
 export interface PullRequestAgentSelectionInput {
+  /** The marked lines, already in the shape the composer draws and the agent reads. */
   readonly comment: ReviewCommentContext;
   readonly request: string;
 }
 
+/**
+ * Whether the viewer draws this line at all. A line counts the new file on the right and the old
+ * one on the left, and each hunk covers one run of each; a line outside every run — a
+ * conversation the host could not mark outdated, or one under a hunk it withheld — has no row to
+ * be pinned to, however much its file looks like a match.
+ */
+/**
+ * The pull request's patch, with the review written against it. Conversations already on the
+ * host sit under the line they were written on, and a new comment joins the review being
+ * drafted rather than being posted as it is typed.
+ */
 function PullRequestCodeTab({
   scrollerRef,
   environmentId,
@@ -293,17 +239,21 @@ function PullRequestCodeTab({
   environmentId: EnvironmentId;
   reference: PullRequestRef;
   detail: PullRequestDetailView;
+  /** Commit whose diff is open. Null keeps the whole pull-request diff selected. */
   selectedCommitOid: string | null;
   onSelectedCommitChange: (oid: string | null) => void;
+  /** The hand-off currently preparing, if any, so only the finding it belongs to says so. */
   pendingFinding?: string | null;
   fixFindingLabel?: string;
   onFixFinding?: (finding: PullRequestFinding) => void;
+  /** Absent where there is no active agent composer to receive a local comment. */
   onAddToAgentSelection?: (input: PullRequestAgentSelectionInput) => void;
   onAddThreadCommentToComposer?:
     | ((thread: PullRequestReviewThread, comment: PullRequestThreadComment) => void)
     | undefined;
   onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
   onRefresh: () => void;
+  /** Bumped by the panel's refresh button: drop the accumulated pages and re-read the diff. */
   refreshToken?: number;
   backgroundRefreshToken?: number;
   /** A file another tab asked to show. A new nonce asks again for the same path. */
@@ -323,12 +273,14 @@ function PullRequestCodeTab({
     wordWrap: settings.wordWrap,
   }));
   const [toggledFiles, setToggledFiles] = useState<ReadonlySet<string>>(() => new Set());
+  // A change of any size can carry hundreds of commits, and a menu that long is a scroll rather
+  // than a choice. The rest arrive ten at a time, on request.
   const [visibleCommitCount, setVisibleCommitCount] = useState(COMMIT_PAGE_SIZE);
+  /** Set once the reader has asked for every file at once, until they pick a file apart again. */
   const [foldOverride, setFoldOverride] = useState<DiffFoldOverride>(null);
   const effectiveFoldOverride =
     foldOverride ?? (settings.diffFilesCollapsed ? "folded" : "expanded");
   const diffLayout = settings.diffLayout;
-  const updateClientSettings = useUpdateClientSettings();
   const wordWrap = settings.wordWrap;
   const ignoreWhitespace = settings.diffIgnoreWhitespace;
   const [fileTreeOpen, setFileTreeOpen] = useLocalStorage(
@@ -374,6 +326,7 @@ function PullRequestCodeTab({
     readonly cursor: string | null;
     readonly slices: ReadonlyArray<DiffSlice>;
   }>({ key: "", cursor: null, slices: NO_SLICES });
+  const parseCache = useRef(new Map<string, RenderablePatch>());
   const [viewer, setViewer] = useState<CodeViewHandle<ReviewAnnotationGroup, undefined> | null>(
     null,
   );
@@ -383,9 +336,7 @@ function PullRequestCodeTab({
   const scopeKey = JSON.stringify([environmentId, referenceKey, commit]);
   // The panel keeps this mounted across pull requests, so an open composer would otherwise
   // survive the switch and attach its comment to whichever one is on screen when it is sent.
-  const [stateScopeKey, setStateScopeKey] = useState(scopeKey);
-  if (stateScopeKey !== scopeKey) {
-    setStateScopeKey(scopeKey);
+  useEffect(() => {
     setDraft(null);
     setSelectedLines(null);
     setToggledFiles(new Set());
@@ -395,7 +346,8 @@ function PullRequestCodeTab({
     setSelectedChapter("implementation");
     setChapterRailOpen(false);
     setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
-  }
+    parseCache.current.clear();
+  }, [scopeKey]);
 
   const loadedSlices = sliceState.key === scopeKey ? sliceState.slices : NO_SLICES;
   const cursor = sliceState.key === scopeKey ? sliceState.cursor : null;
@@ -409,21 +361,11 @@ function PullRequestCodeTab({
       },
     }),
   );
-  // Pages accumulate into slices as each answer arrives, so the slice list is adjusted while
-  // rendering the answer rather than one commit later.
-  const [appliedPage, setAppliedPage] = useState<{
-    readonly data: typeof diffQuery.data;
-    readonly cursor: string | null;
-    readonly scopeKey: string;
-  } | null>(null);
+  // Each answer is kept as its own slice. Concatenating the patches and re-parsing the growing
+  // text would cost more with every slice, which is the wall the slicing exists to remove.
+  useEffect(() => {
   const data = diffQuery.data;
-  if (
-    data !== null &&
-    (appliedPage?.data !== data ||
-      appliedPage.cursor !== cursor ||
-      appliedPage.scopeKey !== scopeKey)
-  ) {
-    setAppliedPage({ data, cursor, scopeKey });
+    if (data === null) return;
     setSliceState((previous) => {
       const slices = previous.key === scopeKey ? previous.slices : NO_SLICES;
       const next = {
@@ -460,7 +402,9 @@ function PullRequestCodeTab({
       // after it go with the replacement: their cursors were positions in the old diff.
       return { key: scopeKey, cursor, slices: [...slices.slice(0, index), next] };
     });
-  }
+  }, [cursor, diffQuery.data, scopeKey]);
+  // The refresh button rereads from the first page rather than the page the reader is on:
+  // pages are positions in one snapshot of the diff, and a fresh snapshot starts over.
   const refreshFirstDiffPage = useAtomRefresh(
     pullRequestEnvironment.diff({
       environmentId,
@@ -482,6 +426,16 @@ function PullRequestCodeTab({
     reportFailure: false,
   });
   const getDiffFileContents = useAtomCommand(pullRequestEnvironment.diffFileContents);
+  const loadDiffFiles = useMemo(
+    () =>
+      createPullRequestDiffFileContentsLoader(getDiffFileContents, {
+        environmentId,
+        reference,
+        commit,
+        cacheKey: `pull-request:${referenceKey}:${detail.updatedAt}:${commit ?? "all"}`,
+      }),
+    [commit, detail.updatedAt, environmentId, getDiffFileContents, reference, referenceKey],
+  );
 
   // What is offered is the intersection of two different questions: what this host can do at
   // all, and what this account may do on this repository. Either one saying no means a control
@@ -537,6 +491,7 @@ function PullRequestCodeTab({
     environmentId,
     reference,
     enabled: viewedFilesStore !== undefined,
+    paths: filePaths,
   });
   const {
     setViewed,
@@ -545,6 +500,9 @@ function PullRequestCodeTab({
     isViewed: isFileViewed,
     isStale: isFileViewedStale,
   } = filesViewed;
+  // The button goes around the host's cache, so everything the tab reads from it starts over:
+  // the diff from its first page, and with it the ticks, which a push since the last read can
+  // have marked as standing against an older version of the file.
   const appliedRefreshToken = useRef(refreshToken);
   useEffect(() => {
     if (appliedRefreshToken.current === refreshToken) return;
@@ -562,62 +520,13 @@ function PullRequestCodeTab({
     refreshFirstDiffPage();
     refreshFilesViewed();
   }, [backgroundRefreshToken, refreshFirstDiffPage, refreshFilesViewed]);
+  const nextCursor = loadedSlices.at(-1)?.nextCursor ?? null;
+  // What a slice withheld: the host declining to inline part of it, or a patch the viewer could
+  // not structure and so dropped. Neither says anything about there being more to fetch.
+  const withheldContent =
+    loadedSlices.some((slice) => slice.truncated) ||
+    parsedSlices.some((parsed) => parsed?.kind === "raw");
 
-  // The sentinel is held as state rather than a ref because the viewer mounts its own footer:
-  // an effect reading a ref could run before that node exists and would never arm the observer.
-  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
-  const requestTreeReveal = useCodeViewFileReveal(viewer, scopeKey);
-  const answeredReveal = useRef<number | null>(null);
-
-  const loadDiffFiles = createPullRequestDiffFileContentsLoader(getDiffFileContents, {
-    environmentId,
-    reference,
-    commit,
-    cacheKey: `pull-request:${referenceKey}:${detail.updatedAt}:${commit ?? "all"}`,
-  });
-  const hostReview = detail.capabilities.review;
-  const review = {
-    inlineComment: hostReview.inlineComment && detail.viewerPermissions.comment,
-    reply: hostReview.reply && detail.viewerPermissions.comment,
-    resolve: hostReview.resolve && detail.viewerPermissions.resolve,
-  };
-  const canCommentOnLines = review.inlineComment && commit === null;
-  // Agent context is local, so it does not require host comment permission.
-  const canSelectLines =
-    commit === null && (review.inlineComment || onAddToAgentSelection !== undefined);
-  // The cache key carries the theme, which is what the tokenizer caches against, so a theme
-  // change is still a fresh parse. The patch's own hash is part of it too: a refreshed page
-  // reuses its cursor, and a key of position alone would hand back the parse it replaced.
-  const parsedSlices = loadedSlices.map((slice) =>
-    parseSlice(
-      slice,
-      `pull-request:${scopeKey}:${resolvedTheme}:${ignoreWhitespace}:${slice.cursor ?? "first"}:${fnv1a32(slice.patch)}`,
-      ignoreWhitespace,
-    ),
-  );
-  const files = parsedSlices.flatMap((parsed) =>
-    parsed?.kind === "files" ? orderDiffFiles(parsed.files) : [],
-  );
-  const filePaths = files.map((file) => resolveFileDiffPath(file));
-  const omittedFileStats = new Map(
-    loadedSlices.flatMap((slice) =>
-      slice.omittedFileStats.map((file) => [file.path, file] as const),
-    ),
-  );
-  const sourceFileStats = new Map(
-    parsedSlices.flatMap((parsed) =>
-      parsed?.kind === "files"
-        ? parsed.files.map(
-            (file, index) =>
-              [
-                buildFileDiffRenderKey(file),
-                getDiffLineStat([parsed.sourceFiles[index] ?? file]),
-              ] as const,
-          )
-        : [],
-    ),
-  );
-  const fileTreeEntries = diffFileTreeEntries(files);
   // Placing a conversation takes more than its file being in the diff: its line has to fall
   // inside a hunk that was rendered. One that does not is drawn nowhere, so it belongs in the
   // off-diff list rather than disappearing between the two.
@@ -667,9 +576,15 @@ function PullRequestCodeTab({
     return placed;
   }, [commit, visibleHostThreads, files]);
 
-  const annotatedFiles = files.map((fileDiff) => {
+  // Hashing what the annotations show is the costly part of an item's version, and none of it
+  // moves when a file is ticked or folded, so it is kept apart from the two that do.
+  const annotatedFiles = useMemo(
+    () =>
+      files.map((fileDiff) => {
     const fileKey = buildFileDiffRenderKey(fileDiff);
     const path = resolveFileDiffPath(fileDiff);
+        // One annotation per line, so a line that already carries a conversation shows a new
+        // comment underneath it rather than in place of it.
     const groups = new Map<string, MutableAnnotationGroup>();
     const groupAt = (side: PullRequestDiffSide, line: number) => {
       const key = `${side}:${line}`;
@@ -895,31 +810,26 @@ function PullRequestCodeTab({
     nextCursor !== cursor &&
     !diffQuery.isPending &&
     diffQuery.error === null;
-  const loadNextSlice = () => {
+  const loadNextSlice = useCallback(() => {
     if (nextCursor === null) return;
     setSliceState((previous) => ({ ...previous, cursor: nextCursor }));
-  };
+  }, [nextCursor]);
 
-  const toggleFile = (fileKey: string) =>
-    setToggledFiles((current) => {
-      const next = new Set(current);
-      if (next.has(fileKey)) next.delete(fileKey);
-      else next.add(fileKey);
-      return next;
-    });
-
-  const setFileViewed = (fileKey: string, path: string, viewed: boolean) => {
-    setViewed(path, viewed);
-    setToggledFiles((current) =>
-      toggleFileDiffFoldForViewed(fileKey, viewed, effectiveFoldOverride, current),
+  // The sentinel is held as state rather than a ref because the viewer mounts its own footer:
+  // an effect reading a ref could run before that node exists and would never arm the observer.
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (sentinel === null || !canLoadNextSlice) return;
+    const observer = new IntersectionObserver(
+      (observed) => {
+        if (observed.some((entry) => entry.isIntersecting)) loadNextSlice();
+      },
+      // Start the next slice slightly before the sentinel is on screen.
+      { rootMargin: "240px" },
     );
-  };
-  const fileViewedToggle = {
-    enabled: filesViewedEnabled,
-    isViewed: isFileViewed,
-    isStale: isFileViewedStale,
-    setFileViewed,
-  };
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [canLoadNextSlice, loadNextSlice, sentinel]);
 
   // A stable identity: the viewer's SlotPortals memoizes each file's header/annotation portal on
   // these render props, so a fresh function here would recreate every visible file's portal on
@@ -1085,14 +995,22 @@ function PullRequestCodeTab({
   ]);
 
   const toggleAllFiles = () => {
+    // Held as an override of the default rather than as the file keys on screen: a diff that is
+    // still paging would otherwise bring its next slice in folded, moments after the reader
+    // asked for everything to be open.
     setFoldOverride(areAllDiffFilesCollapsed(fileKeys, collapsedFileKeys) ? "expanded" : "folded");
     setToggledFiles(new Set());
   };
 
-  const orderedCommits = // By instant, not by the text: GitLab keeps a commit's own UTC offset, so two commits
+  // Newest first: the last commit is the one a reader coming back to a change is looking for.
+  const orderedCommits = useMemo(
+    () =>
+      // By instant, not by the text: GitLab keeps a commit's own UTC offset, so two commits
     // from different zones would sort by how they were written rather than when they landed.
     detail.commits.toSorted(
       (left, right) => Date.parse(right.committedDate) - Date.parse(left.committedDate),
+      ),
+    [detail.commits],
     );
 
   const beginComment = useCallback(
@@ -1135,11 +1053,11 @@ function PullRequestCodeTab({
     [canCommentOnLines, files, parsedSlices, detail.capabilities.review.multilineComment],
   );
 
-  const finishSelection = (
-    anchor: DraftAnchor,
-    text: string,
-    onFinish: (comment: ReviewCommentContext) => void,
-  ) => {
+  // Built here because the parsed diff only lives here, and built by the same function the
+  // thread panel's own line selection uses — the gesture is the same one, so a second reading of
+  // the hunks would only be a second place for it to drift.
+  const finishSelection = useCallback(
+    (anchor: DraftAnchor, text: string, onFinish: (comment: ReviewCommentContext) => void) => {
     const file = files.find((candidate) => buildFileDiffRenderKey(candidate) === anchor.fileKey);
     const comment =
       file === undefined
@@ -1156,7 +1074,9 @@ function PullRequestCodeTab({
     setDraft(null);
     setSelectedLines(null);
     if (comment !== null) onFinish(comment);
-  };
+    },
+    [detail.number, files],
+  );
 
   // The viewer's SlotPortals memoizes each visible file's header/annotation portal on these
   // render props and on `options` below; a fresh identity on any of them — as a plain inline
@@ -1508,6 +1428,7 @@ function PullRequestCodeTab({
   // A rebase or a force-push can take the scoped commit out of the change. Its diff may still
   // be reachable on the host, but it is no longer part of what is being reviewed, so the scope
   // goes back to the whole change rather than sitting under a name nothing matches.
+  //
   // Including when the change reports no commits at all: the scope dropdown is the only way back
   // to the whole diff and it is not drawn without commits to list, so a scope that outlived them
   // would leave the tab reading one obsolete commit with nothing to press.
@@ -1639,6 +1560,8 @@ function PullRequestCodeTab({
                 ),
               )}
               {orderedCommits.length > visibleCommitCount ? (
+                // Kept out of the radio group: it changes how much of the list is on screen
+                // rather than what the diff is scoped to.
                 <DropdownMenuItem
                   closeOnClick={false}
                   onClick={() => setVisibleCommitCount((count) => count + COMMIT_PAGE_SIZE)}
@@ -1651,6 +1574,8 @@ function PullRequestCodeTab({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
+        {/* One count, and the caveats as icons that carry their own words. Spelled out they
+            competed for a strip this narrow and every one of them truncated to nothing. */}
         <PullRequestMetaLine>
           {!filesViewed.enabled ? (
           <span className="shrink-0 tabular-nums">
@@ -1660,8 +1585,11 @@ function PullRequestCodeTab({
           ) : null}
           {filesViewed.enabled && files.length > 0 ? (
             <span className="flex min-w-0 items-center gap-1 tabular-nums">
+              {/* Named on a host that keeps no record of its own, so the reader is told whose
+                  ticks these are without having to find the icon beside them. The count holds its
+                  width and the wording gives way, so the narrow right panel keeps its controls. */}
               <span className="shrink-0">
-                {filePaths.filter(isFileViewed).length} / {files.length}
+                {filesViewed.viewedCount} / {files.length}
               </span>
               <span className="truncate">
                 {viewedFilesStore === "environment" ? `viewed in ${APP_BASE_NAME}` : "viewed"}
@@ -1789,38 +1717,6 @@ function PullRequestCodeTab({
       </div>
     </div>
   );
-  // The effects sit after every derivation: a hook between the diff's derivations and their
-  // later readers (the viewer options, the reveal handler) would leave them uncached.
-  useEffect(() => {
-    if (sentinel === null || !canLoadNextSlice) return;
-    const observer = new IntersectionObserver(
-      (observed) => {
-        if (observed.some((entry) => entry.isIntersecting)) loadNextSlice();
-      },
-      { rootMargin: "240px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [canLoadNextSlice, loadNextSlice, sentinel]);
-  const answerReveal = useEffectEvent(() => {
-    if (revealRequest === null || answeredReveal.current === revealRequest.nonce) return;
-    if (!items.some((item) => resolveFileDiffPath(item.fileDiff) === revealRequest.path)) {
-      if (canLoadNextSlice) loadNextSlice();
-      return;
-    }
-    answeredReveal.current = revealRequest.nonce;
-    revealFile(revealRequest.path);
-  });
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- A reveal for a file not loaded yet pages forward, which sets the slice cursor.
-    answerReveal();
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-checked as pages load until the requested file arrives.
-  }, [canLoadNextSlice, items, revealRequest]);
-  useEffect(() => {
-    if (commit !== null && selectedCommit === undefined) {
-      onSelectedCommitChange(null);
-    }
-  }, [commit, onSelectedCommitChange, selectedCommit]);
   const toolbar = (
     <>
       {viewControlsTarget ? createPortal(displayControls, viewControlsTarget) : null}
@@ -1844,23 +1740,39 @@ function PullRequestCodeTab({
     </div>
   );
 
+  // Under the toolbar rather than in place of it, so choosing a commit does not take the
+  // dropdown that was just used off the screen while its diff loads.
   if (diffQuery.isPending && loadedSlices.length === 0) {
     return withToolbar(<DiffPanelLoadingState label="Loading pull request diff..." />);
   }
 
+  // A slice that fails once there are files on screen is reported at the end of them instead:
+  // the diff already read is worth more than the error that stopped it growing.
   if (diffQuery.error && loadedSlices.length === 0) {
     return withToolbar(
-      <PullRequestDiffUnavailableState
-        error={diffQuery.error}
-        provider={detail.provider}
-        url={detail.url}
-        onRetry={() => diffQuery.refresh()}
-      />,
+      <p className="px-4 py-5 text-sm text-muted-foreground">{diffQuery.error}</p>,
     );
   }
 
-  if (rawSlicesView !== null) {
-    return withToolbar(rawSlicesView);
+  // A patch the viewer cannot structure (binary, or a format it does not parse) still has to
+  // be readable, so it falls back to the raw text rather than an empty tab. Only once the diff
+  // is whole: returning here while a cursor is outstanding would take the sentinel off screen
+  // and end the walk, leaving the rest of the change unasked for.
+  const rawSlices =
+    nextCursor === null
+      ? parsedSlices.flatMap((parsed) => (parsed?.kind === "raw" ? [parsed] : []))
+      : [];
+  if (files.length === 0 && rawSlices.length > 0) {
+    return withToolbar(
+      <div className="space-y-4 px-4 py-5">
+        {rawSlices.map((slice) => (
+          <div key={`${slice.reason}:${slice.text.slice(0, 64)}`} className="space-y-2">
+            <p className="text-xs text-muted-foreground">{slice.reason}</p>
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{slice.text}</pre>
+          </div>
+        ))}
+      </div>,
+    );
   }
 
   if (items.length === 0 && nextCursor === null && chapter === null) {
@@ -1981,11 +1893,17 @@ function PullRequestCodeTab({
   return (
     <div className="@container/guide flex h-full min-h-0 flex-col">
       {toolbar}
+      {/* Above the code, closed, and counted: these belong to the change rather than to any
+            line of it, and in the stream they read as cards dropped into the patch. */}
       {orphanFiles.size > 0 ? (
         <div className="shrink-0 border-b border-border/60">
           <Collapsible open={orphansOpen} onOpenChange={setOrphansOpen}>
+            {/* Still a heading, so the section keeps its place in a screen reader's outline;
+                the count is spelled out there rather than left as a bare number. */}
             <h2>
               <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs text-muted-foreground">
+                {/* While slices are still arriving a conversation may simply belong to a file
+                    that has not landed yet, which is not the same as being off the diff. */}
                 <span>
                   {nextCursor === null
                     ? "Conversations not on the current diff"

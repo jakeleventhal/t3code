@@ -1,10 +1,12 @@
+import * as Dialog from "../../components/ui/Dialog";
+import { Alert } from "react-native";
 import { PullRequestCommentComposer } from "./PullRequestCommentComposer";
 import { useFocusEffect, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useRef, useState } from "react";
 import { View } from "react-native";
 import type { PullRequestReviewPosition } from "@t3tools/contracts";
-import { AppText as Text } from "../../components/AppText";
-import { MaterialButton } from "../../components/MaterialButton";
+import { AppText as Text } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
 import { uuidv4 } from "../../lib/uuid";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
@@ -195,7 +197,7 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
         </View>
       ) : null}
       {saved && (!saved.hostedComment || pendingActions.canDiscard) ? (
-        <MaterialButton
+        <Button
           label="Delete draft"
           disabled={store.busy || busy || uploading}
           onPress={() =>

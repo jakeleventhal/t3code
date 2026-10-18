@@ -267,18 +267,6 @@ export function AnnotatableCodeView({
     [draft, files, reviewComments, sectionId, renderHunkAction],
   );
 
-  const removeEntry = useCallback(
-    (entryId: string) => {
-      setSelectedLines(null);
-      if (draft?.annotation.metadata.entries.some((entry) => entry.id === entryId)) {
-        setDraft(null);
-        setDraftText("");
-      } else {
-        removeReviewComment(composerDraftTarget, entryId);
-      }
-    },
-  );
-
   const removeEntry = (entryId: string) => {
     setSelectedLines(null);
     if (draft?.annotation.metadata.entries.some((entry) => entry.id === entryId)) {

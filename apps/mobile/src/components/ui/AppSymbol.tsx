@@ -25,7 +25,7 @@ import IconArrowsDiagonal2 from "@tabler/icons-react-native/IconArrowsDiagonal2"
 import IconArrowsMinimize from "@tabler/icons-react-native/IconArrowsMinimize";
 import IconBan from "@tabler/icons-react-native/IconBan";
 import IconArrowsVertical from "@tabler/icons-react-native/IconArrowsVertical";
-import { DiffCollapseIcon, DiffExpandIcon } from "./DiffDisclosureIcons";
+import { DiffCollapseIcon, DiffExpandIcon } from "../DiffDisclosureIcons";
 import IconSquare from "@tabler/icons-react-native/IconSquare";
 import IconSquareCheckFilled from "@tabler/icons-react-native/IconSquareCheckFilled";
 import IconBellRinging from "@tabler/icons-react-native/IconBellRinging";

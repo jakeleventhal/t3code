@@ -4,10 +4,10 @@ import { useEnvironmentQuery } from "../../state/query";
 import { pullRequestTarget } from "./usePullRequestDiff";
 import * as Clipboard from "expo-clipboard";
 import { Alert, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { ControlPill } from "../../components/ControlPill";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
+import { ControlPill } from "../../components/ui/ControlPill";
 import type { PendingReviewComment } from "./pullRequestReviewDrafts";
 import type { PullRequestParams } from "./usePullRequestDiff";
 import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
@@ -35,7 +35,7 @@ export function PullRequestPendingCommentActions({
   const agent = usePullRequestThreads(params, detail.data, comment.path);
   const markdown = `**Pending comment on ${comment.path}**\n\n${comment.body}`;
   return (
-    <ControlPillMenu
+    <Menu
       title="Comment actions"
       actions={[
         ...(onEdit
@@ -90,6 +90,6 @@ export function PullRequestPendingCommentActions({
       }}
     >
       <ControlPill icon="ellipsis" accessibilityLabel="Comment actions" disabled={actions.busy} />
-    </ControlPillMenu>
+    </Menu>
   );
 }

@@ -1,7 +1,7 @@
 import { Columns2Icon, Rows3Icon, Settings2Icon } from "lucide-react";
 import { useId } from "react";
 
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
 
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -39,7 +39,7 @@ export function DiffDisplayControls({
   onWhitespaceChange?: (checked: boolean) => void;
 }) {
   const settings = useClientSettings();
-  const updateSettings = useUpdateClientSettings();
+  const updateSettings = updateClientSettings;
   return (
     <Popover>
       <Tooltip>

@@ -6,9 +6,9 @@ import {
 } from "@t3tools/client-runtime/review-workspace";
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { ControlPill } from "../../components/ControlPill";
-import { SymbolView } from "../../components/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { ControlPill } from "../../components/ui/ControlPill";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { relativeTime } from "../../lib/time";
 import { REVIEW_MONO_FONT_FAMILY } from "../review/reviewDiffRendering";
 

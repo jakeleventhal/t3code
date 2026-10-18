@@ -11,7 +11,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";
 
 /** Glimmer throughout generation; pause while hidden, backgrounded, or motion is reduced. */

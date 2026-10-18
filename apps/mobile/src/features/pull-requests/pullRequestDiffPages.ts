@@ -37,7 +37,11 @@ export function combinePullRequestDiffPages(
   const parsed = pages.map((page) => {
     const cached = cache.get(page.result);
     if (cached) return cached;
-    let value = buildReviewParsedDiff(page.result.patch, `${scope}:${page.cursor ?? "first"}`, ignoreWhitespace);
+    let value = buildReviewParsedDiff(
+      page.result.patch,
+      `${scope}:${page.cursor ?? "first"}`,
+      ignoreWhitespace,
+    );
     if (value.kind === "files" && page.result.omittedFileStats?.length) {
       const omittedFileStats = new Map(
         page.result.omittedFileStats.map((stat) => [stat.path, stat]),

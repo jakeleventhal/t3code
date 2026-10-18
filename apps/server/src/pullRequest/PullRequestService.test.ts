@@ -8074,7 +8074,7 @@ it.effect("checks expanded files against a diff too large to cache without fetch
     }
     assert.strictEqual(diffReads, 1);
   }),
- );
+);
 
 it.effect.each([false, true])(
   "requires current admin permission before a merge override (%s)",

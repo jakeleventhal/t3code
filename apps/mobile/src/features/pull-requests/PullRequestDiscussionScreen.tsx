@@ -1,11 +1,12 @@
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { ActivityIndicator, Platform, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
-import { AppText as Text } from "../../components/AppText";
-import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { MaterialButton } from "../../components/MaterialButton";
+import { AppText as Text } from "../../components/ui/AppText";
+import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { Button } from "../../components/ui/Button";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
@@ -67,7 +68,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                     {thread.path} · {reviewLineRangeLabel(thread)}
                     {thread.isOutdated ? " · Outdated" : ""}
                   </Text>
-                  <MaterialButton
+                  <Button
                     label="View diff"
                     onPress={() =>
                       navigation.navigate("PullRequestFile", { ...params, path: thread.path })

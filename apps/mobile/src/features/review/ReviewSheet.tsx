@@ -6,8 +6,8 @@ import {
   useNavigation,
   type StaticScreenProps,
 } from "@react-navigation/native";
-import { AppActivityIndicator } from "../../components/AppActivityIndicator";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import { AppBar } from "../../components/ui/AppBar";
 import { useReviewHeaderPresentation } from "./useReviewHeaderPresentation";
 import {
   memo,
@@ -31,9 +31,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { MaterialScreenContent } from "../../components/MaterialScreenContent";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { ScreenContent } from "../../components/ui/ScreenContent";
 import { cn } from "../../lib/cn";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
@@ -719,7 +719,7 @@ export function ReviewSheet(
             onClear={commentSelection.clearSelection}
           />
         </View>
-      </MaterialScreenContent>
+      </ScreenContent>
     </>
   );
 }

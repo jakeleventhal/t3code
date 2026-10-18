@@ -2,8 +2,8 @@ import { reviewRenameSegments } from "@t3tools/client-runtime/review-workspace";
 import { useId, useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { AppText as Text } from "../../../components/AppText";
-import { SymbolView } from "../../../components/AppSymbol";
+import { AppText as Text } from "../../../components/ui/AppText";
+import { SymbolView } from "../../../components/ui/AppSymbol";
 import { PierreEntryIcon } from "../../../components/PierreEntryIcon";
 import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";
 

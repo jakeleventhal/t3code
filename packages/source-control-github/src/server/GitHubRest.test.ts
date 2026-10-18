@@ -61,7 +61,7 @@ function harness(
       return Effect.succeed(HttpClientResponse.fromWeb(request, respond(request)));
     }),
   );
-  const layer = GitHubApi.layer.pipe(
+  const layer = GitHubRest.layer.pipe(
     Layer.provide(Layer.mergeAll(credentials, transport ?? http)),
     Layer.provideMerge(GitHubQuota.layer),
     Layer.provideMerge(SourceControlRateLimit.layer),
@@ -411,7 +411,7 @@ it.effect(
       () => new Response(JSON.stringify({ url: "https://github.com/user-attachments/assets/one" })),
     );
     return Effect.gen(function* () {
-      const api = yield* GitHubApi.GitHubApi;
+      const api = yield* GitHubRest.GitHubRest;
       yield* api
         .rest({
           host: "github.com",
@@ -427,7 +427,7 @@ it.effect(
           },
         })
         .pipe(
-          Effect.provideService(GitHubApi.PinnedGitHubCredential, {
+          Effect.provideService(GitHubRequestPolicy.PinnedGitHubCredential, {
             host: "github.com",
             token: Redacted.make("pinned-test-token"),
             credentialFingerprint: "pinned",
@@ -456,7 +456,7 @@ it.effect("preserves upload length and bytes through the fetch transport", () =>
   };
   const { layer } = harness(() => json({}), FetchHttpClient.layer);
   return Effect.gen(function* () {
-    const api = yield* GitHubApi.GitHubApi;
+    const api = yield* GitHubRest.GitHubRest;
     yield* api.rest({
       host: "github.com",
       operation: "uploadAttachment",

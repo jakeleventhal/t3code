@@ -1,3 +1,5 @@
+import { MorphIcon } from "~/components/MorphIcon";
+import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "./fileTreeExpansion";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import type {
   ContextMenuItem as TreeContextMenuItem,

@@ -1,7 +1,7 @@
 import { Modal, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { ReviewFileTree, type ReviewFileTreeItem } from "../review/ReviewFileTree";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 

@@ -3,10 +3,11 @@ import { useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { reviewGuideStopProgress } from "@t3tools/client-runtime/review-guide-tour";
-import { AndroidScreenHeader } from "../../../components/AndroidScreenHeader";
-import { AppText as Text } from "../../../components/AppText";
+import { AndroidScreenHeader } from "../../../components/ui/AndroidScreenHeader";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { PullRequestCommentsSheet } from "../PullRequestCommentsSheet";
-import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../../native/StackHeader";
+import { NativeStackScreenOptions } from "../../../native/StackHeader";
+import { Toolbar } from "../../../components/ui/Toolbar";
 import { PullRequestDiffContent } from "../PullRequestRouteScreen";
 import { GuideViewOptions } from "./GuideViewOptions";
 import { GuideChapterNavigation } from "./GuideChapterNavigation";
@@ -56,18 +57,18 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
         visible={commentsOpen}
         onClose={() => setCommentsOpen(false)}
       />
-      <NativeHeaderToolbar placement="right">
-        <NativeHeaderToolbar.Button
+      <Toolbar placement="right">
+        <Toolbar.Button
           icon="slider.horizontal.3"
           accessibilityLabel="View options"
           onPress={() => setOptionsOpen(true)}
         />
-        <NativeHeaderToolbar.Button
+        <Toolbar.Button
           icon="text.bubble"
           accessibilityLabel="Comments"
           onPress={() => setCommentsOpen(true)}
         />
-      </NativeHeaderToolbar>
+      </Toolbar>
       {Platform.OS === "android" ? (
         <AndroidScreenHeader
           title={title}

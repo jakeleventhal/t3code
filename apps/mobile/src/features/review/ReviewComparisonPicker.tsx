@@ -1,7 +1,7 @@
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
 import { buildReviewSectionMenu } from "./review-section-menu";
 import type { ReviewSectionItem } from "./reviewModel";
 
@@ -30,7 +30,7 @@ export function ReviewComparisonPicker({
   return (
     <View className="min-h-11 flex-row items-center gap-2 border-b border-border-subtle bg-sheet px-3">
       <View className="min-w-0 flex-1">
-        <ControlPillMenu
+        <Menu
           title="Compare changes"
           actions={[
             action(menu.workingTree, "Uncommitted changes"),
@@ -61,7 +61,7 @@ export function ReviewComparisonPicker({
             </Text>
             <SymbolView name="chevron.down" size={13} tintColorClassName="accent-icon-muted" />
           </Pressable>
-        </ControlPillMenu>
+        </Menu>
       </View>
     </View>
   );

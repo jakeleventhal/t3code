@@ -1,7 +1,7 @@
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
 
 type Props = {
   readonly rangeLabel: string;
@@ -72,7 +72,7 @@ export function WorkingChangesLineActions(props: Props) {
             Comment
           </Text>
         </Pressable>
-        <ControlPillMenu
+        <Menu
           title="Selected line actions"
           actions={actions}
           onPressAction={({ nativeEvent }) => {
@@ -88,7 +88,7 @@ export function WorkingChangesLineActions(props: Props) {
             <Text className="text-sm font-t3-medium">More</Text>
             <SymbolView name="ellipsis" size={16} tintColorClassName="accent-icon" />
           </Pressable>
-        </ControlPillMenu>
+        </Menu>
       </View>
     </View>
   );

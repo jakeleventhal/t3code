@@ -3,7 +3,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AppActivityIndicator } from "../../components/AppActivityIndicator";
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import {
   readWorkspacePane,
   rememberWorkspacePane,
@@ -13,7 +13,7 @@ import {
   workspaceThreadMemoryKey,
   type WorkspacePane,
 } from "./workspacePaneMemory";
-import { SegmentedControl } from "../../components/SegmentedControl";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { vcsEnvironment } from "../../state/vcs";

@@ -17,10 +17,10 @@ import {
 } from "@t3tools/shared/filePreview";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 
-import { AppTextInput } from "../../components/AppText";
-import { MaterialScreenContent } from "../../components/MaterialScreenContent";
-import { AudioFilePreview } from "../../components/AudioFilePreview";
-import { EmptyState } from "../../components/EmptyState";
+import { AppTextInput } from "../../components/ui/AppText";
+import { ScreenContent } from "../../components/ui/ScreenContent";
+import { AudioFilePreview } from "./AudioFilePreview";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { resolveFileSelectionNavigationAction } from "../../lib/adaptive-navigation";
@@ -571,7 +571,7 @@ export function ThreadFilesTreeScreen(
         onBack={handleReturnToThread}
       />
       )}
-      <MaterialScreenContent insetHorizontal={layout.usesSplitView}>
+      <ScreenContent insetHorizontal={layout.usesSplitView}>
         <FileTreeBrowser
           key={JSON.stringify([environmentId, cwd])}
           entries={entriesQuery.entries}
@@ -944,7 +944,7 @@ export function ThreadFileScreen(
         onReturnToThread={handleReturnToThread}
         actions={fileMenuActions}
       />
-      <MaterialScreenContent>
+      <ScreenContent>
         {props.workspaceTabs ? (
           <View
             style={{

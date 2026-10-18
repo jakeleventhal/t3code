@@ -1,3 +1,6 @@
+import { Chip } from "../../components/ui/Chip";
+import { Toolbar } from "../../components/ui/Toolbar";
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { readPullRequestView, rememberPullRequestView } from "./pullRequestViewMemory";
 import { PullRequestFilesSheet } from "./PullRequestFilesSheet";
 import { ReviewDisplayOptions } from "../review/ReviewDisplayOptions";
@@ -1395,9 +1398,9 @@ export function PullRequestDiffContent({
         />
       ) : null}
       {!embedded ? (
-        <NativeHeaderToolbar placement="right">
+        <Toolbar placement="right">
           {commits.length > 0 ? (
-            <NativeHeaderToolbar.Button
+            <Toolbar.Button
               label={
                 commit === null
                   ? "All"
@@ -1409,61 +1412,54 @@ export function PullRequestDiffContent({
             />
           ) : null}
           {!isGuideChapter ? (
-            <NativeHeaderToolbar.Custom>
+            <Toolbar.Custom>
               <PullRequestFileExpansionActions collapsed={allCollapsed} onToggle={toggleAllFiles} />
-            </NativeHeaderToolbar.Custom>
+            </Toolbar.Custom>
           ) : null}
-          <NativeHeaderToolbar.Menu
-            title="Diff options"
-            accessibilityLabel="Diff options"
-            icon="ellipsis"
-          >
-            <NativeHeaderToolbar.MenuAction icon="folder" onPress={() => setFilesOpen(true)}>
-              <NativeHeaderToolbar.Label>View files</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
-              <NativeHeaderToolbar.MenuAction
-              icon="slider.horizontal.3"
-              onPress={() => setOptionsOpen(true)}
-              >
-              <NativeHeaderToolbar.Label>View options</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+          <Toolbar.Menu title="Diff options" accessibilityLabel="Diff options" icon="ellipsis">
+            <Toolbar.MenuAction icon="folder" onPress={() => setFilesOpen(true)}>
+              <Toolbar.Label>View files</Toolbar.Label>
+            </Toolbar.MenuAction>
+            <Toolbar.MenuAction icon="slider.horizontal.3" onPress={() => setOptionsOpen(true)}>
+              <Toolbar.Label>View options</Toolbar.Label>
+            </Toolbar.MenuAction>
           {permissions.verdicts.length ? (
-              <NativeHeaderToolbar.MenuAction
+              <Toolbar.MenuAction
               icon="text.bubble"
               onPress={() =>
                   navigation.navigate("PullRequestReview", { ...params, mode: "review" })
               }
             >
-                <NativeHeaderToolbar.Label>Submit review</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+                <Toolbar.Label>Submit review</Toolbar.Label>
+              </Toolbar.MenuAction>
           ) : null}
           {permissions.canComment ? (
-              <NativeHeaderToolbar.MenuAction
+              <Toolbar.MenuAction
               icon="plus.bubble"
               onPress={() =>
                   navigation.navigate("PullRequestReview", { ...params, mode: "comment" })
               }
             >
-                <NativeHeaderToolbar.Label>Add comment</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+                <Toolbar.Label>Add comment</Toolbar.Label>
+              </Toolbar.MenuAction>
           ) : null}
           {selectedRow && selectedFile && canCommentOnDiff ? (
-              <NativeHeaderToolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
-                <NativeHeaderToolbar.Label>
+              <Toolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
+                <Toolbar.Label>
                   {params.replacingDraftId ? "Move draft to this line" : "Add review comment"}
-                </NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+                </Toolbar.Label>
+              </Toolbar.MenuAction>
           ) : null}
           {selectedRow && selectedFile ? (
-              <NativeHeaderToolbar.MenuAction
+              <Toolbar.MenuAction
               icon="document.on.document"
               onPress={() => void Clipboard.setStringAsync(selectedRow.content ?? "")}
             >
-                <NativeHeaderToolbar.Label>Copy line</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+                <Toolbar.Label>Copy line</Toolbar.Label>
+              </Toolbar.MenuAction>
           ) : null}
-          </NativeHeaderToolbar.Menu>
-        </NativeHeaderToolbar>
+          </Toolbar.Menu>
+        </Toolbar>
       ) : null}
       {!embedded && !isGuideChapter && Platform.OS === "android" ? (
         <View className="flex-row justify-end px-4">
@@ -1493,7 +1489,7 @@ export function PullRequestDiffContent({
               <SymbolView name="chevron.down" size={10} tintColorClassName="accent-icon-muted" />
             </Pressable>
           ) : null}
-          <ControlPillMenu
+          <Menu
             title="Code options"
             actions={[
               { id: "view-files", title: "View files", image: "folder" },
@@ -1510,7 +1506,7 @@ export function PullRequestDiffContent({
             >
               <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         </View>
       ) : null}
       <ReviewDisplayOptions
@@ -1707,7 +1703,7 @@ export function PullRequestDiffContent({
               title={commentsOnly ? "No files with unresolved comments" : "No unreviewed files"}
               detail="No files match the current review filters."
               action={
-                <MaterialButton
+                <Button
                   label="Show all files"
                   tone="contrast"
                   onPress={() =>

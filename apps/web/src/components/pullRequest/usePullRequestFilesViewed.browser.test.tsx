@@ -61,7 +61,12 @@ let root: Root;
 let current: PullRequestFilesViewedView;
 
 function Surface() {
-  const view = usePullRequestFilesViewed({ environmentId, reference, enabled: true });
+  const view = usePullRequestFilesViewed({
+    environmentId,
+    reference,
+    enabled: true,
+    paths: ["a.ts"],
+  });
   useEffect(() => {
     current = view;
   });

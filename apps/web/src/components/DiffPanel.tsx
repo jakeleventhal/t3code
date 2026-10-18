@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { useAtomValue } from "@effect/atom-react";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
@@ -40,7 +41,13 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "../lib/syntaxHighlighting";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
-import { useProject, useThreadCheckpointSummaries, useQuietThreadShell, useThreadProjection, useThreadShell } from "../state/entities";
+import {
+  useProject,
+  useThreadCheckpointSummaries,
+  useQuietThreadShell,
+  useThreadProjection,
+  useThreadShell,
+} from "../state/entities";
 import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { formatShortTimestamp } from "../timestampFormat";

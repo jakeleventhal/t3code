@@ -3891,6 +3891,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
+      NodeFS.mkdirSync(NodePath.join(repoDir, ".git/info"), { recursive: true });
       // Patch generation would invoke this unavailable converter. A supplied
       // message must commit without generating a patch it will not use.
       NodeFS.writeFileSync(

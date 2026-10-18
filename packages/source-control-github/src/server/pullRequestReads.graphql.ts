@@ -457,7 +457,7 @@ export const PullRequestCore = GraphQL.query("PullRequestCore", {
       { name: "requestedReviewers", body: "Int!" }
     ],
     selections: [
-      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed viewerPermission pullRequest(number:$", "number", "){number title url body state isDraft mergeable mergeStateStatus reviewDecision additions deletions changedFiles createdAt updatedAt mergedAt closedAt headRefName baseRefName headRefOid isCrossRepository headRepositoryOwner{__typename login}headRepository{nameWithOwner viewerPermission}headRef{id}author{__typename login avatarUrl...on User{id name}}autoMergeRequest{mergeMethod}viewerCanUpdate viewerDidAuthor viewerCanUpdateBranch baseRef{compare(headRef:$", "headRef", "){behindBy}}reviewRequests(first:$", "requestedReviewers", "){nodes{requestedReviewer{__typename...on User{login name}...on Bot{login}...on Team{slug combinedSlug teamName:name teamAvatarUrl:avatarUrl}}}}labels(first:100){nodes{name color}}commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename...", "CheckContext", "}pageInfo{hasNextPage}}}}}}}}"] }
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerPermission pullRequest(number:$", "number", "){number title url body state isDraft mergeable mergeStateStatus reviewDecision additions deletions changedFiles createdAt updatedAt mergedAt closedAt headRefName baseRefName headRefOid isCrossRepository headRepositoryOwner{__typename login}headRepository{nameWithOwner viewerPermission}headRef{id}author{__typename login avatarUrl...on User{id name}}autoMergeRequest{mergeMethod}viewerCanUpdate viewerDidAuthor viewerCanUpdateBranch baseRef{compare(headRef:$", "headRef", "){behindBy}}reviewRequests(first:100){nodes{requestedReviewer{__typename...on User{login name}...on Bot{login}...on Team{slug combinedSlug teamName:name teamAvatarUrl:avatarUrl}}}}labels(first:100){nodes{name color}}commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename...", "CheckContext", "}pageInfo{hasNextPage}}}}}}}}"] }
     ],
     fragments: [
       { name: "CheckContext", body: ["on StatusCheckRollupContext{__typename...on StatusContext{context state targetUrl createdAt description isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")}...on CheckRun{name status conclusion startedAt completedAt detailsUrl isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")checkSuite{workflowRun{workflow{name}}}}}"] }
@@ -730,6 +730,13 @@ export const IssueCommentConnection = Schema.Struct({
 })
 export interface IssueCommentConnection extends Schema.Struct.Type<typeof IssueCommentConnection.fields> {}
 
+/** Represents a Git commit. */
+export const ReviewsNodesCommitCommit = Schema.Struct({
+  /** The Git object ID */
+  oid: Shared.GitObjectID
+})
+export interface ReviewsNodesCommitCommit extends Schema.Struct.Type<typeof ReviewsNodesCommitCommit.fields> {}
+
 /** A review object for a given pull request. */
 export const NodesPullRequestReview = Schema.Struct({
   /** The Node ID of the PullRequestReview object */
@@ -740,6 +747,8 @@ export const NodesPullRequestReview = Schema.Struct({
   state: GraphQL.enumLiterals(Shared.PullRequestReviewState.literals),
   /** Identifies when the Pull Request Review was submitted */
   submittedAt: Schema.NullOr(Shared.DateTime),
+  /** Identifies the commit associated with this pull request review. */
+  commit: Schema.NullOr(ReviewsNodesCommitCommit),
   /** The moment the editor made the last edit */
   lastEditedAt: Schema.NullOr(Shared.DateTime),
   /** The HTTP URL permalink for this PullRequestReview. */
@@ -798,7 +807,7 @@ export const PullRequestActivity = GraphQL.query("PullRequestActivity", {
       { name: "reviewsAfter", body: "String" }
     ],
     selections: [
-      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){author@include(if:$", "head", "){__typename login avatarUrl...on User{name}}commits(last:100)@include(if:$", "head", "){nodes{commit{oid messageHeadline committedDate authors(first:10){nodes{name email user{login}}}}}}comments(first:100 after:$", "commentsAfter", ")@include(if:$", "withComments", "){pageInfo{hasNextPage endCursor}nodes{id body createdAt lastEditedAt url author{__typename login avatarUrl...on User{name}}}}reviews(first:100 after:$", "reviewsAfter", ")@include(if:$", "withReviews", "){pageInfo{hasNextPage endCursor}nodes{id body state submittedAt lastEditedAt url author{__typename login avatarUrl...on User{name}}}}}}"] }
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){author@include(if:$", "head", "){__typename login avatarUrl...on User{name}}commits(last:100)@include(if:$", "head", "){nodes{commit{oid messageHeadline committedDate authors(first:10){nodes{name email user{login}}}}}}comments(first:100 after:$", "commentsAfter", ")@include(if:$", "withComments", "){pageInfo{hasNextPage endCursor}nodes{id body createdAt lastEditedAt url author{__typename login avatarUrl...on User{name}}}}reviews(first:100 after:$", "reviewsAfter", ")@include(if:$", "withReviews", "){pageInfo{hasNextPage endCursor}nodes{id body state submittedAt commit{oid}lastEditedAt url author{__typename login avatarUrl...on User{name}}}}}}"] }
     ],
     fragments: []
   },

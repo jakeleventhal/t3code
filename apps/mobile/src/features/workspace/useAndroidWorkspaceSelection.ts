@@ -1,8 +1,8 @@
-import { useNavigation } from "@react-navigation/native";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import { useCallback } from "react";
 import { Keyboard } from "react-native";
 import {
-  resetAndroidWorkspace,
+  androidWorkspaceNavigationState,
   type AndroidWorkspaceDestination,
 } from "../../lib/android-workspace-navigation";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";

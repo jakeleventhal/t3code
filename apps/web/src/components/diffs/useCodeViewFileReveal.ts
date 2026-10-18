@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import type { CodeViewScrollTarget } from "@pierre/diffs";
 import { useEffect, useRef, useState } from "react";
 

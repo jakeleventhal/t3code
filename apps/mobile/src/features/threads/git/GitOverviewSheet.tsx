@@ -8,7 +8,7 @@ import {
 } from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { SymbolView } from "../../../components/AppSymbol";
+import { SymbolView } from "../../../components/ui/AppSymbol";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 

@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
@@ -770,134 +771,15 @@ export function PullRequestDetailPanel({
   const inlineConfirm = useInlineActionConfirm(pullRequestKey);
   const [handoff, setHandoff] = useState<string | null>(null);
   const turnRefresh = usePullRequestTurnRefresh(environmentId);
-  const [cachedDetail, setCachedDetail] = useState(() =>
-    readPullRequestDetailSnapshot(
-      typeof window === "undefined" ? undefined : window.localStorage,
-      environmentId,
-      reference,
-    ),
-  );
-  useEffect(() => {
-    setCachedDetail(
-      readPullRequestDetailSnapshot(
-        typeof window === "undefined" ? undefined : window.localStorage,
-        environmentId,
-        reference,
-      ),
-    );
-  }, [environmentId, reference]);
-  useEffect(() => {
-    if (detailQuery.data === null) return;
-    writePullRequestDetailSnapshot(
-      typeof window === "undefined" ? undefined : window.localStorage,
-      environmentId,
-      reference,
-      detailQuery.data,
-    );
-    setCachedDetail(detailQuery.data);
-  }, [detailQuery.data, environmentId, reference]);
-  const resolvedCoreDetail = resolveDisplayedPullRequestDetail({
-    live: detailQuery.data,
-    cached: cachedDetail,
-    reference,
-  });
-  const listSummary = useMemo(
-    () => (matchingListEntry === null ? null : pullRequestListEntryToSummary(matchingListEntry)),
-    [matchingListEntry],
-  );
-  const detailSummary = useMemo(
-    () =>
-      detailQuery.data === null
-        ? null
-        : {
-            ...detailQuery.data,
-            checksState: pullRequestChecksState(detailQuery.data.checks),
-          },
-    [detailQuery.data],
-  );
-  const observedSummary = useSharedPullRequestSummary(
-    environmentId,
-    reference,
-    detailSummary,
-    detailQuery.dataUpdatedAt,
-  );
-  // The list row is also published to the shared cache, but only after this commit's layout
-  // effects run, so it is compared directly rather than trusted to be there already.
-  const sharedSummary = useMemo(
-    () =>
-      newestPullRequestSummary(
-        resolvedCoreDetail,
-        newestPullRequestSummary(observedSummary, listSummary),
-      ),
-    [resolvedCoreDetail, observedSummary, listSummary],
-  );
-  const coreDetail = useMemo(
-    () =>
-      resolvedCoreDetail === null || sharedSummary === null || sharedSummary === resolvedCoreDetail
-        ? resolvedCoreDetail
-        : {
-            ...resolvedCoreDetail,
-            title: sharedSummary.title,
-            state: sharedSummary.state,
-            headBranch: sharedSummary.headBranch,
-            baseBranch: sharedSummary.baseBranch,
-            updatedAt: sharedSummary.updatedAt,
-            author: sharedSummary.author ?? resolvedCoreDetail.author,
-            additions: sharedSummary.additions ?? resolvedCoreDetail.additions,
-            deletions: sharedSummary.deletions ?? resolvedCoreDetail.deletions,
-            changedFiles: sharedSummary.changedFiles ?? resolvedCoreDetail.changedFiles,
-            mergeability: sharedSummary.mergeability ?? resolvedCoreDetail.mergeability,
-            closedAt:
-              sharedSummary.closedAt === undefined
-                ? resolvedCoreDetail.closedAt
-                : sharedSummary.closedAt,
-            mergedAt:
-              sharedSummary.mergedAt === undefined
-                ? resolvedCoreDetail.mergedAt
-                : sharedSummary.mergedAt,
-            // A summary may come from an older server that does not report draft state. Keep the
-            // detail's required value instead of making the complete detail shape partial.
-            isDraft: sharedSummary.isDraft ?? resolvedCoreDetail.isDraft,
-          },
-    [resolvedCoreDetail, sharedSummary],
-  );
-  const activity = activityQuery.data;
-  const detail = useMemo(
-    () =>
-      coreDetail === null
-        ? null
-        : {
-            ...coreDetail,
-            capabilities: canWriteSourceControl
-              ? coreDetail.capabilities
-              : {
-                  ...coreDetail.capabilities,
-                  reactions: false,
-                  edit: { changeRequest: false, comment: false },
-                },
-            viewerPermissions: canWriteSourceControl
-              ? coreDetail.viewerPermissions
-              : {
-                  ...coreDetail.viewerPermissions,
-                  actions: [],
-                  comment: false,
-                  resolve: false,
-                  verdicts: [],
-                  requestReviewers: false,
-                  updateMethods: [],
-                  labels: false,
-                },
-            author: activity?.author ?? coreDetail.author,
-            reviewers: activity?.reviewers ?? coreDetail.reviewers,
-            comments: activity?.comments ?? [],
-            commentCount: activity?.commentCount ?? 0,
-            commentsTruncated: activity?.commentsTruncated ?? false,
-            reviewThreads: activity?.reviewThreads ?? [],
-            commits: activity?.commits ?? [],
-            reactions: activity?.reactions ?? [],
-          },
-    [activity, canWriteSourceControl, coreDetail],
-  );
+  const {
+    canWriteSourceControl,
+    detailQuery,
+    activityQuery,
+    activity,
+    sharedSummary,
+    coreDetail,
+    detail,
+  } = usePullRequestDetail(environmentId, reference, matchingListEntry);
   const handoffSummary = detail ?? sharedSummary;
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { copyToClipboard: copyReference } = useCopyToClipboard<string>({
@@ -1003,15 +885,15 @@ export function PullRequestDetailPanel({
     } else if (!activityQuery.isPending) {
       // Let an existing read settle before revalidating the new revision. Interrupting a
       // mutation's activity refresh can leave SWR displaying its previous value.
-      if (activityQuery.isPending) return;
-      refreshActivityQuery();
+      setActivityRevision(next);
+      setActivityRevalidations((count) => count + 1);
       setRefreshToken((token) => token + 1);
     }
-    activityRevision.current = next;
-  }, [activityQuery.isPending, refreshActivityQuery, coreDetail, tabScopeKey]);
-  // Reuse activity and diff until core detail reports a changed revision. Keyed by
-  // the pull request rather than by the panel, because this one panel shows a different pull
-  // request every time it is opened.
+  }
+  const revalidateActivity = useEffectEvent(() => activityQuery.refresh());
+  useEffect(() => {
+    if (activityRevalidations > 0) revalidateActivity();
+  }, [activityRevalidations]);
   useLiveRefresh(
     () => {
       detailQuery.refresh();

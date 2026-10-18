@@ -7,11 +7,11 @@ import type { PullRequestDetail, PullRequestMergeMethod } from "@t3tools/contrac
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { MaterialButton } from "../../components/MaterialButton";
-import { MaterialIconButton } from "../../components/MaterialIconButton";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
+import { Button } from "../../components/ui/Button";
+import { IconButton } from "../../components/ui/IconButton";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -361,12 +361,8 @@ export function PullRequestMergeControls(props: {
               </Text>
             </Pressable>
             <View className="flex-row flex-wrap justify-end gap-2">
-              <MaterialButton
-                label="Cancel"
-                disabled={busy}
-                onPress={() => setConfirmation(null)}
-              />
-              <MaterialButton
+              <Button label="Cancel" disabled={busy} onPress={() => setConfirmation(null)} />
+              <Button
                 label={
                   busy
                     ? "Working…"

@@ -187,11 +187,7 @@ export function PullRequestActionToolbar(props: {
               </View>
             ) : null}
             {props.showFiles !== false ? (
-              <IconButton
-                icon="file.diff"
-                accessibilityLabel="Changed files"
-                onPress={openFiles}
-              />
+              <IconButton icon="file.diff" accessibilityLabel="Changed files" onPress={openFiles} />
             ) : null}
           </View>
         </Toolbar>

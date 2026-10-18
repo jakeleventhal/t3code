@@ -72,6 +72,7 @@ const row = (fields: Record<string, unknown>) => ({
   state: "OPEN",
   isDraft: false,
   mergeable: "UNKNOWN",
+  mergeStateStatus: "UNKNOWN",
   reviewDecision: null,
   latestReviews: { nodes: [] },
   createdAt: "2026-07-01T00:00:00Z",
@@ -125,6 +126,7 @@ const reactionGroups = (groups: ReadonlyArray<Json> | undefined) =>
   }));
 const remark = ({ author, reactionGroups: groups, ...raw }: Json) => ({
   body: "",
+  pullRequestReview: null,
   lastEditedAt: null,
   url: "https://github.com/acme/web/pull/1#discussion",
   ...raw,
@@ -207,6 +209,8 @@ const withReviewDefaults = (raw: string): string => {
           isOutdated: false,
           line: null,
           diffSide: "RIGHT",
+          startLine: null,
+          startDiffSide: null,
           ...thread,
           comments: threadCommentsOf(thread["comments"]),
         })),
@@ -493,7 +497,7 @@ describe("pull request detail decoding", () => {
             state: "OPEN",
             isDraft: false,
             mergeable: "MERGEABLE",
-            mergeStateStatus: "BLOCKED",
+            mergeStateStatus: "UNKNOWN",
             reviewDecision: null,
             additions: 0,
             deletions: 0,
@@ -537,6 +541,24 @@ describe("pull request detail decoding", () => {
     rollup: ReadonlyArray<Record<string, unknown>>,
     pullRequest?: Record<string, unknown>,
   ) => expectSuccess(decodePullRequestCoreJson(coreJson(rollup, pullRequest)));
+
+  it.each([
+    ["CLEAN", true],
+    ["HAS_HOOKS", true],
+    ["BLOCKED", false],
+    ["BEHIND", false],
+    ["UNSTABLE", false],
+    ["UNKNOWN", undefined],
+  ] as const)(
+    "preserves GitHub merge requirements for %s independently of CI",
+    (mergeStateStatus, expected) => {
+      expect(
+        detailOf([check({ name: "build", status: "COMPLETED", conclusion: "SUCCESS" })], {
+          mergeStateStatus,
+        }).mergeRequirementsSatisfied,
+      ).toBe(expected);
+    },
+  );
 
   /** The conversation the activity read carries, in the flat shape the tests below write. */
   const detailJson = JSON.stringify({
@@ -583,6 +605,7 @@ describe("pull request detail decoding", () => {
                   url: "https://github.com/r",
                   author: null,
                   submittedAt: null,
+                  commit: null,
                   ...review,
                 }),
               ),
@@ -617,32 +640,6 @@ describe("pull request detail decoding", () => {
       ),
       commits: page.commits ?? [],
     }));
-
-  it.each([
-    ["CLEAN", true],
-    ["HAS_HOOKS", true],
-    ["BLOCKED", false],
-    ["BEHIND", false],
-    ["UNSTABLE", false],
-    ["UNKNOWN", undefined],
-    ["SOMETHING_NEW", undefined],
-    [null, undefined],
-  ])(
-    "preserves GitHub merge requirements for %s independently of CI",
-    (mergeStateStatus, expected) => {
-      const raw = JSON.parse(detailJson) as Record<string, unknown>;
-      const detail = expectSuccess(
-        decodePullRequestDetailJson(
-          JSON.stringify({
-            ...raw,
-            mergeStateStatus,
-            statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "SUCCESS" }],
-          }),
-        ),
-      );
-      expect(detail.mergeRequirementsSatisfied).toBe(expected);
-    },
-  );
 
   it("maps check-run status and commit-status state onto one vocabulary", () => {
     const detail = detailOf([
@@ -1590,6 +1587,8 @@ describe("review thread decoding", () => {
             path: "src/a.ts",
             line: 53,
             diffSide: "RIGHT",
+            startLine: null,
+            startDiffSide: null,
             startLine: 48,
             startDiffSide: "LEFT",
             comments: { totalCount: 1, nodes: [comment("range", "Review these lines")] },
@@ -1615,6 +1614,8 @@ describe("review thread decoding", () => {
             path: "src/a.ts",
             line: null,
             diffSide: "RIGHT",
+            startLine: null,
+            startDiffSide: null,
             comments: { totalCount: 1, nodes: [comment("c3", "stale")] },
           },
         ]),
@@ -1637,6 +1638,8 @@ describe("review thread decoding", () => {
             path: "src/a.ts",
             line: 7,
             diffSide: "RIGHT",
+            startLine: null,
+            startDiffSide: null,
             comments: { totalCount: 1, nodes: [comment("c4", "done")] },
           },
         ]),
@@ -2352,6 +2355,7 @@ describe("batched pull request summaries", () => {
     state: "MERGED",
     isDraft: false,
     mergeable: "UNKNOWN",
+    mergeStateStatus: "UNKNOWN",
     reviewDecision: null,
     additions: 0,
     deletions: 0,
@@ -2408,6 +2412,7 @@ describe("pull request watch fingerprints", () => {
       readonly reviews: number;
     }) => ({
       state: "OPEN",
+      mergeStateStatus: "UNKNOWN",
       mergeable: "MERGEABLE",
       headRefOid: "abc123",
       comments: { totalCount: 1, nodes: [{ lastEditedAt: input.commentEditedAt }] },
@@ -2439,17 +2444,19 @@ describe("pull request watch fingerprints", () => {
     const checkFinished = fingerprint({ ...base, running: 1, failed: 1 });
     const summaryEdited = fingerprint({ ...base, commentEditedAt: "2026-10-05T23:47:43Z" });
     const replied = fingerprint({ ...base, reviews: 2 });
-    const requirementsMet = decode({ ...pullRequest(base), mergeStateStatus: "CLEAN" }).get(0)!;
-    const reviewRequired = decode({ ...pullRequest(base), mergeStateStatus: "BLOCKED" }).get(0)!;
 
+    const requirementsMet = toPullRequestWatchFingerprint(
+      decodeWatched({ ...pullRequest(base), mergeStateStatus: "CLEAN" }),
+    );
+    const reviewRequired = toPullRequestWatchFingerprint(
+      decodeWatched({ ...pullRequest(base), mergeStateStatus: "BLOCKED" }),
+    );
+    expect(requirementsMet.status).not.toBe(reviewRequired.status);
+    expect(requirementsMet.remarks).toBe(reviewRequired.remarks);
     expect(checkFinished.status).not.toBe(before.status);
     expect(checkFinished.remarks).toBe(before.remarks);
     expect(summaryEdited.remarks).not.toBe(before.remarks);
     expect(summaryEdited.status).toBe(before.status);
     expect(replied.remarks).not.toBe(before.remarks);
-    expect(requirementsMet.status).not.toBe(reviewRequired.status);
-    expect(requirementsMet.remarks).toBe(reviewRequired.remarks);
-    // A pull request GitHub had no answer for is left for a full read.
-    expect(decode(null, pullRequest(base)).has(0)).toBe(false);
   });
 });

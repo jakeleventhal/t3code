@@ -19,8 +19,8 @@ import {
   usePullRequestReviewDraft,
 } from "./usePullRequestReviewDraft";
 import { reviewPositionLabel } from "./pullRequestDiffComments";
-import { AppText as Text } from "../../components/AppText";
-import { SegmentedControl } from "../../components/SegmentedControl";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";

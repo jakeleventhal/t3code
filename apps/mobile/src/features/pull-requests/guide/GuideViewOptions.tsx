@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable } from "react-native";
-import { SymbolView } from "../../../components/AppSymbol";
+import { SymbolView } from "../../../components/ui/AppSymbol";
 import { ReviewDisplayOptions } from "../../review/ReviewDisplayOptions";
 import { useDiffWhitespacePreference } from "../../review/useDiffWhitespacePreference";
 import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";

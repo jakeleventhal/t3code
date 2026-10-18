@@ -950,15 +950,6 @@ interface RestReadInput<A> {
   readonly decode: (raw: string) => Result.Result<A, unknown>;
 }
 
-/** The mutations that only need the pull request's node id. */
-const SIMPLE_ACTION_MUTATIONS = {
-  "disable-auto-merge": DISABLE_AUTO_MERGE_GRAPHQL_MUTATION,
-  ready: READY_FOR_REVIEW_GRAPHQL_MUTATION,
-  draft: CONVERT_TO_DRAFT_GRAPHQL_MUTATION,
-  close: CLOSE_PULL_REQUEST_GRAPHQL_MUTATION,
-  reopen: REOPEN_PULL_REQUEST_GRAPHQL_MUTATION,
-} as const satisfies Partial<Record<PullRequestAction, string>>;
-
 const PendingReviewCommentSchema = Schema.Struct({
   id: Schema.Number,
   node_id: Schema.String,
@@ -1376,7 +1367,7 @@ export const make = Effect.gen(function* () {
 
   const draftReviewGate = Semaphore.makeUnsafe(1);
   // A failed read is safe to repeat; a failed save may already have created its comment.
-  const retryPendingReviewRead = <A>(read: Effect.Effect<A, GitHubApi.GitHubApiError>) =>
+  const retryPendingReviewRead = <A>(read: Effect.Effect<A, GitHubPullRequestApiError>) =>
     read.pipe(
       Effect.retry({
         times: 2,
@@ -1396,17 +1387,12 @@ export const make = Effect.gen(function* () {
     includePositions = true,
   ) {
     const { owner, name } = parseRepositorySelector(input.repository);
-    const response = yield* api
-      .graphql({
-      host: input.host,
-      operation: "pendingReview",
-      query: `query PendingReview($owner:String!,$name:String!,$number:Int!) {
-        repository(owner:$owner,name:$name) { pullRequest(number:$number) {
-          id reviews(first:100,states:PENDING) { nodes { id fullDatabaseId body viewerDidAuthor } }
-        } }
-      }`,
-      variables: { owner, name, number: input.number },
-      })
+    const response = yield* client
+      .PendingReview({ owner, name, number: input.number })
+      .pipe(
+        graphql({ ...input, operation: "pendingReview" }),
+        Effect.map((data) => JSON.stringify({ data })),
+      )
       .pipe(retryPendingReviewRead);
     const decoded = yield* decodePendingReviews(response).pipe(
       Effect.mapError((cause) => readError(input.cwd, "pendingReview", cause)),
@@ -1446,20 +1432,12 @@ export const make = Effect.gen(function* () {
     const commentIndices = new Map(comments.map((comment, index) => [comment.node_id, index]));
     let cursor: string | null = null;
     for (let page = 0; needsPositions.size > 0 && page < REVIEW_THREAD_PAGES; page++) {
-      const response: string = yield* api
-        .graphql({
-        host: input.host,
-        operation: "pendingReview",
-        query: `query PendingReviewPositions($owner:String!,$name:String!,$number:Int!,$cursor:String) {
-          repository(owner:$owner,name:$name) { pullRequest(number:$number) {
-            reviewThreads(first:100,after:$cursor) {
-              pageInfo { hasNextPage endCursor }
-              nodes { line diffSide startLine startDiffSide comments(first:100) { nodes { id } } }
-            }
-          } }
-        }`,
-        variables: { owner, name, number: input.number, cursor },
-        })
+      const response: string = yield* client
+        .PendingReviewPositions({ owner, name, number: input.number, cursor })
+        .pipe(
+          graphql({ ...input, operation: "pendingReview" }),
+          Effect.map((data) => JSON.stringify({ data })),
+        )
         .pipe(retryPendingReviewRead);
       const decoded = yield* decodeDraftThreadPositions(response).pipe(
         Effect.mapError((cause) => readError(input.cwd, "pendingReview", cause)),
@@ -1511,13 +1489,8 @@ export const make = Effect.gen(function* () {
   ) {
     const entry = buildReviewSubmission({ verdict: "comment", body: "", comments: [comment] })
       .comments[0]!;
-    const response = yield* api.graphql({
-      host: input.host,
-      operation: "saveDraftComment",
-      query: `mutation SaveDraftComment($input:AddPullRequestReviewThreadInput!) {
-        addPullRequestReviewThread(input:$input) { thread { comments(first:1) { nodes { id url } } } }
-      }`,
-      variables: {
+    const response = yield* client
+      .SaveDraftComment({
         input: {
           pullRequestReviewId: reviewId,
           body: comment.body,
@@ -1528,8 +1501,11 @@ export const make = Effect.gen(function* () {
             ? {}
             : { startLine: entry.start_line, startSide: entry.start_side }),
         },
-      },
-    });
+      })
+      .pipe(
+        graphql({ ...input, operation: "saveDraftComment" }),
+        Effect.map((data) => JSON.stringify({ data })),
+      );
     const decoded = yield* decodeAddedDraftThread(response).pipe(
       Effect.mapError((cause) => readError(input.cwd, "saveDraftComment", cause)),
     );
@@ -1574,13 +1550,8 @@ export const make = Effect.gen(function* () {
     }
     const entry = buildReviewSubmission({ verdict: "comment", body: "", comments: [input.comment] })
       .comments[0]!;
-    const response = yield* api.graphql({
-      host: input.host,
-      operation: "saveDraftComment",
-      query: `mutation CreateDraftReview($input:AddPullRequestReviewInput!) {
-        addPullRequestReview(input:$input) { pullRequestReview { id comments(first:1) { nodes { id url } } } }
-      }`,
-      variables: {
+    const response = yield* client
+      .CreateDraftReview({
         input: {
           pullRequestId: pending.pullRequestId,
           threads: [
@@ -1595,8 +1566,11 @@ export const make = Effect.gen(function* () {
             },
           ],
         },
-      },
-    });
+      })
+      .pipe(
+        graphql({ ...input, operation: "saveDraftComment" }),
+        Effect.map((data) => JSON.stringify({ data })),
+      );
     const decoded = yield* decodeCreatedDraftReview(response).pipe(
       Effect.mapError((cause) => readError(input.cwd, "saveDraftComment", cause)),
     );
@@ -1629,14 +1603,11 @@ export const make = Effect.gen(function* () {
     // Removing the final comment also removes an otherwise empty draft, so it does not block
     // a later review. Preserve a review summary and any other pending comments.
     const deleteReview = pending.comments.length === 1 && pending.review.body.trim().length === 0;
-    yield* graphql({
-      host: input.host,
-      operation: "discardDraftComment",
-      query: deleteReview
-        ? `mutation DiscardDraftReview($id:ID!) { deletePullRequestReview(input:{pullRequestReviewId:$id}) { clientMutationId } }`
-        : `mutation DiscardDraftComment($id:ID!) { deletePullRequestReviewComment(input:{id:$id}) { clientMutationId } }`,
-      variables: { id: deleteReview ? pending.review.id : input.commentId },
-    });
+    yield* (
+      deleteReview
+        ? client.DiscardDraftReview({ id: pending.review.id }).pipe(Effect.asVoid)
+        : client.DiscardDraftComment({ id: input.commentId }).pipe(Effect.asVoid)
+    ).pipe(graphql({ ...input, operation: "discardDraftComment" }), Effect.asVoid);
   });
 
   /**
@@ -3073,19 +3044,17 @@ export const make = Effect.gen(function* () {
           (state.isMergeQueueEnabled === true ||
           (action === "enable-auto-merge" &&
               !IMMEDIATELY_MERGEABLE.has(state.mergeStateStatus?.toUpperCase() ?? "")));
-        yield* graphql({
-          host: input.host,
-          operation: "runPullRequestAction",
-          query: auto ? ENABLE_AUTO_MERGE_GRAPHQL_MUTATION : MERGE_PULL_REQUEST_GRAPHQL_MUTATION,
-          variables: {
-            input: {
+        const variables = {
           pullRequestId: state.id,
           mergeMethod: GRAPHQL_MERGE_METHODS[input.mergeMethod ?? "merge"],
           ...(expectedHead === undefined ? {} : { expectedHeadOid: expectedHead }),
           ...(body === undefined ? {} : { commitBody: body }),
-            },
-          },
-        });
+        };
+        yield* (
+          auto
+            ? client.EnablePullRequestAutoMerge({ input: variables }).pipe(Effect.asVoid)
+            : client.MergePullRequest({ input: variables }).pipe(Effect.asVoid)
+        ).pipe(graphql(target), Effect.asVoid);
       });
     },
 
@@ -3151,14 +3120,14 @@ export const make = Effect.gen(function* () {
         Effect.asVoid,
       ),
 
-    saveDraftComment: (input) => draftReviewGate.withPermits(1)(saveDraftComment(input)),
-    discardDraftComment: (input) => draftReviewGate.withPermits(1)(discardDraftComment(input)),
+    saveDraftComment: (input) => draftReviewGate.withPermit(saveDraftComment(input)),
+    discardDraftComment: (input) => draftReviewGate.withPermit(discardDraftComment(input)),
     submitReview: (input) => {
       if (
         input.pendingReviewId !== undefined ||
         input.comments.some((comment) => comment.hostedComment !== undefined)
       ) {
-        return draftReviewGate.withPermits(1)(
+        return draftReviewGate.withPermit(
           Effect.gen(function* () {
             const pending = yield* readPendingReview(input);
             const review = pending.review;
@@ -3209,24 +3178,21 @@ export const make = Effect.gen(function* () {
               if (saved) consumed.add(saved.node_id);
               else yield* addDraftThread(input, review.id, comment);
             }
-            yield* graphql({
-              host: input.host,
-              operation: "submitReview",
-              query: `mutation SubmitDraftReview($input:SubmitPullRequestReviewInput!) {
-              submitPullRequestReview(input:$input) { pullRequestReview { id } }
-            }`,
-              variables: {
+            yield* client
+              .SubmitDraftReview({
                 input: {
                   pullRequestReviewId: review.id,
                   body: input.body,
-                  event: {
+                  event: (
+                    {
                     comment: "COMMENT",
                     approve: "APPROVE",
                     "request-changes": "REQUEST_CHANGES",
-                  }[input.verdict],
+                    } as const
+                  )[input.verdict],
                 },
-              },
-            });
+              })
+              .pipe(graphql({ ...input, operation: "submitReview" }), Effect.asVoid);
           }),
         );
       }

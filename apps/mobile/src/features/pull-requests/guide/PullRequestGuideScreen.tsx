@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { View } from "react-native";
 import { useDiffWhitespacePreference } from "../../review/useDiffWhitespacePreference";
 import { GuideViewOptionsButton } from "./GuideViewOptions";
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { GuideOutline } from "./GuideOutline";
 import { GuideGeneratingFiles } from "./GuideGeneratingFiles";
 import { reviewGuideState, shouldAutoGenerateGuide } from "./reviewGuideState";

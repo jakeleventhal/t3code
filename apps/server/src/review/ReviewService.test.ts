@@ -90,10 +90,11 @@ function layer(input: {
           }),
       }),
     ),
-    Layer.provide(
-      input.gitLayer ?? Layer.mock(GitVcsDriver.GitVcsDriver)({
-        listWorktreePaths: () => Effect.succeed([...(input.gitWorktrees ?? [])]),
-      }),
+    Layer.provideMerge(
+      input.gitLayer ??
+        Layer.mock(GitVcsDriver.GitVcsDriver)({
+          listWorktreePaths: () => Effect.succeed([...(input.gitWorktrees ?? [])]),
+        }),
     ),
     Layer.provide(
       ServerSettings.ServerSettingsService.layerTest({

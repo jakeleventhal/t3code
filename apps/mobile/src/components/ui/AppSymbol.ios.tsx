@@ -5,7 +5,7 @@ import IconGitPullRequestClosed from "@tabler/icons-react-native/IconGitPullRequ
 import IconGitPullRequestDraft from "@tabler/icons-react-native/IconGitPullRequestDraft";
 import type { SFSymbol } from "expo-symbols";
 import IconGitPullRequest from "@tabler/icons-react-native/IconGitPullRequest";
-import { DiffCollapseIcon, DiffExpandIcon } from "./DiffDisclosureIcons";
+import { DiffCollapseIcon, DiffExpandIcon } from "../DiffDisclosureIcons";
 import IconFileDiff from "@tabler/icons-react-native/IconFileDiff";
 import { SymbolView as ExpoSymbolView } from "expo-symbols";
 import { withUniwind } from "uniwind";

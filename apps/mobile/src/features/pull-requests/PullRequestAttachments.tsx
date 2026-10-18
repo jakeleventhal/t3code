@@ -6,7 +6,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { File, UploadType } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable } from "react-native";
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { attachmentEnvironment } from "../../state/attachments";
 import { composerPullRequests } from "../../state/pull-requests";

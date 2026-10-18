@@ -55,7 +55,7 @@ const coreResponse = (pullRequest: Readonly<Record<string, unknown>> = {}) => ({
         body: "",
         isDraft: false,
         mergeable: "MERGEABLE",
-        mergeStateStatus: "BLOCKED",
+        mergeStateStatus: "UNKNOWN",
         reviewDecision: null,
         additions: 0,
         deletions: 0,
@@ -334,6 +334,7 @@ function threadComments(
       body: id,
       createdAt: "2026-07-01T00:00:00Z",
       lastEditedAt: null,
+      pullRequestReview: null,
       url: `https://github.com/acme/web/pull/7#discussion_${id}`,
       reactionGroups: [],
     })),
@@ -346,6 +347,8 @@ function thread(id: string, ...commentIds: ReadonlyArray<string>) {
     path: "src/a.ts",
     line: 1,
     diffSide: "RIGHT",
+    startLine: null,
+    startDiffSide: null,
     isResolved: false,
     isOutdated: false,
     comments: threadComments(commentIds, null),
@@ -949,6 +952,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
         state: "OPEN",
         isDraft: false,
         mergeable: "MERGEABLE",
+        mergeStateStatus: "UNKNOWN",
         reviewDecision: null,
         latestReviews: {
           nodes: [{ state: "APPROVED", author: { __typename: "User", login: "reviewer" } }],
@@ -1031,6 +1035,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
       const node = (comments: number) => ({
         state: "OPEN",
         mergeable: "MERGEABLE",
+        mergeStateStatus: "UNKNOWN",
         headRefOid: "abc123",
         comments: { totalCount: comments, nodes: [] },
         reviews: { totalCount: 0, nodes: [] },
@@ -1096,6 +1101,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
                       state: "OPEN",
                       isDraft: false,
                       mergeable: "MERGEABLE",
+                      mergeStateStatus: "UNKNOWN",
                       reviewDecision: null,
                       latestReviews: { nodes: [] },
                       additions: 1,
@@ -4138,7 +4144,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
       Effect.gen(function* () {
         mockedExecute.mockReturnValueOnce(
           Effect.fail(
-            new GitHubApi.GitHubApiResponseError({
+            new GitHubRequestPolicy.GitHubApiResponseError({
               host: "github.com",
               operation: "pendingReview",
               status,
@@ -4202,10 +4208,10 @@ layer("GitHubPullRequestApi.layer", (it) => {
     Effect.gen(function* () {
       mockedExecute.mockReturnValue(
         Effect.fail(
-          new GitHubApi.GitHubApiRequestError({
+          new GitHubRequestPolicy.GitHubApiResponseError({
             host: "github.com",
             operation: "pendingReview",
-            cause: new Error("Connection reset"),
+            status: 503,
           }),
         ),
       );
@@ -4221,7 +4227,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
         .pipe(Effect.flip, Effect.forkChild);
       yield* TestClock.adjust("250 millis");
       yield* TestClock.adjust("500 millis");
-      expect((yield* Fiber.join(fiber))._tag).toBe("GitHubApiRequestError");
+      expect((yield* Fiber.join(fiber))._tag).toBe("GitHubApiResponseError");
       expect(mockedExecute).toHaveBeenCalledTimes(3);
       expect(variablesOf("addPullRequestReview(")).toEqual([]);
     }),
@@ -4236,7 +4242,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
           if (call.kind === "rest") {
             if (++commentReads === 1)
               return Effect.fail(
-                new GitHubApi.GitHubApiResponseError({
+                new GitHubRequestPolicy.GitHubApiResponseError({
                   host: "github.com",
                   operation: "pendingReview",
                   status: 502,
@@ -4259,7 +4265,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
           if (call.query.includes("query PendingReviewPositions")) {
             if (++positionReads === 1)
               return Effect.fail(
-                new GitHubApi.GitHubApiResponseError({
+                new GitHubRequestPolicy.GitHubApiResponseError({
                   host: "github.com",
                   operation: "pendingReview",
                   status: 503,
@@ -4277,6 +4283,8 @@ layer("GitHubPullRequestApi.layer", (it) => {
                             {
                               line: 4,
                               diffSide: "RIGHT",
+                              startLine: null,
+                              startDiffSide: null,
                               startLine: null,
                               startDiffSide: null,
                               comments: { nodes: [{ id: "PRRC_1" }] },
@@ -4350,7 +4358,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
           );
         mockedExecute.mockReturnValueOnce(
           Effect.fail(
-            new GitHubApi.GitHubApiResponseError({
+            new GitHubRequestPolicy.GitHubApiResponseError({
               host: "github.com",
               operation,
               status: operation === "pendingReview" ? 422 : 500,

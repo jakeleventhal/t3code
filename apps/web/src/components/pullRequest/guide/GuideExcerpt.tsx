@@ -67,7 +67,12 @@ export interface ExcerptNoteMarker {
   readonly markers: ReadonlyArray<{ readonly marker: string; readonly title: string }>;
 }
 
+/**
+ * What a reader can do with lines of an excerpt, the same two things the Code tab offers: queue a
+ * comment for the review, or ask an agent about them. Null where neither is possible.
+ */
 export interface ExcerptCommenting {
+  /** Whether a comment can be queued for the review; asking an agent needs no host support. */
   readonly canComment: boolean;
   readonly canCommentRanges?: boolean;
   readonly renderAttachments?: (
@@ -89,6 +94,7 @@ export interface ExcerptCommenting {
     readonly body: string;
   }) => void;
   readonly onRemove: (commentId: string) => void;
+  /** Opens an agent thread about the lines; null where no thread can be opened. */
   readonly onAskAgent: ((comment: ReviewCommentContext, request: string) => void) | null;
 }
 
@@ -103,52 +109,12 @@ interface ExcerptDraft {
   readonly position: PullRequestReviewPosition;
 }
 
-type ExcerptSlice = NonNullable<ReturnType<typeof excerptSlice>>;
-
-function excerptSlice(file: FileDiffMetadata | null, excerpt: PullRequestReviewGuideExcerpt) {
-  if (file === null) return null;
-  const rows = fileDiffRows(file);
-  const shown = excerptRows(rows, excerpt);
-  if (shown.length === 0) return null;
-  const parsed = getRenderablePatch(
-    rowsToPatch(excerpt.path, resolveFileDiffPreviousPath(file), shown),
-    `pull-request-guide-excerpt:${excerpt.path}:${excerpt.side}:${excerpt.start}-${excerpt.end}`,
-  );
-  const fileDiff = parsed?.kind === "files" ? parsed.files[0] : undefined;
-  if (fileDiff === undefined) return null;
-  const drawn = {
-    additions: new Set(shown.flatMap((row) => (row.newLine === null ? [] : [row.newLine]))),
-    deletions: new Set(shown.flatMap((row) => (row.oldLine === null ? [] : [row.oldLine]))),
-  };
-  return { fileDiff, rows: shown, shown: shown.length, total: rows.length, drawn };
-}
-
-// The excerpt expands against an old side of its own: the file's real old side differs from
-// the new one wherever another hunk changed it, and the renderer needs the two to agree around
-// the lines it shows. A slice across hunks has nothing consistent to expand into.
-function excerptLoader(
-  excerpt: PullRequestReviewGuideExcerpt,
-  sliceRows: ExcerptSlice["rows"],
-  loadDiffFiles: FileDiffContentsLoader,
-): FileDiffContentsLoader | null {
-  if (sliceRows.some((row) => row.hunk !== sliceRows[0]?.hunk)) {
-    return null;
-  }
-  return async (fileDiff) => {
-    const loaded = await loadDiffFiles(fileDiff);
-    const oldContents = excerptExpansionOldContents(loaded.newFile.contents, sliceRows);
-    if (oldContents === null) return loaded;
-    return {
-      newFile: loaded.newFile,
-      oldFile: {
-        name: loaded.oldFile?.name ?? loaded.newFile.name,
-        contents: oldContents,
-        cacheKey: `${loaded.newFile.cacheKey ?? loaded.newFile.name}:excerpt:${excerpt.side}:${excerpt.start}-${excerpt.end}`,
-      },
-    };
-  };
-}
-
+/**
+ * The lines of one excerpt, drawn by the same renderer as the Code tab from a patch cut down to
+ * the excerpt's range, so line numbers, colors and highlighting match the full diff. The cut keeps
+ * the file's real line numbers, so the bars above and below it load the code around the excerpt
+ * from the file itself, as they do between hunks in the Code tab.
+ */
 export function GuideExcerpt({
   excerpt,
   file,
@@ -161,16 +127,17 @@ export function GuideExcerpt({
   onSetViewed,
 }: {
   excerpt: PullRequestReviewGuideExcerpt;
+  /** The file's parsed diff, null while it loads or when the host withheld it. */
   file: FileDiffMetadata | null;
   loading: boolean;
   notes: ReadonlyArray<ExcerptNoteMarker>;
   commenting: ExcerptCommenting | null;
+  /** Loads the file's unchanged lines for the bars around the excerpt. */
   loadDiffFiles: FileDiffContentsLoader;
   onOpenFile: (path: string) => void;
   viewed: boolean;
   onSetViewed: ((viewed: boolean) => void) | null;
 }) {
-  // Kept here, not in ExcerptDiff, so a selection survives the diff reloading for a new head.
   const [draft, setDraft] = useState<ExcerptDraft | null>(null);
   const slice = excerptSlice(file, excerpt);
 
@@ -257,7 +224,31 @@ function ExcerptDiff({
   }, [excerpt, file, settings.diffIgnoreWhitespace]);
   const loadExcerptFiles = excerptLoader(excerpt, slice.rows, loadDiffFiles);
 
-  const annotations = (() => {
+  // The excerpt expands against an old side of its own: the file's real old side differs from
+  // the new one wherever another hunk changed it, and the renderer needs the two to agree around
+  // the lines it shows. A slice across hunks has nothing consistent to expand into.
+  const sliceRows = slice?.rows ?? null;
+  const loadExcerptFiles = useMemo<FileDiffContentsLoader | null>(() => {
+    if (sliceRows === null || sliceRows.some((row) => row.hunk !== sliceRows[0]?.hunk)) {
+      return null;
+    }
+    return async (fileDiff) => {
+      const loaded = await loadDiffFiles(fileDiff);
+      const oldContents = excerptExpansionOldContents(loaded.newFile.contents, sliceRows);
+      if (oldContents === null) return loaded;
+      return {
+        newFile: loaded.newFile,
+        oldFile: {
+          name: loaded.oldFile?.name ?? loaded.newFile.name,
+          contents: oldContents,
+          cacheKey: `${loaded.newFile.cacheKey ?? loaded.newFile.name}:excerpt:${excerpt.side}:${excerpt.start}-${excerpt.end}`,
+        },
+      };
+    };
+  }, [excerpt.end, excerpt.side, excerpt.start, loadDiffFiles, sliceRows]);
+
+  // Notes, queued comments and the draft share one annotation per line, as in the Code tab.
+  const annotations = useMemo(() => {
     const groups = new Map<string, DiffLineAnnotation<ExcerptAnnotation>>();
     const at = (side: "additions" | "deletions", line: number) => {
       const key = `${side}:${line}`;
@@ -290,7 +281,7 @@ function ExcerptDiff({
       if (comment.path !== excerpt.path) continue;
       const anchor = getReviewPositionAnchor(comment.position);
       const side = toViewerSide(anchor.side);
-      if (!slice.drawn[side].has(anchor.line)) continue;
+      if (!slice?.drawn[side].has(anchor.line)) continue;
       update(side, anchor.line, (metadata) => ({
         ...metadata,
         pending: [...metadata.pending, comment],
@@ -301,7 +292,7 @@ function ExcerptDiff({
       update(toViewerSide(anchor.side), anchor.line, (metadata) => ({ ...metadata, draft: true }));
     }
     return [...groups.values()];
-  })();
+  }, [commenting?.pending, draft, excerpt.path, excerpt.side, notes, slice]);
 
   // Positions and the agent's copy of the lines come from the whole file's diff, so a comment
   // lands where the Code tab would put it rather than on the excerpt's cut-down patch.
@@ -324,7 +315,7 @@ function ExcerptDiff({
     (draft?.position.startLine === undefined || commenting.canCommentRanges === true);
   const onAskAgent = commenting?.onAskAgent ?? null;
   const askAgent = (request: string) => {
-    if (draft === null || onAskAgent === null) return;
+    if (draft === null || file === null || onAskAgent === null) return;
     const comment = buildDiffReviewComment({
       id: `pull-request-guide:${excerpt.path}:${draft.range.start}:${draft.range.end}`,
       sectionId: `pull-request-guide:${excerpt.path}`,
@@ -481,12 +472,16 @@ function ExcerptDiff({
             <span className="font-mono text-foreground">{excerpt.path}</span> lines {excerpt.start}-
             {excerpt.end} are not in the loaded diff.
           </span>
-        )}
-      />
+          <Button size="xs" variant="outline" onClick={() => onOpenFile(excerpt.path)}>
+            Open in Code
+          </Button>
     </div>
+      )}
+    </figure>
   );
 }
 
+/** A renamed file's comment carries its old path too, which hosts need to place it. */
 function previousPathOf(file: FileDiffMetadata, path: string): string | null {
   const previous = resolveFileDiffPreviousPath(file);
   return previous === path ? null : previous;

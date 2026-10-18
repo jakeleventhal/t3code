@@ -2,9 +2,9 @@ import { Button } from "../../../components/ui/Button";
 import type { PullRequestReviewGuide } from "@t3tools/contracts";
 import { reviewGuideStopProgress } from "@t3tools/client-runtime/review-guide-tour";
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../../components/AppText";
-import { SymbolView } from "../../../components/AppSymbol";
-import { ControlPillMenu } from "../../../components/ControlPillMenu";
+import { AppText as Text } from "../../../components/ui/AppText";
+import { SymbolView } from "../../../components/ui/AppSymbol";
+import { Menu } from "../../../components/ui/Menu";
 import { GuideFiles, type GuideFileMetadata } from "./GuideFiles";
 import { GuideViewOptionsButton } from "./GuideViewOptions";
 
@@ -42,7 +42,7 @@ export function GuideOutline({
         <View className="flex-row items-center">
           <GuideViewOptionsButton />
           {onRewrite ? (
-            <ControlPillMenu
+            <Menu
               title="Guide actions"
               actions={[{ id: "rewrite", title: "Rewrite guide", image: "arrow.clockwise" }]}
               onPressAction={() => onRewrite()}
@@ -54,7 +54,7 @@ export function GuideOutline({
           >
             <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
           </Pressable>
-            </ControlPillMenu>
+            </Menu>
           ) : null}
         </View>
       </View>

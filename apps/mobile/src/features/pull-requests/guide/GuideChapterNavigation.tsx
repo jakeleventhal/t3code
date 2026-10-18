@@ -1,7 +1,7 @@
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../../components/AppText";
-import { SymbolView } from "../../../components/AppSymbol";
-import { ControlPillMenu } from "../../../components/ControlPillMenu";
+import { AppText as Text } from "../../../components/ui/AppText";
+import { SymbolView } from "../../../components/ui/AppSymbol";
+import { Menu } from "../../../components/ui/Menu";
 
 /** Keep the chapter switcher compact and put the whole-file review action beside its count. */
 export function GuideChapterNavigation({
@@ -29,7 +29,7 @@ export function GuideChapterNavigation({
           {position + 1}/{chapters.length}
         </Text>
         <View className="min-w-0 flex-1">
-          <ControlPillMenu
+          <Menu
             title="Chapters"
             actions={chapters.map((item, index) => ({
               id: String(index),
@@ -48,7 +48,7 @@ export function GuideChapterNavigation({
               </Text>
               <SymbolView name="chevron.down" size={10} tintColorClassName="accent-icon-muted" />
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         </View>
         {([-1, 1] as const).map((delta) => {
           const disabled = position + delta < 0 || position + delta >= chapters.length;

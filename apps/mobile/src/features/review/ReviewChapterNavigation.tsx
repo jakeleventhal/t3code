@@ -1,7 +1,7 @@
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
 
 /** Shared chapter navigation for guided and file-type review sequences. */
 export function ReviewChapterNavigation({
@@ -31,7 +31,7 @@ export function ReviewChapterNavigation({
           <Text className="text-xs font-t3-medium tabular-nums">{position + 1}</Text>
         </View>
         <View className="min-w-0 flex-1">
-          <ControlPillMenu
+          <Menu
             title="Chapters"
             actions={chapters.map((item, index) => ({
               id: String(index),
@@ -50,7 +50,7 @@ export function ReviewChapterNavigation({
               </Text>
               <SymbolView name="chevron.down" size={10} tintColorClassName="accent-icon-muted" />
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         </View>
         {onToggleReviewed ? (
           <Pressable

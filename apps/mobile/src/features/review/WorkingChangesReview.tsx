@@ -39,9 +39,9 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
 import { reviewEnvironment } from "../../state/review";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
@@ -809,7 +809,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
                     {generating ? "Generating…" : "Commit"}
                   </Text>
                 </Pressable>
-                <ControlPillMenu
+                <Menu
                   title="Commit options"
                   actions={[
                     {
@@ -850,7 +850,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
                       tintColorClassName="accent-primary-foreground"
                     />
                   </Pressable>
-                </ControlPillMenu>
+                </Menu>
               </View>
             </View>
             <WorkingChangesTree

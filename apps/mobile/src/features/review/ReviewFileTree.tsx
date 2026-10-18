@@ -3,9 +3,9 @@ import { reviewFileTreeRows, reviewFolderContains } from "@t3tools/client-runtim
 import * as Clipboard from "expo-clipboard";
 import { useMemo, useState } from "react";
 import { Pressable, RefreshControl, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { SymbolView } from "../../components/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { Menu } from "../../components/ui/Menu";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { ReviewRenamePath } from "./ReviewRenamePath";
 
@@ -82,7 +82,7 @@ export function ReviewFileTree({
           const canMarkReviewed = reviewDescendants.some((file) => !file.reviewed);
           const canMarkUnreviewed = reviewDescendants.some((file) => file.reviewed);
           return (
-            <ControlPillMenu
+            <Menu
               title={item.path}
               shouldOpenOnLongPress
               actions={[
@@ -151,7 +151,7 @@ export function ReviewFileTree({
                   />
                 ) : null}
               </Pressable>
-            </ControlPillMenu>
+            </Menu>
           );
         }
         const file = item.file;
@@ -164,7 +164,7 @@ export function ReviewFileTree({
               ? "D"
               : "M";
         return (
-          <ControlPillMenu
+          <Menu
             title={file.path}
             shouldOpenOnLongPress
             actions={[
@@ -266,7 +266,7 @@ export function ReviewFileTree({
                 />
               ) : null}
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         );
       }}
     />

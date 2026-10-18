@@ -3979,11 +3979,6 @@ export default function ChatView(props: ChatViewProps) {
   const requestClosePanelTerminalStable = useStableCallback(requestClosePanelTerminal);
   const activateRightPanelSurface = (surface: RightPanelSurface) => {
     if (!activeThreadRef) return;
-    explicitDiffOpenRef.current = resolveExplicitDiffOpenOnActivate({
-      surfaceKind: surface.kind,
-      diffOpen,
-      activeThreadRef,
-    });
     useRightPanelStore.getState().activateSurface(activeThreadRef, surface.id);
     if (surface.kind === "preview" && surface.resourceId) {
       setActivePreviewTab(activeThreadRef, surface.resourceId);

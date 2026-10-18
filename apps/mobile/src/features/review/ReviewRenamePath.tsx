@@ -1,5 +1,5 @@
 import { reviewRenameSegments } from "@t3tools/client-runtime/review-workspace";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 
 /** Keep a rename on one line, highlighting changed characters rather than entire paths. */
 export function ReviewRenamePath({

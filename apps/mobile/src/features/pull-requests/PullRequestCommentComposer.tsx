@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { AppTextInput as TextInput } from "../../components/AppText";
-import { ControlPill } from "../../components/ControlPill";
+import { AppTextInput as TextInput } from "../../components/ui/AppText";
+import { ControlPill } from "../../components/ui/ControlPill";
 import { PullRequestAttachments } from "./PullRequestAttachments";
 import type { PullRequestParams } from "./usePullRequestDiff";
 import { useReviewAttachmentInsertion } from "./useReviewAttachmentInsertion";
