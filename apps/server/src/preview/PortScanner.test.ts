@@ -1232,7 +1232,8 @@ effectIt.effect.each(["linux", "darwin"] as const)(
           layerNoProc,
           Layer.succeed(HostProcess.Platform, platform),
           Layer.succeed(ProcessRunner.ProcessRunner, {
-            run: () => {
+            run: (input) => {
+              if (input.command === "tailscale") return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
               processCalls += 1;
               return Effect.succeed({
                 stdout: `p1234\ncnode\nn*:${LSOF_TEST_PORT}\n`,
@@ -1305,6 +1306,7 @@ effectIt.effect(
           layerNoProc,
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
+              if (input.command === "tailscale") return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
               spawnedArgs.push(input.args);
               const isIpv6 = input.args.includes("tcpv6");
               const isTasklist = input.command === "tasklist.exe";
