@@ -25,7 +25,6 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 import { describe, expect, it } from "vite-plus/test";
 import { FetchHttpClient } from "effect/http";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "./PortScanner.ts";
