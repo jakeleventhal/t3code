@@ -460,10 +460,10 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
         : new Response("not found", { status: 404 }),
     )) as typeof globalThis.fetch;
   const layer = layerProbeFailure((input) => {
-    if (input.command === "tailscale") tailscaleStatusRuns += 1;
+    if ((input.command === "tailscale" || input.command === "tailscale.exe")) tailscaleStatusRuns += 1;
     return Effect.succeed({
       stdout:
-        input.command === "tailscale"
+        (input.command === "tailscale" || input.command === "tailscale.exe")
           ? JSON.stringify({
               TCP: { 443: { HTTPS: true } },
               Web: {
@@ -1233,7 +1233,7 @@ effectIt.effect.each(["linux", "darwin"] as const)(
           Layer.succeed(HostProcess.Platform, platform),
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
-              if (input.command === "tailscale") return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
+              if ((input.command === "tailscale" || input.command === "tailscale.exe")) return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
               processCalls += 1;
               return Effect.succeed({
                 stdout: `p1234\ncnode\nn*:${LSOF_TEST_PORT}\n`,
@@ -1306,7 +1306,7 @@ effectIt.effect(
           layerNoProc,
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
-              if (input.command === "tailscale") return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
+              if ((input.command === "tailscale" || input.command === "tailscale.exe")) return Effect.succeed({ stdout: "{}", stderr: "", code: ChildProcessSpawner.ExitCode(0), timedOut: false, stdoutTruncated: false, stderrTruncated: false, stdoutInvalidUtf8: false, stderrInvalidUtf8: false });
               spawnedArgs.push(input.args);
               const isIpv6 = input.args.includes("tcpv6");
               const isTasklist = input.command === "tasklist.exe";
