@@ -470,6 +470,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         const readStarted = yield* Deferred.make<void>();
         const finishRead = yield* Deferred.make<void>();
         const activity = {
+          getId: () => "activity-1",
           getPushToken: vi.fn(() => Promise.resolve("old-account-activity-token")),
           addPushTokenListener: vi.fn(),
           end: vi.fn(() => Promise.resolve()),
@@ -534,6 +535,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         const readStarted = yield* Deferred.make<void>();
         const finishRead = yield* Deferred.make<void>();
         const activity = {
+          getId: () => "activity-1",
           getPushToken: vi.fn(() => Promise.resolve("activity-token")),
           addPushTokenListener: vi.fn(),
         };
@@ -883,6 +885,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
   it.effect("refreshes the widget after a delayed Live Activity push token registers", () => {
     let onPushToken: ((event: { pushToken: string }) => void) | undefined;
     const activity = {
+      getId: () => "activity-1",
       getPushToken: vi.fn(() => Promise.resolve(null)),
       addPushTokenListener: vi.fn((listener: (event: { pushToken: string }) => void) => {
         onPushToken = listener;
@@ -973,6 +976,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
 
   it.effect("publishes the home-screen widget when a Live Activity is already armed", () => {
     const activity = {
+      getId: () => "activity-1",
       getPushToken: vi.fn(() => Promise.resolve("activity-token")),
       addPushTokenListener: vi.fn(),
       start: vi.fn(),
@@ -1367,6 +1371,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
   );
   it.effect("refreshes the home-screen widget after arming local agent work", () => {
     const activity = {
+      getId: () => "activity-1",
       getPushToken: vi.fn(() => Promise.resolve("activity-token")),
       addPushTokenListener: vi.fn(),
     };
@@ -1561,6 +1566,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         ),
       );
       const activity = {
+        getId: () => "activity-1",
         getPushToken: vi.fn(() => Promise.resolve("activity-token")),
         addPushTokenListener: vi.fn(),
       };
@@ -1633,6 +1639,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
           tokenReadStarted = resolve;
         });
         const makeActivity = () => ({
+          getId: () => "activity-1",
           getPushToken: vi.fn(() => Promise.resolve("activity-token")),
           addPushTokenListener: vi.fn(),
         });
@@ -1781,6 +1788,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"), "user-a");
       backgroundRuntime.pending.length = 0;
       const activity = {
+        getId: () => "activity-1",
         getPushToken: vi.fn(() => Promise.resolve("activity-token")),
         addPushTokenListener: vi.fn(),
       };
@@ -1844,6 +1852,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         );
         setLiveShell("running");
         const activity = {
+          getId: () => "activity-1",
           getPushToken: vi.fn(() => Promise.resolve("activity-token")),
           addPushTokenListener: vi.fn(),
         };
