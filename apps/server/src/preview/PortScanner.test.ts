@@ -1228,6 +1228,7 @@ effectIt.effect.each(["linux", "darwin"] as const)(
     const layer = PortScanner.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          NodeServices.layer,
           layerNoProc,
           Layer.succeed(HostProcess.Platform, platform),
           Layer.succeed(ProcessRunner.ProcessRunner, {
@@ -1300,6 +1301,7 @@ effectIt.effect(
     const layer = PortScanner.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          NodeServices.layer,
           layerNoProc,
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
@@ -1383,7 +1385,8 @@ effectIt.effect("ignores a partial Windows netstat snapshot when one query exits
   const layer = PortScanner.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        layerNoProc,
+        NodeServices.layer,
+          layerNoProc,
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
             const isIpv6 = input.args.includes("tcpv6");
