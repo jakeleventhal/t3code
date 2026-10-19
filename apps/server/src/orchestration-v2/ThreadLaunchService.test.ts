@@ -1731,6 +1731,7 @@ it.effect(
         "-m",
         "initial",
       ]);
+      yield* git(["config", "branch.autoSetupMerge", "always"]);
       const existingPath = path.join(worktreesDirectory, "existing");
       yield* driver.createWorktree({
         cwd,
@@ -1789,6 +1790,12 @@ it.effect(
           assert.isTrue(yield* fs.exists(projection.thread.worktreePath!));
           const base = yield* git(["config", `branch.${projection.thread.branch}.gh-merge-base`]);
           assert.equal(base.stdout.trim(), "main");
+          const upstream = yield* git([
+            "rev-parse",
+            "--abbrev-ref",
+            `${projection.thread.branch}@{upstream}`,
+          ]);
+          assert.equal(upstream.stdout.trim(), "main");
         }
         assert.deepEqual(
           launched.map((projection) => projection.thread.branch).toSorted(),
