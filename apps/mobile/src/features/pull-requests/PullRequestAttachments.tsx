@@ -60,7 +60,7 @@ export function PullRequestAttachments({
     transfer.current = session;
     setBusy(true);
     onBusyChange?.(true);
-    try {
+    return await (async () => {
       const selection = await DocumentPicker.getDocumentAsync({
         type: [
           "image/png",
@@ -77,8 +77,8 @@ export function PullRequestAttachments({
       if (selection.canceled) return;
       for (const asset of selection.assets) {
         const file = new File(asset.uri);
-        try {
-          if (session.cancelled) continue;
+        await (async () => {
+          if (session.cancelled) return;
           const mimeType = asset.mimeType || file.type || "application/octet-stream";
           const markdown = await publishReviewAttachment({
             registry: appAtomRegistry,
@@ -121,21 +121,23 @@ export function PullRequestAttachments({
             },
           });
           if (!session.cancelled) onAppend(markdown);
-        } finally {
+        })().finally(async () => {
           if (file.exists) file.delete();
-        }
+        });
       }
-    } catch (error) {
-      if (!session.cancelled)
-        Alert.alert(
-          "Could not attach the file",
-          error instanceof Error ? error.message : "Try uploading again.",
-        );
-    } finally {
-      lock.current = false;
-      setBusy(false);
-      onBusyChange?.(false);
-    }
+    })()
+      .catch(async (error: unknown) => {
+        if (!session.cancelled)
+          Alert.alert(
+            "Could not attach the file",
+            error instanceof Error ? error.message : "Try uploading again.",
+          );
+      })
+      .finally(async () => {
+        lock.current = false;
+        setBusy(false);
+        onBusyChange?.(false);
+      });
   };
   if (
     !allowed ||

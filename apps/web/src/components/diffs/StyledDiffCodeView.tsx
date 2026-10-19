@@ -248,16 +248,13 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
   renderHeaderFilenameSuffix,
   ...props
 }: StyledDiffCodeViewProps<LAnnotation>) {
-  const filenameSuffix = useCallback<
-    NonNullable<CodeViewProps<LAnnotation, undefined>["renderHeaderFilenameSuffix"]>
-  >(
-    (item) => (
-      <>
-        {item.type === "diff" ? <DiffFileRename file={item.fileDiff} /> : null}
-        {renderHeaderFilenameSuffix?.(item)}
-      </>
-    ),
-    [renderHeaderFilenameSuffix],
+  const filenameSuffix: NonNullable<
+    CodeViewProps<LAnnotation, undefined>["renderHeaderFilenameSuffix"]
+  > = (item) => (
+    <>
+      {item.type === "diff" ? <DiffFileRename file={item.fileDiff} /> : null}
+      {renderHeaderFilenameSuffix?.(item)}
+    </>
   );
   return (
     <DiffWorkerPoolProvider>

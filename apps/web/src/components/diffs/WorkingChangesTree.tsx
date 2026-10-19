@@ -58,49 +58,32 @@ export function WorkingChangesTree({
     x: number;
     y: number;
   } | null>(null);
-  const menuAnchor = useMemo(
-    () =>
-      contextMenu
-        ? { getBoundingClientRect: () => new DOMRect(contextMenu.x, contextMenu.y, 0, 0) }
-        : undefined,
-    [contextMenu],
-  );
+  const menuAnchor = contextMenu
+    ? { getBoundingClientRect: () => new DOMRect(contextMenu.x, contextMenu.y, 0, 0) }
+    : undefined;
   const lastRevealed = useRef<string | null>(null);
   const sections = { staged, unstaged };
-  const sectionPaths = useMemo(
-    () => ({
-      staged: staged.map((file) => file.path),
-      unstaged: unstaged.map((file) => file.path),
-    }),
-    [staged, unstaged],
-  );
-  const rows = useMemo<Row[]>(
-    () =>
-      (["staged", "unstaged"] as const).flatMap((scope) => [
-        { kind: "section" as const, scope, path: scope },
-        ...(open[scope]
-          ? reviewFileTreeRows(
-              scope === "staged" ? staged : unstaged,
-              (entry) => entry.path,
-              new Set(
-                [...collapsed]
-                  .filter((key) => key.startsWith(`${scope}:`))
-                  .map((key) => key.slice(scope.length + 1)),
-              ),
-            ).map((row) => ({ ...row, scope }))
-          : []),
-      ]),
-    [staged, unstaged, open, collapsed],
-  );
-  const selectableRows = useMemo(() => rows.filter((row) => row.kind !== "section"), [rows]);
-  const selectedKeys = useMemo(
-    () => new Set(selection.rows.map(reviewTreeRowKey)),
-    [selection.rows],
-  );
-  const selectedFolders = useMemo(
-    () => selection.rows.filter((row) => row.kind === "folder"),
-    [selection.rows],
-  );
+  const sectionPaths = {
+    staged: staged.map((file) => file.path),
+    unstaged: unstaged.map((file) => file.path),
+  };
+  const rows = (["staged", "unstaged"] as const).flatMap((scope) => [
+    { kind: "section" as const, scope, path: scope },
+    ...(open[scope]
+      ? reviewFileTreeRows(
+          scope === "staged" ? staged : unstaged,
+          (entry) => entry.path,
+          new Set(
+            [...collapsed]
+              .filter((key) => key.startsWith(`${scope}:`))
+              .map((key) => key.slice(scope.length + 1)),
+          ),
+        ).map((row) => ({ ...row, scope }))
+      : []),
+  ]) satisfies Row[];
+  const selectableRows = rows.filter((row) => row.kind !== "section");
+  const selectedKeys = new Set(selection.rows.map(reviewTreeRowKey));
+  const selectedFolders = selection.rows.filter((row) => row.kind === "folder");
   const isInSelection = (row: ReviewTreeRow) =>
     selectedKeys.has(reviewTreeRowKey(row)) ||
     selectedFolders.some(

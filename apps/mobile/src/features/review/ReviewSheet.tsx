@@ -283,11 +283,11 @@ export function ReviewSheet(
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const handlePullToRefresh = async () => {
     setIsPullRefreshing(true);
-    try {
+    return await (async () => {
       await refreshSelectedSection();
-    } finally {
+    })().finally(async () => {
       setIsPullRefreshing(false);
-    }
+    });
   };
   const reviewFiles = parsedDiff.kind === "files" ? parsedDiff.files : [];
   const treeFiles =

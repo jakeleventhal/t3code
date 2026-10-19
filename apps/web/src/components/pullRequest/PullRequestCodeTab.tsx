@@ -1271,12 +1271,12 @@ function PullRequestCodeTab({
       {annotation.metadata.draft && draft && canSelectLines ? (
         <DiffCommentAnnotation
           kind="draft"
-            renderAttachments={(onTextChange, onBusyChange, textareaRef) => (
+          renderAttachments={(onTextChange, onBusyChange, textarea) => (
               <PullRequestAttachments
                 environmentId={environmentId}
                 reference={reference}
                 onTextChange={onTextChange}
-                textareaRef={textareaRef}
+              textareaRef={{ current: textarea }}
                 onBusyChange={onBusyChange}
               />
             )}

@@ -15,6 +15,7 @@ import {
 import {
   createContext,
   use,
+  useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -705,34 +706,12 @@ function AdaptiveWorkspaceLayoutContent(
     [
       layout.usesSplitView,
       pathname,
-    });
-    const overlayState = resolveThreadSelectionOverlayState({
-      state: navigation.getState(),
-      workspaceRouteKey: props.workspaceRouteKey,
-      action: navigationAction,
-      params,
-    });
-    if (overlayState !== null) {
-      setFileInspectorPreferredVisible(false);
-      navigation.dispatch(CommonActions.reset(overlayState));
-      return;
-    }
-    if (navigationAction === "set-params") {
-      const nextThreadKey = scopedThreadKey(thread.environmentId, thread.id);
-      if (nextThreadKey === selectedThreadKey) {
-        return;
-      }
-      setFileInspectorPreferredVisible(false);
-      navigation.navigate("Thread", params);
-      return;
-    }
-    if (navigationAction === "replace") {
-      setFileInspectorPreferredVisible(false);
-      navigation.dispatch(StackActions.replace("Thread", params));
-      return;
-    }
-    navigation.navigate("Thread", params);
-  };
+      navigation,
+      selectedThreadKey,
+      props.workspaceRouteKey,
+      selectAndroidWorkspace,
+    ],
+  );
 
   const contextValue = {
     layout,

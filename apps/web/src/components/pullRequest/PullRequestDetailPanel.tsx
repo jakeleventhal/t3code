@@ -2810,7 +2810,8 @@ export function PullRequestDetailPanel({
                         selectedCommitOid={null}
                         onSelectedCommitChange={selectCodeCommit}
                         onRefresh={refreshDetail}
-                        refreshToken={codeRefreshToken}
+                        refreshToken={refreshToken}
+                        backgroundRefreshToken={turnRefresh ?? 0}
                       />
                     </Suspense>
                   )}

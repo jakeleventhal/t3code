@@ -111,12 +111,10 @@ function useWorkingChanges(
   const revision = props.revision;
   useEffect(() => {
     refresh();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Git status revisions and completed staging actions request a fresh preview.
   }, [refresh, revision, generation]);
   const source = query.data?.sources.find((source) => source.kind === "working-tree") ?? null;
-  const parsed = useMemo(
-    () => (source ? getRenderablePatch(source.diff, `${scope}:${source.diffHash}`) : null),
-    [scope, source],
-  );
+  const parsed = source ? getRenderablePatch(source.diff, `${scope}:${source.diffHash}`) : null;
   const patches = useReviewFilePatches({
     environmentId,
     cwd,
@@ -128,40 +126,26 @@ function useWorkingChanges(
     preview: parsed,
     workingTreeScope: scope,
   });
-  const files = useMemo(
-    () => orderReviewFiles(patches.renderableFiles, resolveFileDiffPath),
-    [patches.renderableFiles],
-  );
+  const files = orderReviewFiles(patches.renderableFiles, resolveFileDiffPath);
   const getContents = useAtomCommand(reviewEnvironment.diffFileContents);
-  const loadDiffFiles = useMemo(
-    () =>
-      createGitDiffFileContentsLoader(getContents, {
-        environmentId,
-        cwd,
-        sourceKind: "working-tree",
-        ...(scope ? { workingTreeScope: scope } : {}),
-        baseRef: "HEAD",
-        headRef: null,
-        cacheKey: `${scope ?? "all"}:${source?.diffHash ?? ""}`,
+  const loadDiffFiles = createGitDiffFileContentsLoader(getContents, {
+    environmentId,
+    cwd,
+    sourceKind: "working-tree",
+    ...(scope ? { workingTreeScope: scope } : {}),
+    baseRef: "HEAD",
+    headRef: null,
+    cacheKey: `${scope ?? "all"}:${source?.diffHash ?? ""}`,
+  });
+  const hunksByPath = new Map(
+    [...(source ? [source.diff] : []), ...patches.rawPatches]
+      .flatMap((patch) => reviewPatchHunks(patch))
+      .flatMap((entry) => {
+        const parsed = getRenderablePatch(entry.filePatch, `${scope}:${fnv1a32(entry.filePatch)}`);
+        return parsed?.kind === "files"
+          ? parsed.files.map((file) => [resolveFileDiffPath(file), entry.hunks] as const)
+          : [];
       }),
-    [cwd, environmentId, getContents, scope, source?.diffHash],
-  );
-  const hunksByPath = useMemo(
-    () =>
-      new Map(
-        [...(source ? [source.diff] : []), ...patches.rawPatches]
-          .flatMap((patch) => reviewPatchHunks(patch))
-          .flatMap((entry) => {
-            const parsed = getRenderablePatch(
-              entry.filePatch,
-              `${scope}:${fnv1a32(entry.filePatch)}`,
-            );
-            return parsed?.kind === "files"
-              ? parsed.files.map((file) => [resolveFileDiffPath(file), entry.hunks] as const)
-              : [];
-          }),
-      ),
-    [source, scope, patches.rawPatches],
   );
   return { files, source, patches, query, loadDiffFiles, hunksByPath };
 }
@@ -296,8 +280,8 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     unstaged.patches.isPending,
   ]);
   const scopes = {
-    staged: { ...staged, ...(optimistic?.state.staged ?? {}) },
-    unstaged: { ...unstaged, ...(optimistic?.state.unstaged ?? {}) },
+    staged: { ...staged, ...optimistic?.state.staged },
+    unstaged: { ...unstaged, ...optimistic?.state.unstaged },
   };
   const scope = selection.scope;
   const retained =
@@ -305,7 +289,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
       ? readerContext.state[scope]
       : null;
   const authoritativeReaderFiles = (view === "files" ? all : scopes[scope]).files;
-  const readerFiles = useMemo(() => {
+  const readerFiles = (() => {
     const actual = authoritativeReaderFiles;
     if (!retained) return actual;
     const previous = new Map(
@@ -330,48 +314,35 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
         result.push(file);
     }
     return orderReviewFiles(result, resolveFileDiffPath);
-  }, [authoritativeReaderFiles, retained]);
+  })();
   const selectedPath =
     selection.path && readerFiles.some((file) => resolveFileDiffPath(file) === selection.path)
       ? selection.path
       : null;
   const data = view === "files" ? all : scopes[scope];
-  const files = useMemo(
-    () =>
-      view === "git" && selectedPath
-        ? readerFiles.filter((file) => resolveFileDiffPath(file) === selectedPath)
-        : readerFiles,
-    [readerFiles, view, selectedPath],
-  );
+  const files =
+    view === "git" && selectedPath
+      ? readerFiles.filter((file) => resolveFileDiffPath(file) === selectedPath)
+      : readerFiles;
   const requestFile = data.patches.requestFile;
   useEffect(() => {
     if (!selectedPath) return;
     const index = data.files.findIndex((file) => resolveFileDiffPath(file) === selectedPath);
     if (index >= 0) requestFile(index);
   }, [data.files, requestFile, selectedPath]);
-  const changedCount = useMemo(
-    () => new Set([...scopes.staged.files, ...scopes.unstaged.files].map(resolveFileDiffPath)).size,
-    [scopes.staged.files, scopes.unstaged.files],
-  );
-  const stagedEntries = useMemo(
-    () => diffFileTreeEntries(scopes.staged.files),
-    [scopes.staged.files],
-  );
-  const unstagedEntries = useMemo(
-    () => diffFileTreeEntries(scopes.unstaged.files),
-    [scopes.unstaged.files],
-  );
-  const workspaceGitChanges = useMemo(
-    () => [
-      ...new Map(
-        [...stagedEntries, ...unstagedEntries, ...diffFileTreeEntries(all.files)].map((entry) => [
-          entry.path,
-          entry,
-        ]),
-      ).values(),
-    ],
-    [stagedEntries, unstagedEntries, all.files],
-  );
+  const changedCount = new Set(
+    [...scopes.staged.files, ...scopes.unstaged.files].map(resolveFileDiffPath),
+  ).size;
+  const stagedEntries = diffFileTreeEntries(scopes.staged.files);
+  const unstagedEntries = diffFileTreeEntries(scopes.unstaged.files);
+  const workspaceGitChanges = [
+    ...new Map(
+      [...stagedEntries, ...unstagedEntries, ...diffFileTreeEntries(all.files)].map((entry) => [
+        entry.path,
+        entry,
+      ]),
+    ).values(),
+  ];
   const canCommit = useAtomValue(reviewEnvironment.commit.permissionAtom(environmentId));
   const canRevert = useAtomValue(reviewEnvironment.revert.permissionAtom(environmentId));
   const commit = useAtomCommand(reviewEnvironment.commit, { reportFailure: false });
@@ -592,19 +563,14 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
     maxWidth: 640,
     edge: "left",
   });
-  const codeFiles = useMemo(
-    () =>
-      files.map((fileDiff) => ({
-        fileDiff: props.ignoreWhitespace ? hideWhitespaceChanges(fileDiff) : fileDiff,
-        filePath: resolveFileDiffPath(fileDiff),
-        fileKey: buildFileDiffIdentityKey(fileDiff),
-        fileVersion: fnv1a32(`${props.ignoreWhitespace}:${JSON.stringify(fileDiff)}`),
-        collapsed:
-          folded.has(resolveFileDiffPath(fileDiff)) ||
-          fileDiff.cacheKey?.endsWith(":pending") === true,
-      })),
-    [files, folded, props.ignoreWhitespace],
-  );
+  const codeFiles = files.map((fileDiff) => ({
+    fileDiff: props.ignoreWhitespace ? hideWhitespaceChanges(fileDiff) : fileDiff,
+    filePath: resolveFileDiffPath(fileDiff),
+    fileKey: buildFileDiffIdentityKey(fileDiff),
+    fileVersion: fnv1a32(`${props.ignoreWhitespace}:${JSON.stringify(fileDiff)}`),
+    collapsed:
+      folded.has(resolveFileDiffPath(fileDiff)) || fileDiff.cacheKey?.endsWith(":pending") === true,
+  }));
   const renderActions = (file: FileDiffMetadata) => {
     const path = resolveFileDiffPath(file);
     if (view === "files") return null;

@@ -71,7 +71,7 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
     pending.current = true;
     setBusy(true);
     let locked = false;
-    try {
+    return await (async () => {
       let hostedComment = saved?.hostedComment;
       if (hostedComment && saved) {
         const moved =
@@ -130,16 +130,18 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
       }
       detail.refresh();
       navigation.goBack();
-    } catch (cause) {
-      Alert.alert(
-        "Could not save the review comment",
-        `${cause instanceof Error ? cause.message : "Saving failed."}\nYour draft is kept in T3. Try saving again.`,
-      );
-    } finally {
-      if (locked) setReviewDraftBusy(params, false);
-      pending.current = false;
-      setBusy(false);
-    }
+    })()
+      .catch(async (cause: unknown) => {
+        Alert.alert(
+          "Could not save the review comment",
+          `${cause instanceof Error ? cause.message : "Saving failed."}\nYour draft is kept in T3. Try saving again.`,
+        );
+      })
+      .finally(async () => {
+        if (locked) setReviewDraftBusy(params, false);
+        pending.current = false;
+        setBusy(false);
+      });
   };
   return (
     <PullRequestSheetContent

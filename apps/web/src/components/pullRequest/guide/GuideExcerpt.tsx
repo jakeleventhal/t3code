@@ -78,7 +78,7 @@ export interface ExcerptCommenting {
   readonly renderAttachments?: (
     onTextChange: (text: string) => void,
     onBusyChange: (busy: boolean) => void,
-    textareaRef: RefObject<HTMLTextAreaElement | null>,
+    textarea: HTMLTextAreaElement | null,
   ) => ReactNode;
   /** Comments already queued for the review, placed on the lines they belong to. */
   readonly pending: ReadonlyArray<PendingReviewComment>;

@@ -30,7 +30,7 @@ interface DiffCommentAnnotationProps {
     | ((
         onTextChange: (text: string) => void,
         onBusyChange: (busy: boolean) => void,
-        textareaRef: RefObject<HTMLTextAreaElement | null>,
+        textarea: HTMLTextAreaElement | null,
       ) => ReactNode)
     | undefined;
 }
@@ -55,15 +55,15 @@ export function DiffCommentAnnotation({
   const [localDraftText, setLocalDraftText] = useState("");
   const displayedText = kind === "draft" && !onTextChange ? localDraftText : text;
   const trimmedText = displayedText.trim();
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [textarea, setTextarea] = useState<HTMLTextAreaElement | null>(null);
 
   useLayoutEffect(() => {
     if (kind !== "draft" || !focusOnMount) return;
     const frame = window.requestAnimationFrame(() => {
-      textareaRef.current?.focus({ preventScroll: true });
+      textarea?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusOnMount, kind]);
+  }, [focusOnMount, kind, textarea]);
 
   if (kind === "comment") {
     return (
@@ -102,7 +102,7 @@ export function DiffCommentAnnotation({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <Textarea
-        ref={textareaRef}
+        ref={setTextarea}
         autoFocus={focusOnMount}
         size="sm"
         disabled={blocked}
@@ -126,7 +126,7 @@ export function DiffCommentAnnotation({
           }
         }}
       />
-      {renderAttachments?.(onTextChange ?? setLocalDraftText, setUploading, textareaRef)}
+      {renderAttachments?.(onTextChange ?? setLocalDraftText, setUploading, textarea)}
       <div className="mt-1.5 flex items-center gap-1">
         <span className="mr-auto text-3xs text-muted-foreground/70">
           ⌘/Ctrl Enter: {submitLabel}

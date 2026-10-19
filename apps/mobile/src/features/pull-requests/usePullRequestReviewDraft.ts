@@ -166,7 +166,7 @@ export function usePullRequestReviewDraft(params: PullRequestParams) {
       .filter((comment) => !localIds.has(comment.id) && !retired.has(comment.id))
       .map((comment) => ({ ...comment, headSha: detail.data?.headSha ?? "", code: "" }));
     return remote.length ? [...local, ...remote] : local;
-  }, [draft.comments, activity.data?.reviewThreads, detail.data?.headSha, retiredIds]);
+  }, [draft.comments, activity.data?.reviewThreads, detail, retiredIds]);
   const threads = useMemo(() => {
     return (activity.data?.reviewThreads ?? []).flatMap((thread) => {
       const published = thread.comments.filter((comment) => !comment.pendingReviewId);

@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
@@ -219,12 +220,12 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     }
   };
 
-  const openFiles = useCallback(() => {
+  const openFiles = () => {
     navigation.navigate("ThreadFiles", {
       environmentId: String(environmentId),
       threadId: String(threadId),
     });
-  }, [environmentId, navigation, threadId]);
+  };
 
   const openReview = () => {
     navigation.navigate("ThreadReview", {
@@ -331,125 +332,48 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       variant: "plain",
     },
     git: {
-      accessibilityLabel: "Git actions",
+      accessibilityLabel: "Open git",
       icon: { name: "point.topleft.down.curvedto.point.bottomright.up", type: "sfSymbol" },
       identifier: "thread-right-git",
       label: "Git",
-      menu: {
-        items: [
-          {
-            description: compactMenuStatus(props.gitStatus),
-            disabled: true,
-            icon: {
-              name: "point.topleft.down.curvedto.point.bottomright.up",
-              type: "sfSymbol",
-            },
-            label: compactMenuBranchLabel(model.currentBranchLabel),
-            onPress: (): void => {},
-            type: "action",
-          },
-          {
-            description: model.quickActionHint ?? undefined,
-            disabled: model.quickAction.disabled,
-            icon: { name: model.quickActionIcon, type: "sfSymbol" },
-            label: model.quickAction.label,
-            onPress: (): void => void model.runQuickAction(),
-            type: "action",
-          },
-          {
-            description: "Turn diffs and worktree changes",
-            disabled: !model.isRepo,
-            icon: { name: "text.bubble", type: "sfSymbol" },
-            label: "Review changes",
-            onPress: model.openReview,
-            type: "action",
-          },
-          ...(props.onMergeBack
-            ? [
-                {
-                  description: "Bring this thread's latest turn into its source",
-                  icon: { name: PullRequestGlyph.merged, type: "sfSymbol" as const },
-                  label: "Merge back to source",
-                  onPress: props.onMergeBack,
-                  type: "action" as const,
-                },
-              ]
-            : []),
-          {
-            description: "Commit, files, branches",
-            icon: { name: "ellipsis", type: "sfSymbol" },
-            label: "More",
-            onPress: model.openGitInspector,
-            type: "action",
-          },
-        ],
-        title: "Git",
-      },
-      git: {
-        accessibilityLabel: "Open git",
-        icon: { name: "point.topleft.down.curvedto.point.bottomright.up", type: "sfSymbol" },
-        identifier: "thread-right-git",
-        label: "Git",
-        onPress: model.openReview,
-        sharesBackground: true,
-        type: "button",
-        variant: "plain",
-      },
-      mergeBack: props.onMergeBack
-        ? {
-            accessibilityLabel: "Merge back to source",
-            icon: { name: "arrow.triangle.merge", type: "sfSymbol" },
-            identifier: "thread-right-merge-back",
-            label: "Merge back",
-            onPress: props.onMergeBack,
-            sharesBackground: true,
-            type: "button",
-            variant: "plain",
-          }
-        : null,
-    }),
-    [
-      model.openFiles,
-      model.openReview,
-      props.canOpenFiles,
-      props.canOpenTerminal,
-      props.canOperateTerminal,
-      props.onOpenNewTerminal,
-      props.onMergeBack,
-      props.onOpenTerminal,
-      props.onRunProjectScript,
-      props.projectScripts,
-      props.terminalSessions,
-    ],
-  );
+      onPress: model.openReview,
+      sharesBackground: true,
+      type: "button",
+      variant: "plain",
+    },
+    mergeBack: props.onMergeBack
+      ? {
+          accessibilityLabel: "Merge back to source",
+          icon: { name: PullRequestGlyph.merged, type: "sfSymbol" },
+          identifier: "thread-right-merge-back",
+          label: "Merge back",
+          onPress: props.onMergeBack,
+          sharesBackground: true,
+          type: "button",
+          variant: "plain",
+        }
+      : null,
+  };
 }
 
 export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
-  return useMemo(
-    () =>
-      [
-        ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
-        actionItems.git,
-        actionItems.files,
-        actionItems.terminal,
-      ] as HeaderItems,
-    [actionItems],
-  );
+  return [
+    ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
+    actionItems.git,
+    actionItems.files,
+    actionItems.terminal,
+  ] as HeaderItems;
 }
 
 export function useThreadGitCenterHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
-  return useMemo(
-    () =>
-      [
-        actionItems.files,
-        actionItems.git,
-        ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
-        actionItems.terminal,
-      ] as HeaderItems,
-    [actionItems],
-  );
+  return [
+    actionItems.files,
+    actionItems.git,
+    ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
+    actionItems.terminal,
+  ] as HeaderItems;
 }
 
 export function ThreadGitControls(props: ThreadGitControlsProps) {

@@ -306,7 +306,7 @@ export function PullRequestThreadCard({
     if (!body || sendingRef.current || uploading) return;
     sendingRef.current = true;
     setSending(true);
-    try {
+    return await (async () => {
       if (await actions.reply(body)) {
         // The mutation returns no comment; reopen the cursor so the reply stays reachable.
         setLoadedPage((previous) =>
@@ -316,15 +316,15 @@ export function PullRequestThreadCard({
         );
         setReply((current) => (current.trim() === body ? "" : current));
       }
-    } finally {
+    })().finally(async () => {
       sendingRef.current = false;
       setSending(false);
-    }
+    });
   };
   const loadMore = async () => {
     if (nextCursor === null || loadingMore) return;
     setLoadingMore(true);
-    try {
+    return await (async () => {
       const result = await actions.loadMore(nextCursor);
       if (result === null) return;
       setLoadedPage((previous) => ({
@@ -335,9 +335,9 @@ export function PullRequestThreadCard({
         ),
         nextCursor: result.nextCursor,
       }));
-    } finally {
+    })().finally(async () => {
       setLoadingMore(false);
-    }
+    });
   };
 
   return (

@@ -123,7 +123,7 @@ export function PullRequestMergeControls(props: {
       return false;
     pending.current = true;
     setBusy(true);
-    try {
+    return await (async () => {
     const response = await runAction({
       ...target,
       input: {
@@ -159,20 +159,22 @@ export function PullRequestMergeControls(props: {
     });
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       return true;
-    } catch (cause) {
+    })()
+      .catch(async (cause: unknown) => {
       Dialog.alert(
         "Couldn't complete the merge action",
         cause instanceof Error ? cause.message : "Try again.",
       );
       return false;
-    } finally {
+      })
+      .finally(async () => {
     // A stack can partly merge before the provider reports a failure.
     refreshDetail();
     refreshActivity();
     stack.refresh();
     pending.current = false;
     setBusy(false);
-    }
+      });
   };
   const confirm = (action: "merge" | "enable-auto-merge" | "disable-auto-merge") => {
     if (action === "merge" && canBypassRequirements) {

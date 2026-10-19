@@ -81,12 +81,12 @@ export function PullRequestGuideTab({
       : {
           canComment,
           canCommentRanges,
-          renderAttachments: (onTextChange, onBusyChange, textareaRef) => (
+          renderAttachments: (onTextChange, onBusyChange, textarea) => (
             <PullRequestAttachments
               environmentId={environmentId}
               reference={reference}
               onTextChange={onTextChange}
-              textareaRef={textareaRef}
+              textareaRef={{ current: textarea }}
               onBusyChange={onBusyChange}
             />
           ),

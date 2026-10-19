@@ -1,5 +1,5 @@
-import { Fragment, type ComponentProps, type ReactNode } from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { Fragment, act, type ComponentProps, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { WorkingChangesTree } from "./WorkingChangesTree";
@@ -65,14 +65,18 @@ const staged: Props["staged"] = [
 ];
 
 describe("working changes context actions", () => {
-  let renderer: ReactTestRenderer | undefined;
+  let root: Root | undefined;
+  let container: HTMLDivElement;
   const onStage = vi.fn<Props["onStage"]>();
   const onRevert = vi.fn<Props["onRevert"]>();
   const onSelect = vi.fn<Props["onSelect"]>();
 
   async function mount(overrides: Partial<Props> = {}) {
     await act(async () => {
-      renderer = create(
+      container = document.createElement("div");
+      document.body.appendChild(container);
+      root = createRoot(container);
+      root.render(
         <WorkingChangesTree
           staged={staged}
           unstaged={unstaged}
@@ -90,32 +94,33 @@ describe("working changes context actions", () => {
   }
 
   async function select(scope: Scope, path: string, toggle = false) {
-    await act(async () => {
-      renderer!.root.findByProps({ "aria-label": `${scope}: ${path}` }).props.onClick({
-        metaKey: toggle,
-        ctrlKey: false,
-        shiftKey: false,
-      });
-    });
+    const target = container.querySelector<HTMLElement>(`[aria-label="${scope}: ${path}"]`)!;
+    await act(async () =>
+      target.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: toggle })),
+    );
   }
 
   async function rightClick(scope: Scope, path: string) {
-    await act(async () => {
-      renderer!.root
-        .findByProps({ "data-git-scope": scope, "data-git-path": path })
-        .props.onContextMenu({
-          preventDefault: vi.fn(),
-          stopPropagation: vi.fn(),
+    const target = container.querySelector<HTMLElement>(
+      `[data-git-scope="${scope}"][data-git-path="${path}"]`,
+    )!;
+    await act(async () =>
+      target.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
           clientX: 241,
           clientY: 173,
-        });
-    });
+        }),
+      ),
+    );
   }
 
-  const menuItems = () => renderer!.root.findAllByProps({ role: "menuitem" });
-  const item = (label: string) => menuItems().find((node) => node.children.includes(label))!;
+  const menuItems = () =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+  const item = (label: string) => menuItems().find((node) => node.textContent === label)!;
   async function choose(label: string) {
-    await act(async () => item(label).props.onClick());
+    await act(async () => item(label).click());
   }
 
   beforeEach(() => {
@@ -125,8 +130,9 @@ describe("working changes context actions", () => {
     onSelect.mockClear();
   });
   afterEach(async () => {
-    await act(async () => renderer?.unmount());
-    renderer = undefined;
+    await act(async () => root?.unmount());
+    container?.remove();
+    root = undefined;
     vi.unstubAllGlobals();
   });
 
@@ -183,7 +189,7 @@ describe("working changes context actions", () => {
   it("keeps staging and revert availability independent", async () => {
     await mount({ disabled: true });
     await rightClick("unstaged", "tests/a.test.ts");
-    expect(item("Stage changes").props.disabled).toBe(true);
-    expect(item("Revert changes").props.disabled).toBe(false);
+    expect(item("Stage changes").disabled).toBe(true);
+    expect(item("Revert changes").disabled).toBe(false);
   });
 });

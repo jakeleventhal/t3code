@@ -36,7 +36,7 @@ import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
-import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
+import { menuItemIconName, statusSummary } from "./gitSheetComponents";
 import {
   LinkedPullRequestRow,
   linkedPullRequestKey,
@@ -192,9 +192,23 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     }
   };
 
-  const rowStatusDetail = (item: (typeof menuItems)[number]): string | undefined => {
-    const status = gitStatus.data;
-    if (status == null) {
+  const rowStatusDetail = useCallback(
+    (item: (typeof menuItems)[number]): string | undefined => {
+      const status = gitStatus.data;
+      if (status == null) {
+        return undefined;
+      }
+      if (item.dialogAction === "commit" && status.hasWorkingTreeChanges) {
+        const fileCount = status.workingTree?.files.length ?? 0;
+        return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+      }
+      if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
+        const ahead = status.aheadCount ?? 0;
+        return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
+      }
+      if (item.kind === "open_pr" && status.pr?.number != null) {
+        return `PR #${status.pr.number} ${status.pr.state ?? "open"}`;
+      }
       return undefined;
     },
     [gitStatus.data],
@@ -254,8 +268,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
             onPress={() => void gitActions.onPullSelectedThreadBranch()}
           />
         ) : null}
-        {Platform.OS !== "android" ? <View className="ml-12 h-px bg-border" /> : null}
-        <SheetListRow
+        <ListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label="Branches & worktrees"
           description={

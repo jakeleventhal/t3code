@@ -80,10 +80,6 @@ export function DiffFileTree({
     revealRequestId: number;
   } | null>(null);
   const mountedPresentationRef = useRef<ReturnType<typeof diffFileTreeModel> | null>(null);
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
-  const reviewEntriesRef = useRef(reviewEntries);
-  reviewEntriesRef.current = reviewEntries;
 
   // The tree model keeps the first selection handler it was given.
   const handleSelectionChange = useStableCallback((selectedPaths: ReadonlyArray<string>) => {
@@ -94,6 +90,22 @@ export function DiffFileTree({
     }
   });
 
+  const renderRowDecoration = useStableCallback(
+    ({ item }: { item: { kind: string; path: string } }) => {
+      const matches = entries.filter((entry) =>
+        item.kind === "directory"
+          ? entry.path.startsWith(item.path.endsWith("/") ? item.path : `${item.path}/`)
+          : entry.path === item.path,
+      );
+      const count = matches.reduce((total, entry) => total + (entry.unresolvedComments ?? 0), 0);
+      const reviewed = matches.length > 0 && matches.every((entry) => entry.reviewed);
+      if (!reviewed && count === 0) return null;
+      return {
+        text: `${reviewed ? "✓" : ""}${count > 0 ? ` ${count}` : ""}`.trim(),
+        title: `${reviewed ? "Reviewed. " : ""}${count > 0 ? `${count} unresolved or pending comments` : ""}`,
+      };
+    },
+  );
   const { model } = useFileTree({
     density: "compact",
     flattenEmptyDirectories: true,
@@ -111,20 +123,7 @@ export function DiffFileTree({
     composition: {
       contextMenu: { enabled: false, triggerMode: "right-click" },
     },
-    renderRowDecoration: ({ item }) => {
-      const matches = entriesRef.current.filter((entry) =>
-        item.kind === "directory"
-          ? entry.path.startsWith(item.path.endsWith("/") ? item.path : `${item.path}/`)
-          : entry.path === item.path,
-      );
-      const count = matches.reduce((total, entry) => total + (entry.unresolvedComments ?? 0), 0);
-      const reviewed = matches.length > 0 && matches.every((entry) => entry.reviewed);
-      if (!reviewed && count === 0) return null;
-      return {
-        text: `${reviewed ? "✓" : ""}${count > 0 ? ` ${count}` : ""}`.trim(),
-        title: `${reviewed ? "Reviewed. " : ""}${count > 0 ? `${count} unresolved or pending comments` : ""}`,
-      };
-    },
+    renderRowDecoration,
   });
   const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
     areAllDirectoriesExpanded(currentModel, directoryPaths),
@@ -176,13 +175,17 @@ export function DiffFileTree({
         model.focusPath(nextFocusedPath);
       }
     }
+  }, [directoryPaths, model, modelPaths, ordering, positions, presented]);
+
+  useEffect(() => {
     model.setGitStatus(gitStatus);
-  }, [directoryPaths, gitStatus, model, modelPaths, ordering, positions, presented]);
+  }, [gitStatus, model]);
 
   useEffect(() => {
     // Pierre ignores unchanged git statuses, so reviewed/comment-only updates need a render
     // of the existing tree. This preserves its scroll, selection, and folder expansion.
     if (model.getFileTreeContainer()) model.render({});
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Review marks change the row decoration without changing Git status or tree paths.
   }, [entries, model]);
 
   useEffect(() => {
@@ -287,7 +290,7 @@ export function DiffFileTree({
           ? {
               renderContextMenu: (item, context) => {
                 const matches = diffFileTreeReviewEntries(
-                  reviewEntriesRef.current,
+                  reviewEntries,
                   model.getSelectedPaths(),
                   item.path,
                 );

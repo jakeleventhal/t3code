@@ -121,7 +121,7 @@ export function PullRequestReviewSheet({
         throw new Error("Add your feedback and check your permissions before submitting.");
       if (!setReviewDraftBusy(params, true))
         throw new Error("Wait for the pending comment to finish saving.");
-      try {
+      return await (async () => {
         const submitted = { ...store.draft, comments: store.comments };
         const response =
           reviewing && verdict
@@ -146,9 +146,9 @@ export function PullRequestReviewSheet({
             : { ...current, comment: current.comment === submitted.comment ? "" : current.comment },
         );
         await store.flush();
-      } finally {
+      })().finally(async () => {
         setReviewDraftBusy(params, false);
-      }
+      });
     });
   return (
     <SheetContent

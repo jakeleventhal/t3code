@@ -36,7 +36,7 @@ export function usePendingReviewCommentActions(params: PullRequestParams) {
       return;
     }
     if (!canSave || !setReviewDraftBusy(params, true)) return;
-    try {
+    return await (async () => {
       const result = await save({ ...target, input: { ...target.input, comment } });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       store.update((draft) => ({
@@ -49,20 +49,22 @@ export function usePendingReviewCommentActions(params: PullRequestParams) {
       await Clipboard.setStringAsync(result.value.url);
       detail.refresh();
       activity.refresh();
-    } catch (cause) {
-      Alert.alert(
-        "Could not copy the pending comment link",
-        cause instanceof Error ? cause.message : "Your draft has been kept. Try again.",
-      );
-    } finally {
-      setReviewDraftBusy(params, false);
-    }
+    })()
+      .catch(async (cause: unknown) => {
+        Alert.alert(
+          "Could not copy the pending comment link",
+          cause instanceof Error ? cause.message : "Your draft has been kept. Try again.",
+        );
+      })
+      .finally(async () => {
+        setReviewDraftBusy(params, false);
+      });
   };
   const discard = async (given: PendingReviewComment) => {
     const comment =
       readReviewDraft(params).comments.find((entry) => entry.id === given.id) ?? given;
     if (!setReviewDraftBusy(params, true)) return false;
-    try {
+    return await (async () => {
       if (comment.hostedComment) {
         if (!canDiscard) throw new Error("This connection cannot discard saved review comments.");
         const result = await remove({
@@ -80,15 +82,17 @@ export function usePendingReviewCommentActions(params: PullRequestParams) {
       detail.refresh();
       activity.refresh();
       return true;
-    } catch (cause) {
-      Alert.alert(
-        "Could not discard the pending comment",
-        cause instanceof Error ? cause.message : "Your draft has been kept. Try again.",
-      );
-      return false;
-    } finally {
-      setReviewDraftBusy(params, false);
-    }
+    })()
+      .catch(async (cause: unknown) => {
+        Alert.alert(
+          "Could not discard the pending comment",
+          cause instanceof Error ? cause.message : "Your draft has been kept. Try again.",
+        );
+        return false;
+      })
+      .finally(async () => {
+        setReviewDraftBusy(params, false);
+      });
   };
   return {
     busy: store.busy,
