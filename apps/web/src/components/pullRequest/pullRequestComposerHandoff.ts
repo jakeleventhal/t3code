@@ -6,7 +6,7 @@ import {
 } from "~/composerDraftStore";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
-import { handoffPrompt, removeHandoffPrompt } from "./pullRequestDetail.logic";
+import { removeInlineContextReference } from "~/lib/composerContextReferences";
 
 export interface PullRequestComposerTask {
   prompt: string;
@@ -38,12 +38,47 @@ function unchangedRange(previous: OwnedHandoff, prompt: string) {
   ) {
     suffix += 1;
   }
+  let range;
   if (before.length - suffix <= previous.start) {
     const shift = prompt.length - before.length;
-    return { start: previous.start + shift, end: previous.end + shift };
+    range = { start: previous.start + shift, end: previous.end + shift };
+  } else if (prefix >= previous.end) {
+    range = { start: previous.start, end: previous.end };
+  } else {
+    return null;
   }
-  if (prefix >= previous.end) return { start: previous.start, end: previous.end };
-  return null;
+  const preceding = prompt.slice(0, range.start);
+  const following = prompt.slice(range.end);
+  const references = collectComposerContextReferences(prompt);
+  // Adjacent reader text makes the whole sentence theirs, even if our substring survived.
+  const startsParagraph =
+    range.start === 0 ||
+    preceding.endsWith("\n\n") ||
+    references.some(
+      (reference) =>
+        reference.end <= range.start && preceding.slice(reference.end).trim().length === 0,
+    );
+  const endsParagraph =
+    following.length === 0 ||
+    following.startsWith("\n\n") ||
+    references.some(
+      (reference) =>
+        reference.start >= range.end &&
+        prompt.slice(range.end, reference.start).trim().length === 0,
+    );
+  return startsParagraph && endsParagraph ? range : null;
+}
+
+function handoffPrompt(prompt: string, incoming: string): string {
+  if (prompt.trim().length === 0) return incoming;
+  return incoming.length === 0 ? prompt : `${prompt}\n\n${incoming}`;
+}
+
+function removeHandoffPrompt(prompt: string, start: number, end: number): string {
+  if (prompt[end] === " ") end += 1;
+  if (prompt.slice(end, end + 2) === "\n\n") end += 2;
+  else if (prompt.slice(start - 2, start) === "\n\n") start -= 2;
+  return prompt.slice(0, start) + prompt.slice(end);
 }
 
 useComposerDraftStore.subscribe((state, previousState) => {
@@ -84,7 +119,7 @@ export function writePullRequestTaskToComposer(
   const previous = generalHandoffs.get(key);
   const range = previous ? unchangedRange(previous, prompt) : null;
   if (mode === "append") {
-    store.setPrompt(target, handoffPrompt({ prompt, lastHandoffPrompt: undefined }, task.prompt));
+    store.setPrompt(target, handoffPrompt(prompt, task.prompt));
     for (const comment of task.reviewComments ?? []) {
       store.addReviewComment(target, comment, {
         allowDuplicateReference: true,
@@ -97,17 +132,11 @@ export function writePullRequestTaskToComposer(
   generalHandoffs.delete(key);
   if (range) prompt = removeHandoffPrompt(prompt, range.start, range.end);
   if (previous) {
-    for (const reference of collectComposerContextReferences(prompt).toReversed()) {
-      if (!previous.contextIds.has(reference.contextId)) continue;
-      const end = prompt[reference.end] === " " ? reference.end + 1 : reference.end;
-      const start =
-        end === reference.end && prompt[reference.start - 1] === " "
-          ? reference.start - 1
-          : reference.start;
-      prompt = prompt.slice(0, start) + prompt.slice(end);
+    for (const contextId of previous.contextIds) {
+      prompt = removeInlineContextReference(prompt, contextId).prompt;
     }
   }
-  const next = handoffPrompt({ prompt, lastHandoffPrompt: undefined }, task.prompt);
+  const next = handoffPrompt(prompt, task.prompt);
   store.setPrompt(target, next);
   const incomingIds = new Set((task.reviewComments ?? []).map((comment) => comment.id));
   store.setReviewComments(target, [

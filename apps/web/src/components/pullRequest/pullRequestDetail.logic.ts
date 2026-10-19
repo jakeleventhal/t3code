@@ -1,4 +1,3 @@
-import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
@@ -37,11 +36,6 @@ import {
 } from "@t3tools/shared/threadPullRequests";
 
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
-import { reviewCommentContextId } from "~/lib/composerContextRecords";
-import {
-  removeInlineContextReference,
-  stripInlineContextReferences,
-} from "~/lib/composerContextReferences";
 
 export const PULL_REQUEST_MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
   merge: "Merge",
@@ -839,109 +833,6 @@ export interface FixFindingsHandoff {
 }
 
 /**
- * General handoffs own `pull-request-` chips. Line comments use `pr-line-`, so replacing a
- * general request keeps the lines the reader added, just as it keeps their own diff annotations.
- */
-const HANDOFF_COMMENT_ID_PREFIX = "pull-request-";
-
-export function stripPullRequestHandoffReferences(
-  prompt: string,
-  comments: ReadonlyArray<ReviewCommentContext>,
-  retainedIds: ReadonlySet<string> = new Set(),
-): string {
-  let next = prompt;
-  for (const comment of comments) {
-    if (!comment.id.startsWith(HANDOFF_COMMENT_ID_PREFIX) || retainedIds.has(comment.id)) continue;
-    next = removeInlineContextReference(next, reviewCommentContextId(comment.id)).prompt;
-  }
-  return next;
-}
-
-export interface HandoffPromptInsertion {
-  readonly text: string;
-  /** The text preceding this insertion, before later caret citations add their own padding. */
-  readonly prefix: string;
-  /** Chips generated with this request, used to disambiguate identical reader paragraphs. */
-  readonly contextIds?: ReadonlyArray<string>;
-}
-
-/** Citation links and their whitespace padding do not change which request follows this prose. */
-function handoffPrefixProse(prefix: string): string {
-  return stripInlineContextReferences(prefix).replace(/\s/gu, "");
-}
-
-/**
- * The prompt the composer should hold once a hand-off lands there.
- *
- * A hand-off owns what an earlier hand-off wrote and nothing else: pressing Ask and then Explain
- * used to stack both in the composer, and the reader sent a question nobody wrote. What says an
- * earlier one wrote it is the recorded text and preceding prose — only that unchanged insertion is
- * replaced. A reader who typed their own question, or edited the one they were given, has written
- * something no hand-off may take away: an empty ask leaves it alone, and one carrying a prompt
- * goes underneath it.
- */
-export function handoffPrompt(
-  existing: {
-    readonly prompt: string;
-    /**
-     * What the last hand-off into this draft wrote — its own contribution alone, never the
-     * merged prompt it landed in, or a draft that held the reader's text before the first
-     * hand-off would read as all hand-off and be replaced wholesale by the second.
-     */
-    readonly lastHandoffPrompt: HandoffPromptInsertion | undefined;
-  },
-  incoming: string,
-): string {
-  const last = existing.lastHandoffPrompt ?? "";
-  const references = collectComposerContextReferences(existing.prompt);
-  const candidates: number[] = [];
-  if (last.length > 0) {
-    for (
-      let start = existing.prompt.indexOf(last);
-      start >= 0;
-      start = existing.prompt.indexOf(last, start + last.length)
-    ) {
-      if (references.some((reference) => start >= reference.start && start < reference.end))
-        continue;
-      const before = existing.prompt.slice(0, start);
-      const after = existing.prompt.slice(start + last.length);
-      const precedingReference = references.find(
-        (reference) => reference.end <= start && before.slice(reference.end).trim().length === 0,
-      );
-      if (
-        (start === 0 || before.endsWith("\n\n") || precedingReference) &&
-        (after.length === 0 || after.startsWith("\n\n"))
-      ) {
-        candidates.push(start);
-      }
-    }
-  }
-  const start = candidates.length === 1 ? candidates[0] : undefined;
-  const kept =
-    start === undefined
-      ? existing.prompt
-      : removeHandoffPrompt(existing.prompt, start, start + last.length);
-  if (kept.length === 0) return incoming;
-  return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;
-}
-
-export function removeHandoffPrompt(prompt: string, start: number, end: number): string {
-  if (prompt.slice(end, end + 2) === "\n\n") end += 2;
-  else if (prompt.slice(start - 2, start) === "\n\n") start -= 2;
-  return prompt.slice(0, start) + prompt.slice(end);
-}
-
-export function handoffReviewComments(
-  existing: ReadonlyArray<ReviewCommentContext>,
-  incoming: ReadonlyArray<ReviewCommentContext>,
-): ReviewCommentContext[] {
-  return [
-    ...existing.filter((comment) => !comment.id.startsWith(HANDOFF_COMMENT_ID_PREFIX)),
-    ...incoming,
-  ];
-}
-
-/**
  * Everything derived from the pull request is explicitly marked untrusted: review bodies
  * and check output are attacker-controlled on public repositories.
  */
@@ -1143,11 +1034,7 @@ function pullRequestContextComment(
   };
 }
 
-/**
- * It is the reader's own chip, so it sits outside the `pull-request-` namespace a
- * hand-off owns and sweeps: a later hand-off must not delete a reference the reader put
- * there themselves.
- */
+/** Reader-added references are independent of context owned by composer handoffs. */
 export function buildPullRequestReferenceContext(
   input: PullRequestContextMetadata,
 ): ReviewCommentContext {
@@ -1248,8 +1135,8 @@ export function buildAskAboutGuideStopHandoff(input: {
     reviewComments: [
       pullRequestContextComment(input, ANSWER_INSTRUCTIONS),
       {
-        id: `pull-request-guide-stop:${input.number}:${stop.index}`,
-        sectionId: `pull-request:${input.number}`,
+        id: `pull-request-guide-stop:${input.url}:${stop.index}`,
+        sectionId: `pull-request:${input.url}`,
         sectionTitle: `PR #${input.number} review guide`,
         filePath: `Guide stop ${stop.index + 1}`,
         startIndex: 0,
