@@ -367,7 +367,6 @@ const ProviderAdapterFailureReason = Schema.Literals([
   "attachment_unreadable",
 ]);
 export type ProviderAdapterFailureReason = typeof ProviderAdapterFailureReason.Type;
-/** The app deliberately closed an exclusive session to move its thread's workspace. */
 export class ProviderAdapterSessionDetached extends Schema.TaggedError<ProviderAdapterSessionDetached>()(
   "ProviderAdapterSessionDetached",
   {
@@ -567,9 +566,12 @@ export interface ProviderAdapterV2SessionRuntime {
   /**
    * Manager-owned runtimes expose a synchronous subscription so concurrent
    * provider threads receive independent copies of the process event stream.
+   * Run subscriptions supply their thread so detach ends only the moving thread's stream.
    * Adapter runtimes may omit this and expose only their single-consumer event stream.
    */
-  readonly subscribeEvents?: Effect.Effect<ProviderAdapterV2EventSubscription>;
+  readonly subscribeEvents?: (
+    threadId?: ThreadId,
+  ) => Effect.Effect<ProviderAdapterV2EventSubscription>;
   readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
   /**
    * When present, RunExecutionService uses only this probe (never the
