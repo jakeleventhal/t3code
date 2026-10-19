@@ -23,6 +23,15 @@ import {
   type ResolvedAppearance,
 } from "../../../lib/appearancePreferences";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import {
+  normalizeFontSelections,
+  normalizeImportedFonts,
+  resolveMobileFonts,
+  type MobileFontRole,
+  type MobileFontSelections,
+} from "../../../lib/mobileFonts";
+import { loadImportedFontFiles } from "../../../lib/mobileFontFiles";
+import { normalizeBaseFontSize } from "../../../lib/appearancePreferences";
 import type { Preferences } from "../../../persistence/mobile-preferences";
 import { isSystemColorsAvailable, readSystemColorPalettes } from "../../../lib/materialYouPalette";
 import { materialYouPaletteToMobileThemeVariables } from "../../../lib/materialYouTheme";
@@ -45,6 +54,17 @@ import {
 } from "../../../lib/mobileThemeRuntime";
 
 interface AppearancePreferencesContextValue {
+  readonly fonts: ReturnType<typeof resolveMobileFonts>;
+  readonly fontSelections: MobileFontSelections;
+  readonly importedFonts: ReturnType<typeof normalizeImportedFonts>;
+  readonly unavailableFonts: readonly string[];
+  readonly replyFontSize: number;
+  readonly composerFontSize: number;
+  readonly customReplyFontSize: boolean;
+  readonly customComposerFontSize: boolean;
+  readonly setFontSelection: (role: MobileFontRole, selection: string) => void;
+  readonly setReplyFontSize: (size: number | null) => void;
+  readonly setComposerFontSize: (size: number | null) => void;
   readonly appearance: ResolvedAppearance;
   readonly themeId: MobileThemeId;
   readonly themeIds: MobileThemeIds;
@@ -132,6 +152,58 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     () => resolveAppearance({ baseFontSize, codeFontSize, codeWordBreak, terminalFontSize }),
     [baseFontSize, codeFontSize, codeWordBreak, terminalFontSize],
   );
+  const fontSelections = useMemo(
+    () => normalizeFontSelections(storedPreferences?.fontSelections),
+    [storedPreferences?.fontSelections],
+  );
+  const importedFonts = useMemo(
+    () => normalizeImportedFonts(storedPreferences?.importedFonts),
+    [storedPreferences?.importedFonts],
+  );
+  const activeFontFiles = useMemo(() => {
+    const selected = new Set(Object.values(fontSelections));
+    return importedFonts.filter((face) => selected.has(`imported:${face.family}`));
+  }, [importedFonts, fontSelections]);
+  const libraryKey = activeFontFiles.map((face) => face.id).join(":");
+  const [loadedFontFiles, setLoadedFontFiles] = useState<{
+    key: string;
+    loaded: ReadonlySet<string>;
+    unavailable: readonly string[];
+  }>({ key: "", loaded: new Set(), unavailable: [] });
+  useEffect(() => {
+    let cancelled = false;
+    void loadImportedFontFiles(activeFontFiles).then((result) => {
+      if (!cancelled) setLoadedFontFiles({ key: libraryKey, ...result });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFontFiles, libraryKey]);
+  const fonts = useMemo(
+    () =>
+      resolveMobileFonts(
+        fontSelections,
+        importedFonts,
+        loadedFontFiles.key === libraryKey ? loadedFontFiles.loaded : new Set(),
+        Platform.OS,
+      ),
+    [fontSelections, importedFonts, libraryKey, loadedFontFiles],
+  );
+  const fontVariables = useMemo(
+    () => ({
+      ...themeVariables,
+      "--font-sans": fonts.interface.regular,
+      "--font-medium": fonts.interface.medium,
+      "--font-bold": fonts.interface.bold,
+    }),
+    [themeVariables, fonts.interface],
+  );
+  const replyFontSize = normalizeBaseFontSize(storedPreferences?.replyFontSize ?? baseFontSize);
+  const composerFontSize = normalizeBaseFontSize(
+    storedPreferences?.composerFontSize ?? baseFontSize,
+  );
+  const customReplyFontSize = storedPreferences?.replyFontSize != null;
+  const customComposerFontSize = storedPreferences?.composerFontSize != null;
   const isReady = AsyncResult.isSuccess(preferencesResult);
   const runtimeState = useMemo<MobileThemeRuntimeState>(
     () => ({
@@ -271,10 +343,41 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     (value: boolean) => updatePreferences({ mathRenderingEnabled: value }),
     [updatePreferences],
   );
+  const setFontSelection = useCallback(
+    (role: MobileFontRole, selection: string) => {
+      savePreferences({
+        transform: (current) => ({
+          fontSelections: { ...normalizeFontSelections(current.fontSelections), [role]: selection },
+        }),
+      });
+    },
+    [savePreferences],
+  );
+  const setReplyFontSize = useCallback(
+    (size: number | null) =>
+      updatePreferences({ replyFontSize: size === null ? null : normalizeBaseFontSize(size) }),
+    [updatePreferences],
+  );
+  const setComposerFontSize = useCallback(
+    (size: number | null) =>
+      updatePreferences({ composerFontSize: size === null ? null : normalizeBaseFontSize(size) }),
+    [updatePreferences],
+  );
 
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance,
+      fonts,
+      fontSelections,
+      importedFonts,
+      unavailableFonts: loadedFontFiles.unavailable,
+      replyFontSize,
+      composerFontSize,
+      customReplyFontSize,
+      customComposerFontSize,
+      setFontSelection,
+      setReplyFontSize,
+      setComposerFontSize,
       themeId,
       themeIds,
       themeMode,
@@ -297,6 +400,17 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     }),
     [
       appearance,
+      fonts,
+      fontSelections,
+      importedFonts,
+      loadedFontFiles.unavailable,
+      replyFontSize,
+      composerFontSize,
+      customReplyFontSize,
+      customComposerFontSize,
+      setFontSelection,
+      setReplyFontSize,
+      setComposerFontSize,
       themeId,
       themeIds,
       themeMode,
@@ -321,7 +435,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   return (
     <AppearancePreferencesContext.Provider value={value}>
       <ScopedTheme theme={activeThemeName}>
-        <ScopedVariables variables={themeVariables}>{props.children}</ScopedVariables>
+        <ScopedVariables variables={fontVariables}>{props.children}</ScopedVariables>
       </ScopedTheme>
     </AppearancePreferencesContext.Provider>
   );
