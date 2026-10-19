@@ -18,9 +18,8 @@ import { StyleSheet } from "react-native";
 import { markdownFileIconSource, markdownIconAssetUri } from "../lib/markdownFileIcons";
 import { composerChipSizeSuffix, contextChipPresentation } from "../lib/composerChipPresentation";
 import { resolveMarkdownFileIcon } from "../lib/markdownLinks";
-import { useUniwindTheme } from "../lib/useUniwindTheme";
+import { useUniwindTheme, useThemeFontFamilies } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
-import { useThemeFontFamilies } from "../lib/useThemeFontFamilies";
 import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import {
   acknowledgeComposerNativeEvent,

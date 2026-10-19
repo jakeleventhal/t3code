@@ -117,9 +117,8 @@ import { getMobileReplyTypography, getMobileUserTypography } from "../../lib/typ
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInUp, type SharedValue } from "react-native-reanimated";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme, useThemeFontFamilies } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
-import { useThemeFontFamilies } from "../../lib/useThemeFontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
