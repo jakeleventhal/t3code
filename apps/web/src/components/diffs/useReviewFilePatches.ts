@@ -76,6 +76,9 @@ export function useReviewFilePatches({
     ...(requested.family === family ? requested.paths : []),
     ...previousByPath.keys(),
   ]);
+  if (requested.family !== family || requested.paths.length !== requestedPaths.size) {
+    setRequested({ family, paths: [...requestedPaths] });
+  }
   const queries = reviewFileQueries({
     environmentId,
     cwd,
