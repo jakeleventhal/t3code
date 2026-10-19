@@ -137,6 +137,7 @@ export function useReviewFileProgress(options: {
         // told about and which the host never refused.
         if (owned.size > 0 && !isAtomCommandInterrupted(result)) {
           onError();
+          refresh();
         }
         return;
       }
