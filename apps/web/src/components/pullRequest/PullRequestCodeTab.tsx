@@ -42,6 +42,7 @@ import {
 } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import { useRenderedAppearance } from "~/hooks/useTheme";
 import { areAllDiffFilesCollapsed } from "~/lib/diffCollapse";
@@ -157,6 +158,15 @@ const NO_SLICES: ReadonlyArray<DiffSlice> = [];
 const sliceParses = new WeakMap<DiffSlice, Map<string, RenderablePatch | null>>();
 const fileContentVersions = new WeakMap<FileDiffMetadata, number>();
 
+function fileContentVersion(file: FileDiffMetadata) {
+  let version = fileContentVersions.get(file);
+  if (version === undefined) {
+    version = buildFileDiffContentVersion(file);
+    fileContentVersions.set(file, version);
+  }
+  return version;
+}
+
 function parseSlice(slice: DiffSlice, cacheKey: string, ignoreWhitespace: boolean) {
   let parses = sliceParses.get(slice);
   if (parses === undefined) {
@@ -236,6 +246,8 @@ interface MutableAnnotationGroup {
 
 interface DraftAnchor {
   readonly fileKey: string;
+  readonly contentVersion: number;
+  readonly scopeKey: string;
   readonly path: string;
   readonly oldPath: string | null;
   readonly position: PullRequestReviewPosition;
@@ -301,6 +313,8 @@ function PullRequestCodeTab({
   const [selectedLines, setSelectedLines] = useState<{
     id: string;
     range: SelectedLineRange;
+    contentVersion: number;
+    scopeKey: string;
   } | null>(null);
   const [draft, setDraft] = useState<DraftAnchor | null>(null);
   const [threadPending, setThreadPending] = useState(false);
@@ -549,6 +563,23 @@ function PullRequestCodeTab({
   const files = parsedSlices.flatMap((parsed) =>
     parsed?.kind === "files" ? orderDiffFiles(parsed.files) : [],
   );
+  const contentVersions = new Map(
+    files.map((file) => [buildFileDiffIdentityKey(file), fileContentVersion(file)]),
+  );
+  const isCurrentFile = (fileKey: string, version: number, anchorScopeKey: string) =>
+    anchorScopeKey === scopeKey &&
+    contentVersions.get(fileKey) === version &&
+    !isFileDiffCollapsed(fileKey, effectiveFoldOverride, toggledFiles);
+  // Stable viewer identities preserve scroll, but line coordinates belong to one file version.
+  if (draft !== null && !isCurrentFile(draft.fileKey, draft.contentVersion, draft.scopeKey)) {
+    setDraft(null);
+  }
+  if (
+    selectedLines !== null &&
+    !isCurrentFile(selectedLines.id, selectedLines.contentVersion, selectedLines.scopeKey)
+  ) {
+    setSelectedLines(null);
+  }
   const filePaths = files.map((file) => resolveFileDiffPath(file));
   const omittedFileStats = new Map(
     loadedSlices.flatMap((slice) =>
@@ -706,11 +737,7 @@ function PullRequestCodeTab({
 
   const items: CodeViewDiffItem<ReviewAnnotationGroup>[] = annotatedFiles.map(
     ({ fileKey, path, fileDiff, annotations, annotationsVersion }) => {
-      let contentVersion = fileContentVersions.get(fileDiff);
-      if (contentVersion === undefined) {
-        contentVersion = buildFileDiffContentVersion(fileDiff);
-        fileContentVersions.set(fileDiff, contentVersion);
-      }
+      const contentVersion = fileContentVersion(fileDiff);
       const collapsed = isFileDiffCollapsed(fileKey, effectiveFoldOverride, toggledFiles);
       const viewedMark = filesViewedEnabled
         ? `e${isFileViewed(path) ? "v" : ""}${isFileViewedStale(path) ? "s" : ""}`
@@ -799,7 +826,12 @@ function PullRequestCodeTab({
     const item = context.item;
     if (item.type !== "diff") return;
     const file = files.find((candidate) => buildFileDiffIdentityKey(candidate) === item.id);
-    if (!file) return;
+    if (
+      !file ||
+      item.collapsed === true ||
+      !isCurrentFile(item.id, fileContentVersion(item.fileDiff), scopeKey)
+    )
+      return;
     // A range collapses to its last line: only GitHub carries a multi-line comment, and one
     // that silently lost its first line on the other hosts would be worse than one line.
     const path = resolveFileDiffPath(file);
@@ -814,6 +846,8 @@ function PullRequestCodeTab({
     if (position === null) return;
     setDraft({
       fileKey: item.id,
+      contentVersion: fileContentVersion(file),
+      scopeKey,
       path,
       oldPath: previousPath === path ? null : previousPath,
       position,
@@ -821,11 +855,19 @@ function PullRequestCodeTab({
     });
   };
 
+  // Portals can retain a submit handler from before a refresh invalidated its draft.
+  const isCurrentDraft = useStableCallback(
+    (anchor: DraftAnchor) =>
+      draft === anchor &&
+      canCommentOnLines &&
+      isCurrentFile(anchor.fileKey, anchor.contentVersion, anchor.scopeKey),
+  );
   const finishSelection = (
     anchor: DraftAnchor,
     text: string,
     onFinish: (comment: ReviewCommentContext) => void,
   ) => {
+    if (!isCurrentDraft(anchor)) return;
     const file = files.find((candidate) => buildFileDiffIdentityKey(candidate) === anchor.fileKey);
     const comment =
       file === undefined
@@ -1039,6 +1081,7 @@ function PullRequestCodeTab({
             setSelectedLines(null);
           }}
           onComment={(body) => {
+            if (!isCurrentDraft(draft)) return;
             if (!canCommentOnLines) {
               if (onAddToAgentSelection) {
                 finishSelection(draft, body, (comment) =>
@@ -1539,7 +1582,15 @@ function PullRequestCodeTab({
               viewerRef={setViewer}
               items={items}
               selectedLines={selectedLines}
-              onSelectedLinesChange={setSelectedLines}
+              onSelectedLinesChange={(selection) => {
+                const contentVersion =
+                  selection === null ? undefined : contentVersions.get(selection.id);
+                setSelectedLines(
+                  selection !== null && contentVersion !== undefined
+                    ? { ...selection, contentVersion, scopeKey }
+                    : null,
+                );
+              }}
               options={diffViewOptions}
               renderCodeViewFooter={renderCodeViewFooter}
               renderHeaderPrefix={renderHeaderPrefix}
