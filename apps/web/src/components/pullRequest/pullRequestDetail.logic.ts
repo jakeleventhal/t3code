@@ -892,54 +892,43 @@ export function handoffPrompt(
   },
   incoming: string,
 ): string {
-  if (existing.prompt.trim().length === 0) return incoming;
-  const last = existing.lastHandoffPrompt;
-  let kept = existing.prompt;
-  const expectedPrefix = last ? handoffPrefixProse(last.prefix) : "";
-  const previousText = last?.text ?? "";
-  const contextIds = new Set(last?.contextIds ?? []);
-  const paragraphs = [];
-  let start = previousText.length > 0 ? existing.prompt.indexOf(previousText) : -1;
-  while (start >= 0) {
-    const before = existing.prompt.slice(0, start);
-    const after = existing.prompt.slice(start + previousText.length);
-    const beforeProse = stripInlineContextReferences(before).replace(/[ \t]+$/u, "");
-    if (
-      (beforeProse.length === 0 || beforeProse.endsWith("\n\n")) &&
-      /^[ \t]*(?:\n\n|$)/u.test(stripInlineContextReferences(after))
+  const last = existing.lastHandoffPrompt ?? "";
+  const references = collectComposerContextReferences(existing.prompt);
+  const candidates: number[] = [];
+  if (last.length > 0) {
+    for (
+      let start = existing.prompt.indexOf(last);
+      start >= 0;
+      start = existing.prompt.indexOf(last, start + last.length)
     ) {
-      const separator = after.indexOf("\n\n");
-      const attached = after.slice(0, separator < 0 ? undefined : separator);
-      paragraphs.push({
-        before,
-        after,
-        ownsContext: collectComposerContextReferences(attached).some((reference) =>
-          contextIds.has(reference.contextId),
-        ),
-      });
+      if (references.some((reference) => start >= reference.start && start < reference.end))
+        continue;
+      const before = existing.prompt.slice(0, start);
+      const after = existing.prompt.slice(start + last.length);
+      const precedingReference = references.find(
+        (reference) => reference.end <= start && before.slice(reference.end).trim().length === 0,
+      );
+      if (
+        (start === 0 || before.endsWith("\n\n") || precedingReference) &&
+        (after.length === 0 || after.startsWith("\n\n"))
+      ) {
+        candidates.push(start);
+      }
     }
-    start = existing.prompt.indexOf(previousText, start + previousText.length);
   }
-  // An earlier reader copy can occupy the original prose position. Only a unique attached
-  // handoff citation distinguishes identical paragraphs; otherwise keep all ambiguous text.
-  const anchored = paragraphs.filter((paragraph) => paragraph.ownsContext);
-  const paragraph =
-    paragraphs.length === 1 ? paragraphs[0] : anchored.length === 1 ? anchored[0] : undefined;
-  if (paragraph && handoffPrefixProse(paragraph.before) === expectedPrefix) {
-    // Remove the separators around our insertion, preserving citations, indentation and
-    // trailing spaces on both sides.
-    const prefix = paragraph.before.endsWith("\n\n")
-      ? paragraph.before.slice(0, -2)
-      : paragraph.before;
-    let after = paragraph.after;
-    for (const contextId of contextIds) {
-      after = removeInlineContextReference(after, contextId).prompt;
-    }
-    const suffix = after.replace(/^[ \t]*(?:\n\n|$)/u, "");
-    kept = [prefix, suffix].filter(Boolean).join("\n\n");
-  }
-  if (kept.trim().length === 0) return incoming;
+  const start = candidates.length === 1 ? candidates[0] : undefined;
+  const kept =
+    start === undefined
+      ? existing.prompt
+      : removeHandoffPrompt(existing.prompt, start, start + last.length);
+  if (kept.length === 0) return incoming;
   return incoming.length === 0 ? kept : `${kept}\n\n${incoming}`;
+}
+
+export function removeHandoffPrompt(prompt: string, start: number, end: number): string {
+  if (prompt.slice(end, end + 2) === "\n\n") end += 2;
+  else if (prompt.slice(start - 2, start) === "\n\n") start -= 2;
+  return prompt.slice(0, start) + prompt.slice(end);
 }
 
 export function handoffReviewComments(
@@ -1128,8 +1117,8 @@ function pullRequestContextComment(
   instructions: ReadonlyArray<string>,
 ): ReviewCommentContext {
   return {
-    id: `pull-request-context:${encodeURIComponent(input.url)}`,
-    sectionId: `pull-request:${input.number}`,
+    id: `pull-request-context:${input.url}`,
+    sectionId: `pull-request:${input.url}`,
     sectionTitle: `PR #${input.number}`,
     filePath: `PR #${input.number}`,
     startIndex: 0,
@@ -1219,19 +1208,9 @@ export function buildAddSelectionToAgentHandoff(input: {
 }): FixFindingsHandoff {
   return {
     prompt: bounded(input.request),
-    // A line comment belongs to the reader's draft, so general handoff replacement must keep it.
-    // The URL scopes both chips by host, repository and PR, including when Code and Guide share
-    // a composer. Keep the producer's file/range ID within that scope.
     reviewComments: [
-      {
-        ...pullRequestContextComment(input, []),
-        id: `pr-line-context:${encodeURIComponent(input.url)}`,
-      },
-      {
-        ...input.comment,
-        id: `pr-line-selection:${encodeURIComponent(input.url)}:${input.comment.id}`,
-        text: "",
-      },
+      { ...pullRequestContextComment(input, []), id: `pull-request-line-context:${input.url}` },
+      { ...input.comment, id: `pull-request-selection:${input.url}:${input.comment.id}`, text: "" },
     ],
   };
 }

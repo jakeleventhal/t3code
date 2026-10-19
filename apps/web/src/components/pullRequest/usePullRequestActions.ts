@@ -25,7 +25,7 @@ import { buildPhysicalToLogicalProjectKeyMap } from "~/sidebarProjectGrouping";
 import { useProjects } from "~/state/entities";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 
-import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { type DraftId } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
@@ -33,14 +33,8 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 
 import { toastManager } from "../ui/toast";
 import { OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST } from "./pullRequestCheckoutToast";
-import {
-  checkoutFailureDescription,
-  handoffPrompt,
-  handoffReviewComments,
-  readableFailure,
-  stripPullRequestHandoffReferences,
-  type HandoffPromptInsertion,
-} from "./pullRequestDetail.logic";
+import { checkoutFailureDescription, readableFailure } from "./pullRequestDetail.logic";
+import { writePullRequestTaskToComposer } from "./pullRequestComposerHandoff";
 import { pullRequestEntryKey, type EnvironmentPullRequestEntry } from "./pullRequestList.logic";
 
 export function usePullRequestDefaultMergeMethodResolver(
@@ -233,13 +227,6 @@ export type PullRequestHandoffDetail = Pick<
   "projectId" | "workspaceRoot" | "url"
 >;
 
-/**
- * What the last hand-off wrote and which prose preceded it, kept outside React because its panel
- * may close before the next one opens. Citation insertions may shift it; identical paragraphs
- * elsewhere still belong to the reader.
- */
-const lastHandoffPromptByDraft = new Map<DraftId, HandoffPromptInsertion>();
-
 export function usePullRequestHandoffs({
   environmentId,
   detail,
@@ -271,32 +258,8 @@ export function usePullRequestHandoffs({
         () => null,
       ));
     if (session === null) return null;
-    const store = useComposerDraftStore.getState();
     if (task === null) return session;
-    const draft = store.getComposerDraft(session.draftId);
-    const existingComments = draft?.reviewComments ?? [];
-    const prompt = stripPullRequestHandoffReferences(
-      handoffPrompt(
-        {
-          prompt: draft?.prompt ?? "",
-          lastHandoffPrompt: lastHandoffPromptByDraft.get(session.draftId),
-        },
-        task.prompt,
-      ),
-      existingComments,
-    );
-    // Remember the hand-off's own contribution, not the merged prompt: only that sentence is
-    // this session's to take back next time, and the reader's text around it is not.
-    lastHandoffPromptByDraft.set(session.draftId, {
-      text: task.prompt,
-      prefix: prompt.slice(0, prompt.length - task.prompt.length),
-      contextIds: (task.reviewComments ?? []).map((comment) => reviewCommentContextId(comment.id)),
-    });
-    store.setPrompt(session.draftId, prompt);
-    store.setReviewComments(
-      session.draftId,
-      handoffReviewComments(existingComments, task.reviewComments ?? []),
-    );
+    writePullRequestTaskToComposer(session.draftId, task);
     return session;
   };
 

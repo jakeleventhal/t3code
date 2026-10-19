@@ -4,11 +4,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { AnimatedWidth } from "~/components/AnimatedWidth";
-import {
-  scopedThreadKey,
-  scopeProjectRef,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -77,6 +73,7 @@ import {
   type ShortcutMatchContext,
 } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { writePullRequestTaskToComposer } from "./pullRequestComposerHandoff";
 import { usePullRequestDefaultMergeMethodResolver } from "./usePullRequestActions";
 import { OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST } from "./pullRequestCheckoutToast";
 import { changeRequestRepositoryUrl, gitHubPullRequestBrowserUrl } from "~/lib/openPullRequestLink";
@@ -149,9 +146,6 @@ import {
   buildFixFindingHandoff,
   buildFixFindingsHandoff,
   buildResolveConflictsPrompt,
-  handoffPrompt,
-  type HandoffPromptInsertion,
-  handoffReviewComments,
   latestPullRequestReviewOutcomes,
   loadingPullRequestCheckoutCommand,
   isPullRequestNotFound,
@@ -174,7 +168,6 @@ import {
   resolvePullRequestMergeMethod,
   type PullRequestFinding,
   shouldRefreshPullRequestActivity,
-  stripPullRequestHandoffReferences,
   writePullRequestDetailSnapshot,
 } from "./pullRequestDetail.logic";
 import { canEditPullRequestChangeRequest } from "./pullRequestEditing.logic";
@@ -248,16 +241,6 @@ const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
 // The diff viewer pulls in its worker pool, so load it only when the reader approaches Code.
 const loadCodeTab = () => import("./PullRequestCodeTab");
 const PullRequestCodeTab = lazy(loadCodeTab);
-
-/**
- * What the last hand-off wrote and which prose preceded it, kept outside React because its panel
- * may close before the next one opens. Citation insertions may shift it; identical paragraphs
- * elsewhere still belong to the reader.
- */
-const lastHandoffPromptByDraft = new Map<string, HandoffPromptInsertion>();
-
-const composerTargetKey = (target: ScopedThreadRef | DraftId): string =>
-  typeof target === "string" ? target : scopedThreadKey(target);
 
 function ActOnEnvironmentPicker({
   environments,
@@ -1068,50 +1051,11 @@ export function PullRequestDetailPanel({
     if (guideWriter.data?.guide == null) selectTab("guide");
   };
 
-  const writeTaskToComposer = (target: ScopedThreadRef | DraftId, task: ThreadTask) => {
-    const store = useComposerDraftStore.getState();
-    const draft = store.getComposerDraft(target);
-    // Line comments accumulate in the draft, including their citations.
-    if (task.append) {
-      store.setPrompt(
-        target,
-        handoffPrompt({ prompt: draft?.prompt ?? "", lastHandoffPrompt: undefined }, task.prompt),
-      );
-      for (const comment of task.reviewComments ?? []) {
-        store.addReviewComment(target, comment, {
-          allowDuplicateReference: true,
-          insertAtCaret: false,
-        });
-      }
-      return;
-    }
-    const key = composerTargetKey(target);
-    const prompt = stripPullRequestHandoffReferences(
-      handoffPrompt(
-        {
-          prompt: draft?.prompt ?? "",
-          lastHandoffPrompt: lastHandoffPromptByDraft.get(key),
-        },
-        task.prompt,
-      ),
-      draft?.reviewComments ?? [],
-    );
-    lastHandoffPromptByDraft.set(key, {
-      text: task.prompt,
-      prefix: prompt.slice(0, prompt.length - task.prompt.length),
-      contextIds: (task.reviewComments ?? []).map((comment) => reviewCommentContextId(comment.id)),
-    });
-    store.setPrompt(target, prompt);
-    store.setReviewComments(
-      target,
-      handoffReviewComments(draft?.reviewComments ?? [], task.reviewComments ?? []),
-    );
-  };
-
   const openThreadWithTask = async (
     projectRef: ReturnType<typeof scopeProjectRef>,
     task: ThreadTask | null,
     opened?: { draftId: DraftId },
+    mode: "replace" | "append" = "replace",
   ): Promise<{ draftId: DraftId } | null> => {
     const session =
       opened ??
@@ -1121,20 +1065,18 @@ export function PullRequestDetailPanel({
       ));
     if (session === null) return null;
     if (task === null) return session;
-    // General asks replace the previous handoff; line comments append to the draft.
-    // Text the reader typed or edited survives either kind of handoff.
-    writeTaskToComposer(session.draftId, task);
+    writePullRequestTaskToComposer(session.draftId, task, mode);
     return session;
   };
 
   const startAsk = async (
     kind: string,
     task: ThreadTask,
-    options?: { readonly keepGuide?: boolean },
+    options?: { readonly keepGuide?: boolean; readonly append?: boolean },
   ) => {
     if (!detail || handoff !== null) return;
     if (attachTarget !== null) {
-      writeTaskToComposer(attachTarget, task);
+      writePullRequestTaskToComposer(attachTarget, task, options?.append ? "append" : "replace");
       toastManager.add({
         type: "success",
         title: "Added to the composer",
@@ -1147,7 +1089,12 @@ export function PullRequestDetailPanel({
     }
     setHandoff(kind);
     const projectRef = scopeProjectRef(actingEnvironmentId, acting?.projectId ?? detail.projectId);
-    const opened = await openThreadWithTask(projectRef, task);
+    const opened = await openThreadWithTask(
+      projectRef,
+      task,
+      undefined,
+      options?.append ? "append" : "replace",
+    );
     setHandoff(null);
     if (opened !== null && options?.keepGuide === true) {
       const draft = useComposerDraftStore.getState().getDraftSession(opened.draftId);
@@ -1190,7 +1137,7 @@ export function PullRequestDetailPanel({
   ) => {
     if (!handoffSummary || handoff !== null) return;
     if (attachTarget !== null && task !== null) {
-      writeTaskToComposer(attachTarget, task);
+      writePullRequestTaskToComposer(attachTarget, task);
       toastManager.add({
         type: "success",
         title: "Added to the composer",
@@ -1364,21 +1311,18 @@ export function PullRequestDetailPanel({
     if (!detail) return;
     void startAsk(
       `selection:${selection.comment.id}`,
-      {
-        ...buildAddSelectionToAgentHandoff({
-          number: detail.number,
-          title: detail.title,
-          url: detail.url,
-          headBranch: detail.headBranch,
-          baseBranch: detail.baseBranch,
-          state: detail.state,
-          isDraft: detail.isDraft,
-          comment: selection.comment,
-          request: selection.request,
-        }),
-        append: true,
-      },
-      options,
+      buildAddSelectionToAgentHandoff({
+        number: detail.number,
+        title: detail.title,
+        url: detail.url,
+        headBranch: detail.headBranch,
+        baseBranch: detail.baseBranch,
+        state: detail.state,
+        isDraft: detail.isDraft,
+        comment: selection.comment,
+        request: selection.request,
+      }),
+      { ...options, append: true },
     );
   };
 
