@@ -1524,23 +1524,107 @@ describe("a second ask into the same composer", () => {
   });
 
   it.each([
-    { prefix: "Briefly, ", suffix: "" },
-    { prefix: "", suffix: " Focus on caching." },
-  ])("keeps the whole request with adjacent reader edits: %j", ({ prefix, suffix }) => {
-    writePullRequestTaskToComposer(target, explain);
-    store.setPrompt(
-      target,
-      store
+    { prefix: "Briefly, ", suffix: "", outsideCitation: false },
+    { prefix: "", suffix: " Focus on caching.", outsideCitation: false },
+    { prefix: "", suffix: "and focus on caching.", outsideCitation: true },
+    { prefix: "Focus on caching. ", suffix: "", outsideCitation: true },
+  ])(
+    "keeps the whole request with adjacent reader edits: %j",
+    ({ prefix, suffix, outsideCitation }) => {
+      writePullRequestTaskToComposer(target, explain);
+      const own = buildPullRequestReferenceContext(base);
+      if (outsideCitation && prefix) {
+        store.addReviewComment(target, own, { appendReference: false });
+        store.setPrompt(target, `${citation(own)} ${store.getComposerDraft(target)!.prompt}`);
+      }
+      const prompt = store.getComposerDraft(target)!.prompt;
+      const edited = outsideCitation
+        ? `${prefix}${prompt}${suffix}`
+        : prompt.replace(explain.prompt, `${prefix}${explain.prompt}${suffix}`);
+      store.setPrompt(target, edited);
+      writePullRequestTaskToComposer(target, ask);
+      const draft = store.getComposerDraft(target)!;
+      expect(draft.prompt).toBe(edited);
+      expect(draft.reviewComments).toEqual(
+        outsideCitation && prefix ? [own, ...ask.reviewComments] : ask.reviewComments,
+      );
+    },
+  );
+
+  it.each(["", "Keep my draft\n\n"])(
+    "preserves indistinguishable request copies after %j",
+    (reader) => {
+      store.setPrompt(target, reader);
+      writePullRequestTaskToComposer(target, explain);
+      const prompt = store.getComposerDraft(target)!.prompt;
+      const duplicate = `${explain.prompt}\n\n${explain.prompt}`;
+      const edited = `${reader ? "A different opening\n\n" : ""}${prompt.slice(reader.length).replace(explain.prompt, duplicate)}`;
+      store.setPrompt(target, edited);
+      writePullRequestTaskToComposer(target, ask);
+      expect(store.getComposerDraft(target)!.prompt).toBe(edited);
+      // Once ambiguous, deleting a copy must not reclaim the remaining reader paragraph.
+      store.setPrompt(target, prompt);
+      writePullRequestTaskToComposer(target, ask);
+      expect(store.getComposerDraft(target)!.prompt).toBe(prompt);
+      expect(store.getComposerDraft(target)!.reviewComments).toEqual(ask.reviewComments);
+    },
+  );
+
+  it.each([false, true])(
+    "replaces its unchanged request after the reader removes its chip with leading citation %j",
+    (leading) => {
+      writePullRequestTaskToComposer(target, explain);
+      const own = buildPullRequestReferenceContext(base);
+      if (leading) {
+        store.addReviewComment(target, own, { appendReference: false });
+        store.setPrompt(target, `${citation(own)} ${store.getComposerDraft(target)!.prompt}`);
+      }
+      const prefix = leading ? `${citation(own)} ` : "";
+      store.removeReviewComment(target, explain.reviewComments[0]!.id);
+      expect(store.getComposerDraft(target)!.prompt).toBe(`${prefix}${explain.prompt}`);
+      expect(store.getComposerDraft(target)!.reviewComments).toEqual(leading ? [own] : []);
+      writePullRequestTaskToComposer(target, ask);
+      expect(store.getComposerDraft(target)!.prompt).toBe(
+        `${prefix}${citation(ask.reviewComments[0]!)} `,
+      );
+      expect(store.getComposerDraft(target)!.reviewComments).toEqual([
+        ...(leading ? [own] : []),
+        ...ask.reviewComments,
+      ]);
+    },
+  );
+
+  it.each(["edited", "ambiguous"])(
+    "retains the context of an %s request when asking about another PR",
+    (edit) => {
+      writePullRequestTaskToComposer(target, explain);
+      const edited = store
         .getComposerDraft(target)!
-        .prompt.replace(explain.prompt, `${prefix}${explain.prompt}${suffix}`),
-    );
-    writePullRequestTaskToComposer(target, ask);
-    const draft = store.getComposerDraft(target)!;
-    expect(draft.prompt).toBe(
-      `${prefix}${explain.prompt}${suffix} ${citation(ask.reviewComments[0]!)} `,
-    );
-    expect(draft.reviewComments).toEqual(ask.reviewComments);
-  });
+        .prompt.replace(
+          explain.prompt,
+          edit === "edited"
+            ? "Briefly explain this pull request."
+            : `${explain.prompt}\n\n${explain.prompt}`,
+        );
+      store.setPrompt(target, edited);
+      writePullRequestTaskToComposer(target, ask);
+      expect(store.getComposerDraft(target)!.prompt).toBe(edited);
+      expect(store.getComposerDraft(target)!.reviewComments).toEqual(ask.reviewComments);
+      const otherAsk = buildAskAboutPullRequestHandoff({
+        ...base,
+        number: 43,
+        url: "https://github.com/acme/web/pull/43",
+      });
+      writePullRequestTaskToComposer(target, otherAsk);
+      expect(store.getComposerDraft(target)!.prompt).toBe(
+        `${edited}${citation(otherAsk.reviewComments[0]!)} `,
+      );
+      expect(store.getComposerDraft(target)!.reviewComments).toEqual([
+        ...ask.reviewComments,
+        ...otherAsk.reviewComments,
+      ]);
+    },
+  );
 
   it.each(["", "Keep"])(
     "replaces repeated explanations without adding whitespace after %j",
@@ -1557,35 +1641,41 @@ describe("a second ask into the same composer", () => {
     },
   );
 
-  it("replaces its standalone request and context while retaining reader prose, references and line notes", () => {
-    const reader = "Keep\n\nExplain this pull request.";
-    const own = buildPullRequestReferenceContext(base);
-    store.setPrompt(target, reader);
-    store.addReviewComment(target, own, { insertAtCaret: false });
-    writePullRequestTaskToComposer(target, explain);
-    const line = buildAddSelectionToAgentHandoff({
-      ...base,
-      request: "Fix this line.",
-      comment: {
-        id: "line-note",
-        sectionId: "file:a.ts",
-        sectionTitle: "a.ts",
-        filePath: "a.ts",
-        startIndex: 0,
-        endIndex: 0,
-        rangeLabel: "L1",
-        text: "",
-        diff: "+broken()",
-      },
-    });
-    writePullRequestTaskToComposer(target, line, "append");
-    writePullRequestTaskToComposer(target, ask);
-    const draft = store.getComposerDraft(target)!;
-    expect(draft.prompt).toBe(
-      `${reader} ${citation(own)} \n\nFix this line. ${line.reviewComments.map(citation).join(" ")} ${citation(ask.reviewComments[0]!)} `,
-    );
-    expect(draft.reviewComments).toEqual([own, ...line.reviewComments, ...ask.reviewComments]);
-  });
+  it.each(["", "Keep\n\nExplain this pull request."])(
+    "replaces its standalone request and context while retaining reader prose, references and line notes after %j",
+    (reader) => {
+      const own = buildPullRequestReferenceContext(base);
+      store.setPrompt(target, reader);
+      if (reader) store.addReviewComment(target, own, { insertAtCaret: false });
+      writePullRequestTaskToComposer(target, explain);
+      const line = buildAddSelectionToAgentHandoff({
+        ...base,
+        request: "Fix this line.",
+        comment: {
+          id: "line-note",
+          sectionId: "file:a.ts",
+          sectionTitle: "a.ts",
+          filePath: "a.ts",
+          startIndex: 0,
+          endIndex: 0,
+          rangeLabel: "L1",
+          text: "",
+          diff: "+broken()",
+        },
+      });
+      writePullRequestTaskToComposer(target, line, "append");
+      writePullRequestTaskToComposer(target, ask);
+      const draft = store.getComposerDraft(target)!;
+      expect(draft.prompt).toBe(
+        `${reader ? `${reader} ${citation(own)} \n\n` : ""}Fix this line. ${line.reviewComments.map(citation).join(" ")} ${citation(ask.reviewComments[0]!)} `,
+      );
+      expect(draft.reviewComments).toEqual([
+        ...(reader ? [own] : []),
+        ...line.reviewComments,
+        ...ask.reviewComments,
+      ]);
+    },
+  );
 
   it.each(["code", "guide"])(
     "retains removed, replacement and mixed-side selections from %s",
