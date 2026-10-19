@@ -2180,9 +2180,9 @@
       --text-base--line-height: 21px;
       --text-sm: 14px;
       --text-sm--line-height: 21px;
-      --font-sans: "AbsolutelySans-Regular";
-      --font-medium: "AbsolutelySans-Regular";
-      --font-bold: "AbsolutelySans-Bold";
+      --font-sans: "DMSans-Regular";
+      --font-medium: "DMSans-Medium";
+      --font-bold: "DMSans-Bold";
     }
 
     @variant absolutely-dark {
@@ -2348,9 +2348,9 @@
       --text-base--line-height: 21px;
       --text-sm: 14px;
       --text-sm--line-height: 21px;
-      --font-sans: "AbsolutelySans-Regular";
-      --font-medium: "AbsolutelySans-Regular";
-      --font-bold: "AbsolutelySans-Bold";
+      --font-sans: "DMSans-Regular";
+      --font-medium: "DMSans-Medium";
+      --font-bold: "DMSans-Bold";
     }
   }
 }
