@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   createAppUpdateDeferral,
   createAppUpdateLaunchCheck,
+  createAppUpdateForegroundRecheck,
   FOREGROUND_APP_UPDATE_RECHECK_AFTER_MS,
   registerHiddenUpdateTap,
   runAppUpdateCheck,
@@ -11,6 +12,13 @@ import {
   type AppUpdateClient,
   type AppUpdateEnvironment,
 } from "./app-updates";
+
+const nativeAppState = vi.hoisted(() => ({
+  currentState: "active",
+  addEventListener: vi.fn(),
+}));
+
+vi.mock("react-native", () => ({ AppState: nativeAppState }));
 
 vi.mock("expo-updates", () => ({
   isEnabled: true,
@@ -638,5 +646,30 @@ describe("registerHiddenUpdateTap", () => {
     }
 
     expect(count).toBe(0);
+  });
+});
+
+describe("createAppUpdateForegroundRecheck", () => {
+  it("checks after a long background session and subscribes only once", async () => {
+    let onChange: ((state: string) => void) | undefined;
+    nativeAppState.addEventListener.mockImplementation((_event, listener) => {
+      onChange = listener;
+      return { remove: vi.fn() };
+    });
+    const client = makeUpdateClient();
+    const start = createAppUpdateForegroundRecheck(client);
+    vi.useFakeTimers();
+    try {
+      start();
+      start();
+      expect(nativeAppState.addEventListener).toHaveBeenCalledTimes(1);
+      onChange!("background");
+      vi.advanceTimersByTime(FOREGROUND_APP_UPDATE_RECHECK_AFTER_MS);
+      onChange!("active");
+      await vi.waitFor(() => expect(client.checkForUpdateAsync).toHaveBeenCalledOnce());
+    } finally {
+      vi.useRealTimers();
+      nativeAppState.addEventListener.mockReset();
+    }
   });
 });
