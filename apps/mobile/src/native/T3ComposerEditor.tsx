@@ -1,3 +1,4 @@
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { TextInputWrapper } from "expo-paste-input";
 import { useImperativeHandle, useRef } from "react";
 import { TextInput, type TextInputInstance } from "react-native";
@@ -22,6 +23,8 @@ export function ComposerEditor({
 }: ComposerEditorProps) {
   const inputRef = useRef<TextInputInstance>(null);
   const bodyText = useScaledTextRole("body");
+  const { fonts, composerFontSize } = useAppearancePreferences();
+  const fontFamily = fonts.composer.regular;
   const handlePaste = useNativePaste((uris) => onPasteImages?.(uris));
 
   useImperativeHandle(
@@ -51,6 +54,8 @@ export function ComposerEditor({
             flex: 1,
             minHeight: 0,
             ...bodyText,
+            fontSize: composerFontSize,
+            lineHeight: Math.round((composerFontSize * 23) / 16),
             paddingVertical: contentInsetVertical,
           },
           textStyle,

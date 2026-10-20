@@ -117,7 +117,7 @@ import { getMobileReplyTypography, getMobileUserTypography } from "../../lib/typ
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInUp, type SharedValue } from "react-native-reanimated";
-import { useUniwindTheme, useThemeFontFamilies } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -842,15 +842,16 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 });
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance, themeId } = useAppearancePreferences();
+  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily, themeId } =
+    useAppearancePreferences();
   const replyTypography = useMemo(
-    () => getMobileReplyTypography(themeId, appearance.baseFontSize),
-    [themeId, appearance.baseFontSize],
+    () => ({
+      ...resolveNativeMarkdownTypography(replyFontSize),
+      ...getMobileReplyTypography(themeId, replyFontSize),
+    }),
+    [replyFontSize, themeId],
   );
-  const userTypography = useMemo(
-    () => getMobileUserTypography(themeId, appearance.baseFontSize),
-    [themeId, appearance.baseFontSize],
-  );
+  const userTypography = getMobileUserTypography(themeId, appearance.baseFontSize);
   const nativeMarkdownTypography = useMemo(
     () => resolveNativeMarkdownTypography(appearance.baseFontSize),
     [appearance.baseFontSize],
@@ -876,11 +877,8 @@ function useMarkdownStyles(): MarkdownStyleSets {
   const markdownUserFenceBg = theme["--color-md-user-fence-bg"];
   const inlineSkillForeground = theme["--color-inline-skill-foreground"];
   const userBubbleSkillForeground = theme["--color-user-bubble-skill-foreground"];
-  const {
-    regular: regularFontFamily,
-    bold: boldFontFamily,
-    code: codeFontFamily,
-  } = useThemeFontFamilies();
+  const regularFontFamily = fonts.interface.regular;
+  const boldFontFamily = fonts.interface.bold;
 
   return useMemo(() => {
     return {
@@ -902,10 +900,10 @@ function useMarkdownStyles(): MarkdownStyleSets {
           fontSize: nativeMarkdownTypography.fontSize,
           lineHeight: nativeMarkdownTypography.lineHeight,
           headingFontSizes: nativeMarkdownTypography.headingFontSizes,
+          codeFontFamily: fonts.code.regular,
           fontFamily: regularFontFamily,
           headingFontFamily: boldFontFamily,
           boldFontFamily,
-          codeFontFamily,
           ...userTypography,
         },
       },
@@ -924,20 +922,23 @@ function useMarkdownStyles(): MarkdownStyleSets {
           quoteMarkerColor: markdownBlockquoteBorder,
           dividerColor: markdownHrColor,
           contextChipBorderColor,
-          fontSize: nativeMarkdownTypography.fontSize,
-          lineHeight: nativeMarkdownTypography.lineHeight,
-          headingFontSizes: nativeMarkdownTypography.headingFontSizes,
-          fontFamily: regularFontFamily,
-          headingFontFamily: boldFontFamily,
-          boldFontFamily,
-          codeFontFamily,
           ...replyTypography,
+          fontSize: replyTypography.fontSize,
+          lineHeight: replyTypography.lineHeight,
+          headingFontSizes: replyTypography.headingFontSizes,
+          codeFontFamily: fonts.code.regular,
+          fontFamily: fonts.reply.regular,
+          headingFontFamily: fonts.reply.bold,
+          boldFontFamily: replyEmphasisFontFamily,
         },
       },
     };
   }, [
+    fonts.reply,
+    replyEmphasisFontFamily,
+    fonts.code.regular,
+    replyTypography,
     boldFontFamily,
-    codeFontFamily,
     contextChipBorderColor,
     inlineSkillForeground,
     markdownBlockquoteBorder,
@@ -1711,19 +1712,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance } = useAppearancePreferences();
+  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily, themeId } =
+    useAppearancePreferences();
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,
   });
-  const previousTextSize = useRef(workRowSizing.textSizeKey);
+  const textLayoutKey = `${workRowSizing.textSizeKey}:${replyFontSize}:${fonts.interface.regular}:${fonts.interface.bold}:${fonts.reply.regular}:${fonts.reply.bold}:${replyEmphasisFontFamily}:${fonts.code.regular}`;
+  const previousTextSize = useRef(textLayoutKey);
   useLayoutEffect(() => {
-    if (previousTextSize.current === workRowSizing.textSizeKey) {
+    if (previousTextSize.current === textLayoutKey) {
       return;
     }
-    previousTextSize.current = workRowSizing.textSizeKey;
+    previousTextSize.current = textLayoutKey;
     listRef.current?.clearCaches({ mode: "sizes" });
-  }, [workRowSizing.textSizeKey, listRef]);
+  }, [textLayoutKey, listRef]);
   const [viewportWidth, setViewportWidth] = useState(() =>
     props.layoutVariant === "split" ? 0 : windowWidth,
   );
