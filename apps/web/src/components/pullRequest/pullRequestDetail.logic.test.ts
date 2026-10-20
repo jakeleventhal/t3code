@@ -1523,6 +1523,39 @@ describe("a second ask into the same composer", () => {
     store.setReviewComments(target, []);
   });
 
+  it("keeps reader text when its duplicate handoff paragraph is deleted", () => {
+    store.setPrompt(target, explain.prompt);
+    writePullRequestTaskToComposer(target, explain);
+    const duplicated = store.getComposerDraft(target)!.prompt;
+    const last = duplicated.lastIndexOf(explain.prompt);
+    store.setPrompt(
+      target,
+      duplicated.slice(0, last) + duplicated.slice(last + explain.prompt.length),
+    );
+    writePullRequestTaskToComposer(target, ask);
+    expect(store.getComposerDraft(target)!.prompt).toContain(explain.prompt);
+  });
+
+  it("keeps the original PR context after the reader writes into an empty Ask", () => {
+    store.setPrompt(target, "");
+    writePullRequestTaskToComposer(target, ask);
+    const original = store.getComposerDraft(target)!.reviewComments.map((comment) => comment.id);
+    store.setPrompt(target, store.getComposerDraft(target)!.prompt + "Why is this cached?");
+    writePullRequestTaskToComposer(
+      target,
+      buildAskAboutPullRequestHandoff({
+        ...base,
+        url: "https://github.com/other/project/pull/9",
+        number: 9,
+      }),
+    );
+    const draft = store.getComposerDraft(target)!;
+    expect(draft.prompt).toContain("Why is this cached?");
+    expect(draft.reviewComments.map((comment) => comment.id)).toEqual(
+      expect.arrayContaining(original),
+    );
+  });
+
   it.each([
     { prefix: "Briefly, ", suffix: "", outsideCitation: false },
     { prefix: "", suffix: " Focus on caching.", outsideCitation: false },

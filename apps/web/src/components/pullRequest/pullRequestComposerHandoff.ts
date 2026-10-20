@@ -43,7 +43,7 @@ function unchangedRange(previous: OwnedHandoff, prompt: string) {
   }
   // Identical insertions can make either copy look unchanged, even when other prose changed.
   if (
-    stripInlineContextReferences(prompt).split(previous.text).length >
+    stripInlineContextReferences(prompt).split(previous.text).length !==
       stripInlineContextReferences(before).split(previous.text).length ||
     (prompt.length !== before.length &&
       prefix >= previous.end &&
@@ -93,6 +93,10 @@ useComposerDraftStore.subscribe((state, previousState) => {
       continue;
     }
     if (draft.prompt === owned.snapshot) continue;
+    if (owned.text.length === 0) {
+      generalHandoffs.delete(key);
+      continue;
+    }
     const range = unchangedRange(owned, draft.prompt);
     generalHandoffs.set(key, {
       ...owned,
