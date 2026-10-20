@@ -1,5 +1,5 @@
 import {
-  reviewFileChapters,
+  reviewFileChapterIndex,
   reviewFileGroup,
   type ReviewFileGroup,
 } from "@t3tools/shared/reviewFileClassification";
@@ -366,7 +366,7 @@ function PullRequestCodeTab({
   const commentsOnly = !guideFallback && settings.pullRequestViewing.commentsOnly;
   const hideReviewed = !guideFallback && settings.pullRequestViewing.hideReviewed;
   const groupByType = guideFallback || settings.pullRequestViewing.groupByType;
-  const [selectedChapter, setSelectedChapter] = useState<ReviewFileGroup>("implementation");
+  const [selectedChapter, setSelectedChapter] = useState<ReviewFileGroup>("code");
   const [chapterRailOpen, setChapterRailOpen] = useState(false);
   const canSetChapterViewed = useAtomValue(
     pullRequestEnvironment.setFilesViewed.permissionAtom(environmentId),
@@ -416,7 +416,7 @@ function PullRequestCodeTab({
     setFoldOverride(null);
     setVisibleCommitCount(COMMIT_PAGE_SIZE);
     setOrphansOpen(false);
-    setSelectedChapter("implementation");
+    setSelectedChapter("code");
     setChapterRailOpen(false);
     setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
   }
@@ -741,15 +741,34 @@ function PullRequestCodeTab({
         (commentCounts.get(path)?.unresolved ?? 0) > 0,
       ),
   );
-  const chapters = groupByType
-    ? reviewFileChapters(annotatedFiles, (file) => file.path, filteredFiles)
-    : [];
+  const diffComplete =
+    loadedSlices.length > 0 &&
+    nextCursor === null &&
+    !diffQuery.isPending &&
+    diffQuery.error === null;
+  const chapterIndex = reviewFileChapterIndex({
+    completePaths:
+      commit === null && viewedFilesStore === "host" && filesViewed.filePaths !== null
+        ? filesViewed.filePaths
+        : diffComplete && !withheldContent
+          ? filePaths
+          : null,
+    loadedFiles: annotatedFiles,
+    visibleFiles: filteredFiles,
+    getPath: (file) => file.path,
+  });
+  const chapters = groupByType ? chapterIndex.chapters : [];
   const chapterPosition = Math.max(
     0,
     chapters.findIndex((chapter) => chapter.id === selectedChapter),
   );
   const chapter = chapters[chapterPosition] ?? null;
-  const chapterReviewComplete = nextCursor === null && !diffQuery.isPending;
+  const chapterReviewComplete =
+    chapterIndex.complete && (!filesViewedEnabled || (filesViewed.ready && !filesViewed.truncated));
+  const chapterCountsPending =
+    filesViewed.error || filesViewed.truncated || diffQuery.error
+      ? "File counts unavailable"
+      : "Loading file counts…";
   const items = ((): CodeViewDiffItem<ReviewAnnotationGroup>[] =>
     (chapter?.visibleFiles ?? filteredFiles).map(
       ({ fileKey, path, fileDiff, annotations, annotationsVersion }) => {
@@ -884,28 +903,41 @@ function PullRequestCodeTab({
     );
   };
 
+  const setChapterViewed = (paths: ReadonlyArray<string>, reviewed: boolean) => {
+    const selected = new Set(paths);
+    const remaining = new Set(paths);
+    for (const file of annotatedFiles) {
+      if (!selected.has(file.path)) continue;
+      setFileViewed(file.fileKey, file.path, reviewed);
+      remaining.delete(file.path);
+    }
+    for (const path of remaining) setViewed(path, reviewed);
+  };
   const chapterSummaries = chapters.map((candidate, index) => {
     const members = candidate.files;
-    const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
-    const stat = members.reduce(
-      (total, file) => {
-        const next = sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
-        return {
-          additions: total.additions + next.additions,
-          deletions: total.deletions + next.deletions,
-        };
-      },
-      { additions: 0, deletions: 0 },
-    );
+    const reviewedCount = members.filter(isFileViewed).length;
+    const stat = annotatedFiles
+      .filter((file) => reviewFileGroup(file.path) === candidate.id)
+      .reduce(
+        (total, file) => {
+          const next = sourceFileStats.get(file.fileKey) ?? getDiffLineStat([file.fileDiff]);
+          return {
+            additions: total.additions + next.additions,
+            deletions: total.deletions + next.deletions,
+          };
+        },
+        { additions: 0, deletions: 0 },
+      );
     return {
       title: candidate.title,
       reviewed: chapterReviewComplete && reviewedCount === members.length,
-      stat,
+      stat: diffComplete ? stat : null,
       detail:
         index !== chapterPosition ? (
           <span>
-            {reviewedCount} of {members.length} files reviewed
-            {chapterReviewComplete ? "" : " (loaded)"}
+            {chapterReviewComplete
+              ? `${reviewedCount} of ${members.length} files reviewed`
+              : chapterCountsPending}
           </span>
         ) : null,
       ...(filesViewed.enabled && canSetChapterViewed
@@ -915,7 +947,7 @@ function PullRequestCodeTab({
               fileCount: members.length,
               disabled: !chapterReviewComplete,
               onSetReviewed: (reviewed: boolean) => {
-                for (const file of members) setFileViewed(file.fileKey, file.path, reviewed);
+                setChapterViewed(members, reviewed);
               },
             },
           }
@@ -1734,29 +1766,28 @@ function PullRequestCodeTab({
       ariaLabel="Code review chapters"
       chapters={chapterSummaries.map((summary, index) => {
         const members = chapters[index]?.files ?? [];
-        const reviewedCount = members.filter((file) => isFileViewed(file.path)).length;
+        const reviewedCount = members.filter(isFileViewed).length;
         return {
           ...summary,
           selectedContent:
             index === chapterPosition ? (
               <div className="flex min-w-0 flex-col gap-2 px-2 pb-2">
-                <ReviewChapterProgress
-                  reviewedCount={reviewedCount}
-                  fileCount={members.length}
-                  disabled={!chapterReviewComplete}
-                  onSetReviewed={
-                    filesViewed.enabled && canSetChapterViewed
-                      ? (reviewed) => {
-                          for (const file of members)
-                            setFileViewed(file.fileKey, file.path, reviewed);
-                        }
-                      : null
-                  }
-                />
+                {chapterReviewComplete ? (
+                  <ReviewChapterProgress
+                    reviewedCount={reviewedCount}
+                    fileCount={members.length}
+                    disabled={!chapterReviewComplete}
+                    onSetReviewed={
+                      filesViewed.enabled && canSetChapterViewed
+                        ? (reviewed) => {
+                            setChapterViewed(members, reviewed);
+                          }
+                        : null
+                    }
+                  />
+                ) : null}
                 {!chapterReviewComplete ? (
-                  <p className="text-xs text-muted-foreground">
-                    Load all files to review this chapter.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{chapterCountsPending}</p>
                 ) : null}
                 {guideFallback ? (
                   <ul className="flex min-w-0 flex-col gap-0.5">

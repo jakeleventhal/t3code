@@ -38,12 +38,12 @@ describe("review reading order", () => {
       ]),
     ).toHaveLength(2);
   });
-  it("groups implementation, tests and generated files only when requested", () => {
-    const files = ["src/z.test.ts", "src/_generated/a.ts", "src/a.ts"].map(file);
+  it("groups code, tests and generated files only when requested", () => {
+    const files = ["src/z.test.ts", "src/__generated__/a.ts", "src/a.ts"].map(file);
     expect(orderDiffFiles(files, true).map((file) => file.name)).toEqual([
       "src/a.ts",
       "src/z.test.ts",
-      "src/_generated/a.ts",
+      "src/__generated__/a.ts",
     ]);
   });
 });

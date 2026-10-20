@@ -16,7 +16,7 @@ describe("mobile PR chapter counts", () => {
       });
       expect(result.complete).toBe(true);
       expect(result.chapters.map((chapter) => chapter.title)).toEqual([
-        "Implementation",
+        "Code",
         "Tests",
         "Generated",
       ]);
@@ -52,7 +52,7 @@ describe("mobile PR chapter counts", () => {
         chapter.visibleFiles.length,
       ]),
     ).toEqual([
-      ["implementation", 79, 0],
+      ["code", 79, 0],
       ["tests", 1, 0],
     ]);
   });

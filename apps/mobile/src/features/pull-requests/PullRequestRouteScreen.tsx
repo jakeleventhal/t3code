@@ -977,7 +977,7 @@ export function PullRequestDiffContent({
     () =>
       pullRequestFileChapters({
         completePaths:
-          !detail.data || (viewed.supported && viewed.filePaths === null)
+          !detail.data || (viewed.supported && (!viewed.ready || viewed.truncated))
             ? null
             : !commit && viewed.filePaths !== null
               ? viewed.filePaths
@@ -998,6 +998,8 @@ export function PullRequestDiffContent({
       commit,
       detail.data,
       viewed.supported,
+      viewed.ready,
+      viewed.truncated,
       viewed.filePaths,
       result.isPending,
       result.error,

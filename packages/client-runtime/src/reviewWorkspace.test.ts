@@ -106,18 +106,22 @@ describe("shared review workspace", () => {
     expect(reviewFolderContains("src/a", "src/another.ts")).toBe(false);
     expect(reviewFolderContains("src/a", "src/a/z.ts")).toBe(true);
   });
-  it("groups tests and generated output without cloning file metadata", () => {
+  it("groups every diff category without cloning file metadata", () => {
     const files = [
       { path: "pnpm-lock.yaml", id: 1 },
       { path: "src/foo.test.ts", id: 2 },
       { path: "src/foo.ts", id: 3 },
+      { path: "src/foo.fixtures.ts", id: 4 },
+      { path: "README.md", id: 5 },
     ];
     expect(orderReviewFiles(files, (file) => file.path, true)).toEqual([
       files[2],
       files[1],
+      files[3],
       files[0],
+      files[4],
     ]);
-    expect(reviewFileGroup("src/__snapshots__/foo.snap")).toBe("generated");
+    expect(reviewFileGroup("src/__snapshots__/foo.snap")).toBe("mocks");
     expect(reviewFileGroup("Tests/FooTests.swift")).toBe("tests");
   });
   it("attributes unresolved conversations on renamed files to their current path", () => {

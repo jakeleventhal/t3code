@@ -8,16 +8,13 @@ function patch(path: string) {
 }
 
 describe("mobile PR test file filter", () => {
-  it("recognizes test names, test directories and snapshots across common languages", () => {
+  it("recognizes test names and directories while keeping mocks in their own category", () => {
     const paths = [
       "src/app.test.ts",
       "src/app.spec.tsx",
       "src/__tests__/app.ts",
-      "tests/helpers/fixtures.json",
       "test/app.js",
       "e2e/login.ts",
-      "src/__snapshots__/app.snap",
-      "src/app.test.ts.snap",
       "test_app.py",
       "app_test.py",
       "internal/app_test.go",
@@ -40,6 +37,9 @@ describe("mobile PR test file filter", () => {
         "specification.md",
         "AppTest.ts",
         "pnpm-lock.yaml",
+        "src/app.test.ts.snap",
+        "src/__snapshots__/app.snap",
+        "tests/helpers/fixtures.json",
       ].filter(isPullRequestTestFile),
     ).toEqual([]);
   });

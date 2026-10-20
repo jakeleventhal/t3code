@@ -1,4 +1,4 @@
-import { reviewFileGroup } from "@t3tools/shared/reviewFileClassification";
+import { REVIEW_FILE_GROUPS, reviewFileGroup } from "@t3tools/shared/reviewFileClassification";
 import type {
   PullRequestCheck,
   PullRequestChecksState,
@@ -103,10 +103,13 @@ export function orderReviewFiles<T>(
   pathOf: (file: T) => string,
   grouped = false,
 ): T[] {
-  const rank = { implementation: 0, tests: 1, generated: 2 };
+  const rank = (path: string) => {
+    const kind = reviewFileGroup(path);
+    return REVIEW_FILE_GROUPS.findIndex((group) => group.id === kind);
+  };
   return [...files].sort(
     (a, b) =>
-      (grouped ? rank[reviewFileGroup(pathOf(a))] - rank[reviewFileGroup(pathOf(b))] : 0) ||
+      (grouped ? rank(pathOf(a)) - rank(pathOf(b)) : 0) ||
       compareReviewFilePaths(pathOf(a), pathOf(b)),
   );
 }
