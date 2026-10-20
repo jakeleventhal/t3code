@@ -22,7 +22,12 @@ import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
 
-import { normalizeFontSelections, type MobileFontSelections } from "../lib/mobileFonts";
+import {
+  normalizeFontSelections,
+  normalizeReplyEmphasisWeights,
+  type MobileFontSelections,
+  type ReplyEmphasisWeights,
+} from "../lib/mobileFonts";
 
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
@@ -94,6 +99,7 @@ export interface Preferences {
   readonly themeMode?: MobileThemeMode;
   readonly fontSelections?: MobileFontSelections;
   readonly replyFontSize?: number | null;
+  readonly replyEmphasisWeights?: ReplyEmphasisWeights;
   readonly composerFontSize?: number | null;
   readonly baseFontSize?: number;
   readonly terminalFontSize?: number | null;
@@ -174,6 +180,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     themeMode?: MobileThemeMode;
     fontSelections?: MobileFontSelections;
     replyFontSize?: number | null;
+    replyEmphasisWeights?: ReplyEmphasisWeights;
     composerFontSize?: number | null;
     baseFontSize?: number;
     terminalFontSize?: number | null;
@@ -254,6 +261,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (parsed.fontSelections !== undefined)
     preferences.fontSelections = normalizeFontSelections(parsed.fontSelections);
+  if (parsed.replyEmphasisWeights !== undefined)
+    preferences.replyEmphasisWeights = normalizeReplyEmphasisWeights(parsed.replyEmphasisWeights);
   if (typeof parsed.replyFontSize === "number" || parsed.replyFontSize === null)
     preferences.replyFontSize = parsed.replyFontSize;
   if (typeof parsed.composerFontSize === "number" || parsed.composerFontSize === null)

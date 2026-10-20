@@ -37,7 +37,7 @@ interface MarkdownPreviewStyles {
 }
 
 export function useMarkdownPreviewStyles(): MarkdownPreviewStyles {
-  const { fonts, replyFontSize } = useAppearancePreferences();
+  const { fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
   const nativeMarkdownTypography = resolveNativeMarkdownTypography(replyFontSize);
   const theme = useUniwindTheme();
   const body = theme["--color-md-body"];
@@ -69,7 +69,7 @@ export function useMarkdownPreviewStyles(): MarkdownPreviewStyles {
       codeFontFamily: fonts.code.regular,
       fontFamily: regularFontFamily,
       headingFontFamily: boldFontFamily,
-      boldFontFamily,
+      boldFontFamily: replyEmphasisFontFamily,
     },
   };
 }
