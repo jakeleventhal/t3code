@@ -308,6 +308,8 @@ import {
 } from "./device.ts";
 import "./previewAutomation.ts";
 import {
+  PeerEnvironmentThreadWaitInput,
+  PeerEnvironmentThreadWaitResult,
   PeerEnvironmentHost,
   PeerEnvironmentResponse,
   PeerEnvironmentStreamEvent,
@@ -484,6 +486,7 @@ export const WS_METHODS = {
   previewClearProfile: "preview.clearProfile",
   previewReportProfiles: "preview.reportProfiles",
   previewReportStatus: "preview.reportStatus",
+  peerEnvironmentsWaitForThread: "peerEnvironments.waitForThread",
   peerEnvironmentsConnect: "peerEnvironments.connect",
   peerEnvironmentsRespond: "peerEnvironments.respond",
 
@@ -1628,6 +1631,12 @@ const WsPreviewReportStatusRpc = Rpc.make(WS_METHODS.previewReportStatus, {
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsPeerEnvironmentsWaitForThreadRpc = Rpc.make(WS_METHODS.peerEnvironmentsWaitForThread, {
+  payload: PeerEnvironmentThreadWaitInput,
+  success: PeerEnvironmentThreadWaitResult,
+  error: Schema.Union([OrchestrationV2GetThreadProjectionError, EnvironmentAuthorizationError]),
+});
+
 const WsPeerEnvironmentsConnectRpc = Rpc.make(WS_METHODS.peerEnvironmentsConnect, {
   payload: PeerEnvironmentHost,
   success: PeerEnvironmentStreamEvent,
@@ -2158,6 +2167,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewClearProfileRpc,
   WsPreviewReportProfilesRpc,
   WsPreviewReportStatusRpc,
+  WsPeerEnvironmentsWaitForThreadRpc,
   WsPeerEnvironmentsConnectRpc,
   WsPeerEnvironmentsRespondRpc,
   WsSubscribePreviewEventsRpc,
