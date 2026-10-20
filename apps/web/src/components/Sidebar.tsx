@@ -16,6 +16,7 @@ import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullR
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
+import { useAtomCommand } from "../state/use-atom-command";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
@@ -79,6 +80,7 @@ import {
   FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
+  Globe2Icon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -265,6 +267,13 @@ import {
 } from "../providerInstances";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { useThreadDiscoveredPorts } from "../portDiscoveryState";
+import { previewEnvironment } from "../state/preview";
+import { openDiscoveredPort } from "./preview/openDiscoveredPort";
+import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button, InlineButton } from "./ui/button";
 import {
@@ -1633,6 +1642,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     environmentId: thread.environmentId,
     threadId: thread.id,
   });
+  const discoveredPorts = useThreadDiscoveredPorts({
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+  });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
+  const openPreview = useAtomCommand(previewEnvironment.open, {
+    reportFailure: false,
+  });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
   const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isRouteThread;
@@ -1917,6 +1934,32 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onThreadActivate(threadRef);
     }
   };
+  const handleOpenDiscoveredPort = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!preferredDiscoveredPort) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onThreadActivate(threadRef);
+      void (async () => {
+        const result = await openDiscoveredPort({
+          threadRef,
+          port: preferredDiscoveredPort,
+          openPreview,
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open preview",
+            description:
+              error instanceof Error ? error.message : "The preview could not be opened.",
+          }),
+        );
+      })();
+    },
+    [onThreadActivate, openPreview, preferredDiscoveredPort, threadRef],
+  );
 
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -2104,6 +2147,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       />
     )
   ) : null;
+  const discoveredPortButton = preferredDiscoveredPort ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
+            onClick={handleOpenDiscoveredPort}
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-success-foreground outline-none hover:text-success-foreground/80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          />
+        }
+      >
+        <Globe2Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
+      </TooltipPopup>
+    </Tooltip>
+  ) : null;
 
   if (variant === "slim") {
     return (
@@ -2148,6 +2210,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {draftIndicator}
             {title}
             {pinIndicator}
+            {discoveredPortButton}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -2486,6 +2549,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
+              {discoveredPortButton}
               {terminalStatusIcon}
               {prBadge}
               {diff ? (
