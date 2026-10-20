@@ -27,7 +27,9 @@ function delegation(input: string) {
 const makeFakeClient = Effect.gen(function* () {
   const handlers = new Map<string, Array<(payload: unknown) => Effect.Effect<void, Error>>>();
   const requests: Array<{ readonly method: string; readonly params: unknown }> = [];
+  let closeOnStop = false;
   const startRequested = yield* Deferred.make<void>();
+  const secondStartRequested = yield* Deferred.make<void>();
   const speechRequested = yield* Deferred.make<void>();
   const stopRequested = yield* Deferred.make<void>();
   const client = {
@@ -42,12 +44,22 @@ const makeFakeClient = Effect.gen(function* () {
       request: (method: string, params: unknown) =>
         Effect.gen(function* () {
           requests.push({ method, params });
-          if (method === "thread/realtime/start")
+          if (method === "thread/realtime/start") {
             yield* Deferred.succeed(startRequested, undefined);
+            if (requests.filter((request) => request.method === method).length === 2)
+              yield* Deferred.succeed(secondStartRequested, undefined);
+          }
           if (method === "thread/realtime/appendSpeech") {
             yield* Deferred.succeed(speechRequested, undefined);
           }
-          if (method === "thread/realtime/stop") yield* Deferred.succeed(stopRequested, undefined);
+          if (method === "thread/realtime/stop") {
+            yield* Deferred.succeed(stopRequested, undefined);
+            if (closeOnStop)
+              yield* emit("thread/realtime/closed", {
+                threadId: PROVIDER_THREAD,
+                reason: "old-session-closed",
+              });
+          }
           return {};
         }),
     },
@@ -56,7 +68,18 @@ const makeFakeClient = Effect.gen(function* () {
     Effect.forEach(handlers.get(method) ?? [], (handler) => Effect.ignore(handler(payload)), {
       discard: true,
     });
-  return { client, requests, emit, startRequested, speechRequested, stopRequested };
+  return {
+    client,
+    requests,
+    emit,
+    startRequested,
+    secondStartRequested,
+    speechRequested,
+    stopRequested,
+    closePreviousOnStop: () => {
+      closeOnStop = true;
+    },
+  };
 });
 
 const startVoice = Effect.gen(function* () {
@@ -160,6 +183,39 @@ describe("makeCodexVoice", () => {
       // Codex already closed the session, so there is nothing to stop.
       NodeAssert.ok(!voice.requests.some((request) => request.method === "thread/realtime/stop"));
     }),
+  );
+
+  it.effect(
+    "keeps the replacement stream alive when stopping the previous session emits closed",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fake = yield* makeFakeClient;
+          const voice = yield* makeCodexVoice(fake.client, yield* Effect.scope);
+          const start = () =>
+            voice
+              .start({ providerThreadId: PROVIDER_THREAD, offerSdp: "v=offer\r\n" })
+              .pipe(Stream.runCollect, Effect.forkChild);
+          const first = yield* start();
+          yield* Deferred.await(fake.startRequested);
+          fake.closePreviousOnStop();
+          const replacement = yield* start();
+          yield* Deferred.await(fake.secondStartRequested);
+          yield* fake.emit("thread/realtime/sdp", {
+            threadId: PROVIDER_THREAD,
+            sdp: "replacement-answer",
+          });
+          yield* fake.emit("thread/realtime/closed", {
+            threadId: PROVIDER_THREAD,
+            reason: "replacement-done",
+          });
+          NodeAssert.deepEqual(yield* Fiber.join(first), [{ type: "closed", reason: "replaced" }]);
+          NodeAssert.deepEqual(yield* Fiber.join(replacement), [
+            { type: "answer", sdp: "replacement-answer" },
+            { type: "closed", reason: "replacement-done" },
+          ]);
+        }),
+      ),
   );
 
   it.effect("stops the realtime session when the client unsubscribes", () =>
