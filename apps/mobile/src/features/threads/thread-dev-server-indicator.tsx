@@ -3,7 +3,7 @@ import { memo, useCallback, useMemo } from "react";
 import { Alert, Pressable } from "react-native";
 import * as Option from "effect/Option";
 
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { devServerLabel, resolveDevServerUrl } from "../../lib/devServers";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useThreadDevServers } from "../../state/preview";
