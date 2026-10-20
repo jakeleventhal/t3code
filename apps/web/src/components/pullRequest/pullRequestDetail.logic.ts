@@ -682,7 +682,13 @@ export function buildPullRequestTimeline(
     "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
   > & { readonly reviewThreads?: ReadonlyArray<PullRequestReviewThread> },
 ): ReadonlyArray<PullRequestTimelineEvent> {
-  const threads = detail.reviewThreads ?? [];
+  const currentComments = new Map(detail.comments.map((comment) => [comment.id, comment]));
+  const threads = (detail.reviewThreads ?? []).map((thread) => ({
+    ...thread,
+    comments: thread.comments
+      .map((comment) => currentComments.get(comment.id) ?? comment)
+      .toSorted((left, right) => instant(left.createdAt) - instant(right.createdAt)),
+  }));
   const threadedCommentIds = new Set(
     threads.flatMap((thread) => thread.comments.map((comment) => comment.id)),
   );

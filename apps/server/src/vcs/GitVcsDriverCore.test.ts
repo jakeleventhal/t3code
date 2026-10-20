@@ -5593,7 +5593,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const preview = yield* driver.getReviewDiffPreview({ cwd: worktreePath });
         const changes = preview.sources.find((source) => source.kind === "branch-range")!;
         assert.deepStrictEqual(changes.files, [
-          { path: "feature.txt", previousPath: null, additions: 1, deletions: 0 },
+          { path: "feature.txt", previousPath: null, additions: 1, deletions: 0, status: "added" },
         ]);
         assert.include(changes.diff, "+feature work");
         assert.notInclude(changes.diff, "upstream-only work");
@@ -5876,7 +5876,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const preview = yield* driver.getReviewDiffPreview({ cwd });
         const changes = preview.sources.find((source) => source.kind === "branch-range")!;
         assert.deepStrictEqual(changes.files, [
-          { path: "feature.txt", previousPath: null, additions: 1, deletions: 0 },
+          { path: "feature.txt", previousPath: null, additions: 1, deletions: 0, status: "added" },
         ]);
         assert.equal(changes.baseRef, "upstream/dev");
       }),
