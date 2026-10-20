@@ -1,11 +1,15 @@
+import { markdownWithStandaloneMediaLinks } from "../lib/standaloneMediaLinks";
 import { decodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
   formatComposerContextHref,
   formatComposerContextReference,
 } from "@t3tools/shared/composerContextReferences";
-import { markdownWithStandaloneMediaLinks } from "../lib/standaloneMediaLinks";
-import { markdownWithHtml, markdownWithTableBreaks } from "../lib/markdownDocument";
+import {
+  markdownWithHtml,
+  markdownWithInlineFileLinks,
+  markdownWithTableBreaks,
+} from "../lib/markdownDocument";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { ActionSheetIOS, Platform, Share, StyleSheet, View } from "react-native";
 import {
@@ -159,7 +163,16 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const { renderImage, resolveImageSource } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const markdown = useMemo(
-    () => markdownWithStandaloneMediaLinks(markdownWithTableBreaks(markdownWithHtml(props.markdown)), props.workspaceRoot),
+    () =>
+      markdownWithStandaloneMediaLinks(
+        markdownWithTableBreaks(
+          markdownWithInlineFileLinks(
+            markdownWithHtml(props.markdown),
+            ENRICHED_INLINE_FILE_LINK_REGEX,
+          ),
+        ),
+        props.workspaceRoot,
+      ),
     [props.markdown, props.workspaceRoot],
   );
   const [documentAssets, setDocumentAssets] = useState<DocumentAssetsEvent["assets"]>([]);
@@ -186,7 +199,6 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const linkRecognition = useMemo(
     () => ({
       text: enrichedSkillLinkRegex(props.skills) ?? undefined,
-      inlineCode: ENRICHED_INLINE_FILE_LINK_REGEX,
     }),
     [props.skills],
   );

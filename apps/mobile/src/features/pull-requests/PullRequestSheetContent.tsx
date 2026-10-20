@@ -22,7 +22,7 @@ export function PullRequestSheetContent(props: {
   const android = Platform.OS === "android";
   const fitToContents = android && props.scrollable !== false;
   const compactIos = Platform.OS === "ios" && props.compact === true && props.scrollable !== false;
-  const [headerHeight, setHeaderHeight] = useState(84);
+  const headerHeight = 84;
   const [bodyHeight, setBodyHeight] = useState(144);
   const [footerHeight, setFooterHeight] = useState(0);
   // On iOS 26 the native fit-to-contents wrapper contains a flex SafeAreaView. Bound the
@@ -48,14 +48,12 @@ export function PullRequestSheetContent(props: {
   const content = (
     <>
       <SheetHeader
-        presentation="inline"
+        presentation={android ? "inline" : "native"}
         title={props.title}
         subtitle={props.subtitle}
         onCancel={() => navigation.goBack()}
         dismissDisabled={props.busy}
       />
-      <View onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
-      </View>
       <ScreenContent fitToContents={fitToContents}>
         {props.scrollable === false ? (
           <View className="flex-1" pointerEvents={props.busy ? "none" : "auto"}>
@@ -64,6 +62,7 @@ export function PullRequestSheetContent(props: {
         ) : (
           <ScrollView
             nestedScrollEnabled
+            contentInsetAdjustmentBehavior="automatic"
             className={fitToContents ? "shrink grow-0" : "ios:flex-1"}
             onContentSizeChange={(_width, height) => setBodyHeight(height)}
             automaticallyAdjustKeyboardInsets={compactIos}

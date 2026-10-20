@@ -55,13 +55,7 @@ import { annotatePullRequestDiff, reviewPosition } from "./pullRequestDiffCommen
 import { usePullRequestFileFilter } from "./usePullRequestFileFilter";
 import { usePullRequestViewingPreferences } from "./usePullRequestViewingPreferences";
 import { isPullRequestTestFile } from "./pullRequestFileFilters";
-import {
-  StackActions,
-  useFocusEffect,
-  useNavigation,
-  useRoute,
-  type StaticScreenProps,
-} from "@react-navigation/native";
+import { useFocusEffect, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { RegistryContext, useAtomRefresh } from "@effect/atom-react";
 import { pullRequestReviewKey } from "./pullRequestReviewDrafts";
 import { type PullRequestDetail, type PullRequestListEntry } from "@t3tools/contracts";
@@ -123,8 +117,7 @@ import {
   PullRequestDiffStats,
   PullRequestReadStatus,
 } from "./PullRequestPresentation";
-import { PullRequestFiles, usePullRequestFilesContent } from "./PullRequestFiles";
-import { PullRequestSheetContent } from "./PullRequestSheetContent";
+import { usePullRequestFilesSection } from "./PullRequestFiles";
 import { PullRequestDescription } from "./PullRequestDescription";
 import { PullRequestMarkdownRepository } from "./PullRequestMarkdown";
 import {
@@ -325,7 +318,7 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
   const requestedSection = useRef(section);
   const [listAnimationsReady, setListAnimationsReady] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const filesContent = usePullRequestFilesContent({ params });
+  const filesContent = usePullRequestFilesSection(params);
   const guidesEnabled = useReviewGuidesEnabled(params);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>({
     ...DEFAULT_ACTIVITY_FILTER,
@@ -836,32 +829,6 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
         />
       </View>
     </PullRequestMarkdownRepository>
-  );
-}
-
-export function PullRequestFilesRouteScreen({ route }: StaticScreenProps<PullRequestDiffParams>) {
-  const navigation = useNavigation();
-  const fileSelectionId = useRoute().key;
-  return (
-    <PullRequestSheetContent
-      title="Changed files"
-      scrollable={false}
-      subtitle={`#${route.params.number}${route.params.commit ? ` · ${route.params.commit.slice(0, 7)}` : ` · ${route.params.repository}`}`}
-    >
-      <PullRequestFiles
-        params={route.params}
-        groupByDirectory
-        onSelectFile={(path) =>
-          navigation.dispatch(
-            StackActions.popTo("PullRequestFile", {
-              ...route.params,
-              path,
-              fileSelectionId,
-            }),
-          )
-        }
-      />
-    </PullRequestSheetContent>
   );
 }
 
