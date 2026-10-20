@@ -919,6 +919,7 @@ export type PullRequestThreadCommentsResult = typeof PullRequestThreadCommentsRe
 export const PullRequestThreadReplyInput = Schema.Struct({
   ...PullRequestRef.fields,
   threadId: TrimmedNonEmptyString,
+  pendingReviewId: Schema.optional(TrimmedNonEmptyString),
   body: CommentBody,
 });
 export type PullRequestThreadReplyInput = typeof PullRequestThreadReplyInput.Type;

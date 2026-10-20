@@ -728,6 +728,7 @@ export class GitHubPullRequestApi extends Context.Service<
       readonly repository: string;
       readonly host: string;
       readonly threadId: string;
+      readonly pendingReviewId?: string;
       readonly body: string;
     }) => Effect.Effect<void, GitHubPullRequestApiError>;
 
@@ -3214,8 +3215,25 @@ export const make = Effect.gen(function* () {
 
     replyToReviewThread: (input) =>
       client
-        .AddReviewThreadReply({ threadId: input.threadId, body: input.body })
-        .pipe(graphql({ ...input, operation: "replyToReviewThread" }), Effect.asVoid),
+        .AddReviewThreadReply({
+          threadId: input.threadId,
+          body: input.body,
+          reviewId: input.pendingReviewId ?? null,
+        })
+        .pipe(
+          graphql({ ...input, operation: "replyToReviewThread" }),
+          Effect.flatMap((result) =>
+            result.addPullRequestReviewThreadReply?.comment
+              ? Effect.void
+              : Effect.fail(
+                  readError(
+                    input.cwd,
+                    "replyToReviewThread",
+                    new Error("GitHub did not accept the reply. Your draft has been kept."),
+                  ),
+                ),
+          ),
+        ),
 
     getPullRequestFilesViewed: (input) => {
       const { owner, name } = parseRepositorySelector(input.repository);

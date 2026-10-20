@@ -564,6 +564,7 @@ export interface PullRequestProviderApi {
     input: ProviderRepositoryRef & {
       readonly number: number;
       readonly threadId: string;
+      readonly pendingReviewId?: string;
       readonly body: string;
     },
   ) => Effect.Effect<void, PullRequestProviderError>;

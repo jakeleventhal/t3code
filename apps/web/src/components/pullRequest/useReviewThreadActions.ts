@@ -7,6 +7,7 @@ import type {
   PullRequestThreadComment,
 } from "@t3tools/contracts";
 import {
+  reviewThreadReplyTarget,
   canEditPullRequestComment,
   canResolvePullRequestThread,
 } from "@t3tools/client-runtime/review-editing";
@@ -19,7 +20,7 @@ import { toastManager } from "../ui/toast";
 export function useReviewThreadActions(
   environmentId: EnvironmentId,
   reference: PullRequestRef,
-  detail: PullRequestDetailView,
+  detail: Pick<PullRequestDetailView, "capabilities" | "viewerPermissions" | "author" | "viewer">,
   onRefresh: () => void,
 ) {
   const [pending, setPending] = useState(false);
@@ -57,7 +58,8 @@ export function useReviewThreadActions(
     canResolve:
       canResolve &&
       detail.capabilities.review.resolve &&
-      canResolvePullRequestThread(detail, thread),
+      canResolvePullRequestThread(detail, thread) &&
+      !thread.comments.some((comment) => comment.pendingReviewId),
     canEditComment: (comment: PullRequestThreadComment) =>
       canEdit &&
       canEditPullRequestComment(detail, {
@@ -67,7 +69,7 @@ export function useReviewThreadActions(
       }),
     onReply: (body: string) =>
       run("Reply could not be posted", () =>
-        reply({ environmentId, input: { ...reference, threadId: thread.id, body } }),
+        reply({ environmentId, input: { ...reference, ...reviewThreadReplyTarget(thread), body } }),
       ),
     onEditComment: (commentId: string, body: string) =>
       run("The comment could not be saved", () =>

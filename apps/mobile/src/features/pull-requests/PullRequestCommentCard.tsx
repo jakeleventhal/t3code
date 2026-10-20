@@ -1,3 +1,4 @@
+import { reviewThreadReplyTarget } from "@t3tools/client-runtime/review-editing";
 import { useAtomRefresh } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
@@ -211,7 +212,7 @@ export function usePullRequestThreadActions(
   });
   const hasPending = thread.comments.some((comment) => comment.pendingReviewId);
   return {
-    canReply: permissions.canReply && !hasPending,
+    canReply: permissions.canReply,
     canResolve: permissions.canResolve && thread.canResolve !== false && !hasPending,
     toggleResolved: () => {
       const resolved = !thread.isResolved;
@@ -230,7 +231,7 @@ export function usePullRequestThreadActions(
     reply: async (body: string) => {
       const result = await replyCommand({
         ...target,
-        input: { ...target.input, threadId: thread.id, body },
+        input: { ...target.input, ...reviewThreadReplyTarget(thread), body },
       });
       if (result._tag === "Failure") {
         Alert.alert("Reply could not be posted", "Your reply has been kept. Try again.");

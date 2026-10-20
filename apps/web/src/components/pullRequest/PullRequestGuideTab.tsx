@@ -76,7 +76,7 @@ export function PullRequestGuideTab({
   const { add: addComment } = usePendingReviewCommentActions(environmentId, reference);
   const removeComment = usePullRequestReviewStore((store) => store.removeComment);
   const commenting = ((): ExcerptCommenting | null =>
-    !canComment && onAskAboutLines === null
+    !canComment && onAskAboutLines === null && !detail.capabilities.review.reply
       ? null
       : {
           canComment,
@@ -91,6 +91,9 @@ export function PullRequestGuideTab({
             />
           ),
           pending,
+          threads: detail.reviewThreads.filter((thread) =>
+            thread.comments.some((comment) => !comment.pendingReviewId),
+          ),
           pendingCommentTarget: {
             environmentId,
             reference,

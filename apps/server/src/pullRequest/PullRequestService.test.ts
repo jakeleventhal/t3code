@@ -8254,3 +8254,31 @@ it.effect(
       assert.isFalse(published);
     }),
 );
+
+it.effect("forwards private reply ownership to the destination provider", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          replyToThread: (input) =>
+            Effect.sync(() => {
+              calls.push(`${input.threadId}:${input.pendingReviewId}:${input.body}`);
+            }),
+        }),
+      ],
+    });
+    yield* service.replyToThread({
+      projectId: "p1" as ProjectId,
+      repository: "pingdotgg/t3code",
+      number: 1,
+      threadId: "t1",
+      pendingReviewId: "private-review",
+      body: "Follow-up",
+    });
+    expect(calls).toEqual(["t1:private-review:Follow-up"]);
+  }),
+);
