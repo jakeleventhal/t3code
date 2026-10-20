@@ -1,3 +1,4 @@
+import { pullRequestFileChapters } from "./pullRequestFileChapters";
 import { Chip } from "../../components/ui/Chip";
 import { Toolbar } from "../../components/ui/Toolbar";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -8,11 +9,7 @@ import { useDiffWhitespacePreference } from "../review/useDiffWhitespacePreferen
 import { PullRequestCommentsSheet } from "./PullRequestCommentsSheet";
 import { PullRequestCommitPicker } from "./PullRequestCommitPicker";
 import { ReviewChapterNavigation } from "../review/ReviewChapterNavigation";
-import {
-  reviewFileChapters,
-  reviewFileGroup,
-  type ReviewFileGroup,
-} from "@t3tools/shared/reviewFileClassification";
+import { reviewFileGroup, type ReviewFileGroup } from "@t3tools/shared/reviewFileClassification";
 import { reviewPositionRange, reviewPositionLabel } from "@t3tools/client-runtime/review-selection";
 import {
   orderReviewFiles,
@@ -423,13 +420,9 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
     pendingFilesJump.current = false;
   };
   const openFiles = () => {
-    if (section === "diff") return;
-    else {
-      pendingFilesJump.current = true;
-      selectSection("diff");
-      if (filesY.current > 0) requestAnimationFrame(jumpToFiles);
-    }
+    selectSection("diff");
   };
+
   return (
     <PullRequestMarkdownRepository
       params={params}
@@ -644,105 +637,105 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
                     <PullRequestDiffContent params={{ ...params, path: "" }} embedded />
                   </View>
                 ) : (
-                <AnimatedLegendList
-                  ref={(list) => {
-                    scrollViews.current[tab] = list;
-                  }}
-                  initialScrollOffset={-insets.top}
-                  onScroll={(event) => {
-                    const offset = event.nativeEvent.contentOffset.y;
-                    scrollOffsets.current[tab] = offset;
-                    if (requestedSection.current === tab) currentScrollOffset.current = offset;
-                  }}
-                  className="flex-1"
-                  renderScrollComponent={
-                    Platform.OS === "ios" ? PullRequestTabScrollView : undefined
-                  }
-                  contentInsetAdjustmentBehavior="never"
-                  contentInset={
-                    Platform.OS === "ios" ? { top: insets.top, bottom: insets.bottom } : undefined
-                  }
-                  contentInsetStartAdjustment={Platform.OS === "ios" ? insets.top : 0}
-                  refreshControl={
-                    <RefreshControl
-                      refreshing={section === tab && pullRefresh.refreshing}
-                      onRefresh={refresh}
-                    />
-                  }
-                  alwaysBounceVertical
-                  scrollsToTop={section === tab}
-                  onContentSizeChange={() => {
-                    if (
-                      tab !== "overview" ||
-                      section !== "overview" ||
-                      !pendingDescriptionJump.current
-                    )
-                      return;
-                    pendingDescriptionJump.current = false;
-                    // Collapse changes the scroll range; restore the heading after that layout commits.
-                    scrollViews.current.overview?.scrollToOffset({
-                      offset: bodyY.current + descriptionY.current - insets.top,
-                      animated: false,
-                    });
-                  }}
-                  contentContainerStyle={{
-                    paddingHorizontal: 16,
-                    paddingTop: 8,
-                    paddingBottom: 24 + (Platform.OS === "android" ? toolbarHeight : 0),
-                    // Short tabs must still be tall enough to preserve the collapsed header.
-                    minHeight: Math.max(
-                      0,
-                      viewportHeight + headerHeight - insets.top - insets.bottom,
-                    ),
-                  }}
-                  data={[
-                    {
-                      key: `${tab}:body`,
-                      content: (
-                        <View>
-                          {tab === "overview" && identity ? (
-                            <View>
-                              {pr ? (
-                                <PullRequestOverview
-                                  pr={pr}
-                                  params={params}
-                                  stack={stack}
-                                  descriptionExpanded={descriptionExpanded}
-                                  onDescriptionExpandedChange={setDescriptionExpanded}
-                                  onDescriptionLayout={(y) => {
-                                    descriptionY.current = y;
+                  <AnimatedLegendList
+                    ref={(list) => {
+                      scrollViews.current[tab] = list;
+                    }}
+                    initialScrollOffset={-insets.top}
+                    onScroll={(event) => {
+                      const offset = event.nativeEvent.contentOffset.y;
+                      scrollOffsets.current[tab] = offset;
+                      if (requestedSection.current === tab) currentScrollOffset.current = offset;
+                    }}
+                    className="flex-1"
+                    renderScrollComponent={
+                      Platform.OS === "ios" ? PullRequestTabScrollView : undefined
+                    }
+                    contentInsetAdjustmentBehavior="never"
+                    contentInset={
+                      Platform.OS === "ios" ? { top: insets.top, bottom: insets.bottom } : undefined
+                    }
+                    contentInsetStartAdjustment={Platform.OS === "ios" ? insets.top : 0}
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={section === tab && pullRefresh.refreshing}
+                        onRefresh={refresh}
+                      />
+                    }
+                    alwaysBounceVertical
+                    scrollsToTop={section === tab}
+                    onContentSizeChange={() => {
+                      if (
+                        tab !== "overview" ||
+                        section !== "overview" ||
+                        !pendingDescriptionJump.current
+                      )
+                        return;
+                      pendingDescriptionJump.current = false;
+                      // Collapse changes the scroll range; restore the heading after that layout commits.
+                      scrollViews.current.overview?.scrollToOffset({
+                        offset: bodyY.current + descriptionY.current - insets.top,
+                        animated: false,
+                      });
+                    }}
+                    contentContainerStyle={{
+                      paddingHorizontal: 16,
+                      paddingTop: 8,
+                      paddingBottom: 24 + (Platform.OS === "android" ? toolbarHeight : 0),
+                      // Short tabs must still be tall enough to preserve the collapsed header.
+                      minHeight: Math.max(
+                        0,
+                        viewportHeight + headerHeight - insets.top - insets.bottom,
+                      ),
+                    }}
+                    data={[
+                      {
+                        key: `${tab}:body`,
+                        content: (
+                          <View>
+                            {tab === "overview" && identity ? (
+                              <View>
+                                {pr ? (
+                                  <PullRequestOverview
+                                    pr={pr}
+                                    params={params}
+                                    stack={stack}
+                                    descriptionExpanded={descriptionExpanded}
+                                    onDescriptionExpandedChange={setDescriptionExpanded}
+                                    onDescriptionLayout={(y) => {
+                                      descriptionY.current = y;
+                                    }}
+                                    onDescriptionCollapse={() => {
+                                      pendingDescriptionJump.current = true;
+                                    }}
+                                  />
+                                ) : summary ? (
+                                  <PullRequestOverviewLoading
+                                    summary={summary}
+                                    params={params}
+                                    stack={stack}
+                                  />
+                                ) : null}
+                                <View
+                                  className="mt-8 border-t border-border-subtle pt-3"
+                                  onLayout={(event) => {
+                                    filesY.current = event.nativeEvent.layout.y;
+                                    if (pendingFilesJump.current) {
+                                      requestAnimationFrame(() => {
+                                        if (requestedSection.current === "overview") jumpToFiles();
+                                      });
+                                    }
                                   }}
-                                  onDescriptionCollapse={() => {
-                                    pendingDescriptionJump.current = true;
-                                  }}
-                                />
-                              ) : summary ? (
-                                <PullRequestOverviewLoading
-                                  summary={summary}
-                                  params={params}
-                                  stack={stack}
-                                />
-                              ) : null}
-                              <View
-                                className="mt-8 border-t border-border-subtle pt-3"
-                                onLayout={(event) => {
-                                  filesY.current = event.nativeEvent.layout.y;
-                                  if (pendingFilesJump.current) {
-                                    requestAnimationFrame(() => {
-                                      if (requestedSection.current === "overview") jumpToFiles();
-                                    });
-                                  }
-                                }}
-                              >
-                            <PullRequestActivityFilters
-                              value={activityFilter}
-                              onChange={setActivityFilter}
-                              hiddenCount={tabContent.hiddenCount}
-                            />
-                            <PullRequestReadStatus
-                              pending={tabContent.pending}
-                              error={tabContent.error}
-                            />
+                                >
+                                  <PullRequestActivityFilters
+                                    value={activityFilter}
+                                    onChange={setActivityFilter}
+                                    hiddenCount={tabContent.hiddenCount}
+                                  />
+                                  <PullRequestReadStatus
+                                    pending={tabContent.pending}
+                                    error={tabContent.error}
+                                  />
                                 </View>
                               </View>
                             ) : null}
@@ -751,66 +744,66 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
                                 params={params}
                                 active={section === "guide"}
                               />
-                          ) : null}
-                        </View>
-                      ),
-                    },
+                            ) : null}
+                          </View>
+                        ),
+                      },
                       ...(tab === "overview" ? (identity ? tabContent.rows : []) : []).map(
                         (row) => ({
-                      ...row,
-                      key: `${tab}:${row.key}`,
-                      content: row.content,
+                          ...row,
+                          key: `${tab}:${row.key}`,
+                          content: row.content,
                         }),
                       ),
-                  ]}
-                  keyExtractor={(row) => row.key}
-                  getItemType={(row) =>
-                    row.key.endsWith(":body") ? row.key : row.key.split(":")[0]
-                  }
-                  // The overview body contains the clipped description and owns collapse scroll
-                  // correction. Animating that cell fights both; file rows still fade individually.
-                  itemLayoutAnimation={tab === "overview" ? undefined : PR_ROW_LAYOUT}
-                  onLoad={() => setListAnimationsReady(true)}
-                  renderItem={({ item }) => (
-                    <Animated.View
-                      key={item.key}
-                      entering={
-                        listAnimationsReady && !item.key.endsWith(":body")
-                          ? PR_ROW_ENTER
-                          : undefined
-                      }
-                      exiting={
+                    ]}
+                    keyExtractor={(row) => row.key}
+                    getItemType={(row) =>
+                      row.key.endsWith(":body") ? row.key : row.key.split(":")[0]
+                    }
+                    // The overview body contains the clipped description and owns collapse scroll
+                    // correction. Animating that cell fights both; file rows still fade individually.
+                    itemLayoutAnimation={tab === "overview" ? undefined : PR_ROW_LAYOUT}
+                    onLoad={() => setListAnimationsReady(true)}
+                    renderItem={({ item }) => (
+                      <Animated.View
+                        key={item.key}
+                        entering={
+                          listAnimationsReady && !item.key.endsWith(":body")
+                            ? PR_ROW_ENTER
+                            : undefined
+                        }
+                        exiting={
                           listAnimationsReady && !item.key.endsWith(":body")
                             ? PR_ROW_EXIT
                             : undefined
-                      }
-                    >
-                      {item.content}
-                    </Animated.View>
-                  )}
-                  recycleItems={false}
-                  estimatedItemSize={tab === "overview" ? 64 : 220}
-                  maintainVisibleContentPosition={false}
-                  ListHeaderComponent={
-                    <>
-                      <PullRequestReadStatus
-                        pending={result.isPending && !identity}
-                        error={result.error}
-                      />
-                      {identity ? (
-                        <View
-                          className="gap-5 pb-5"
-                          onLayout={(event) => {
-                            bodyY.current = event.nativeEvent.layout.height;
-                            setHeaderHeight(event.nativeEvent.layout.height);
-                          }}
-                        >
-                          <PullRequestIdentity pr={identity} params={params} />
-                          <SegmentedControl
+                        }
+                      >
+                        {item.content}
+                      </Animated.View>
+                    )}
+                    recycleItems={false}
+                    estimatedItemSize={tab === "overview" ? 64 : 220}
+                    maintainVisibleContentPosition={false}
+                    ListHeaderComponent={
+                      <>
+                        <PullRequestReadStatus
+                          pending={result.isPending && !identity}
+                          error={result.error}
+                        />
+                        {identity ? (
+                          <View
+                            className="gap-5 pb-5"
+                            onLayout={(event) => {
+                              bodyY.current = event.nativeEvent.layout.height;
+                              setHeaderHeight(event.nativeEvent.layout.height);
+                            }}
+                          >
+                            <PullRequestIdentity pr={identity} params={params} />
+                            <SegmentedControl
                               variant="tabs"
-                            options={[
+                              options={[
                                 { value: "overview", label: "Overview", icon: "doc.text" },
-                              ...(guidesEnabled
+                                ...(guidesEnabled
                                   ? [
                                       {
                                         value: "guide" as const,
@@ -818,19 +811,19 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
                                         icon: "list.number" as const,
                                       },
                                     ]
-                                : []),
+                                  : []),
                                 { value: "diff", label: "Code", icon: "plusminus" },
-                            ]}
-                            selected={section}
-                            onSelect={selectSection}
-                            role="tab"
-                            size="compact"
-                          />
-                        </View>
-                      ) : null}
-                    </>
-                  }
-                />
+                              ]}
+                              selected={section}
+                              onSelect={selectSection}
+                              role="tab"
+                              size="compact"
+                            />
+                          </View>
+                        ) : null}
+                      </>
+                    }
+                  />
                 )}
               </View>
             ))}
@@ -877,10 +870,10 @@ export function PullRequestFileRouteScreen({ route }: StaticScreenProps<PullRequ
 }
 
 type PullRequestFileParams = PullRequestDiffParams & {
-    readonly path: string;
-    readonly fileSelectionId?: string;
-    readonly replacingDraftId?: string;
-    readonly focus?: GuideDiffFocus;
+  readonly path: string;
+  readonly fileSelectionId?: string;
+  readonly replacingDraftId?: string;
+  readonly focus?: GuideDiffFocus;
 };
 
 export function PullRequestDiffContent({
@@ -946,7 +939,7 @@ export function PullRequestDiffContent({
       original.files.map((file) => ({ path: file.path, previousPath: file.previousPath })),
       activity.data?.reviewThreads ?? [],
       reviewDraft.comments,
-  );
+    );
     const files = orderReviewFiles(
       original.files.filter(
         (file) =>
@@ -980,19 +973,52 @@ export function PullRequestDiffContent({
     isViewed,
     onlyPaths,
   ]);
-  const chapters = useMemo(
+  const chapterIndex = useMemo(
     () =>
-      grouped && filter.parsed.kind === "files" && visibleParsed.kind === "files"
-        ? reviewFileChapters(filter.parsed.files, (file) => file.path, visibleParsed.files)
-        : [],
-    [grouped, filter.parsed, visibleParsed],
+      pullRequestFileChapters({
+        completePaths:
+          !detail.data || (viewed.supported && viewed.filePaths === null)
+            ? null
+            : !commit && viewed.filePaths !== null
+              ? viewed.filePaths
+              : !result.isPending &&
+                  !result.error &&
+                  result.nextCursor === null &&
+                  result.parsed.kind === "files"
+                ? result.parsed.files.map((file) => file.path)
+                : null,
+        loadedPaths:
+          filter.parsed.kind === "files" ? filter.parsed.files.map((file) => file.path) : [],
+        visiblePaths:
+          visibleParsed.kind === "files" ? visibleParsed.files.map((file) => file.path) : [],
+        hideTestFiles: filter.hideTestFiles,
+        includePath: params.focus ? params.path : undefined,
+      }),
+    [
+      commit,
+      detail.data,
+      viewed.supported,
+      viewed.filePaths,
+      result.isPending,
+      result.error,
+      result.nextCursor,
+      result.parsed,
+      filter.parsed,
+      filter.hideTestFiles,
+      visibleParsed,
+      params.focus,
+      params.path,
+    ],
   );
+  const chapters = grouped ? chapterIndex.chapters : [];
   const activeChapter = chapters.find((chapter) => chapter.id === chapterId) ?? chapters[0];
-  const chapterFiles = useMemo(() => activeChapter?.files ?? [], [activeChapter]);
-  const reviewedChapterFiles = chapterFiles.filter((file) => viewed.isViewed(file.path)).length;
+  const chapterFiles = activeChapter?.files ?? EMPTY_IDS;
+  const reviewedChapterFiles = chapterFiles.filter(viewed.isViewed).length;
   const parsed = useMemo(() => {
     if (!activeChapter || visibleParsed.kind !== "files") return visibleParsed;
-    const files = activeChapter.visibleFiles;
+    const files = visibleParsed.files.filter(
+      (file) => reviewFileGroup(file.path) === activeChapter.id,
+    );
     return {
       ...visibleParsed,
       files,
@@ -1081,7 +1107,7 @@ export function PullRequestDiffContent({
     setLastChapter(activeChapterId);
     if (activeChapter) {
       if (!jumpPath || reviewFileGroup(jumpPath) !== activeChapter.id)
-        setJumpPath(activeChapter.visibleFiles[0]?.path ?? "");
+        setJumpPath(activeChapter.files[0] ?? "");
       setSelectedRowId(null);
       setRangeEndRowId(null);
       setCollapsedIds(EMPTY_IDS);
@@ -1154,41 +1180,41 @@ export function PullRequestDiffContent({
   const { onDebug: updateVisibleRange } = bridge;
   const onDebug = useCallback<NonNullable<NativeReviewDiffViewProps["onDebug"]>>(
     (event) => {
-    const drawn = isNativeReviewDiffDrawEvent(event.nativeEvent);
-    const decoded =
-      event.nativeEvent.message === "rows-decoded" && event.nativeEvent.rows === data.rows.length;
-    if (!drawn && !decoded) return;
-    // Filtering replaces the native row payload asynchronously. Old draw events
-    // must not consume the file jump or highlight the new payload's row indices.
-    if (
-      typeof event.nativeEvent.totalRows === "number" &&
-      event.nativeEvent.totalRows !== data.rows.length
-    )
-      return;
-    if (drawn) updateVisibleRange(event);
-    if (
-      targetFile &&
-      !jumpStarted.current &&
-      nativeView.current &&
-      (Platform.OS !== "ios" || decoded)
-    ) {
-      jumpStarted.current = true;
-      if (focusIndex >= 0) return;
-      void nativeView.current.scrollToFile(targetFile.id, false).catch(() => {
-        jumpStarted.current = false;
-      });
-      return;
-    }
-    if (!drawn) return;
-    const lastRow = event.nativeEvent.lastRowIndex;
-    if (typeof lastRow === "number" && lastRow >= data.rows.length - 40) loadMore();
+      const drawn = isNativeReviewDiffDrawEvent(event.nativeEvent);
+      const decoded =
+        event.nativeEvent.message === "rows-decoded" && event.nativeEvent.rows === data.rows.length;
+      if (!drawn && !decoded) return;
+      // Filtering replaces the native row payload asynchronously. Old draw events
+      // must not consume the file jump or highlight the new payload's row indices.
+      if (
+        typeof event.nativeEvent.totalRows === "number" &&
+        event.nativeEvent.totalRows !== data.rows.length
+      )
+        return;
+      if (drawn) updateVisibleRange(event);
+      if (
+        targetFile &&
+        !jumpStarted.current &&
+        nativeView.current &&
+        (Platform.OS !== "ios" || decoded)
+      ) {
+        jumpStarted.current = true;
+        if (focusIndex >= 0) return;
+        void nativeView.current.scrollToFile(targetFile.id, false).catch(() => {
+          jumpStarted.current = false;
+        });
+        return;
+      }
+      if (!drawn) return;
+      const lastRow = event.nativeEvent.lastRowIndex;
+      if (typeof lastRow === "number" && lastRow >= data.rows.length - 40) loadMore();
     },
     [updateVisibleRange, data.rows.length, loadMore, targetFile, focusIndex],
   );
   const onToggleFile = useCallback<NonNullable<NativeReviewDiffViewProps["onToggleFile"]>>(
     (event) => {
-    const id = event.nativeEvent.fileId;
-    if (!id) return;
+      const id = event.nativeEvent.fileId;
+      if (!id) return;
       if (viewedIds.includes(id)) {
         setExpandedViewed((current) => {
           const next = new Set(current);
@@ -1197,9 +1223,9 @@ export function PullRequestDiffContent({
           return next;
         });
       } else
-    setCollapsedIds((ids) =>
-      ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
-    );
+        setCollapsedIds((ids) =>
+          ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
+        );
     },
     [viewedIds, setExpandedViewed, setCollapsedIds],
   );
@@ -1225,32 +1251,32 @@ export function PullRequestDiffContent({
     setCommit(scope);
   };
   const viewingActions = !isGuideChapter
-      ? [
-          {
-            id: "comments-only",
-            title: "Files with unresolved comments",
-            state: commentsOnly ? ("on" as const) : ("off" as const),
-          },
-          {
-            id: "hide-reviewed",
-            title: "Hide reviewed files",
-            state: hideReviewed ? ("on" as const) : ("off" as const),
-            attributes: { disabled: !viewed.supported },
-          },
-          {
-            id: "group-files",
-            title: "Group by file type",
-            state: groupByType ? ("on" as const) : ("off" as const),
-          },
-        ]
+    ? [
+        {
+          id: "comments-only",
+          title: "Files with unresolved comments",
+          state: commentsOnly ? ("on" as const) : ("off" as const),
+        },
+        {
+          id: "hide-reviewed",
+          title: "Hide reviewed files",
+          state: hideReviewed ? ("on" as const) : ("off" as const),
+          attributes: { disabled: !viewed.supported },
+        },
+        {
+          id: "group-files",
+          title: "Group by file type",
+          state: groupByType ? ("on" as const) : ("off" as const),
+        },
+      ]
     : [];
   const expandAllFiles = () => {
-      setCollapsedIds(EMPTY_IDS);
-      setExpandedViewed(new Set(viewedIds));
+    setCollapsedIds(EMPTY_IDS);
+    setExpandedViewed(new Set(viewedIds));
   };
   const collapseAllFiles = () => {
-      setCollapsedIds(data.files.map((file) => file.id));
-      setExpandedViewed(new Set());
+    setCollapsedIds(data.files.map((file) => file.id));
+    setExpandedViewed(new Set());
   };
   const changeViewingOption = (id: string) => {
     setJumpPath("");
@@ -1265,7 +1291,7 @@ export function PullRequestDiffContent({
     const chapter = chapters[position];
     if (!chapter) return;
     setChapterId(chapter.id);
-    setJumpPath(chapter.visibleFiles[0]?.path ?? "");
+    setJumpPath(chapter.files[0] ?? "");
     setSelectedRowId(null);
     setRangeEndRowId(null);
     jumpStarted.current = false;
@@ -1345,13 +1371,13 @@ export function PullRequestDiffContent({
   return (
     <View className={Platform.OS === "android" ? "flex-1 bg-header" : "flex-1 bg-screen"}>
       {!embedded ? (
-      <NativeStackScreenOptions
-        options={{
-          title,
-          headerTitle: title,
+        <NativeStackScreenOptions
+          options={{
+            title,
+            headerTitle: title,
             unstable_headerSubtitle: `${commit ? commit.slice(0, 7) : `#${params.number}`} · ${data.files.length} ${data.files.length === 1 ? "file" : "files"}${filter.hideTestFiles && filter.hiddenCount ? ` · ${filter.hiddenCount} ${filter.hiddenCount === 1 ? "test" : "tests"} hidden` : ""}`,
-        }}
-      />
+          }}
+        />
       ) : null}
       {!embedded && Platform.OS === "android" ? (
         <AndroidScreenHeader
@@ -1423,41 +1449,41 @@ export function PullRequestDiffContent({
             <Toolbar.MenuAction icon="slider.horizontal.3" onPress={() => setOptionsOpen(true)}>
               <Toolbar.Label>View options</Toolbar.Label>
             </Toolbar.MenuAction>
-          {permissions.verdicts.length ? (
+            {permissions.verdicts.length ? (
               <Toolbar.MenuAction
-              icon="text.bubble"
-              onPress={() =>
+                icon="text.bubble"
+                onPress={() =>
                   navigation.navigate("PullRequestReview", { ...params, mode: "review" })
-              }
-            >
+                }
+              >
                 <Toolbar.Label>Submit review</Toolbar.Label>
               </Toolbar.MenuAction>
-          ) : null}
-          {permissions.canComment ? (
+            ) : null}
+            {permissions.canComment ? (
               <Toolbar.MenuAction
-              icon="plus.bubble"
-              onPress={() =>
+                icon="plus.bubble"
+                onPress={() =>
                   navigation.navigate("PullRequestReview", { ...params, mode: "comment" })
-              }
-            >
+                }
+              >
                 <Toolbar.Label>Add comment</Toolbar.Label>
               </Toolbar.MenuAction>
-          ) : null}
-          {selectedRow && selectedFile && canCommentOnDiff ? (
+            ) : null}
+            {selectedRow && selectedFile && canCommentOnDiff ? (
               <Toolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
                 <Toolbar.Label>
                   {params.replacingDraftId ? "Move draft to this line" : "Add review comment"}
                 </Toolbar.Label>
               </Toolbar.MenuAction>
-          ) : null}
-          {selectedRow && selectedFile ? (
+            ) : null}
+            {selectedRow && selectedFile ? (
               <Toolbar.MenuAction
-              icon="document.on.document"
-              onPress={() => void Clipboard.setStringAsync(selectedRow.content ?? "")}
-            >
+                icon="document.on.document"
+                onPress={() => void Clipboard.setStringAsync(selectedRow.content ?? "")}
+              >
                 <Toolbar.Label>Copy line</Toolbar.Label>
               </Toolbar.MenuAction>
-          ) : null}
+            ) : null}
           </Toolbar.Menu>
         </Toolbar>
       ) : null}
@@ -1538,16 +1564,13 @@ export function PullRequestDiffContent({
             chapters={chapters}
             position={chapters.indexOf(activeChapter)}
             reviewedCount={reviewedChapterFiles}
-            fileCount={chapterFiles.length}
+            fileCount={chapterIndex.complete ? chapterFiles.length : null}
             onSelect={selectChapter}
-            reviewedDisabled={result.isPending || result.nextCursor !== null}
+            reviewedDisabled={!chapterIndex.complete}
             onToggleReviewed={
               viewed.canToggle && !commit && !staleDiff
                 ? () =>
-                    viewed.setManyViewed(
-                      chapterFiles.map((file) => file.path),
-                      reviewedChapterFiles !== chapterFiles.length,
-                    )
+                    viewed.setManyViewed(chapterFiles, reviewedChapterFiles !== chapterFiles.length)
                 : undefined
             }
           />
@@ -1792,13 +1815,13 @@ export function PullRequestDiffContent({
         </View>
       ) : null}
       {!embedded ? (
-      <PullRequestActionToolbar
-        pr={detail.data}
+        <PullRequestActionToolbar
+          pr={detail.data}
           params={params}
-        filePath={visibleFile?.path}
+          filePath={visibleFile?.path}
           showFiles={false}
-        onHeightChange={setToolbarHeight}
-      />
+          onHeightChange={setToolbarHeight}
+        />
       ) : null}
     </View>
   );
@@ -1809,12 +1832,12 @@ function PullRequestFileExpansionActions(props: {
   readonly onToggle: () => void;
 }) {
   return (
-      <Pressable
-        accessibilityRole="button"
+    <Pressable
+      accessibilityRole="button"
       accessibilityLabel={props.collapsed ? "Expand all files" : "Collapse all files"}
       className="min-h-11 flex-row items-center gap-1.5 px-2"
       onPress={props.onToggle}
-      >
+    >
       <SymbolView
         name={props.collapsed ? "diff.expand" : "diff.collapse"}
         size={17}
@@ -1823,6 +1846,6 @@ function PullRequestFileExpansionActions(props: {
       <Text className="text-xs text-foreground-muted">
         {props.collapsed ? "Expand all" : "Collapse all"}
       </Text>
-      </Pressable>
+    </Pressable>
   );
 }

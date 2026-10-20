@@ -124,24 +124,13 @@ export function PullRequestMergeControls(props: {
     pending.current = true;
     setBusy(true);
     return await (async () => {
-    const response = await runAction({
-      ...target,
-      input: {
-        ...target.input,
-        action,
+      const response = await runAction({
+        ...target,
+        input: {
+          ...target.input,
+          action,
           ...(adminOverride ? { adminOverride: true, mergeMethod: method } : {}),
-        ...(action === "merge" && method && stack.stack && scope
-          ? {
-                resolveMergeMethod: (fresh) => {
-                  if (
-                    !canPerformPullRequestAction(fresh, "merge") ||
-                    !allowedMergeMethods(fresh).includes(method)
-                  )
-                    throw new Error("The pull request changed. Refresh before merging.");
-                  return method;
-                },
-            }
-            : action === "merge" && method && !adminOverride
+          ...(action === "merge" && method && stack.stack && scope
             ? {
                 resolveMergeMethod: (fresh) => {
                   if (
@@ -152,28 +141,39 @@ export function PullRequestMergeControls(props: {
                   return method;
                 },
               }
-            : action === "enable-auto-merge" && method
-              ? { mergeMethod: method }
-              : {}),
-      },
-    });
+            : action === "merge" && method && !adminOverride
+              ? {
+                  resolveMergeMethod: (fresh) => {
+                    if (
+                      !canPerformPullRequestAction(fresh, "merge") ||
+                      !allowedMergeMethods(fresh).includes(method)
+                    )
+                      throw new Error("The pull request changed. Refresh before merging.");
+                    return method;
+                  },
+                }
+              : action === "enable-auto-merge" && method
+                ? { mergeMethod: method }
+                : {}),
+        },
+      });
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       return true;
     })()
       .catch(async (cause: unknown) => {
-      Dialog.alert(
-        "Couldn't complete the merge action",
-        cause instanceof Error ? cause.message : "Try again.",
-      );
-      return false;
+        Dialog.alert(
+          "Couldn't complete the merge action",
+          cause instanceof Error ? cause.message : "Try again.",
+        );
+        return false;
       })
       .finally(async () => {
-    // A stack can partly merge before the provider reports a failure.
-    refreshDetail();
-    refreshActivity();
-    stack.refresh();
-    pending.current = false;
-    setBusy(false);
+        // A stack can partly merge before the provider reports a failure.
+        refreshDetail();
+        refreshActivity();
+        stack.refresh();
+        pending.current = false;
+        setBusy(false);
       });
   };
   const confirm = (action: "merge" | "enable-auto-merge" | "disable-auto-merge") => {
@@ -375,10 +375,13 @@ export function PullRequestMergeControls(props: {
                         : "Confirm merge"
                 }
                 tone={bypass ? "danger" : "primary"}
-                disabled={busy || (!bypass && !canConfirmAutoMerge)}
+                disabled={busy || (!bypass && !canMerge && !canConfirmAutoMerge)}
                 loading={busy}
                 onPress={async () => {
-                  const completed = await perform(bypass ? "merge" : "enable-auto-merge", bypass);
+                  const completed = await perform(
+                    bypass || !canConfirmAutoMerge ? "merge" : "enable-auto-merge",
+                    bypass,
+                  );
                   if (completed) setConfirmation(null);
                 }}
               />

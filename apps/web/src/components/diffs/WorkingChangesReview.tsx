@@ -40,7 +40,7 @@ import {
 import { WorkingChangesTree } from "./WorkingChangesTree";
 import { Badge } from "../ui/badge";
 import { DiffStatLabel } from "../chat/DiffStatLabel";
-import { InputGroup, InputGroupAddon } from "../ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupTextarea } from "../ui/input-group";
 import { Group, GroupSeparator } from "../ui/group";
 import {
   Dialog,
@@ -669,6 +669,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                 </p>
               ) : (
                 <AnnotatableCodeView
+                  pendingFiles={[]}
                   codeViewKey={`${cwd}:${view}:${view === "git" ? `${scope}:${selectedPath ?? "all"}` : "all"}`}
                   sectionId={view === "git" ? scope : "working-tree"}
                   sectionTitle={view === "git" ? scope : "Uncommitted"}
@@ -874,8 +875,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
               <>
                 <div className="flex shrink-0 flex-col gap-1 px-2 py-1.5">
                   <InputGroup size="compact" aria-label="Commit message field">
-                    <textarea
-                      className="field-sizing-content block min-h-7 w-full min-w-0 resize-none border-0 bg-transparent px-2.5 py-1 font-sans text-xs leading-5 text-foreground outline-none placeholder:text-placeholder"
+                    <InputGroupTextarea
                       rows={1}
                       aria-label="Commit message"
                       placeholder="Message (blank generates one)"

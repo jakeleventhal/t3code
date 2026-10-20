@@ -722,9 +722,9 @@ export function PullRequestDetailPanel({
     summary: (node: HTMLDivElement | null) => {
       scrollerByTab.current.summary = node;
     },
-      guide: (node: HTMLDivElement | null) => {
-        scrollerByTab.current.guide = node;
-      },
+    guide: (node: HTMLDivElement | null) => {
+      scrollerByTab.current.guide = node;
+    },
     code: (node: HTMLDivElement | null) => {
       scrollerByTab.current.code = node;
     },
@@ -1076,16 +1076,6 @@ export function PullRequestDetailPanel({
   const canPrepareWorktree = prepareThread.isAllowed && canOperateThread;
   const canFixFindings = attachTarget !== null || canPrepareWorktree;
   const handoffLabels = pullRequestHandoffLabels(attachTarget !== null);
-  const guideWriter = useReviewGuideWriter({
-    environmentId,
-    reference,
-    title: detail?.title ?? null,
-  });
-  const writeGuide = () => {
-    void guideWriter.write();
-    if (guideWriter.data?.guide == null) selectTab("guide");
-  };
-
   const writeTaskToComposer = (target: ScopedThreadRef | DraftId, task: ThreadTask) => {
     const store = useComposerDraftStore.getState();
     const draft = store.getComposerDraft(target);

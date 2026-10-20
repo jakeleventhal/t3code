@@ -29,13 +29,13 @@ export function usePendingReviewCommentActions(
     reportFailure: false,
   });
   const saveDraft = async (comment: PendingReviewComment) => {
-    try {
+    return await (async () => {
       return await savePendingReviewComment(key, comment, async (draft) => {
         const result = await save({ environmentId, input: { ...reference, comment: draft } });
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
         return result.value;
       });
-    } catch (cause) {
+    })().catch(async (cause: unknown) => {
       toastManager.add({
         type: "error",
         title: "Could not save the pending comment to GitHub",
@@ -43,7 +43,7 @@ export function usePendingReviewCommentActions(
           cause instanceof Error ? cause.message : "Your draft is kept in T3. Retry saving it.",
       });
       return null;
-    }
+    });
   };
   const add = (comment: PendingReviewComment, saveToHost: boolean) => {
     usePullRequestReviewStore.getState().addComment(key, comment);
@@ -56,7 +56,7 @@ export function usePendingReviewCommentActions(
       store.drafts[key]?.find((entry) => entry.id === givenComment.id) ?? givenComment;
     if (store.busyComments[key]?.includes(comment.id)) return false;
     store.setCommentBusy(key, comment.id, true);
-    try {
+    return await (async () => {
       if (comment.hostedComment) {
         const result = await remove({
           environmentId,
@@ -73,9 +73,9 @@ export function usePendingReviewCommentActions(
         comment.hostedComment ? [comment.hostedComment.commentId] : [],
       );
       return true;
-    } finally {
+    })().finally(async () => {
       store.setCommentBusy(key, comment.id, false);
-    }
+    });
   };
   const discardAll = async (comments: ReadonlyArray<PendingReviewComment>) => {
     for (const comment of comments) {

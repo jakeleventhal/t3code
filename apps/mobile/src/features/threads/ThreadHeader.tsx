@@ -35,10 +35,8 @@ export function ThreadHeader(
       });
     }
     if (props.hasThreadCwd) {
-      const filesVisible = props.inspectorMode === "files" && panes.auxiliaryPaneVisible;
       actions.push({
-        accessibilityLabel: filesVisible ? "Close files" : "Open files",
-        selected: filesVisible,
+        accessibilityLabel: "Open files",
         icon: "folder",
         onPress: () =>
           navigation.navigate("ThreadFiles", {

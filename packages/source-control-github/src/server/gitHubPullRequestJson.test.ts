@@ -547,7 +547,7 @@ describe("pull request detail decoding", () => {
     ["HAS_HOOKS", true],
     ["BLOCKED", false],
     ["BEHIND", false],
-    ["UNSTABLE", false],
+    ["UNSTABLE", true],
     ["UNKNOWN", undefined],
   ] as const)(
     "preserves GitHub merge requirements for %s independently of CI",

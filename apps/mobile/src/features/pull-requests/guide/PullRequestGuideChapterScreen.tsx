@@ -154,12 +154,14 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
               ) : null}
             </ScrollView>
           </View>
-          <PullRequestDiffContent
-            key={`${guide?.headSha}:${position}`}
-            params={{ ...params, path: "" }}
-            embedded
-            onlyPaths={progress?.paths}
-          />
+          {progress?.paths.length ? (
+            <PullRequestDiffContent
+              key={`${guide?.headSha}:${position}`}
+              params={{ ...params, path: "" }}
+              embedded
+              onlyPaths={progress.paths}
+            />
+          ) : null}
         </>
       )}
     </View>

@@ -139,68 +139,6 @@ export function GuideExcerpt({
   onSetViewed: ((viewed: boolean) => void) | null;
 }) {
   const [draft, setDraft] = useState<ExcerptDraft | null>(null);
-  const slice = excerptSlice(file, excerpt);
-
-  return (
-    <figure className="flex min-w-0 flex-col gap-1.5">
-      {excerpt.caption.trim() !== "" ? (
-        <figcaption className="text-xs text-muted-foreground">
-          <GuideProse text={excerpt.caption} plain />
-        </figcaption>
-      ) : null}
-      {slice !== null && file !== null ? (
-        <ExcerptDiff
-          excerpt={excerpt}
-          file={file}
-          slice={slice}
-          draft={draft}
-          setDraft={setDraft}
-          loadDiffFiles={loadDiffFiles}
-          notes={notes}
-          commenting={commenting}
-          onOpenFile={onOpenFile}
-        />
-      ) : loading ? (
-        <p className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          Loading {excerpt.path}...
-        </p>
-      ) : (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          <span className="min-w-0 truncate">
-            <span className="font-mono text-foreground">{excerpt.path}</span> lines {excerpt.start}-
-            {excerpt.end} are not in the loaded diff.
-          </span>
-          <Button size="xs" variant="outline" onClick={() => onOpenFile(excerpt.path)}>
-            Open in Code
-          </Button>
-        </div>
-      )}
-    </figure>
-  );
-}
-
-// Split out so draft changes re-render the diff without re-slicing the patch.
-function ExcerptDiff({
-  excerpt,
-  file,
-  slice,
-  draft,
-  setDraft,
-  loadDiffFiles,
-  notes,
-  commenting,
-  onOpenFile,
-}: {
-  excerpt: PullRequestReviewGuideExcerpt;
-  file: FileDiffMetadata;
-  slice: ExcerptSlice;
-  draft: ExcerptDraft | null;
-  setDraft: (draft: ExcerptDraft | null) => void;
-  loadDiffFiles: FileDiffContentsLoader;
-  notes: ReadonlyArray<ExcerptNoteMarker>;
-  commenting: ExcerptCommenting | null;
-  onOpenFile: (path: string) => void;
-}) {
   const resolvedTheme = useRenderedAppearance();
   const settings = useClientSettings();
   const slice = (() => {
@@ -222,7 +160,6 @@ function ExcerptDiff({
     };
     return { fileDiff, rows: shown, shown: shown.length, total: rows.length, drawn };
   })();
-  const loadExcerptFiles = excerptLoader(excerpt, slice.rows, loadDiffFiles);
 
   // The excerpt expands against an old side of its own: the file's real old side differs from
   // the new one wherever another hunk changed it, and the renderer needs the two to agree around
@@ -297,11 +234,11 @@ function ExcerptDiff({
   // Positions and the agent's copy of the lines come from the whole file's diff, so a comment
   // lands where the Code tab would put it rather than on the excerpt's cut-down patch.
   const beginComment = (range: SelectedLineRange | null) => {
-      if (range === null || file === null) return;
-      const end = resolveDiffReviewPosition(file, range.end, range.endSide ?? range.side);
-      const start = resolveDiffReviewPosition(file, range.start, range.side);
-      if (end === null) return;
-      setDraft({ range, position: start ? reviewPositionRange(start, end) : end });
+    if (range === null || file === null) return;
+    const end = resolveDiffReviewPosition(file, range.end, range.endSide ?? range.side);
+    const start = resolveDiffReviewPosition(file, range.start, range.side);
+    if (end === null) return;
+    setDraft({ range, position: start ? reviewPositionRange(start, end) : end });
   };
   const interactive =
     commenting !== null &&
@@ -327,19 +264,19 @@ function ExcerptDiff({
   };
 
   const options = {
-      diffStyle: settings.diffLayout === "split" ? ("split" as const) : ("unified" as const),
+    diffStyle: settings.diffLayout === "split" ? ("split" as const) : ("unified" as const),
     lineDiffType: "none" as const,
-      overflow: settings.wordWrap ? ("wrap" as const) : ("scroll" as const),
+    overflow: settings.wordWrap ? ("wrap" as const) : ("scroll" as const),
     theme: resolveDiffThemeName(resolvedTheme),
     themeType: resolvedTheme,
     preferredHighlighter: PREFERRED_HIGHLIGHTER,
     unsafeCSS: EXCERPT_UNSAFE_CSS,
-      // Hover a line for the gutter button, or drag across line numbers, as in the Code tab.
+    // Hover a line for the gutter button, or drag across line numbers, as in the Code tab.
     enableGutterUtility: interactive,
     enableLineSelection: interactive,
     onGutterUtilityClick: beginComment,
     onLineSelectionEnd: beginComment,
-      // Without a loader there is nothing to expand into, so the bars stay plain.
+    // Without a loader there is nothing to expand into, so the bars stay plain.
     ...(loadExcerptFiles === null
       ? { hunkSeparators: "simple" as const }
       : { loadDiffFiles: loadExcerptFiles }),
@@ -354,74 +291,74 @@ function ExcerptDiff({
       ) : null}
       {slice !== null ? (
         <div className="min-w-0 border-y border-border/60">
-      <FileDiff<ExcerptAnnotation>
+          <FileDiff<ExcerptAnnotation>
             renderHeaderPrefix={() => (
               <PierreEntryIcon pathValue={excerpt.path} kind="file" theme={resolvedTheme} />
             )}
             renderHeaderFilenameSuffix={() => (file ? <DiffFileRename file={file} /> : null)}
-        fileDiff={slice.fileDiff}
-        options={options}
-        lineAnnotations={annotations}
-        selectedLines={draft?.range ?? null}
-        renderAnnotation={(annotation) => (
-          <div className="font-sans">
-            {annotation.metadata.markers.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 text-xs">
-                {annotation.metadata.markers.map((entry) => (
-                  <span key={entry.marker} className="inline-flex items-center gap-1.5">
-                    <GuideNoteMarker marker={entry.marker} />
-                    <span className="text-foreground">{entry.title}</span>
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            fileDiff={slice.fileDiff}
+            options={options}
+            lineAnnotations={annotations}
+            selectedLines={draft?.range ?? null}
+            renderAnnotation={(annotation) => (
+              <div className="font-sans">
+                {annotation.metadata.markers.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 text-xs">
+                    {annotation.metadata.markers.map((entry) => (
+                      <span key={entry.marker} className="inline-flex items-center gap-1.5">
+                        <GuideNoteMarker marker={entry.marker} />
+                        <span className="text-foreground">{entry.title}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {commenting !== null
                   ? annotation.metadata.pending.map((comment) => (
-              <PendingReviewCommentCard
-                key={comment.id}
-                comment={comment}
+                      <PendingReviewCommentCard
+                        key={comment.id}
+                        comment={comment}
                         {...commenting.pendingCommentTarget}
-              />
+                      />
                     ))
                   : null}
-            {annotation.metadata.draft && draft !== null && commenting !== null ? (
-              <DiffCommentAnnotation
-                kind="draft"
+                {annotation.metadata.draft && draft !== null && commenting !== null ? (
+                  <DiffCommentAnnotation
+                    kind="draft"
                     renderAttachments={commenting.renderAttachments}
                     pending={!canQueueComment && onAskAgent === null}
                     rangeLabel={`${excerpt.path} · ${reviewPositionLabel(draft.position)}`}
-                text=""
-                placeholder={
+                    text=""
+                    placeholder={
                       canQueueComment ? "Add a comment…" : "Ask the agent about these lines…"
-                }
+                    }
                     submitLabel={canQueueComment ? "Add to review" : "Add to composer"}
                     {...(canQueueComment && onAskAgent !== null
-                  ? {
-                      secondaryAction: {
+                      ? {
+                          secondaryAction: {
                             label: "Add to composer",
-                        onAction: (text: string) => askAgent(text),
-                      },
-                    }
-                  : {})}
-                onCancel={() => setDraft(null)}
-                onComment={(body) => {
+                            onAction: (text: string) => askAgent(text),
+                          },
+                        }
+                      : {})}
+                    onCancel={() => setDraft(null)}
+                    onComment={(body) => {
                       if (!canQueueComment) {
-                    askAgent(body);
-                    return;
-                  }
-                  commenting.onComment({
-                    path: excerpt.path,
+                        askAgent(body);
+                        return;
+                      }
+                      commenting.onComment({
+                        path: excerpt.path,
                         oldPath: file === null ? null : previousPathOf(file, excerpt.path),
-                    position: draft.position,
-                    body,
-                  });
-                  setDraft(null);
-                }}
-              />
-            ) : null}
-          </div>
-        )}
-        renderHeaderMetadata={() => (
+                        position: draft.position,
+                        body,
+                      });
+                      setDraft(null);
+                    }}
+                  />
+                ) : null}
+              </div>
+            )}
+            renderHeaderMetadata={() => (
               <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 {onSetViewed ? (
                   <label className="flex items-center gap-1.5">
@@ -433,22 +370,22 @@ function ExcerptDiff({
                     Reviewed
                   </label>
                 ) : null}
-            <span className="tabular-nums">
+                <span className="tabular-nums">
                   {excerpt.side === "old" ? "removed code, " : ""}showing {slice.shown} of{" "}
                   {slice.total} diff lines
-            </span>
-            <Button
-              size="icon-xs"
-              variant="ghost-muted"
-              aria-label={`Open ${excerpt.path} in Code`}
-              onClick={() => onOpenFile(excerpt.path)}
-            >
-              <ArrowUpRightIcon aria-hidden />
-            </Button>
-          </span>
-        )}
-      />
-    </div>
+                </span>
+                <Button
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label={`Open ${excerpt.path} in Code`}
+                  onClick={() => onOpenFile(excerpt.path)}
+                >
+                  <ArrowUpRightIcon aria-hidden />
+                </Button>
+              </span>
+            )}
+          />
+        </div>
       ) : loading ? (
         <p className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
           Loading {excerpt.path}...
@@ -462,7 +399,7 @@ function ExcerptDiff({
           <Button size="xs" variant="outline" onClick={() => onOpenFile(excerpt.path)}>
             Open in Code
           </Button>
-    </div>
+        </div>
       )}
     </figure>
   );

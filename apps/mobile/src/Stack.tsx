@@ -758,7 +758,9 @@ const RootStackConfig = createWorkspaceStackNavigator({
     PullRequestInlineComment: createNativeStackScreen({
       screen: PullRequestInlineCommentScreen,
       options: {
-        ...FORM_SHEET_PRESENTATION_OPTIONS,
+        ...(Platform.OS === "android"
+          ? { presentation: "fullScreenModal" as const }
+          : FORM_SHEET_PRESENTATION_OPTIONS),
         sheetAllowedDetents: Platform.OS === "android" ? "fitToContents" : [0.5],
         sheetGrabberVisible: Platform.OS !== "android",
         headerShown: false,

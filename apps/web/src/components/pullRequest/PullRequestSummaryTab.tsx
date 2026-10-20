@@ -55,17 +55,11 @@ import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import {
-  filterPullRequestConversationItems,
-  isPullRequestCommentFinished,
   latestPullRequestReviewOutcomes,
   orderPullRequestComments,
-  pagePullRequestConversationItems,
-  pullRequestConversationItemComments,
-  pullRequestConversationItems,
   pullRequestFindingKey,
   pullRequestReviewOutcome,
   visibleBody,
-  type PullRequestConversationItem,
   type PullRequestFinding,
 } from "./pullRequestDetail.logic";
 import {
@@ -74,7 +68,6 @@ import {
 } from "@t3tools/client-runtime/review-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
-import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
@@ -213,9 +206,6 @@ function CollapsedComment({
   reactionBar,
   detail,
   thread,
-  replyCount = 0,
-  replies = null,
-  moreReplies = null,
 }: {
   comment: PullRequestComment;
   editing: CommentEditing;
@@ -224,9 +214,6 @@ function CollapsedComment({
   reactionBar: ReactNode;
   detail: PullRequestDetailView;
   thread: PullRequestReviewThread | undefined;
-  replyCount?: number;
-  replies?: ReactNode;
-  moreReplies?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const statusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -236,11 +223,6 @@ function CollapsedComment({
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
             <CommentIdentity comment={comment} detail={detail} />
-            {replyCount > 0 ? (
-              <span className="shrink-0 py-1 text-xs text-muted-foreground">
-                {replyCount} {replyCount === 1 ? "reply" : "replies"}
-              </span>
-            ) : null}
             <CollapsibleTrigger
               ref={statusTriggerRef}
               className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -276,11 +258,9 @@ function CollapsedComment({
               {body === null && !editing.canEdit(comment) ? null : (
                 <CommentBody className="mt-2" comment={comment} editing={editing} />
               )}
-              {replies ? <div className="mt-3">{replies}</div> : null}
             </div>
           ) : null}
         </CollapsiblePanel>
-        {moreReplies ? <div className="px-3 pb-3">{moreReplies}</div> : null}
       </article>
     </Collapsible>
   );
@@ -415,17 +395,16 @@ export function PullRequestSummaryTab({
   activityContent?: (activity: PullRequestDetailView, order: "newest" | "oldest") => ReactNode;
 }) {
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
-  const shownConversations = shown.url === detail.url ? shown.count : COMMENT_PAGE;
+  const shownComments = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   const [commentFilter, setCommentFilter] = useLocalStorage(
     COMMENT_FILTER_STORAGE_KEY,
     DEFAULT_COMMENT_FILTER,
     CommentFilterSchema,
   );
-  const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
-  const filteredItems = filterPullRequestConversationItems(items, commentFilter);
-  const commentCount = items.reduce(
-    (count, item) => count + pullRequestConversationItemComments(item).length,
-    0,
+  const threadByCommentId = new Map(
+    detail.reviewThreads.flatMap((thread) =>
+      thread.comments.map((comment) => [comment.id, thread] as const),
+    ),
   );
 
   const isFinished = (comment: PullRequestComment) =>
@@ -455,18 +434,19 @@ export function PullRequestSummaryTab({
   const recentComments = filteredComments.slice(
     Math.max(0, filteredComments.length - shownComments),
   );
+  const hiddenCommentCount = filteredComments.length - recentComments.length;
   const [commentOrder, setCommentOrder] = useState<"newest" | "oldest">("newest");
-  const visibleItems = orderPullRequestComments(recentItems, commentOrder);
+  const visibleComments = orderPullRequestComments(recentComments, commentOrder);
   const showOldestCommentsButton =
-    hiddenConversationCount > 0 ? (
+    hiddenCommentCount > 0 ? (
       <Button
         size="sm"
         variant="outline"
         className="w-full"
-        onClick={() => setShown({ url: detail.url, count: shownConversations + COMMENT_PAGE })}
+        onClick={() => setShown({ url: detail.url, count: shownComments + COMMENT_PAGE })}
       >
-        Show {Math.min(hiddenConversationCount, COMMENT_PAGE)} older conversation
-        {hiddenConversationCount === 1 ? "" : "s"} ({hiddenConversationCount} hidden)
+        Show {Math.min(hiddenCommentCount, COMMENT_PAGE)} older comment
+        {hiddenCommentCount === 1 ? "" : "s"} ({hiddenCommentCount} hidden)
       </Button>
     ) : null;
   // Read from the whole conversation, not the window shown below it: a verdict older than the
@@ -570,35 +550,53 @@ export function PullRequestSummaryTab({
     },
   };
 
-  const reactionBarFor = (comment: PullRequestComment) => (
-    <PullRequestReactionBar
-      className="ml-auto justify-end"
-      reactions={comment.reactions ?? []}
-      canReact={detail.capabilities.reactions === true}
-      subjectId={comment.id}
-      environmentId={environmentId}
-      reference={reference}
-      onRefresh={onRefresh}
-    />
-  );
-
-  const renderCommentCard = (
-    comment: PullRequestComment,
-    thread: PullRequestReviewThread | undefined,
-    { reply = false }: { reply?: boolean } = {},
-  ) => {
+  const renderComment = (comment: PullRequestComment) => {
+    const thread = threadByCommentId.get(comment.id);
     const body = visibleBody(comment.body);
+    if (isFinished(comment)) {
+      return (
+        <CollapsedComment
+          key={`${detail.url}:${comment.id}`}
+          comment={comment}
+          editing={commentEditing}
+          detail={detail}
+          thread={thread}
+          label={thread?.isResolved ? "Resolved" : "Review dismissed"}
+          body={body}
+          reactionBar={
+            <PullRequestReactionBar
+              className="ml-auto justify-end"
+              reactions={comment.reactions ?? []}
+              canReact={detail.capabilities.reactions === true}
+              subjectId={comment.id}
+              environmentId={environmentId}
+              reference={reference}
+              onRefresh={onRefresh}
+            />
+          }
+        />
+      );
+    }
     const outcome = pullRequestReviewOutcome(comment.reviewState);
     const finding: PullRequestFinding | null =
-      reply ||
-      (comment.kind !== "review" && comment.kind !== "review-comment") ||
-      outcome === "approved"
+      (comment.kind !== "review" && comment.kind !== "review-comment") || outcome === "approved"
         ? null
         : thread === undefined
           ? body === null
             ? null
             : { kind: "comment", comment }
           : { kind: "thread", thread };
+    const reactionBar = (
+      <PullRequestReactionBar
+        reactions={comment.reactions ?? []}
+        canReact={detail.capabilities.reactions === true}
+        subjectId={comment.id}
+        environmentId={environmentId}
+        reference={reference}
+        onRefresh={onRefresh}
+        className="ml-auto justify-end"
+      />
+    );
     return (
       <article
         key={`${detail.url}:${comment.id}`}
@@ -634,13 +632,11 @@ export function PullRequestSummaryTab({
               </span>
             </Button>
           ) : null}
-          {reactionBarFor(comment)}
+          {reactionBar}
         </div>
-        {reply ? null : (
-          <div className="px-3">
-            <CommentLocation comment={comment} thread={thread} />
-          </div>
-        )}
+        <div className="px-3">
+          <CommentLocation comment={comment} thread={thread} />
+        </div>
         {body === null && !commentEditing.canEdit(comment) ? null : (
           <CommentBody className="px-3 py-3" comment={comment} editing={commentEditing} />
         )}
@@ -648,360 +644,322 @@ export function PullRequestSummaryTab({
     );
   };
 
-  const renderItem = (item: PullRequestConversationItem) => {
-    const comment = item.kind === "comment" ? item.comment : item.root;
-    const thread = item.kind === "thread" ? item.thread : undefined;
-    const replies =
-      item.kind === "thread" && item.replies.length > 0 ? (
-        <div className="ml-4 space-y-2 border-l-2 border-border/60 pl-3">
-          {item.replies.map((reply) => renderCommentCard(reply, undefined, { reply: true }))}
-        </div>
-      ) : null;
-    const moreReplies =
-      item.kind === "thread" && item.hasMoreReplies ? <PullRequestMoreReplies {...item} /> : null;
-    if (isPullRequestCommentFinished(comment, thread)) {
-      return (
-        <CollapsedComment
-          key={`${detail.url}:${item.kind}:${item.id}`}
-          comment={comment}
-          editing={commentEditing}
-          detail={detail}
-          thread={thread}
-          label={thread?.isResolved ? "Resolved" : "Review dismissed"}
-          body={visibleBody(comment.body)}
-          replyCount={item.kind === "thread" ? item.replies.length + item.moreReplies : 0}
-          replies={replies}
-          moreReplies={moreReplies}
-          reactionBar={reactionBarFor(comment)}
-        />
-      );
-    }
-    if (item.kind === "comment") return renderCommentCard(comment, undefined);
-    return (
-      <div key={`${detail.url}:thread:${item.id}`} className="space-y-2">
-        {renderCommentCard(comment, thread)}
-        {replies}
-        {moreReplies}
-      </div>
-    );
-  };
-
   return (
     <div ref={scrollerRef} className="h-full overflow-y-auto" data-pull-request-summary-scroll>
       <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_16rem]">
         <section className="px-4 pt-2.5 pb-1 xl:col-start-2 xl:row-start-1 xl:border-l xl:border-border/60">
-        <div className="space-y-2">
-          <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
-            <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-              {reviewerEntries.length === 0 ? (
-                <span className="text-muted-foreground">None</span>
-              ) : (
-                <span className="flex items-center -space-x-1">
-                  {reviewerEntries.map((entry) => {
-                    const login = entry.actor?.login ?? "ghost";
-                    const named =
-                      entry.actor?.name && entry.actor.name !== login
-                        ? `${entry.actor.name} (@${login})`
-                        : login;
-                    return (
-                      <Tooltip key={entry.key}>
+          <div className="space-y-2">
+            <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
+              <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                {reviewerEntries.length === 0 ? (
+                  <span className="text-muted-foreground">None</span>
+                ) : (
+                  <span className="flex items-center -space-x-1">
+                    {reviewerEntries.map((entry) => {
+                      const login = entry.actor?.login ?? "ghost";
+                      const named =
+                        entry.actor?.name && entry.actor.name !== login
+                          ? `${entry.actor.name} (@${login})`
+                          : login;
+                      return (
+                        <Tooltip key={entry.key}>
                           {/* A verdict rides the face that earned it rather than a row of its own:
                             the ring sits outside the one that separates overlapping avatars, so
                             it reads at a glance without adding anything to scroll past. */}
-                        <TooltipTrigger
-                          render={
-                            <span
-                              className={cn(
-                                "relative rounded-full hover:z-10",
+                          <TooltipTrigger
+                            render={
+                              <span
+                                className={cn(
+                                  "relative rounded-full hover:z-10",
                                   // The verdict replaces the separator rather than ringing it. Both
                                   // occupy the same 2px immediately outside a 16px avatar, so the
                                   // colour costs no size: anything drawn further out would be a
                                   // halo wide enough to eclipse the neighbour this stack overlaps
                                   // by 4px. Painted by this wrapper because a child's box-shadow
                                   // covers its parent's, never the other way round.
-                                entry.outcome
-                                  ? pullRequestReviewOutcomeRingClassName(
-                                      entry.outcome,
-                                      entry.stale,
-                                    )
-                                  : undefined,
-                              )}
+                                  entry.outcome
+                                    ? pullRequestReviewOutcomeRingClassName(
+                                        entry.outcome,
+                                        entry.stale,
+                                      )
+                                    : undefined,
+                                )}
+                              />
+                            }
+                          >
+                            <PullRequestActorLabel
+                              actor={entry.actor}
+                              tooltip={false}
+                              variant="avatar"
                             />
-                          }
-                        >
-                          <PullRequestActorLabel
-                            actor={entry.actor}
-                            tooltip={false}
-                            variant="avatar"
-                          />
                             {/* Colour alone says nothing to a reader who cannot see it, and the
                               login beside this is already in the accessible name. */}
-                          {entry.outcome ? (
-                            <span className="sr-only">
-                              {entry.stale
-                                ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
-                                : pullRequestReviewOutcomeLabel(entry.outcome)}
-                            </span>
-                          ) : null}
-                        </TooltipTrigger>
-                        <TooltipPopup side="bottom">
-                          {entry.outcome
-                            ? `${named} — ${
-                                entry.stale
+                            {entry.outcome ? (
+                              <span className="sr-only">
+                                {entry.stale
                                   ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
-                                  : pullRequestReviewOutcomeLabel(entry.outcome)
-                              }`
-                            : named}
-                        </TooltipPopup>
-                      </Tooltip>
-                    );
-                  })}
-                </span>
-              )}
+                                  : pullRequestReviewOutcomeLabel(entry.outcome)}
+                              </span>
+                            ) : null}
+                          </TooltipTrigger>
+                          <TooltipPopup side="bottom">
+                            {entry.outcome
+                              ? `${named} — ${
+                                  entry.stale
+                                    ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
+                                    : pullRequestReviewOutcomeLabel(entry.outcome)
+                                }`
+                              : named}
+                          </TooltipPopup>
+                        </Tooltip>
+                      );
+                    })}
+                  </span>
+                )}
                 {/* Shown wherever the host can take a review request at all, and disabled with the
                   reason where this account may not make one: a control that vanishes teaches
                   nobody why, and "you need write access" is the answer to the question a reader
                   actually has. Azure DevOps is the exception — it takes a reviewer but will not
                   say who could be one, so there is nothing to open. */}
-              {detail.capabilities.reviewers.request &&
-              detail.capabilities.reviewers.listCandidates ? (
-                <PullRequestReviewerPicker
-                  environmentId={environmentId}
-                  reference={reference}
-                  allowed={detail.viewerPermissions.requestReviewers}
-                />
-              ) : null}
-            </span>
-          </MetaRow>
-            {/* The row is shown empty only where a label could be put on it from here; on a host
-              with none to offer, an empty row is a row about nothing. */}
-          {detail.labels.length > 0 || detail.capabilities.labels === true ? (
-            <MetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
-              <span className="flex min-w-0 flex-wrap items-center gap-1">
-                {detail.labels.length === 0 ? (
-                  <span className="text-muted-foreground">None</span>
-                ) : (
-                  detail.labels.map((label) => (
-                    <PullRequestLabelChip
-                      key={label.name}
-                      label={label}
-                      size="default"
-                      className="max-w-48"
-                    />
-                  ))
-                )}
-                {detail.capabilities.labels === true ? (
-                  <PullRequestLabelPicker
+                {detail.capabilities.reviewers.request &&
+                detail.capabilities.reviewers.listCandidates ? (
+                  <PullRequestReviewerPicker
                     environmentId={environmentId}
                     reference={reference}
-                    allowed={detail.viewerPermissions.labels !== false}
+                    allowed={detail.viewerPermissions.requestReviewers}
                   />
                 ) : null}
               </span>
             </MetaRow>
-          ) : null}
-        </div>
-      </section>
+            {/* The row is shown empty only where a label could be put on it from here; on a host
+              with none to offer, an empty row is a row about nothing. */}
+            {detail.labels.length > 0 || detail.capabilities.labels === true ? (
+              <MetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
+                <span className="flex min-w-0 flex-wrap items-center gap-1">
+                  {detail.labels.length === 0 ? (
+                    <span className="text-muted-foreground">None</span>
+                  ) : (
+                    detail.labels.map((label) => (
+                      <PullRequestLabelChip
+                        key={label.name}
+                        label={label}
+                        size="default"
+                        className="max-w-48"
+                      />
+                    ))
+                  )}
+                  {detail.capabilities.labels === true ? (
+                    <PullRequestLabelPicker
+                      environmentId={environmentId}
+                      reference={reference}
+                      allowed={detail.viewerPermissions.labels !== false}
+                    />
+                  ) : null}
+                </span>
+              </MetaRow>
+            ) : null}
+          </div>
+        </section>
         <div className="min-w-0 xl:col-start-1 xl:row-start-1">
-      <Section key={`description:${detail.url}`} title="Description" keepMounted>
-        <div className="group">
-          {bodyScope === detail.url ? (
-            <PullRequestMarkdownEditor
+          <Section key={`description:${detail.url}`} title="Description" keepMounted>
+            <div className="group">
+              {bodyScope === detail.url ? (
+                <PullRequestMarkdownEditor
                   // Empty is a real answer here: saving nothing is how a description is cleared.
-              allowEmpty
-              value={detail.body}
-              cwd={detail.workspaceRoot}
-              environmentId={environmentId}
-              threadRef={threadRef}
-              label="Pull request description"
-              placeholder="Describe this pull request"
-              saving={bodySaving}
-              onSave={(body) => void saveBody(body)}
-              onCancel={() => setBodyScope(null)}
-            />
-          ) : (
-            <div className="flex items-start gap-1">
-              <PullRequestMarkdown
-                className="min-w-0 flex-1"
+                  allowEmpty
+                  value={detail.body}
+                  cwd={detail.workspaceRoot}
+                  environmentId={environmentId}
+                  threadRef={threadRef}
+                  label="Pull request description"
+                  placeholder="Describe this pull request"
+                  saving={bodySaving}
+                  onSave={(body) => void saveBody(body)}
+                  onCancel={() => setBodyScope(null)}
+                />
+              ) : (
+                <div className="flex items-start gap-1">
+                  <PullRequestMarkdown
+                    className="min-w-0 flex-1"
                     text={
                       detail.body.trim().length > 0 ? detail.body : "_No description provided._"
                     }
-                cwd={detail.workspaceRoot}
-                environmentId={environmentId}
-                threadRef={threadRef}
-              />
-              {canEditPullRequestChangeRequest(detail) ? (
-                <PullRequestEditButton
-                  aria-label="Edit description"
-                  onClick={() => setBodyScope(detail.url)}
-                />
-              ) : null}
+                    cwd={detail.workspaceRoot}
+                    environmentId={environmentId}
+                    threadRef={threadRef}
+                  />
+                  {canEditPullRequestChangeRequest(detail) ? (
+                    <PullRequestEditButton
+                      aria-label="Edit description"
+                      onClick={() => setBodyScope(detail.url)}
+                    />
+                  ) : null}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </Section>
+          </Section>
 
-      <Section key={`checks:${detail.url}`} title="Checks" defaultOpen={false}>
-        {checksStale ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Check details are out of date.</span>
-            <Button size="xs" variant="ghost" onClick={onRefreshChecks}>
-              Refresh
-            </Button>
-          </div>
-        ) : detail.checks.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No checks reported.</p>
-        ) : (
-          detail.checks.map((check, index) => {
-            const finding = { kind: "check", check } as const;
-            const failing = check.status === "failure" || check.status === "cancelled";
-            return (
-              <div
+          <Section key={`checks:${detail.url}`} title="Checks" defaultOpen={false}>
+            {checksStale ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Check details are out of date.</span>
+                <Button size="xs" variant="ghost" onClick={onRefreshChecks}>
+                  Refresh
+                </Button>
+              </div>
+            ) : detail.checks.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No checks reported.</p>
+            ) : (
+              detail.checks.map((check, index) => {
+                const finding = { kind: "check", check } as const;
+                const failing = check.status === "failure" || check.status === "cancelled";
+                return (
+                  <div
                     // Position too: the host decides how many runs share a name, and a repeated
                     // key would be a rendering fault on top of whatever the list already says.
-                key={`${index}:${check.name}:${check.url ?? ""}`}
-                className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
-              >
-                <button
-                  type="button"
-                  disabled={!check.url}
-                  onClick={() => check.url && openCheck(check.url)}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
-                    check.url ? "cursor-pointer" : "cursor-default",
-                  )}
-                >
-                  <PullRequestCheckStatusIcon status={check.status} />
-                  <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {pullRequestCheckStatusLabel(check)}
-                  </span>
-                </button>
+                    key={`${index}:${check.name}:${check.url ?? ""}`}
+                    className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
+                  >
+                    <button
+                      type="button"
+                      disabled={!check.url}
+                      onClick={() => check.url && openCheck(check.url)}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
+                        check.url ? "cursor-pointer" : "cursor-default",
+                      )}
+                    >
+                      <PullRequestCheckStatusIcon status={check.status} />
+                      <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {pullRequestCheckStatusLabel(check)}
+                      </span>
+                    </button>
                     {/* Only where there is something to fix. A passing check has no failure to
                       reproduce, and the button would be an invitation to waste a thread. */}
-                {onFixFinding && failing ? (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="shrink-0"
-                    disabled={pendingFinding !== null && pendingFinding !== undefined}
-                    onClick={() => onFixFinding(finding)}
-                  >
-                    <HammerIcon className="size-3" />
-                    {pendingFinding === pullRequestFindingKey(finding)
-                      ? "Preparing..."
-                      : fixCheckLabel}
-                  </Button>
-                ) : null}
-              </div>
-            );
-          })
-        )}
-      </Section>
+                    {onFixFinding && failing ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="shrink-0"
+                        disabled={pendingFinding !== null && pendingFinding !== undefined}
+                        onClick={() => onFixFinding(finding)}
+                      >
+                        <HammerIcon className="size-3" />
+                        {pendingFinding === pullRequestFindingKey(finding)
+                          ? "Preparing..."
+                          : fixCheckLabel}
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+          </Section>
 
-      <Section
+          <Section
             title={activityContent ? "Activity" : `Comments (${detail.commentCount})`}
-        actions={
-          <div className="flex shrink-0 items-center gap-1">
-            <Menu>
-              <MenuTrigger
-                render={<Button size="xs" variant="ghost-muted" />}
-                aria-label="Filter comments"
-              >
-                <ListFilterIcon aria-hidden className="size-3" />
-                {filteredOutCount > 0 ? `${filteredOutCount} hidden` : "Filter"}
-              </MenuTrigger>
-              <MenuPopup align="end">
-                <MenuGroup>
-                  <MenuGroupLabel>Show</MenuGroupLabel>
-                  <MenuCheckboxItem
-                    checked={commentFilter.bots}
-                    closeOnClick={false}
+            actions={
+              <div className="flex shrink-0 items-center gap-1">
+                <Menu>
+                  <MenuTrigger
+                    render={<Button size="xs" variant="ghost-muted" />}
+                    aria-label="Filter comments"
+                  >
+                    <ListFilterIcon aria-hidden className="size-3" />
+                    {filteredOutCount > 0 ? `${filteredOutCount} hidden` : "Filter"}
+                  </MenuTrigger>
+                  <MenuPopup align="end">
+                    <MenuGroup>
+                      <MenuGroupLabel>Show</MenuGroupLabel>
+                      <MenuCheckboxItem
+                        checked={commentFilter.bots}
+                        closeOnClick={false}
                         onCheckedChange={(bots) =>
                           setCommentFilter((value) => ({ ...value, bots }))
                         }
-                  >
-                    Bot comments
-                  </MenuCheckboxItem>
+                      >
+                        Bot comments
+                      </MenuCheckboxItem>
                       {activityContent === undefined ? (
-                  <MenuCheckboxItem
-                    checked={commentFilter.resolved}
-                    closeOnClick={false}
-                    onCheckedChange={(resolved) =>
-                      setCommentFilter((value) => ({ ...value, resolved }))
-                    }
-                  >
-                    Resolved or dismissed
-                  </MenuCheckboxItem>
+                        <MenuCheckboxItem
+                          checked={commentFilter.resolved}
+                          closeOnClick={false}
+                          onCheckedChange={(resolved) =>
+                            setCommentFilter((value) => ({ ...value, resolved }))
+                          }
+                        >
+                          Resolved or dismissed
+                        </MenuCheckboxItem>
                       ) : null}
-                </MenuGroup>
-              </MenuPopup>
-            </Menu>
-            <Button
-              size="xs"
-              variant="ghost-muted"
-              aria-label={
-                commentOrder === "newest"
-                  ? "Show oldest comments first"
-                  : "Show newest comments first"
-              }
+                    </MenuGroup>
+                  </MenuPopup>
+                </Menu>
+                <Button
+                  size="xs"
+                  variant="ghost-muted"
+                  aria-label={
+                    commentOrder === "newest"
+                      ? "Show oldest comments first"
+                      : "Show newest comments first"
+                  }
                   onClick={() =>
                     setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))
                   }
-            >
-              <ArrowDownUpIcon aria-hidden className="size-3" />
-              {commentOrder === "newest" ? "Newest first" : "Oldest first"}
-            </Button>
-          </div>
-        }
-      >
-        {activityPending ? (
-          <PullRequestConversationGhost />
-        ) : activityError ? (
+                >
+                  <ArrowDownUpIcon aria-hidden className="size-3" />
+                  {commentOrder === "newest" ? "Newest first" : "Oldest first"}
+                </Button>
+              </div>
+            }
+          >
+            {activityPending ? (
+              <PullRequestConversationGhost />
+            ) : activityError ? (
               <PullRequestActivityUnavailableState
                 compact
                 error={activityError}
                 onRetry={onRefresh}
               />
-        ) : (
-              (activityContent?.(filteredActivity.activity, commentOrder) ?? (
-          <>
-            {detail.commentsTruncated ? (
-              <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">
-                This conversation is only partially loaded. {commentCount} comment
-                {commentCount === 1 ? " is" : "s are"} loaded; open it on the host to read the rest.
-              </p>
-            ) : null}
-            {items.length === 0 ? (
-              <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
-            ) : filteredItems.length === 0 ? (
-              <p className="py-2 text-xs text-muted-foreground">
-                {filteredOutCount === 1
-                  ? "The only comment is hidden by the filter."
-                  : `All ${filteredOutCount} comments are hidden by the filter.`}
-              </p>
             ) : (
-              <div className="space-y-3">
-                {commentOrder === "oldest" ? showOldestCommentsButton : null}
-                {visibleItems.map(renderItem)}
-                {commentOrder === "newest" ? showOldestCommentsButton : null}
-                {shownConversations > COMMENT_PAGE ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => setShown({ url: detail.url, count: COMMENT_PAGE })}
-                  >
-                    Show only {COMMENT_PAGE} recent conversations
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          </>
+              (activityContent?.(filteredActivity.activity, commentOrder) ?? (
+                <>
+                  {detail.commentsTruncated ? (
+                    <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">
+                      This conversation is longer than this page reads in one go. The most recent{" "}
+                      {detail.comments.length} are here; open it on the host to read the rest.
+                    </p>
+                  ) : null}
+                  {detail.comments.length === 0 ? (
+                    <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
+                  ) : filteredComments.length === 0 ? (
+                    <p className="py-2 text-xs text-muted-foreground">
+                      {filteredOutCount === 1
+                        ? "The only comment is hidden by the filter."
+                        : `All ${filteredOutCount} comments are hidden by the filter.`}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {commentOrder === "oldest" ? showOldestCommentsButton : null}
+                      {visibleComments.map(renderComment)}
+                      {commentOrder === "newest" ? showOldestCommentsButton : null}
+                      {shownComments > COMMENT_PAGE ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="w-full"
+                          onClick={() => setShown({ url: detail.url, count: COMMENT_PAGE })}
+                        >
+                          Show only {COMMENT_PAGE} recent comments
+                        </Button>
+                      ) : null}
+                    </div>
+                  )}
+                </>
               ))
-        )}
-      </Section>
-    </div>
+            )}
+          </Section>
+        </div>
       </div>
     </div>
   );

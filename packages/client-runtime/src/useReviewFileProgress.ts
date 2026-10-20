@@ -104,12 +104,13 @@ export function useReviewFileProgress(options: {
     const pending = new Set([...queued.current.keys(), ...sentBy.current.keys()]);
     const answered = new Set<string>();
     for (const [path, from] of answeredFrom.current) {
-      if (pending.has(path) || from === states) continue;
+      // A truncated read cannot answer for a file it did not include.
+      if (pending.has(path) || from === states || (truncated && !states?.has(path))) continue;
       answered.add(path);
       answeredFrom.current.delete(path);
     }
     setOverlay((current) => settleFileViewedOverlay(current, states, pending, answered));
-  }, [states]);
+  }, [states, truncated]);
 
   const flush = useCallback(() => {
     flushTimer.current = null;

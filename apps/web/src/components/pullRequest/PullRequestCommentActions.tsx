@@ -75,7 +75,7 @@ export function PullRequestCommentActions({
             onClick={() => (onOpen ? onOpen(url) : void readLocalApi()?.shell.openExternal(url))}
           >
             <ExternalLinkIcon />
-            Open in GitHub
+            Open on host
           </MenuItem>
         ) : null}
         {onEdit ? <MenuItem onClick={onEdit}>Edit comment</MenuItem> : null}

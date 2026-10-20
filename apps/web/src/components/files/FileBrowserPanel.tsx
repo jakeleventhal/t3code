@@ -332,13 +332,22 @@ export default function FileBrowserPanel({
         : null,
     search: false,
     onSearchChange: (value) => setQuery(value ?? ""),
-    unsafeCSS: selectionCSS,
+    unsafeCSS: PIERRE_TREE_UNSAFE_CSS,
   });
   useEffect(() => {
     if (loadingDirectoriesRef.current === loadingDirectories) return;
     loadingDirectoriesRef.current = loadingDirectories;
     model.setComposition(model.getComposition());
   }, [loadingDirectories, model]);
+  useEffect(() => {
+    const shadow = model.getFileTreeContainer()?.shadowRoot;
+    if (!shadow) return;
+    const style = document.createElement("style");
+    style.dataset.reviewSelection = "true";
+    style.textContent = selectionCSS;
+    shadow.append(style);
+    return () => style.remove();
+  }, [model, selectionCSS]);
   const search = useFileTreeSearch(model);
   // Pierre restores the unfiltered tree when a search has no matches.
   const hasNoSearchMatches = search.value.trim().length > 0 && search.matchingPaths.length === 0;

@@ -2859,26 +2859,48 @@ layer("GitHubPullRequestApi.layer", (it) => {
   it.effect.each([true, false, undefined])(
     "provider respects the merge queue unless adminOverride is true (%s)",
     (adminOverride) =>
+      Effect.gen(function* () {
+        route([
+          "query PullRequestActionState",
+          actionState({ isMergeQueueEnabled: true, mergeStateStatus: "BLOCKED" }),
+        ]);
+        const provider = yield* GitHubPullRequestProvider.make;
+        yield* provider.runAction({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          action: "merge",
+          ...(adminOverride === undefined ? {} : { adminOverride }),
+        });
+        const direct = variablesOf("mergePullRequest(");
+        const queued = variablesOf("enablePullRequestAutoMerge(");
+        expect(adminOverride ? direct : queued).toEqual([
+          { input: { pullRequestId: "PR_7", mergeMethod: "MERGE" } },
+        ]);
+        expect(adminOverride ? queued : direct).toEqual([]);
+      }),
+  );
+
+  it.effect("an auto-merge request cannot become an immediate bypass merge", () =>
     Effect.gen(function* () {
       route([
         "query PullRequestActionState",
         actionState({ isMergeQueueEnabled: true, mergeStateStatus: "BLOCKED" }),
       ]);
-        const provider = yield* GitHubPullRequestProvider.make;
-        yield* provider.runAction({
+      const provider = yield* GitHubPullRequestProvider.make;
+      yield* provider.runAction({
         cwd: "/w",
         repository: "acme/web",
         host: "github.com",
         number: 7,
-        action: "merge",
-          ...(adminOverride === undefined ? {} : { adminOverride }),
+        action: "enable-auto-merge",
+        adminOverride: true,
       });
-        const direct = variablesOf("mergePullRequest(");
-        const queued = variablesOf("enablePullRequestAutoMerge(");
-        expect(adminOverride ? direct : queued).toEqual([
+      expect(variablesOf("mergePullRequest(")).toEqual([]);
+      expect(variablesOf("enablePullRequestAutoMerge(")).toEqual([
         { input: { pullRequestId: "PR_7", mergeMethod: "MERGE" } },
       ]);
-        expect(adminOverride ? queued : direct).toEqual([]);
     }),
   );
 
@@ -5917,6 +5939,79 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect("reads viewed marks for all 833 files in a large pull request", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockImplementation((input) => {
+        const after = input.kind === "graphql" ? input.variables?.["after"] : undefined;
+        const start = after === undefined ? 0 : Number(after);
+        const end = Math.min(start + 100, 833);
+        return Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    files: {
+                      pageInfo: { hasNextPage: end < 833, endCursor: String(end) },
+                      nodes: Array.from({ length: end - start }, (_, index) => ({
+                        path: `src/file${start + index}.ts`,
+                        viewerViewedState: "VIEWED",
+                      })),
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        );
+      });
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const viewed = yield* cli.getPullRequestFilesViewed({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+      });
+      assert.isFalse(viewed.truncated);
+      assert.lengthOf(viewed.files, 833);
+      expect(viewed.files.at(-1)).toEqual({ path: "src/file832.ts", state: "viewed" });
+      assert.strictEqual(mockedExecute.mock.calls.length, 9);
+    }),
+  );
+
+  it.effect("bounds viewed-file pagination even when every cursor is new", () =>
+    Effect.gen(function* () {
+      let page = 0;
+      mockedExecute.mockImplementation(() =>
+        Effect.succeed(
+          output(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    files: {
+                      pageInfo: { hasNextPage: true, endCursor: String(++page) },
+                      nodes: [{ path: `src/file${page}.ts`, viewerViewedState: "VIEWED" }],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const viewed = yield* cli.getPullRequestFilesViewed({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+      });
+      assert.isTrue(viewed.truncated);
+      assert.strictEqual(mockedExecute.mock.calls.length, 30);
+    }),
+  );
+
   it.effect("stops paging viewed files rather than following a change without end", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValue(
@@ -5985,6 +6080,46 @@ layer("GitHubPullRequestApi.layer", (it) => {
         _1_path: "src/b.ts",
         _1_viewed: false,
       });
+    }),
+  );
+
+  it.effect("saves a 79-file chapter in smaller ordered mutation batches", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockImplementation((input) =>
+        Effect.succeed(
+          output(
+            input.kind === "graphql" && input.operationName === NODE_ID_QUERY
+              ? encodeJson({ data: { repository: { pullRequest: { id: "PR_1" } } } })
+              : "{}",
+          ),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const files = Array.from({ length: 79 }, (_, index) => ({
+        path: `src/file${index === 78 ? 0 : index}.ts`,
+        viewed: index !== 78 && index % 2 === 0,
+      }));
+      yield* cli.setPullRequestFilesViewed({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        number: 7,
+        files,
+      });
+      const batches = mockedExecute.mock.calls.flatMap(([input]) => {
+        if (input.kind !== "graphql" || !input.query.startsWith("mutation ")) return [];
+        const variables = input.variables ?? {};
+        return [
+          Object.keys(variables)
+            .filter((key) => key.endsWith("_path"))
+            .map((key) => ({
+              path: variables[key],
+              viewed: variables[key.replace(/_path$/, "_viewed")],
+            })),
+        ];
+      });
+      expect(batches.map((batch) => batch.length)).toEqual([25, 25, 25, 4]);
+      expect(batches.flat()).toEqual(files);
     }),
   );
 

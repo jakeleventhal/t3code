@@ -34,7 +34,7 @@ type Props = StaticScreenProps<{
   readonly reviewWorkingTreeScope?: "staged" | "unstaged";
 }>;
 
-function ThreadWorkspaceScreen(props: Props) {
+function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: WorkspacePane }) {
   const navigation = useNavigation();
   const paneKey = workspaceThreadMemoryKey(
     props.route.params.environmentId,
@@ -45,7 +45,7 @@ function ThreadWorkspaceScreen(props: Props) {
       ? "files"
       : props.route.params.reviewSectionId
         ? "git"
-        : readWorkspacePane(paneKey),
+        : (props.defaultPane ?? readWorkspacePane(paneKey)),
   );
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
@@ -183,6 +183,7 @@ export function ThreadFilesWorkspaceScreen(props: Props) {
     <ThreadWorkspaceScreen
       key={`${props.route.params.environmentId}:${props.route.params.threadId}`}
       {...props}
+      defaultPane="files"
     />
   );
 }
@@ -192,6 +193,7 @@ export function ThreadGitWorkspaceScreen(props: Props) {
     <ThreadWorkspaceScreen
       key={`${props.route.params.environmentId}:${props.route.params.threadId}`}
       {...props}
+      defaultPane="git"
     />
   );
 }

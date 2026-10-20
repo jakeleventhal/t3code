@@ -483,7 +483,6 @@ export interface PullRequestTimelineEvent {
   readonly path: string | null;
   readonly reviewState: string | null;
   readonly reactions: ReadonlyArray<PullRequestReaction>;
-  readonly comment?: PullRequestComment;
   readonly thread?: PullRequestTimelineThread;
 }
 
@@ -615,7 +614,13 @@ export function pullRequestConversationItems(
   let next = 0;
   // Preserve loose comments' existing order, inserting each thread at its finding's time.
   for (const comment of comments) {
-    if (claimed.has(comment.id)) continue;
+    if (
+      claimed.has(comment.id) ||
+      (comment.kind === "review" &&
+        visibleBody(comment.body) === null &&
+        pullRequestReviewOutcome(comment.reviewState) === null)
+    )
+      continue;
     while (
       next < threads.length &&
       instant(threads[next]!.createdAt) < instant(comment.createdAt)
@@ -715,7 +720,15 @@ export function buildPullRequestTimeline(
       reactions: [],
     })),
     ...detail.comments
-      .filter((comment) => !threadedCommentIds.has(comment.id))
+      .filter(
+        (comment) =>
+          !threadedCommentIds.has(comment.id) &&
+          !(
+            comment.kind === "review" &&
+            visibleBody(comment.body) === null &&
+            pullRequestReviewOutcome(comment.reviewState) === null
+          ),
+      )
       .map((comment) => ({
         id: comment.id,
         comment,

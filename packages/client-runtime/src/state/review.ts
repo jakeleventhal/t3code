@@ -93,6 +93,7 @@ export function createReviewEnvironmentAtoms<R, E>(
             input.oldPath,
             input.newPath,
             input.changeType,
+            input.workingTreeScope,
           ]),
       },
     }),

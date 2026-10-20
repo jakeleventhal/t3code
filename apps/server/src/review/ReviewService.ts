@@ -222,7 +222,7 @@ export const make = Effect.gen(function* () {
     // No stage option: commit exactly the current index, preserving partial staging.
     const { commitSha } = yield* git.commit(input.cwd, subject, body.join("\n"), {
       amend: input.action === "amend",
-      timeoutMs: 120_000,
+      timeoutMs: 10 * 60_000,
     });
     const pushStatus =
       input.action === "commit-push"

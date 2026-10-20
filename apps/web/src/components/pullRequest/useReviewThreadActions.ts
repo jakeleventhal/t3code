@@ -39,17 +39,17 @@ export function useReviewThreadActions(
     if (sending.current) return false;
     sending.current = true;
     setPending(true);
-    try {
+    return await (async () => {
       if ((await command())._tag === "Failure") {
         toastManager.add({ type: "error", title: label });
         return false;
       }
       onRefresh();
       return true;
-    } finally {
+    })().finally(async () => {
       sending.current = false;
       setPending(false);
-    }
+    });
   };
   return (thread: PullRequestReviewThread) => ({
     pending,

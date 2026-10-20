@@ -848,9 +848,9 @@ function toDetail(raw: DetailFields): GitHubPullRequestDetail {
   const autoMergeMethod = toMergeMethod(raw.autoMergeRequest?.mergeMethod);
   const mergeState = raw.mergeStateStatus?.toUpperCase();
   const mergeRequirementsSatisfied =
-    mergeState === "CLEAN" || mergeState === "HAS_HOOKS"
+    mergeState === "CLEAN" || mergeState === "HAS_HOOKS" || mergeState === "UNSTABLE"
       ? true
-      : mergeState && ["BEHIND", "BLOCKED", "DIRTY", "DRAFT", "UNSTABLE"].includes(mergeState)
+      : mergeState && ["BEHIND", "BLOCKED", "DIRTY", "DRAFT"].includes(mergeState)
         ? false
         : undefined;
   return {
@@ -1111,7 +1111,7 @@ export function toPullRequestWatchFingerprint(
     status: [
       pr.state,
       pr.mergeable,
-        pr.mergeStateStatus ?? "",
+      pr.mergeStateStatus ?? "",
       pr.headRefOid,
       stateCounts(contexts?.checkRunCountsByState ?? null),
       stateCounts(contexts?.statusContextCountsByState ?? null),

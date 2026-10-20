@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useReviewFileProgress } from "@t3tools/client-runtime/review-file-progress";
 import type { PullRequestDetail } from "@t3tools/contracts";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { usePullRequestConnected } from "./usePullRequestConnected";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
@@ -37,6 +37,10 @@ export function usePullRequestFilesViewed(params: PullRequestParams, pr: PullReq
     save,
     onError,
   });
+  const filePaths = useMemo(
+    () => (query.data && !query.data.truncated ? query.data.files.map((file) => file.path) : null),
+    [query.data],
+  );
   const canToggle = supported && connected && permission && Boolean(query.data);
   const setViewed = (path: string, viewed: boolean) => {
     if (!canToggle) return;
@@ -49,6 +53,7 @@ export function usePullRequestFilesViewed(params: PullRequestParams, pr: PullReq
   return {
     ...progress,
     supported,
+    filePaths,
     canToggle,
     error: error ?? query.error,
     setViewed,

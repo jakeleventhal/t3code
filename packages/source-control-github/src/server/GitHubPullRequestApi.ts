@@ -1,3 +1,4 @@
+import * as Array from "effect/Array";
 import { removeAgentCredits } from "@t3tools/source-control-core/server/mergeMessage";
 import { KnownWorkflowRuns, makeChecksRevalidator } from "./gitHubConditionalChecks.ts";
 import { runGitHubStackAction, type GitHubStackActionError } from "./githubStackActions.ts";
@@ -369,9 +370,9 @@ interface GitHubPullRequestListPage {
 const PULL_REQUEST_FALLBACK_MAX_ROWS = 1_000;
 
 const DIFF_FILES_PAGE_SIZE = 100;
-const FILES_VIEWED_MAX_PAGES = 5;
-/** Files cleared or restored per request; a reader rarely ticks more than a page of them at once. */
-const FILES_VIEWED_PER_REQUEST = 100;
+const FILES_VIEWED_MAX_PAGES = 30;
+// Large aliased mutations can exceed GitHub's resource limit even for a single chapter.
+const FILES_VIEWED_PER_REQUEST = 25;
 
 export const NODE_ID_CACHE_CAPACITY = 128;
 
@@ -1379,10 +1380,10 @@ export const make = Effect.gen(function* () {
     );
   const readPendingReview = Effect.fn("GitHubPullRequestApi.readPendingReview")(function* (
     input: {
-    cwd: string;
-    host: string;
-    repository: string;
-    number: number;
+      cwd: string;
+      host: string;
+      repository: string;
+      number: number;
     },
     includePositions = true,
   ) {
@@ -1404,9 +1405,9 @@ export const make = Effect.gen(function* () {
       for (let page = 1; page <= 10; page++) {
         const read = yield* api
           .rest({
-          host: input.host,
-          operation: "pendingReview",
-          path: `repos/${owner}/${name}/pulls/${input.number}/reviews/${review.fullDatabaseId}/comments?per_page=100&page=${page}`,
+            host: input.host,
+            operation: "pendingReview",
+            path: `repos/${owner}/${name}/pulls/${input.number}/reviews/${review.fullDatabaseId}/comments?per_page=100&page=${page}`,
           })
           .pipe(retryPendingReviewRead);
         const rows = yield* decodePendingReviewComments(read.body).pipe(
@@ -1707,10 +1708,10 @@ export const make = Effect.gen(function* () {
 
   const getPullRequestDiffFileContents: GitHubPullRequestApi["Service"]["getPullRequestDiffFileContents"] =
     Effect.fn("GitHubPullRequestApi.getPullRequestDiffFileContents")(function* (input) {
-        const range = input.commit?.includes("..")
-          ? yield* readCommitScope({ ...input, commit: input.commit })
-          : null;
-        if (input.commit !== undefined && range === null && !isCommitSha(input.commit)) {
+      const range = input.commit?.includes("..")
+        ? yield* readCommitScope({ ...input, commit: input.commit })
+        : null;
+      if (input.commit !== undefined && range === null && !isCommitSha(input.commit)) {
         return yield* new GitHubDiffCommitError({ cwd: input.cwd });
       }
       const { owner, name } = parseRepositorySelector(input.repository);
@@ -1720,19 +1721,19 @@ export const make = Effect.gen(function* () {
         path:
           input.commit === undefined
             ? `repos/${owner}/${name}/pulls/${input.number}`
-              : `repos/${owner}/${name}/commits/${range?.head ?? input.commit}`,
+            : `repos/${owner}/${name}/commits/${range?.head ?? input.commit}`,
         timeout: DIFF_TIMEOUT,
       });
       const refs = decodeRevisionRefs(refsResponse.body);
-        // A root commit has no parent, which is an absent old revision. Every file in it is new,
-        // so that is a usable answer whenever the caller does not need the old side.
-        const baseRef =
-          range?.base ??
-          (Option.isSome(refs)
-        ? input.commit === undefined
-          ? refs.value.base?.sha
-          : (refs.value.parents?.[0]?.sha ?? "")
-            : undefined);
+      // A root commit has no parent, which is an absent old revision. Every file in it is new,
+      // so that is a usable answer whenever the caller does not need the old side.
+      const baseRef =
+        range?.base ??
+        (Option.isSome(refs)
+          ? input.commit === undefined
+            ? refs.value.base?.sha
+            : (refs.value.parents?.[0]?.sha ?? "")
+          : undefined);
       const headRef = Option.isSome(refs)
         ? input.commit === undefined
           ? refs.value.head?.sha
@@ -3040,9 +3041,9 @@ export const make = Effect.gen(function* () {
         // Merge queues always use auto-merge. A PR that became ready since detail loaded
         // merges directly, matching `gh pr merge --auto`.
         const auto =
-          input.adminOverride !== true &&
+          !(action === "merge" && input.adminOverride === true) &&
           (state.isMergeQueueEnabled === true ||
-          (action === "enable-auto-merge" &&
+            (action === "enable-auto-merge" &&
               !IMMEDIATELY_MERGEABLE.has(state.mergeStateStatus?.toUpperCase() ?? "")));
         const variables = {
           pullRequestId: state.id,
@@ -3185,9 +3186,9 @@ export const make = Effect.gen(function* () {
                   body: input.body,
                   event: (
                     {
-                    comment: "COMMENT",
-                    approve: "APPROVE",
-                    "request-changes": "REQUEST_CHANGES",
+                      comment: "COMMENT",
+                      approve: "APPROVE",
+                      "request-changes": "REQUEST_CHANGES",
                     } as const
                   )[input.verdict],
                 },
@@ -3278,16 +3279,20 @@ export const make = Effect.gen(function* () {
       const target = { ...input, operation: "setPullRequestFilesViewed" };
       return pullRequestNodeId(target).pipe(
         Effect.flatMap((pullRequestId) =>
-          // One aliased document for the burst: top-level mutation fields run in write order,
-          // so the last word about a path is the one that sticks.
+          // Keep chunks sequential so repeated paths retain the reader's write order.
           Effect.forEach(
-            input.files,
-            (file) =>
-              GraphQLResolver.request(
-                { pullRequestId, path: file.path, viewed: file.viewed },
-                setFileViewedResolver,
+            Array.chunksOf(input.files, FILES_VIEWED_PER_REQUEST),
+            (files) =>
+              Effect.forEach(
+                files,
+                (file) =>
+                  GraphQLResolver.request(
+                    { pullRequestId, path: file.path, viewed: file.viewed },
+                    setFileViewedResolver,
+                  ),
+                { concurrency: "unbounded", discard: true },
               ),
-            { concurrency: "unbounded", discard: true },
+            { discard: true },
           ),
         ),
         graphql(target),

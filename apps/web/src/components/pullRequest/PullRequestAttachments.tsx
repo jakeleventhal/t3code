@@ -70,7 +70,7 @@ export function PullRequestAttachments({
     transfer.current = session;
     setBusy(true);
     onBusyChange?.(true);
-    try {
+    return await (async () => {
       for (const file of files) {
         if (session.cancelled) break;
         const markdown = await publishReviewAttachment({
@@ -112,24 +112,26 @@ export function PullRequestAttachments({
           start = before.length + inserted.length;
         }
       }
-    } catch (error) {
-      if (!session.cancelled)
-        toastManager.add({
-          type: "error",
-          title: "Could not attach the file",
-          description: error instanceof Error ? error.message : "Try uploading again.",
-        });
-    } finally {
-      lock.current = false;
-      setBusy(false);
-      onBusyChange?.(false);
-      if (!session.cancelled) {
-        requestAnimationFrame(() => {
-          textarea.focus({ preventScroll: true });
-          textarea.setSelectionRange(start, start);
-        });
-      }
-    }
+    })()
+      .catch(async (error: unknown) => {
+        if (!session.cancelled)
+          toastManager.add({
+            type: "error",
+            title: "Could not attach the file",
+            description: error instanceof Error ? error.message : "Try uploading again.",
+          });
+      })
+      .finally(async () => {
+        lock.current = false;
+        setBusy(false);
+        onBusyChange?.(false);
+        if (!session.cancelled) {
+          requestAnimationFrame(() => {
+            textarea.focus({ preventScroll: true });
+            textarea.setSelectionRange(start, start);
+          });
+        }
+      });
   };
   // File drops are handled by the same publisher as the picker, including permission and
   // cancellation checks. Ordinary pasted links remain ordinary composer text.

@@ -257,7 +257,7 @@ export function ReviewThreadCard({
     sendingRef.current = true;
     // Cleared only once the host has it. Otherwise a failed reply leaves an error toast and an
     // empty box, and the words have to be written again.
-    try {
+    return await (async () => {
       if (await onReply(trimmed)) {
         // The mutation returns no comment. Keep what the reader loaded and reopen its cursor so
         // the new reply remains reachable without spending requests until they ask to load it.
@@ -271,9 +271,9 @@ export function ReviewThreadCard({
         );
         setReply("");
       }
-    } finally {
+    })().finally(async () => {
       sendingRef.current = false;
-    }
+    });
   };
   const loadMore = async () => {
     if (nextCommentsCursor === null || loadingMore) return;

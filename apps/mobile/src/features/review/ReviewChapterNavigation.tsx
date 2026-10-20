@@ -16,14 +16,14 @@ export function ReviewChapterNavigation({
   readonly chapters: ReadonlyArray<{ readonly title: string }>;
   readonly position: number;
   readonly reviewedCount: number;
-  readonly fileCount: number;
+  readonly fileCount: number | null;
   readonly onSelect: (position: number) => void;
   readonly onToggleReviewed?: (() => void) | undefined;
   readonly reviewedDisabled?: boolean;
 }) {
   const chapter = chapters[position];
   if (!chapter) return null;
-  const reviewed = fileCount > 0 && reviewedCount === fileCount;
+  const reviewed = fileCount !== null && fileCount > 0 && reviewedCount === fileCount;
   return (
     <View>
       <View className="flex-row items-center gap-2">
@@ -90,7 +90,10 @@ export function ReviewChapterNavigation({
         })}
       </View>
       <Text className="pb-2 text-xs text-foreground-muted">
-        Chapter {position + 1} of {chapters.length} · {reviewedCount} of {fileCount} files reviewed
+        Chapter {position + 1} of {chapters.length} ·{" "}
+        {fileCount === null
+          ? "Loading review counts…"
+          : `${reviewedCount} of ${fileCount} files reviewed`}
       </Text>
     </View>
   );

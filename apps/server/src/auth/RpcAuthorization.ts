@@ -173,7 +173,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.vcsListRefs]: AuthOrchestrationReadScope,
   [WS_METHODS.reviewSetStaged]: AuthSourceControlWriteScope,
   [WS_METHODS.reviewCommit]: AuthSourceControlWriteScope,
-  [WS_METHODS.reviewGenerateCommitMessage]: AuthSourceControlWriteScope,
+  [WS_METHODS.reviewGenerateCommitMessage]: AuthOrchestrationOperateScope,
   [WS_METHODS.reviewRevert]: AuthSourceControlWriteScope,
   [WS_METHODS.reviewGetDiffPreview]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetDiffFileContents]: AuthFilesystemReadScope,
