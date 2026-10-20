@@ -216,6 +216,9 @@ export function useReviewFilePatches({
     }),
   );
   return {
+    rawPatches: [...patches.values()].flatMap((result) =>
+      result._tag === "Success" ? [result.value.source.diff] : [],
+    ),
     scope,
     family,
     fileStates,

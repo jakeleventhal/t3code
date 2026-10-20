@@ -105,7 +105,7 @@ vi.mock(import("@pierre/diffs/react"), async (original) => {
   };
 });
 
-import { buildFileDiffEntries, getRenderablePatch } from "../../lib/diffRendering";
+import { buildFileDiffEntries } from "../../lib/diffRendering";
 import { toggleAllDiffFiles } from "../../lib/diffCollapse";
 import { getDiffHeaderClickAction } from "./diffHeaderClick";
 import { StyledDiffCodeView } from "./StyledDiffCodeView";

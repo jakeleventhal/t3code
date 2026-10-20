@@ -670,7 +670,6 @@ function PullRequestCodeTab({
 
   // The sentinel is held as state rather than a ref because the viewer mounts its own footer:
   // an effect reading a ref could run before that node exists and would never arm the observer.
-  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
   const contentVersions = new Map(
     files.map((file) => [buildFileDiffIdentityKey(file), fileContentVersion(file)]),
   );

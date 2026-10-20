@@ -116,6 +116,7 @@ function useWorkingChanges(
   const source = query.data?.sources.find((source) => source.kind === "working-tree") ?? null;
   const parsed = source ? getRenderablePatch(source.diff, `${scope}:${source.diffHash}`) : null;
   const patches = useReviewFilePatches({
+    reviewKey: `${environmentId}:${cwd}:${scope ?? "all"}`,
     environmentId,
     cwd,
     source: source?.files ? source : null,
