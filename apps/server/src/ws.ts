@@ -1,4 +1,5 @@
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 
@@ -6,14 +7,12 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -96,6 +95,7 @@ import {
   type PullRequestRef,
   WS_METHODS,
   WsRpcGroup,
+  WsReviewMutationRpcGroup,
 } from "@t3tools/contracts";
 import {
   HttpRouter,
@@ -208,7 +208,6 @@ import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import { projectMutationOperation } from "./project/ProjectMutation.ts";
-import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
@@ -546,6 +545,16 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+const ServerReviewMutationRpcGroup = WsReviewMutationRpcGroup.middleware(RpcInstrumentation);
+const ServerCoreWsRpcGroup = ServerWsRpcGroup.omit(
+  WS_METHODS.pullRequestsUploadAttachment,
+  WS_METHODS.pullRequestsSaveDraftComment,
+  WS_METHODS.pullRequestsDiscardDraftComment,
+  WS_METHODS.reviewSetStaged,
+  WS_METHODS.reviewCommit,
+  WS_METHODS.reviewGenerateCommitMessage,
+  WS_METHODS.reviewRevert,
+);
 // Replaying each intervening event costs a shell refetch; past this gap a
 // single O(active-threads) snapshot is cheaper and bounded.
 const SHELL_RESUME_MAX_GAP = 1_000;
@@ -1190,7 +1199,7 @@ export const layerWsRpc = (
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   peerEnvironmentBroker: PeerEnvironmentBroker.PeerEnvironmentBroker["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  Layer.effectContext(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1250,7 +1259,6 @@ export const layerWsRpc = (
             );
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
-      const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
@@ -1806,7 +1814,7 @@ export const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = ServerCoreWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -3127,7 +3135,22 @@ export const layerWsRpc = (
             ),
           ),
       });
-      return handlers;
+      const reviewMutationHandlers = ServerReviewMutationRpcGroup.of({
+        [WS_METHODS.pullRequestsUploadAttachment]: (input) =>
+          withPullRequestViewer(input, pullRequests.uploadAttachment(input)),
+        [WS_METHODS.pullRequestsSaveDraftComment]: (input) =>
+          withPullRequestViewer(input, pullRequests.saveDraftComment(input)),
+        [WS_METHODS.pullRequestsDiscardDraftComment]: (input) =>
+          withPullRequestViewer(input, pullRequests.discardDraftComment(input)),
+        [WS_METHODS.reviewSetStaged]: (input) => review.setStaged(input),
+        [WS_METHODS.reviewCommit]: (input) => review.commit(input),
+        [WS_METHODS.reviewGenerateCommitMessage]: (input) => review.generateCommitMessage(input),
+        [WS_METHODS.reviewRevert]: (input) => review.revert(input),
+      });
+      return Context.merge(
+        yield* ServerCoreWsRpcGroup.toHandlers(handlers),
+        yield* ServerReviewMutationRpcGroup.toHandlers(reviewMutationHandlers),
+      );
     }),
   );
 

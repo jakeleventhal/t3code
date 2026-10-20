@@ -4,6 +4,7 @@ import type { EnvironmentId, ReviewDiffPreviewSource } from "@t3tools/contracts"
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import { useContext, useEffect, useRef, useState } from "react";
+import { orderReviewFiles } from "@t3tools/client-runtime/review-workspace";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import {
   getRenderablePatch,
@@ -32,6 +33,7 @@ export function useReviewFilePatches({
   theme,
   revision,
   preview,
+  workingTreeScope,
 }: {
   reviewKey: string | null;
   environmentId: EnvironmentId | undefined;
@@ -42,6 +44,7 @@ export function useReviewFilePatches({
   theme: "light" | "dark";
   revision: string | undefined;
   preview: RenderablePatch | null;
+  workingTreeScope?: "staged" | "unstaged" | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const family = JSON.stringify([
@@ -53,6 +56,7 @@ export function useReviewFilePatches({
     source?.baseRef,
     baseRef,
     source?.headRef,
+    workingTreeScope,
     ignoreWhitespace,
   ]);
   const scope = JSON.stringify([family, source?.diffHash]);
@@ -88,6 +92,7 @@ export function useReviewFilePatches({
     scope,
     files,
     requestedPaths,
+    workingTreeScope,
   });
   const queriedPatchesAtom = reviewPatchesAtom(
     JSON.stringify([theme, queries.map(({ index, target }) => [index, target])]),
@@ -141,7 +146,14 @@ export function useReviewFilePatches({
           placeholder: {
             name: file.path,
             ...(file.previousPath ? { prevName: file.previousPath } : {}),
-            type: file.previousPath ? "rename-changed" : "change",
+            type:
+              file.status === "added"
+                ? "new"
+                : file.status === "deleted"
+                  ? "deleted"
+                  : file.previousPath || file.status === "renamed"
+                    ? "rename-changed"
+                    : "change",
             hunks: [],
             additionLines: [],
             deletionLines: [],
@@ -228,6 +240,7 @@ function reviewFileQueries({
   scope,
   files,
   requestedPaths,
+  workingTreeScope,
 }: {
   environmentId: EnvironmentId | undefined;
   cwd: string | undefined;
@@ -237,6 +250,7 @@ function reviewFileQueries({
   scope: string;
   files: ReturnType<typeof sortedReviewFiles>;
   requestedPaths: ReadonlySet<string>;
+  workingTreeScope?: "staged" | "unstaged" | undefined;
 }) {
   const queries =
     !environmentId || !cwd || !source
@@ -253,6 +267,7 @@ function reviewFileQueries({
                   cwd,
                   ...(baseRef ? { baseRef } : {}),
                   ignoreWhitespace,
+                  ...(workingTreeScope ? { workingTreeScope } : {}),
                   file: {
                     path: file.path,
                     previousPath: file.previousPath,
@@ -267,7 +282,7 @@ function reviewFileQueries({
 }
 
 function sortedReviewFiles(source: ReviewDiffPreviewSource | null) {
-  return source?.files?.toSorted((a, b) => filePathCollator.compare(a.path, b.path)) ?? [];
+  return orderReviewFiles(source?.files ?? [], (file) => file.path);
 }
 
 type ReviewPatchTarget = Parameters<typeof reviewEnvironment.diffFilePatch>[0];
