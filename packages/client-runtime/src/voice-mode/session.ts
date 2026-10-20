@@ -5,6 +5,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -12,6 +13,10 @@ import * as Stream from "effect/Stream";
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { request, runStream } from "../rpc/client.ts";
 import type { VoiceModePlatform } from "./controller.ts";
+
+class VoiceSessionUnavailable extends Data.TaggedError("VoiceSessionUnavailable")<{
+  readonly message: string;
+}> {}
 
 function failureMessage(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
@@ -81,7 +86,9 @@ export function makeVoiceSessionValidator(
           );
           if (!session || !["ready", "running", "waiting"].includes(session.status)) {
             return yield* Effect.fail(
-              new Error("The provider session is no longer running. Send a message first."),
+              new VoiceSessionUnavailable({
+                message: "The provider session is no longer running. Send a message first.",
+              }),
             );
           }
         }).pipe(
