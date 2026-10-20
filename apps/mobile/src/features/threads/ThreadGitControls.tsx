@@ -1,3 +1,4 @@
+import { NativeHeaderToolbar } from "../../native/NativeHeaderToolbar";
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
