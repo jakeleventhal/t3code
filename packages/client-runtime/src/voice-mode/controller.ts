@@ -32,13 +32,19 @@ interface VoiceStatsReport {
 
 export interface VoicePeerConnection {
   readonly connectionState: string;
+  readonly iceGatheringState: string;
+  readonly localDescription: VoiceSessionDescription | null;
   addTrack(track: never, stream: never): unknown;
   createDataChannel(label: string, options?: { readonly ordered?: boolean }): unknown;
   createOffer(): Promise<VoiceSessionDescription>;
   setLocalDescription(description: never): Promise<void>;
   setRemoteDescription(description: never): Promise<void>;
   getStats(): Promise<VoiceStatsReport>;
-  addEventListener(type: "track" | "connectionstatechange", listener: (event: never) => void): void;
+  addEventListener(
+    type: "track" | "connectionstatechange" | "icegatheringstatechange",
+    listener: (event: never) => void,
+  ): void;
+  removeEventListener?(type: "icegatheringstatechange", listener: () => void): void;
   close(): void;
 }
 
@@ -54,6 +60,7 @@ export interface VoiceSessionHandlers {
 }
 
 export interface VoiceModePlatform {
+  readonly validateTarget?: (target: VoiceSessionTarget) => Promise<void>;
   readonly createPeerConnection: () => VoicePeerConnection;
   /** Resolves an echo-cancelled microphone stream, prompting for permission if needed. */
   readonly getMicrophone: () => Promise<VoiceMediaStream>;
@@ -170,6 +177,7 @@ interface ActiveSession {
   microphone: VoiceMediaStream | null;
   peer: VoicePeerConnection | null;
   cancelSession: (() => void) | null;
+  cancelIceGathering: (() => void) | null;
   stopRemoteAudio: (() => void) | null;
   backendStarted: boolean;
   peerConnected: boolean;
@@ -233,6 +241,7 @@ export class VoiceModeController {
       microphone: null,
       peer: null,
       cancelSession: null,
+      cancelIceGathering: null,
       stopRemoteAudio: null,
       backendStarted: false,
       peerConnected: false,
@@ -249,6 +258,8 @@ export class VoiceModeController {
     });
 
     try {
+      await this.platform.validateTarget?.(target);
+      if (this.session !== session) return;
       const microphone = await this.platform.getMicrophone();
       if (this.session !== session) {
         for (const track of microphone.getTracks()) track.stop();
@@ -291,10 +302,27 @@ export class VoiceModeController {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer as never);
       if (this.session !== session) return;
-      if (!offer.sdp) throw new Error("Could not create a voice connection offer.");
+      if (peer.iceGatheringState !== "complete") {
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            peer.removeEventListener?.("icegatheringstatechange", onChange);
+            session.cancelIceGathering = null;
+            resolve();
+          };
+          const onChange = () => {
+            if (peer.iceGatheringState === "complete") finish();
+          };
+          session.cancelIceGathering = finish;
+          peer.addEventListener("icegatheringstatechange", onChange);
+          onChange();
+        });
+      }
+      if (this.session !== session) return;
+      const offerSdp = peer.localDescription?.sdp;
+      if (!offerSdp) throw new Error("Could not create a voice connection offer.");
 
       session.cancelSession = this.platform.openSession(
-        { ...target, offerSdp: offer.sdp },
+        { ...target, offerSdp },
         {
           onEvent: (event) => this.handleEvent(session, event),
           onError: (message) => this.fail(session, message),
@@ -417,6 +445,7 @@ export class VoiceModeController {
     if (this.session === session) this.session = null;
     if (session.connectTimer) clearTimeout(session.connectTimer);
     if (session.levelTimer) clearInterval(session.levelTimer);
+    session.cancelIceGathering?.();
     session.cancelSession?.();
     session.stopRemoteAudio?.();
     session.peer?.close();

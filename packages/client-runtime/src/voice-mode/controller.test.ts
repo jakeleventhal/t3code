@@ -18,6 +18,8 @@ function makeFakePlatform(options: { readonly denyMicrophone?: boolean } = {}) {
   const listeners = new Map<string, (event: never) => void>();
   const peer = {
     connectionState: "new",
+    iceGatheringState: "complete",
+    localDescription: { sdp: "v=offer\r\n" },
     closed: false,
     remoteSdp: null as string | null,
     dataChannels: [] as string[],
@@ -69,6 +71,41 @@ async function startConversation() {
 }
 
 describe("VoiceModeController", () => {
+  it("sends the locally gathered ICE candidates with the offer", async () => {
+    const fake = makeFakePlatform();
+    const ready = Promise.withResolvers<void>();
+    fake.peer.iceGatheringState = "gathering";
+    fake.peer.setLocalDescription = async () => {
+      ready.resolve();
+    };
+    const controller = new VoiceModeController(fake.platform);
+    const starting = controller.start(target);
+    await ready.promise;
+    expect(fake.sessions).toHaveLength(0);
+    fake.peer.localDescription = { sdp: "v=offer\r\na=candidate:gathered\r\n" };
+    fake.peer.iceGatheringState = "complete";
+    await starting;
+    expect(fake.sessions[0]?.offerSdp).toContain("a=candidate:gathered");
+    controller.stop();
+  });
+
+  it("checks the provider session before requesting microphone access", async () => {
+    const fake = makeFakePlatform();
+    let microphoneRequested = false;
+    const controller = new VoiceModeController({
+      ...fake.platform,
+      validateTarget: () => Promise.reject(new Error("Send a message first.")),
+      getMicrophone: async () => {
+        microphoneRequested = true;
+        return fake.platform.getMicrophone();
+      },
+    });
+    await controller.start(target);
+    expect(microphoneRequested).toBe(false);
+    expect(fake.sessions).toHaveLength(0);
+    expect(controller.getState().error).toContain("Send a message first.");
+  });
+
   it("negotiates WebRTC through the voice session and activates once both sides are up", async () => {
     const { controller, peer, session } = await startConversation();
     expect(peer.dataChannels).toEqual(["oai-events"]);

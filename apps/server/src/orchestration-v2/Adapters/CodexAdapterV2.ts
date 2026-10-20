@@ -1934,10 +1934,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           undefined,
         );
         /** Native turns Codex started for a voice handoff -> the request and its thread. */
+        const voiceSession = yield* Ref.make<symbol | undefined>(undefined);
         const voiceResubmits = yield* Ref.make(
           new Map<
             string,
-            { readonly text: string; readonly providerThread: OrchestrationV2ProviderThread }
+            {
+              readonly text: string;
+              readonly providerThread: OrchestrationV2ProviderThread;
+              readonly session: symbol | undefined;
+            }
           >(),
         );
         const finalAnswerItemIdsByTurn = yield* Ref.make(new Map<string, Set<string>>());
@@ -4733,10 +4738,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 // Codex started this turn itself for a voice handoff. V2 runs
                 // are orchestrator-owned, so stop it and resubmit the request
                 // as an ordinary run once it settles (see turn/completed).
+                const voiceOwner = yield* Ref.get(voiceSession);
                 yield* Ref.update(voiceResubmits, (current) =>
                   new Map(current).set(payload.turnId, {
                     text: handoff,
                     providerThread: voiceThread,
+                    session: voiceOwner,
                   }),
                 );
                 yield* client
@@ -6173,7 +6180,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               // so running it again would repeat it.
               if (
                 (payload.turn.status === "interrupted" || payload.turn.status === "failed") &&
-                continuationRequests !== undefined
+                continuationRequests !== undefined &&
+                voiceResubmit.session !== undefined &&
+                voiceResubmit.session === (yield* Ref.get(voiceSession))
               ) {
                 yield* voice.expectSpokenTurn(voiceResubmit.text);
                 yield* continuationRequests.offer({
@@ -7352,12 +7361,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       }),
                 ),
               ),
-            ),
-          startVoiceSession: (voiceInput) =>
-            Stream.unwrap(
+          ),
+          startVoiceSession: (voiceInput) => {
+            const owner = Symbol("voice-session");
+            return Stream.unwrap(
               Effect.gen(function* () {
                 const nativeThreadId = yield* getNativeThreadId(voiceInput.providerThread);
                 yield* ensureInitialized;
+                yield* Ref.set(voiceSession, owner);
                 yield* Ref.set(voiceProviderThread, voiceInput.providerThread);
                 return voice.start({
                   providerThreadId: nativeThreadId,
@@ -7370,9 +7381,17 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             ).pipe(
               // A replaced conversation must not clear its successor's thread.
               Stream.ensuring(
-                Ref.update(voiceProviderThread, (current) =>
-                  current === voiceInput.providerThread ? undefined : current,
-                ),
+                Effect.gen(function* () {
+                  yield* Ref.update(
+                    voiceResubmits,
+                    (current) =>
+                      new Map([...current].filter(([, entry]) => entry.session !== owner)),
+                  );
+                  if ((yield* Ref.get(voiceSession)) === owner) {
+                    yield* Ref.set(voiceSession, undefined);
+                    yield* Ref.set(voiceProviderThread, undefined);
+                  }
+                }),
               ),
               Stream.mapError((cause) =>
                 cause._tag === "ProviderAdapterProtocolError"
@@ -7384,7 +7403,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       payload: cause,
                     }),
               ),
-            ),
+            );
+          },
           uploadFeedback: Effect.fn("CodexAdapterV2.uploadFeedback")(
             function* (feedbackInput) {
               const threadId = yield* getNativeThreadId(feedbackInput.providerThread);

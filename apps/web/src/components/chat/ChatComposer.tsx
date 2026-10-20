@@ -1,4 +1,5 @@
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
+import { isEditableFocused } from "../../lib/editableFocus";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -2375,25 +2376,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const voiceProviderInstanceId = voiceThread?.providerInstanceId ?? selectedInstanceId;
   const voiceThreadHasMessages = voiceThread?.latestUserMessageAt != null;
   const voiceThreadHasSession = voiceThread?.activeProviderThreadId != null;
-  const voiceAvailability = useMemo(
-    () =>
-      resolveVoiceAvailability({
-        provider: providerStatuses.find(
-          (provider) => provider.instanceId === voiceProviderInstanceId,
-        ),
-        hasMessages: voiceThreadHasMessages,
-        hasSession: voiceThreadHasSession,
-      }),
-    [providerStatuses, voiceProviderInstanceId, voiceThreadHasMessages, voiceThreadHasSession],
-  );
+  const voiceAvailability = resolveVoiceAvailability({
+    provider: providerStatuses.find((provider) => provider.instanceId === voiceProviderInstanceId),
+    hasMessages: voiceThreadHasMessages,
+    hasSession: voiceThreadHasSession,
+  });
   const voicePhase = useVoicePhaseFor(routeThreadRef);
   const voiceEngaged = voicePhase !== "idle";
   // A conversation stays stoppable here even if its provider stopped offering voice.
   const voiceSupported = voiceAvailability.kind !== "unsupported" || voiceEngaged;
-  const toggleVoice = useCallback(
-    () => toggleThreadVoice(routeThreadRef, voiceAvailability),
-    [routeThreadRef, voiceAvailability],
-  );
+  const toggleVoice = () => toggleThreadVoice(routeThreadRef, voiceAvailability);
   const voiceButtonDisabledReason =
     voiceAvailability.kind === "unavailable" && !voiceEngaged ? voiceAvailability.reason : null;
   const voiceButtonLabel = voiceEngaged ? "Stop voice conversation" : "Start voice conversation";
@@ -5461,6 +5453,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           terminalFocus: getTerminalFocusOwner() !== null,
           terminalOpen,
           modelPickerOpen: isComposerModelPickerOpen,
+          editableFocus: isEditableFocused(event.target),
+          composerFocus: document.activeElement?.getAttribute("data-testid") === "composer-editor",
+          draftThreadRoute: routeKind === "draft",
+          turnRunning: phase === "running",
         },
       });
       if (command === "voice.toggleMute") {

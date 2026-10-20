@@ -259,7 +259,7 @@ export const makeCodexVoice = Effect.fn("makeCodexVoice")(function* (
           expectedHandoffs: [],
           closed: false,
         };
-        const previous = yield* Ref.getAndSet(activeRef, active);
+        const previous = yield* Ref.get(activeRef);
         if (previous && !previous.closed) {
           // One conversation per thread: a newer client takes over.
           yield* finish(previous, { type: "closed", reason: "replaced" });
@@ -267,6 +267,7 @@ export const makeCodexVoice = Effect.fn("makeCodexVoice")(function* (
             .request("thread/realtime/stop", { threadId: previous.providerThreadId })
             .pipe(Effect.ignore);
         }
+        yield* Ref.set(activeRef, active);
         yield* Effect.addFinalizer(() => stop(active));
         yield* client.raw.request("thread/realtime/start", {
           threadId: input.providerThreadId,

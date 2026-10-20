@@ -1794,7 +1794,7 @@ function OpenCommandPaletteDialog(props: {
   if (activeThread !== null && voiceTarget !== null && !voiceOnActiveThread) {
     const voiceAvailability = resolveThreadVoiceAvailability(
       activeThread,
-      activeThreadServerConfig?.providers ?? [],
+      providersByEnvironment.get(activeThread.environmentId) ?? [],
     );
     if (voiceAvailability.kind !== "unsupported") {
       actionItems.push({
@@ -2939,7 +2939,7 @@ function OpenCommandPaletteDialog(props: {
         command === "chat.newLocal" ||
         command === "chat.newWithoutProject");
     const matchingItem =
-      isJump || isNewThread
+      isJump || isNewThread || command === "voice.toggle" || command === "voice.toggleMute"
         ? displayedGroups
             .flatMap((group) => group.items)
             .find((item) => item.shortcutCommand === command)

@@ -41,6 +41,7 @@ import {
   compileResolvedKeybindingRule,
   compileResolvedKeybindingsConfig,
   parseKeybindingShortcut,
+  parseKeybindingWhenExpression,
 } from "@t3tools/shared/keybindings";
 
 export {
@@ -127,7 +128,12 @@ function encodedRuleShortcut(rule: KeybindingRule): string | null {
 function shadowsShortcut(existing: KeybindingRule, rule: KeybindingRule): boolean {
   const existingShortcut = encodedRuleShortcut(existing);
   if (!existingShortcut || existingShortcut !== encodedRuleShortcut(rule)) return false;
-  return existing.when === undefined || rule.when === undefined || existing.when === rule.when;
+  return (
+    existing.when === undefined ||
+    rule.when === undefined ||
+    JSON.stringify(parseKeybindingWhenExpression(existing.when)) ===
+      JSON.stringify(parseKeybindingWhenExpression(rule.when))
+  );
 }
 
 function keybindingRuleFromUpsertInput(input: ServerUpsertKeybindingInput): KeybindingRule {

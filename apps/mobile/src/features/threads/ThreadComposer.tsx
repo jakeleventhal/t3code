@@ -483,10 +483,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
   });
-  const voiceTarget = useMemo(
-    () => ({ environmentId: props.environmentId, threadId: props.selectedThread.id }),
-    [props.environmentId, props.selectedThread.id],
-  );
+  const voiceTarget = { environmentId: props.environmentId, threadId: props.selectedThread.id };
   const voicePhase = useVoiceModePhase(voiceTarget);
   useVoiceModeThreadLifecycle(voiceTarget);
   // Dictation and a voice conversation both need the microphone.
@@ -502,15 +499,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onChangeSelection: composerMenu.onSelectionChange,
   });
   const offersVoiceConversation =
-    voiceModeSupported && selectedProviderStatus?.supportsVoice === true;
+    voiceModeSupported &&
+    props.serverConfig?.providers.find(
+      (provider) => provider.instanceId === props.selectedThread.providerInstanceId,
+    )?.supportsVoice === true;
   // The server attaches voice to the thread's provider thread, which the first
   // run creates. An optimistic pending thread already has a message timestamp.
   const canToggleVoiceConversation =
     voiceConversationLive ||
     (props.connectionState === "connected" &&
       props.selectedThread.activeProviderThreadId !== null &&
-      !voiceInput.isBusy);
-  const toggleVoiceConversation = useCallback(() => voiceMode.toggle(voiceTarget), [voiceTarget]);
+      !voiceInput.isGloballyBusy);
+  const toggleVoiceConversation = () => voiceMode.toggle(voiceTarget);
   const voiceModeButton = offersVoiceConversation ? (
     <ComposerVoiceModeButton
       phase={voicePhase}

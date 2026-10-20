@@ -1,11 +1,16 @@
-import { EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  WS_METHODS,
+  ORCHESTRATION_V2_WS_METHODS,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import type * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
-import { runStream } from "../rpc/client.ts";
+import { request, runStream } from "../rpc/client.ts";
 import type { VoiceModePlatform } from "./controller.ts";
 
 function failureMessage(cause: Cause.Cause<unknown>): string {
@@ -51,4 +56,40 @@ export function makeVoiceSessionOpener(
     );
     return () => fiber.interruptUnsafe();
   };
+}
+
+/** Refreshes the bound provider session before requesting microphone access. */
+export function makeVoiceSessionValidator(
+  runFork: (effect: Effect.Effect<void, never, EnvironmentRegistry>) => Fiber.Fiber<void>,
+): NonNullable<VoiceModePlatform["validateTarget"]> {
+  return ({ environmentId, threadId }) =>
+    new Promise((resolve, reject) => {
+      runFork(
+        Effect.gen(function* () {
+          const registry = yield* EnvironmentRegistry;
+          const projection = yield* registry.run(
+            EnvironmentId.make(environmentId),
+            request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, {
+              threadId: ThreadId.make(threadId),
+            }),
+          );
+          const providerThread = projection.providerThreads.find(
+            (thread) => thread.id === projection.thread.activeProviderThreadId,
+          );
+          const session = projection.providerSessions.find(
+            (session) => session.id === providerThread?.providerSessionId,
+          );
+          if (!session || !["ready", "running", "waiting"].includes(session.status)) {
+            return yield* Effect.fail(
+              new Error("The provider session is no longer running. Send a message first."),
+            );
+          }
+        }).pipe(
+          Effect.matchCause({
+            onSuccess: () => resolve(),
+            onFailure: (cause) => reject(new Error(failureMessage(cause))),
+          }),
+        ),
+      );
+    });
 }

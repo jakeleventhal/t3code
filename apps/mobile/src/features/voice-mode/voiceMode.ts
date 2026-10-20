@@ -2,12 +2,13 @@ import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   VoiceModeController,
   makeVoiceSessionOpener,
+  makeVoiceSessionValidator,
   type VoiceModePhase,
   type VoicePeerConnection,
 } from "@t3tools/client-runtime/voice-mode";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { setAudioModeAsync, setIsAudioActiveAsync } from "expo-audio";
+import { setAudioModeAsync } from "expo-audio";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { AppState, NativeModules } from "react-native";
 import type * as WebRTC from "react-native-webrtc";
@@ -51,6 +52,7 @@ function createPeerConnection(): VoicePeerConnection {
 }
 
 export const voiceMode = new VoiceModeController({
+  validateTarget: makeVoiceSessionValidator(runOnConnectionRuntime),
   createPeerConnection,
   getMicrophone: () => loadWebRTC().mediaDevices.getUserMedia({ audio: true }),
   // Native WebRTC plays remote audio tracks through its own audio device; there is nothing to attach.
@@ -77,11 +79,7 @@ async function routeVoiceToSpeaker(): Promise<void> {
 
 /** Mirrors dictation's release so interrupted audio in other apps resumes. */
 async function releaseVoiceAudio(): Promise<void> {
-  try {
-    await setAudioModeAsync({ allowsRecording: false });
-  } finally {
-    await setIsAudioActiveAsync(false);
-  }
+  await setAudioModeAsync({ allowsRecording: false });
 }
 
 const KEEP_AWAKE_TAG = "voice-mode";

@@ -4,6 +4,7 @@ import {
   VoiceModeController,
   describeVoiceEnd,
   makeVoiceSessionOpener,
+  makeVoiceSessionValidator,
   type VoiceMediaStream,
   type VoiceModePhase,
   type VoiceModePlatform,
@@ -47,7 +48,13 @@ function playRemoteAudio(stream: VoiceMediaStream): () => void {
 
 // The voice stream runs on the connection runtime, which owns the environment
 // registry. Mounting keeps that runtime alive for the conversation.
-const openSession = makeVoiceSessionOpener((effect) =>
+const runOnConnectionRuntime = (
+  effect: Effect.Effect<
+    void,
+    never,
+    import("@t3tools/client-runtime/connection").EnvironmentRegistry.EnvironmentRegistry
+  >,
+) =>
   Effect.runFork(
     Effect.scoped(
       AtomRegistry.mount(appAtomRegistry, connectionAtomRuntime).pipe(
@@ -55,13 +62,15 @@ const openSession = makeVoiceSessionOpener((effect) =>
         Effect.flatMap((context) => Effect.provideContext(effect, context)),
       ),
     ).pipe(Effect.orDie),
-  ),
-);
+  );
+
+const openSession = makeVoiceSessionOpener(runOnConnectionRuntime);
 
 const platform: VoiceModePlatform = {
   // The DOM's overloaded addEventListener does not fit the structural `never`
   // listener in VoicePeerConnection, though the runtime shape matches.
   createPeerConnection: () => new RTCPeerConnection() as unknown as VoicePeerConnection,
+  validateTarget: makeVoiceSessionValidator(runOnConnectionRuntime),
   getMicrophone,
   playRemoteAudio,
   openSession,

@@ -13,4 +13,4 @@ export {
   type VoiceSessionHandlers,
   type VoiceSessionTarget,
 } from "./controller.ts";
-export { makeVoiceSessionOpener } from "./session.ts";
+export { makeVoiceSessionOpener, makeVoiceSessionValidator } from "./session.ts";
