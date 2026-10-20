@@ -28,10 +28,19 @@ export function decideMainWindowMediaRequest(input: {
   return input.microphoneStatus() === "granted" ? "grant" : "ask-microphone";
 }
 
+export function isMainWindowPermissionAllowed(
+  permission: string,
+  origin: string | undefined,
+  appUrl: string,
+): boolean {
+  return permission === "media"
+    ? isAppUrl(origin, appUrl)
+    : permission !== "deprecated-sync-clipboard-read";
+}
+
 /**
  * Installs the main window session's permission handlers. Only `media` is
- * decided here; every other permission keeps Electron's default of allowing
- * it, which is what this session did before it had handlers.
+ * decided here. Synchronous clipboard reads keep Electron's default denial.
  */
 export function installMainWindowPermissionHandlers(
   session: Electron.Session,
@@ -39,7 +48,7 @@ export function installMainWindowPermissionHandlers(
 ): void {
   session.setPermissionRequestHandler((_webContents, permission, callback, details) => {
     if (permission !== "media") {
-      callback(true);
+      callback(isMainWindowPermissionAllowed(permission, details.requestingUrl, options.appUrl));
       return;
     }
     const decision = decideMainWindowMediaRequest({
@@ -58,6 +67,6 @@ export function installMainWindowPermissionHandlers(
     });
   });
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
-    permission === "media" ? isAppUrl(requestingOrigin, options.appUrl) : true,
+    isMainWindowPermissionAllowed(permission, requestingOrigin, options.appUrl),
   );
 }

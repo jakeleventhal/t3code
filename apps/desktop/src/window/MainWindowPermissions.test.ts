@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { decideMainWindowMediaRequest, isAppUrl } from "./MainWindowPermissions.ts";
+import {
+  decideMainWindowMediaRequest,
+  isAppUrl,
+  isMainWindowPermissionAllowed,
+} from "./MainWindowPermissions.ts";
 
 const APP_URL = "t3code://app/";
 
@@ -43,4 +47,14 @@ describe("decideMainWindowMediaRequest", () => {
   it("keeps granting video-only capture such as preview tab recording", () => {
     expect(decide({ mediaTypes: ["video"], microphoneStatus: () => "denied" })).toBe("grant");
   });
+});
+
+it("denies synchronous clipboard reads for embedded origins and the app shell", () => {
+  for (const origin of ["https://example.com/frame", APP_URL]) {
+    expect(isMainWindowPermissionAllowed("deprecated-sync-clipboard-read", origin, APP_URL)).toBe(
+      false,
+    );
+  }
+  expect(isMainWindowPermissionAllowed("media", "https://example.com/frame", APP_URL)).toBe(false);
+  expect(isMainWindowPermissionAllowed("media", APP_URL, APP_URL)).toBe(true);
 });
