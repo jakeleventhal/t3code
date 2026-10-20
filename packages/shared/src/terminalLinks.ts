@@ -167,7 +167,7 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
     .filter(
       (match) => match.kind === "url" || !requestRoutes.some((route) => overlaps(match, route)),
     )
-    .toSorted((a, b) => a.start - b.start);
+    .sort((a, b) => a.start - b.start);
 }
 
 export function isTerminalUrl(value: string): boolean {
