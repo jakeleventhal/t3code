@@ -5,7 +5,7 @@ import type {
 } from "@t3tools/client-runtime/voice-mode";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { Alert } from "react-native";
-import { useNavigationState } from "@react-navigation/native";
+import { useNavigationState, useRoute } from "@react-navigation/native";
 
 import { voiceMode } from "./voiceMode";
 import { resolveVoiceModeNotice } from "./voiceModePresentation";
@@ -33,6 +33,7 @@ export function useVoiceModePhase(target: VoiceSessionTarget): VoiceModePhase {
  */
 export function useVoiceModeThreadLifecycle(target: VoiceSessionTarget): void {
   const { environmentId, threadId } = target;
+  const routeName = useRoute().name;
   const visibleThreadId = useNavigationState((state) => {
     const route = state.routes.findLast((route) => route.name === "Thread");
     const params = route?.params;
@@ -45,9 +46,10 @@ export function useVoiceModeThreadLifecycle(target: VoiceSessionTarget): void {
 
   useEffect(
     () => () => {
-      if (voiceMode.isActiveFor({ environmentId, threadId })) voiceMode.stop();
+      if (routeName === "Thread" && voiceMode.isActiveFor({ environmentId, threadId }))
+        voiceMode.stop();
     },
-    [environmentId, threadId],
+    [environmentId, threadId, routeName],
   );
 
   useEffect(() => {

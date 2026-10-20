@@ -2117,6 +2117,7 @@ export const layerWithOptions = (
         ),
       );
 
+      let nextVoiceOrdinal = -1;
       return ProviderSessionManagerV2.of({
         startVoiceSession: (input) =>
           Stream.unwrap(
@@ -2141,6 +2142,18 @@ export const layerWithOptions = (
                   threadId: input.threadId,
                   detail: `Provider '${runtime.driver}' does not support voice conversations.`,
                 });
+              const providerSessionId = runtime.providerSessionId;
+              const voiceOrdinal = nextVoiceOrdinal--;
+              yield* holdThreadLoaded({
+                providerSessionId,
+                threadId: input.threadId,
+                providerThread,
+              });
+              yield* Effect.acquireRelease(
+                markBusy(providerSessionId, busyTurnKey(providerThread.id, voiceOrdinal)),
+                () =>
+                  markIdle(providerSessionId, providerThread.id, voiceOrdinal).pipe(Effect.ignore),
+              );
               return runtime.startVoiceSession({ providerThread, offerSdp: input.offerSdp });
             }),
           ).pipe(

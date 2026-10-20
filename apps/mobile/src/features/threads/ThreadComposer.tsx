@@ -509,6 +509,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const canToggleVoiceConversation =
     voiceConversationLive ||
     (props.connectionState === "connected" &&
+      props.canOperateThread &&
       props.selectedThread.activeProviderThreadId !== null &&
       !voiceInput.isGloballyBusy);
   const toggleVoiceConversation = () => voiceMode.toggle(voiceTarget);
