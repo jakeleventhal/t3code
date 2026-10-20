@@ -1313,6 +1313,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
     }
     const expectedDeviceGeneration = deviceRegistrationGeneration;
 
+    dismissEndedAgentLiveActivities();
     let activities = yield* Effect.try({
       try: () => getAgentLiveActivities(),
       catch: (cause) =>
