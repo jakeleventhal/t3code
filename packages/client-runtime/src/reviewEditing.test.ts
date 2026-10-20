@@ -255,6 +255,7 @@ describe("reviewThreadReplyTarget", () => {
           {
             id: "c1",
             body: "Draft",
+            url: null,
             author: null,
             createdAt: "2026-10-20T00:00:00Z",
             pendingReviewId: "private-review",
