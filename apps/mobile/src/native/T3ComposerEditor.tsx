@@ -54,6 +54,7 @@ export function ComposerEditor({
             flex: 1,
             minHeight: 0,
             ...bodyText,
+            fontFamily,
             fontSize: composerFontSize,
             lineHeight: Math.round((composerFontSize * 23) / 16),
             paddingVertical: contentInsetVertical,
