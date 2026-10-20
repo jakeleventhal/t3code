@@ -1587,8 +1587,6 @@ describe("review thread decoding", () => {
             path: "src/a.ts",
             line: 53,
             diffSide: "RIGHT",
-            startLine: null,
-            startDiffSide: null,
             startLine: 48,
             startDiffSide: "LEFT",
             comments: { totalCount: 1, nodes: [comment("range", "Review these lines")] },

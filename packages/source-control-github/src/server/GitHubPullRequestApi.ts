@@ -3059,57 +3059,56 @@ export const make = Effect.gen(function* () {
       });
     },
 
-    uploadAttachment: (input) =>
-      Effect.gen(function* () {
-        const host = input.host.toLowerCase();
-        if (host !== "github.com" && !host.endsWith(".ghe.com"))
-          return yield* readError(
-            input.cwd,
-            "uploadAttachment",
-            new Error(
-              "Local attachments are supported on GitHub.com and GitHub Enterprise Cloud. Paste a hosted link for this host.",
-            ),
-          );
-        const repository = yield* api.rest({
-          host,
-          operation: "uploadAttachment",
-          path: `repos/${input.repository}`,
-        });
-        const decoded = yield* decodeAttachmentRepository(repository.body).pipe(
-          Effect.mapError((cause) => readError(input.cwd, "uploadAttachment", cause)),
+    uploadAttachment: Effect.fn("GitHubPullRequestApi.uploadAttachment")(function* (input) {
+      const host = input.host.toLowerCase();
+      if (host !== "github.com" && !host.endsWith(".ghe.com"))
+        return yield* readError(
+          input.cwd,
+          "uploadAttachment",
+          new Error(
+            "Local attachments are supported on GitHub.com and GitHub Enterprise Cloud. Paste a hosted link for this host.",
+          ),
         );
-        const result = yield* api.rest({
-          host,
-          operation: "uploadAttachment",
-          method: "POST",
-          path: "user-attachments/assets",
-          timeout: "2 minutes",
-          upload: {
-            repositoryId: decoded.id,
-            name: input.name,
-            mimeType: input.mimeType,
-            sizeBytes: input.sizeBytes,
-            stream: fileSystem.stream(input.path),
-          },
-        });
-        const asset = yield* decodeAttachmentAsset(result.body).pipe(
-          Effect.mapError((cause) => readError(input.cwd, "uploadAttachment", cause)),
+      const repository = yield* api.rest({
+        host,
+        operation: "uploadAttachment",
+        path: `repos/${input.repository}`,
+      });
+      const decoded = yield* decodeAttachmentRepository(repository.body).pipe(
+        Effect.mapError((cause) => readError(input.cwd, "uploadAttachment", cause)),
+      );
+      const result = yield* api.rest({
+        host,
+        operation: "uploadAttachment",
+        method: "POST",
+        path: "user-attachments/assets",
+        timeout: "2 minutes",
+        upload: {
+          repositoryId: decoded.id,
+          name: input.name,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          stream: fileSystem.stream(input.path),
+        },
+      });
+      const asset = yield* decodeAttachmentAsset(result.body).pipe(
+        Effect.mapError((cause) => readError(input.cwd, "uploadAttachment", cause)),
+      );
+      const url = yield* Effect.try({
+        try: () => new URL(asset.url),
+        catch: (cause) => readError(input.cwd, "uploadAttachment", cause),
+      });
+      if (
+        url.protocol !== "https:" ||
+        (url.hostname !== host && url.hostname !== `uploads.${host}`)
+      )
+        return yield* readError(
+          input.cwd,
+          "uploadAttachment",
+          new Error("GitHub returned an invalid attachment URL."),
         );
-        const url = yield* Effect.try({
-          try: () => new URL(asset.url),
-          catch: (cause) => readError(input.cwd, "uploadAttachment", cause),
-        });
-        if (
-          url.protocol !== "https:" ||
-          (url.hostname !== host && url.hostname !== `uploads.${host}`)
-        )
-          return yield* readError(
-            input.cwd,
-            "uploadAttachment",
-            new Error("GitHub returned an invalid attachment URL."),
-          );
-        return { url: asset.url };
-      }),
+      return { url: asset.url };
+    }),
 
     commentOnPullRequest: (input) =>
       pullRequestNodeId({ ...input, operation: "commentOnPullRequest" }).pipe(

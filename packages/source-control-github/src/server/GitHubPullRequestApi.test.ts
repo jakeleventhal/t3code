@@ -4307,8 +4307,6 @@ layer("GitHubPullRequestApi.layer", (it) => {
                               diffSide: "RIGHT",
                               startLine: null,
                               startDiffSide: null,
-                              startLine: null,
-                              startDiffSide: null,
                               comments: { nodes: [{ id: "PRRC_1" }] },
                             },
                           ],

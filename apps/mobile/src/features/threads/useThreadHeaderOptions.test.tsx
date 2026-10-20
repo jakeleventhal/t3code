@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { VcsStatusResult } from "@t3tools/contracts";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";

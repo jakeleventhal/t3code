@@ -547,6 +547,25 @@ describe("review verdicts", () => {
 });
 
 describe("pull request timeline", () => {
+  it("omits bodiless non-verdict reviews from Summary and Timeline while retaining verdicts", () => {
+    const empty = {
+      ...TIMELINE_SOURCE.comments[0]!,
+      id: "empty",
+      kind: "review" as const,
+      body: "",
+      reviewState: "COMMENTED",
+    };
+    const approval = { ...empty, id: "approval", reviewState: "APPROVED" };
+    const comments = [empty, approval, TIMELINE_SOURCE.comments[0]!];
+    expect(pullRequestConversationItems(comments, []).map((item) => item.id)).toEqual([
+      "approval",
+      "c1",
+    ]);
+    expect(
+      buildPullRequestTimeline({ ...TIMELINE_SOURCE, comments }).map((event) => event.id),
+    ).toEqual(["approval", "c1", "1baf7bdcafe", "created"]);
+  });
+
   it("keeps open and resolved review conversations together, including thread-only replies", () => {
     const root = { ...TIMELINE_SOURCE.comments[0]!, id: "root", path: "src/app.ts" };
     const reply = {
