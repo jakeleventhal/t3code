@@ -9,6 +9,7 @@ import { FileDiff } from "@pierre/diffs/react";
 import type {
   EnvironmentId,
   PullRequestRef,
+  PullRequestReviewThread,
   PullRequestReviewGuideExcerpt,
   PullRequestReviewPosition,
 } from "@t3tools/contracts";
@@ -40,6 +41,7 @@ import { DiffFileRename } from "../../diffs/DiffFileRename";
 import {
   getReviewPositionAnchor,
   PendingReviewCommentCard,
+  HostedReviewThreadCard,
   toViewerSide,
 } from "../PullRequestReviewAnnotation";
 import type { PendingReviewComment } from "../pullRequestReviewStore";
@@ -83,6 +85,7 @@ export interface ExcerptCommenting {
   ) => ReactNode;
   /** Comments already queued for the review, placed on the lines they belong to. */
   readonly pending: ReadonlyArray<PendingReviewComment>;
+  readonly threads?: ReadonlyArray<PullRequestReviewThread>;
   readonly pendingCommentTarget: {
     environmentId: EnvironmentId;
     reference: PullRequestRef;
@@ -100,6 +103,7 @@ export interface ExcerptCommenting {
 }
 
 interface ExcerptAnnotation {
+  readonly threads: ReadonlyArray<PullRequestReviewThread>;
   readonly markers: ExcerptNoteMarker["markers"];
   readonly pending: ReadonlyArray<PendingReviewComment>;
   readonly draft: boolean;
@@ -195,7 +199,7 @@ export function GuideExcerpt({
       const created: DiffLineAnnotation<ExcerptAnnotation> = {
         side,
         lineNumber: line,
-        metadata: { markers: [], pending: [], draft: false },
+        metadata: { markers: [], pending: [], threads: [], draft: false },
       };
       groups.set(key, created);
       return created;
@@ -213,6 +217,15 @@ export function GuideExcerpt({
       update(noteSide, note.line, (metadata) => ({
         ...metadata,
         markers: [...metadata.markers, ...note.markers],
+      }));
+    }
+    for (const thread of commenting?.threads ?? []) {
+      if (thread.path !== excerpt.path || thread.isOutdated || thread.line === null) continue;
+      const side = toViewerSide(thread.side);
+      if (!slice?.drawn[side].has(thread.line)) continue;
+      update(side, thread.line, (metadata) => ({
+        ...metadata,
+        threads: [...metadata.threads, thread],
       }));
     }
     for (const comment of commenting?.pending ?? []) {
@@ -313,6 +326,16 @@ export function GuideExcerpt({
                     ))}
                   </div>
                 ) : null}
+                {commenting !== null
+                  ? annotation.metadata.threads.map((thread) => (
+                      <HostedReviewThreadCard
+                        key={thread.id}
+                        threadId={thread.id}
+                        environmentId={commenting.pendingCommentTarget.environmentId}
+                        reference={commenting.pendingCommentTarget.reference}
+                      />
+                    ))
+                  : null}
                 {commenting !== null
                   ? annotation.metadata.pending.map((comment) => (
                       <PendingReviewCommentCard

@@ -1,3 +1,4 @@
+import { PullRequestThreadCard } from "./PullRequestCommentCard";
 import * as Dialog from "../../components/ui/Dialog";
 import { Alert } from "react-native";
 import { PullRequestCommentComposer } from "./PullRequestCommentComposer";
@@ -47,6 +48,12 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
   const saveDraftComment = useAtomCommand(composerPullRequests.saveDraftComment, {
     reportFailure: false,
   });
+  const activity = useEnvironmentQuery(composerPullRequests.activity(pullRequestTarget(params)));
+  const pendingThread = saved?.hostedComment
+    ? activity.data?.reviewThreads.find((thread) =>
+        thread.comments.some((comment) => comment.id === saved.hostedComment?.commentId),
+      )
+    : undefined;
   const detail = useEnvironmentQuery(composerPullRequests.detail(pullRequestTarget(params)));
   const { refresh: refreshDetail } = detail;
   useFocusEffect(() => refreshDetail());
@@ -183,6 +190,14 @@ export function PullRequestInlineCommentScreen({ route }: StaticScreenProps<Inli
       <Text className="text-xs text-foreground-muted">
         Saved comments are private until you submit your review.
       </Text>
+      {pendingThread ? (
+        <PullRequestThreadCard
+          params={params}
+          thread={pendingThread}
+          showPath={false}
+          defaultExpanded
+        />
+      ) : null}
       {stale ? (
         <Text className="text-sm text-danger-foreground">
           The branch changed. Return to the current diff and select the line again.

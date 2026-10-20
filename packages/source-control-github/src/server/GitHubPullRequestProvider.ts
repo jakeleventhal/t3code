@@ -625,6 +625,9 @@ export const make = Effect.gen(function* () {
           repository: input.repository,
           host: input.host,
           threadId: input.threadId,
+          ...(input.pendingReviewId === undefined
+            ? {}
+            : { pendingReviewId: input.pendingReviewId }),
           body: input.body,
         })
         .pipe(Effect.mapError(fail("replyToThread"))),

@@ -4668,7 +4668,13 @@ layer("GitHubPullRequestApi.layer", (it) => {
 
   it.effect("sends a reply body as a variable, never inside the document", () =>
     Effect.gen(function* () {
-      mockedExecute.mockReturnValue(Effect.succeed(output("{}")));
+      mockedExecute.mockReturnValue(
+        Effect.succeed(
+          output(
+            encodeJson({ data: { addPullRequestReviewThreadReply: { comment: { id: "reply" } } } }),
+          ),
+        ),
+      );
       const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
 
       yield* cli.replyToReviewThread({
@@ -4680,9 +4686,55 @@ layer("GitHubPullRequestApi.layer", (it) => {
       });
 
       expect(variablesOf("addPullRequestReviewThreadReply(")).toEqual([
-        { threadId: "PRRT_1", body: "Fixed in 42ff8ec." },
+        { threadId: "PRRT_1", body: "Fixed in 42ff8ec.", reviewId: null },
       ]);
       expect(queryAt(0)).not.toContain("Fixed in 42ff8ec.");
+    }),
+  );
+
+  it.effect("keeps replies to pending comments in the private review", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(
+        Effect.succeed(
+          output(
+            encodeJson({ data: { addPullRequestReviewThreadReply: { comment: { id: "reply" } } } }),
+          ),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      yield* cli.replyToReviewThread({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        threadId: "PRRT_1",
+        pendingReviewId: "PRR_private",
+        body: "Follow-up before submitting",
+      });
+      expect(variablesOf("addPullRequestReviewThreadReply(")).toEqual([
+        { threadId: "PRRT_1", body: "Follow-up before submitting", reviewId: "PRR_private" },
+      ]);
+      expect(queryAt(0)).toContain("pullRequestReviewId:$reviewId");
+    }),
+  );
+
+  it.effect("does not treat a null reply as accepted", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(
+        Effect.succeed(
+          output(encodeJson({ data: { addPullRequestReviewThreadReply: { comment: null } } })),
+        ),
+      );
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const error = yield* Effect.flip(
+        cli.replyToReviewThread({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          threadId: "t1",
+          body: "Keep these words",
+        }),
+      );
+      expect(error._tag).toBe("GitHubPullRequestReadError");
     }),
   );
 

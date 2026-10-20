@@ -1,3 +1,7 @@
+import { pullRequestEnvironment } from "~/state/pullRequests";
+import { useEnvironmentQuery } from "~/state/query";
+import { useReviewThreadActions } from "./useReviewThreadActions";
+import type { PullRequestDetail } from "@t3tools/contracts";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { reviewLineRangeLabel } from "@t3tools/client-runtime/review-selection";
@@ -102,6 +106,7 @@ export function PendingReviewCommentCard({
   canCopyLink: boolean;
   onAddToComposer?: (() => void) | undefined;
 }) {
+  const [replyCommentId, setReplyCommentId] = useState<string | null>(null);
   const { busy, canSave, canDiscard, saveDraft, copyLink, discard } =
     usePendingReviewCommentActions(environmentId, reference);
   return (
@@ -149,6 +154,28 @@ export function PendingReviewCommentCard({
         </div>
       </div>
       <p className="mt-2 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+      {canCopyLink && canSave ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            void (async () => {
+              const hosted = comment.hostedComment ?? (await saveDraft(comment));
+              if (hosted) setReplyCommentId(hosted.commentId);
+            })();
+          }}
+        >
+          Reply to conversation
+        </Button>
+      ) : null}
+      {replyCommentId ? (
+        <HostedReviewThreadCard
+          environmentId={environmentId}
+          reference={reference}
+          commentId={replyCommentId}
+        />
+      ) : null}
     </div>
   );
 }
@@ -486,5 +513,77 @@ export function ReviewThreadCard({
         </>
       ) : null}
     </div>
+  );
+}
+
+/** Shared cached queries keep a Guide or pending-comment conversation live after a reply. */
+export function HostedReviewThreadCard({
+  environmentId,
+  reference,
+  threadId,
+  commentId,
+}: {
+  environmentId: EnvironmentId;
+  reference: PullRequestRef;
+  threadId?: string | undefined;
+  commentId?: string | undefined;
+}) {
+  const target = { environmentId, input: reference };
+  const detail = useEnvironmentQuery(pullRequestEnvironment.detail(target));
+  const activity = useEnvironmentQuery(pullRequestEnvironment.activity(target));
+  const thread = activity.data?.reviewThreads.find((entry) =>
+    threadId ? entry.id === threadId : entry.comments.some((comment) => comment.id === commentId),
+  );
+  if (!thread || !detail.data)
+    return (
+      <div className="p-3 text-sm" role="status">
+        {activity.error ?? detail.error ?? "Loading conversation…"}
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => {
+            activity.refresh();
+            detail.refresh();
+          }}
+        >
+          Refresh conversation
+        </Button>
+      </div>
+    );
+  return (
+    <HostedReviewThreadContent
+      environmentId={environmentId}
+      reference={reference}
+      detail={detail.data}
+      thread={thread}
+      onRefresh={activity.refresh}
+    />
+  );
+}
+
+function HostedReviewThreadContent({
+  environmentId,
+  reference,
+  detail,
+  thread,
+  onRefresh,
+}: {
+  environmentId: EnvironmentId;
+  reference: PullRequestRef;
+  detail: PullRequestDetail;
+  thread: PullRequestReviewThread;
+  onRefresh: () => void;
+}) {
+  const actions = useReviewThreadActions(environmentId, reference, detail, onRefresh);
+  return (
+    <ReviewThreadCard
+      {...actions(thread)}
+      thread={thread}
+      environmentId={environmentId}
+      reference={reference}
+      workspaceRoot={detail.workspaceRoot}
+      canReact={detail.capabilities.reactions === true}
+      onReacted={onRefresh}
+    />
   );
 }

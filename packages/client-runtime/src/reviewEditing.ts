@@ -92,3 +92,11 @@ export function canResolvePullRequestThread(
 ): boolean {
   return detail.viewerPermissions.resolve && thread.canResolve !== false;
 }
+
+/** A reply to a private thread must stay in the same pending review. */
+export function reviewThreadReplyTarget(thread: PullRequestReviewThread) {
+  const pendingReviewId = thread.comments.find(
+    (comment) => comment.pendingReviewId,
+  )?.pendingReviewId;
+  return { threadId: thread.id, ...(pendingReviewId ? { pendingReviewId } : {}) };
+}
