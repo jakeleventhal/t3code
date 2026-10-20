@@ -556,7 +556,7 @@ function publishRegularWidget(props: AgentActivityProps): void {
   const content = JSON.stringify({
     activeCount: props.activeCount,
     isStale: props.isStale,
-    expiresAt: props.expiresAt,
+    expiresAt: props.expiresAt === undefined ? undefined : Math.floor(props.expiresAt / 60_000),
     activities: props.activities.map(({ updatedAt: _updatedAt, ...row }) => row),
   });
   if (content === publishedWidgetContent) return;
@@ -570,8 +570,13 @@ function publishReconciledWidget(): void {
   const confirmations = [...observedWidgetActivities.keys()].map(
     (id) => widgetShellConfirmedAt.get(id) ?? 0,
   );
-  if (relayWidgetConfirmedAt !== null) confirmations.push(relayWidgetConfirmedAt);
-  const confirmedAt = Math.min(...confirmations);
+  if (
+    relayWidgetConfirmedAt !== null &&
+    (relayWidgetSnapshot?.aggregate?.activities.length ?? 0) > 0
+  )
+    confirmations.push(relayWidgetConfirmedAt);
+  const confirmedAt =
+    confirmations.length > 0 ? Math.min(...confirmations) : (relayWidgetConfirmedAt ?? Date.now());
   publishRegularWidget({
     title: "T3 Code",
     subtitle:
@@ -630,7 +635,7 @@ function startLiveWidgetObserver(): void {
           widgetShellObservations.set(environmentId, shell);
           // Coalesce streaming shell updates within a minute. Timer-driven
           // atom recomputations alone cannot confirm an unchanged shell.
-          widgetShellConfirmedAt.set(environmentId, Math.floor(Date.now() / 60_000) * 60_000);
+          widgetShellConfirmedAt.set(environmentId, Date.now());
         }
         observed.set(environmentId, rows);
       }
