@@ -1934,8 +1934,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onThreadActivate(threadRef);
     }
   };
-  const handleOpenDiscoveredPort = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
+  const handleOpenDiscoveredPort = (event: ReactMouseEvent<HTMLButtonElement>) => {
       if (!preferredDiscoveredPort) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1957,9 +1956,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }),
         );
       })();
-    },
-    [onThreadActivate, openPreview, preferredDiscoveredPort, threadRef],
-  );
+  };
 
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
