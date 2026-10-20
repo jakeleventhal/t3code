@@ -3541,7 +3541,7 @@ function ChatMarkdown({
   };
   const { cwd, imageBaseDir, threadRef } = componentState;
   const embedLocalPaths = threadRef !== undefined;
-  const remarkPlugins = [
+  const remarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
     [remarkStandaloneMediaLinks, { embedLocalPaths, workspaceRoot: imageBaseDir ?? cwd }],
     ...extraRemarkPlugins,
