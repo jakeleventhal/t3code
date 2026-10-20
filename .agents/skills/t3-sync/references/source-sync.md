@@ -90,6 +90,16 @@ on each new run and prepare it using the source-branch procedure below.
 
 Follow [background-delivery.md](background-delivery.md) before deployment.
 
+## Preserve the mobile startup repair
+
+Freeze `origin/personal-mobile-startup-fix` while upstream still dynamically imports
+`react-native` in `apps/mobile/src/features/updates/app-updates.ts`. Metro's namespace
+import enumerates React Native's lazy exports, including unavailable legacy native
+modules, and crashes the signed Release app during startup. Rebase this dedicated
+source onto frozen main and replay its narrow product patch after the selected PRs.
+If main already imports only the needed `AppState` export, verify the equivalent
+before retiring this support source. Keep the repair separate from unrelated PRs.
+
 ## Prepare source branches before rebuilding personal
 
 Rebase each unique selected source branch onto the same `BASE_SHA` before any
