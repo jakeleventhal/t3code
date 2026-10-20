@@ -4798,6 +4798,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+    worktreeContinuationOfRunId?: RunId,
   ) {
     let projection = yield* getProjectionWithPendingEvents(command.threadId, events);
     if (command.manualContinuationOfRunId !== undefined) {
@@ -4868,7 +4869,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const source = projection.runs.find((run) => run.id === command.restartContinuationOfRunId);
       if (
         !source ||
-        !isRestartContinuationSource(source, projection.providerTurns) ||
+        (!(source.id === worktreeContinuationOfRunId && isBlockingRun(source)) &&
+          !isRestartContinuationSource(source, projection.providerTurns)) ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
         projection.thread.providerInstanceId !== source.providerInstanceId ||
@@ -11267,7 +11269,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "provider.switch":
         yield* dispatchThreadMutation(command, events, effects);
         break;
-      case "thread.metadata.update":
+      case "thread.metadata.update": {
+        const sourceRun =
+          command.worktreeContinuation === undefined
+            ? undefined
+            : (yield* getProjectionWithPendingEvents(command.threadId, events)).runs.find(
+                isBlockingRun,
+              );
         yield* dispatchThreadMutation(command, events, effects);
         if (command.worktreeContinuation !== undefined) {
           yield* dispatchMessage(
@@ -11276,6 +11284,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               commandId: command.commandId,
               threadId: command.threadId,
               ...command.worktreeContinuation,
+              ...(sourceRun ? { restartContinuationOfRunId: sourceRun.id } : {}),
               attachments: [],
               createdBy: "agent",
               creationSource: "mcp",
@@ -11283,9 +11292,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             },
             events,
             effects,
+            sourceRun?.id,
           );
         }
         break;
+      }
       case "thread.pull-request-watch.sync":
         yield* dispatchPullRequestWatchSync(command, events, effects);
         break;
