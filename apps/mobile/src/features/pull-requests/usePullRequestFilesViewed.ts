@@ -37,9 +37,13 @@ export function usePullRequestFilesViewed(params: PullRequestParams, pr: PullReq
     save,
     onError,
   });
+  // Environment-backed marks are sparse; only a host-backed read inventories unviewed files too.
   const filePaths = useMemo(
-    () => (query.data && !query.data.truncated ? query.data.files.map((file) => file.path) : null),
-    [query.data],
+    () =>
+      pr?.capabilities.viewedFiles === "host" && query.data && !query.data.truncated
+        ? query.data.files.map((file) => file.path)
+        : null,
+    [pr?.capabilities.viewedFiles, query.data],
   );
   const canToggle = supported && connected && permission && Boolean(query.data);
   const setViewed = (path: string, viewed: boolean) => {
@@ -53,6 +57,7 @@ export function usePullRequestFilesViewed(params: PullRequestParams, pr: PullReq
   return {
     ...progress,
     supported,
+    ready: query.data !== null,
     filePaths,
     canToggle,
     error: error ?? query.error,

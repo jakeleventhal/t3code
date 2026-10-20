@@ -28,7 +28,7 @@ export function usePullRequestFilesViewed({
   const onError = () => {
     toastManager.add({ type: "error", title: "Could not update viewed files" });
   };
-  return useReviewFileProgress({
+  const progress = useReviewFileProgress({
     scopeKey: `${environmentId} ${reference.projectId} ${reference.host ?? ""} ${reference.repository} ${reference.number}`,
     enabled,
     paths,
@@ -37,4 +37,7 @@ export function usePullRequestFilesViewed({
     save,
     onError,
   });
+  const filePaths =
+    query.data && !query.data.truncated ? query.data.files.map((file) => file.path) : null;
+  return { ...progress, filePaths, ready: query.data !== null };
 }

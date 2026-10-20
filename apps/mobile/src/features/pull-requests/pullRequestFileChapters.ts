@@ -1,4 +1,4 @@
-import { reviewFileChapters, isReviewTestFile } from "@t3tools/shared/reviewFileClassification";
+import { reviewFileChapterIndex, isReviewTestFile } from "@t3tools/shared/reviewFileClassification";
 
 export function pullRequestFileChapters(input: {
   readonly completePaths: ReadonlyArray<string> | null;
@@ -11,8 +11,10 @@ export function pullRequestFileChapters(input: {
   const paths = (input.completePaths ?? input.loadedPaths).filter(
     (path) => !input.hideTestFiles || path === input.includePath || !isReviewTestFile(path),
   );
-  return {
-    complete: input.completePaths !== null,
-    chapters: reviewFileChapters(paths, (path) => path, input.visiblePaths),
-  };
+  return reviewFileChapterIndex({
+    completePaths: input.completePaths === null ? null : paths,
+    loadedFiles: paths,
+    visibleFiles: input.visiblePaths,
+    getPath: (path) => path,
+  });
 }
