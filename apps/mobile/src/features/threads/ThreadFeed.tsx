@@ -805,6 +805,7 @@ function ArtifactTemplateCard(props: {
 
 const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly markdown: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly markdownStyles: MarkdownStyleSet;
   readonly linkHandlers: MarkdownLinkHandlers;
@@ -832,6 +833,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
       <SelectableMarkdownText
         key={`markdown:${segment.sourceOffset}`}
         markdown={markdown}
+        workspaceRoot={props.workspaceRoot}
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
         {...props.linkHandlers}
@@ -1309,6 +1311,7 @@ function renderFeedEntry(
                 value={props.userBubbleMaxWidth - USER_BUBBLE_HORIZONTAL_PADDING * 2}
               >
                 <UserMessageContent
+                  workspaceRoot={props.workspaceRoot}
                   text={renderedText}
                   environmentId={props.environmentId}
                   context={message.context}
@@ -1405,6 +1408,7 @@ function renderFeedEntry(
         {renderedText.trim().length > 0 ? (
           <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
             <AssistantMarkdownContent
+              workspaceRoot={props.workspaceRoot}
               markdown={renderedText}
               environmentId={props.environmentId}
               markdownStyles={styles}
@@ -1489,6 +1493,7 @@ function renderFeedEntry(
 
 type UserMessageContentProps = {
   readonly text: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly context?: OrchestrationMessageContext;
   readonly markdownStyles: MarkdownStyleSet;
@@ -1621,6 +1626,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
     return (
       <SelectableMarkdownText
         markdown={text}
+        workspaceRoot={props.workspaceRoot}
         contextClipboardFragment={contextClipboardFragment}
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
@@ -1653,6 +1659,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
           <SelectableMarkdownText
             key={segment.id}
             markdown={text}
+        workspaceRoot={props.workspaceRoot}
             contextClipboardFragment={contextClipboardFragment}
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
