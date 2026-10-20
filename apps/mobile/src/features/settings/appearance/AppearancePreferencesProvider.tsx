@@ -25,6 +25,9 @@ import {
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
 import {
   normalizeFontSelections,
+  normalizeReplyEmphasisWeights,
+  resolveReplyEmphasis,
+  type ReplyEmphasisWeight,
   resolveMobileFonts,
   type MobileFontRole,
   type MobileFontSelections,
@@ -59,6 +62,9 @@ interface AppearancePreferencesContextValue {
   readonly installedFonts: ReadonlyMap<string, InstalledMobileFont>;
   readonly unavailableFonts: readonly string[];
   readonly replyFontSize: number;
+  readonly replyEmphasisWeight: ReplyEmphasisWeight | undefined;
+  readonly replyEmphasisFontFamily: string;
+  readonly setReplyEmphasisWeight: (weight: ReplyEmphasisWeight | undefined) => void;
   readonly composerFontSize: number;
   readonly customReplyFontSize: boolean;
   readonly customComposerFontSize: boolean;
@@ -202,6 +208,10 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     () => resolveMobileFonts(fontSelections, installedFonts, Platform.OS),
     [fontSelections, installedFonts],
   );
+  const replyEmphasisWeight = normalizeReplyEmphasisWeights(
+    storedPreferences?.replyEmphasisWeights,
+  )[fonts.reply.regular];
+  const replyEmphasisFontFamily = resolveReplyEmphasis(fonts.reply, replyEmphasisWeight);
   const fontVariables = useMemo(
     () => ({
       ...themeVariables,
@@ -366,6 +376,19 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     },
     [savePreferences],
   );
+  const setReplyEmphasisWeight = useCallback(
+    (weight: ReplyEmphasisWeight | undefined) => {
+      savePreferences({
+        transform: (current) => {
+          const next = { ...normalizeReplyEmphasisWeights(current.replyEmphasisWeights) };
+          if (weight === undefined) delete next[fonts.reply.regular];
+          else next[fonts.reply.regular] = weight;
+          return { replyEmphasisWeights: next };
+        },
+      });
+    },
+    [fonts.reply.regular, savePreferences],
+  );
   const setReplyFontSize = useCallback(
     (size: number | null) =>
       updatePreferences({ replyFontSize: size === null ? null : normalizeBaseFontSize(size) }),
@@ -385,6 +408,9 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       installedFonts,
       unavailableFonts,
       replyFontSize,
+      replyEmphasisWeight,
+      replyEmphasisFontFamily,
+      setReplyEmphasisWeight,
       composerFontSize,
       customReplyFontSize,
       customComposerFontSize,
@@ -418,6 +444,9 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       installedFonts,
       unavailableFonts,
       replyFontSize,
+      replyEmphasisWeight,
+      replyEmphasisFontFamily,
+      setReplyEmphasisWeight,
       composerFontSize,
       customReplyFontSize,
       customComposerFontSize,
