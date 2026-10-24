@@ -443,10 +443,11 @@ effectIt.effect("replaces a discovered listener with its Tailscale Serve URL", (
         : new Response("not found", { status: 404 }),
     )) as typeof globalThis.fetch;
   const layer = layerProbeFailure((input) => {
-    if ((input.command === "tailscale" || input.command === "tailscale.exe")) tailscaleStatusRuns += 1;
+    if (input.command === "tailscale" || input.command === "tailscale.exe")
+      tailscaleStatusRuns += 1;
     return Effect.succeed({
       stdout:
-        (input.command === "tailscale" || input.command === "tailscale.exe")
+        input.command === "tailscale" || input.command === "tailscale.exe"
           ? JSON.stringify({
               TCP: { 443: { HTTPS: true } },
               Web: {
@@ -905,7 +906,7 @@ effectIt.effect("ignores a partial Windows netstat snapshot when one query exits
     Layer.provide(
       Layer.mergeAll(
         NodeServices.layer,
-          layerNoProc,
+        layerNoProc,
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
             const isIpv6 = input.args.includes("tcpv6");
