@@ -26,7 +26,10 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { supportsAgentAwarenessPush } from "../agent-awareness/capabilities";
+import {
+  supportsAgentAwarenessLiveActivities,
+  supportsAgentAwarenessPush,
+} from "../agent-awareness/capabilities";
 import {
   openAndroidLiveUpdateSettings,
   supportsAndroidLiveUpdateSettings,
@@ -140,6 +143,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const agentAwarenessPushAvailable = supportsAgentAwarenessPush();
+  const agentAwarenessLiveActivitiesAvailable = supportsAgentAwarenessLiveActivities();
   const agentAwarenessPlatform = resolveAgentAwarenessPlatformPresentation(Platform.OS);
   const agentAwarenessSubtitle =
     Platform.OS === "android" && !agentAwarenessPushAvailable
@@ -449,7 +453,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           <SettingsSwitchRow
             disabled={
               !agentAwarenessPlatform.supported ||
-              !agentAwarenessPushAvailable ||
+              !agentAwarenessLiveActivitiesAvailable ||
               !isLoaded ||
               liveActivityStatus === "checking" ||
               liveActivityStatus === "linking"
@@ -464,7 +468,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
             }
             subtitle={agentAwarenessSubtitle}
             value={
-              agentAwarenessPushAvailable &&
+              agentAwarenessLiveActivitiesAvailable &&
               (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
               deviceRegistered
             }
