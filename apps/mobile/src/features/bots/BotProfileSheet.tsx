@@ -321,22 +321,23 @@ function BotAvatarEditor(props: {
   const choosePhoto = async () => {
     if (uploading) return;
     setUploading(true);
+    // No `finally`: the React Compiler cannot lower it. Every path below reaches the reset.
     try {
       const image = await pickBotAvatarPhoto();
-      if (image === null) return;
-      const result = await setAvatar({
-        environmentId: project.environmentId,
-        input: { commandId: CommandId.make(uuidv4()), projectId: project.id, image },
-      });
-      reportFailure(`Couldn’t save ${project.title}’s photo`, result);
+      if (image !== null) {
+        const result = await setAvatar({
+          environmentId: project.environmentId,
+          input: { commandId: CommandId.make(uuidv4()), projectId: project.id, image },
+        });
+        reportFailure(`Couldn’t save ${project.title}’s photo`, result);
+      }
     } catch (error) {
       Dialog.alert(
         "Couldn’t use that photo",
         error instanceof Error ? error.message : "Please try another one.",
       );
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
   };
 
   return (
