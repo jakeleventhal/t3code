@@ -98,6 +98,12 @@ function RetainedWorkspaceTab(props: {
   ) : null;
 }
 
+// A hook result is immutable to the React Compiler, so handing the section to `renderTab` cannot
+// invalidate the memoized tab request derived from it.
+function useWorkspaceRoomTab(room: WorkspaceRoom) {
+  return workspaceRoomTab(useWorkspaceTabs()!.state, room);
+}
+
 export function WorkspaceNativeTabs(props: {
   /** The room the stack belongs to, already aligned for this frame. */
   readonly room: WorkspaceRoom;
@@ -118,9 +124,8 @@ export function WorkspaceNativeTabs(props: {
   const compactSidebarTabs = deviceType === "phone" || !layout.usesSplitView;
   const { width } = useWindowDimensions();
   const { colors } = useControlTheme();
-  const { state } = workspace;
   // An aligned page can lead the room state by a frame; show the section of the room it is in.
-  const selectedTab = workspaceRoomTab(state, props.room);
+  const selectedTab = useWorkspaceRoomTab(props.room);
   const selectedSlot = workspace.settingsOpen ? -1 : primaryTabs.indexOf(selectedTab);
   const request = useMemo(
     () => ({
@@ -154,7 +159,9 @@ export function WorkspaceNativeTabs(props: {
       >
         {NATIVE_WORKSPACE_TAB_SLOTS.map((slot, index) => {
           const settings = slot === "settings";
-          const tab = settings ? (overflow ?? selectedTab) : primaryTabs[index];
+          // `order` is the hook's immutable list; an element of the sliced copy passed to `renderTab`
+          // would make the compiler treat `primaryTabs` (and the slot request) as mutable.
+          const tab = settings ? (overflow ?? selectedTab) : order[index];
           if (!tab) return null;
           const active = settings ? selectedSlot === -1 : selectedSlot === index;
           return (
