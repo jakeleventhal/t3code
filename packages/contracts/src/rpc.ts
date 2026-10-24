@@ -148,6 +148,12 @@ import {
   ReviewDiffFileContentsInput,
   ReviewDiffFileContentsResult,
   ReviewDiffPreviewError,
+  ReviewSetStagedInput,
+  ReviewCommitInput,
+  ReviewCommitError,
+  ReviewGenerateCommitMessageInput,
+  ReviewCommitResult,
+  ReviewRevertInput,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
@@ -170,6 +176,8 @@ import {
   PullRequestActivity,
   PullRequestChangeBreakdown,
   PullRequestCommentInput,
+  PullRequestUploadAttachmentInput,
+  PullRequestUploadAttachmentResult,
   PullRequestCommentUpdateInput,
   PullRequestDetail,
   PullRequestPreview,
@@ -200,6 +208,9 @@ import {
   PullRequestLabelChangeInput,
   PullRequestSetFilesViewedInput,
   PullRequestSubmitReviewInput,
+  PullRequestSaveDraftCommentInput,
+  PullRequestDiscardDraftCommentInput,
+  PullRequestDraftCommentLink,
   PullRequestThreadCommentsInput,
   PullRequestThreadCommentsResult,
   PullRequestThreadReplyInput,
@@ -297,6 +308,7 @@ import {
   DeviceSession,
   DeviceShutdownInput,
 } from "./device.ts";
+import "./previewAutomation.ts";
 import {
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
@@ -441,6 +453,11 @@ export const WS_METHODS = {
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
 
+  // Review methods
+  reviewSetStaged: "review.setStaged",
+  reviewCommit: "review.commit",
+  reviewGenerateCommitMessage: "review.generateCommitMessage",
+  reviewRevert: "review.revert",
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
 
@@ -550,9 +567,12 @@ export const WS_METHODS = {
   pullRequestsSetFilesViewed: "pullRequests.setFilesViewed",
   pullRequestsRunAction: "pullRequests.runAction",
   pullRequestsUpdate: "pullRequests.update",
+  pullRequestsUploadAttachment: "pullRequests.uploadAttachment",
   pullRequestsComment: "pullRequests.comment",
   pullRequestsUpdateComment: "pullRequests.updateComment",
   pullRequestsSubmitReview: "pullRequests.submitReview",
+  pullRequestsSaveDraftComment: "pullRequests.saveDraftComment",
+  pullRequestsDiscardDraftComment: "pullRequests.discardDraftComment",
   pullRequestsReplyToThread: "pullRequests.replyToThread",
   pullRequestsSetThreadResolution: "pullRequests.setThreadResolution",
   pullRequestsSetReaction: "pullRequests.setReaction",
@@ -1086,6 +1106,12 @@ const WsPullRequestsUpdateRpc = Rpc.make(WS_METHODS.pullRequestsUpdate, {
   error: PullRequestRpcError,
 });
 
+const WsPullRequestsUploadAttachmentRpc = Rpc.make(WS_METHODS.pullRequestsUploadAttachment, {
+  payload: PullRequestUploadAttachmentInput,
+  success: PullRequestUploadAttachmentResult,
+  error: PullRequestRpcError,
+});
+
 const WsPullRequestsCommentRpc = Rpc.make(WS_METHODS.pullRequestsComment, {
   payload: PullRequestCommentInput,
   success: Schema.Void,
@@ -1094,6 +1120,18 @@ const WsPullRequestsCommentRpc = Rpc.make(WS_METHODS.pullRequestsComment, {
 
 const WsPullRequestsUpdateCommentRpc = Rpc.make(WS_METHODS.pullRequestsUpdateComment, {
   payload: PullRequestCommentUpdateInput,
+  success: Schema.Void,
+  error: PullRequestRpcError,
+});
+
+const WsPullRequestsSaveDraftCommentRpc = Rpc.make(WS_METHODS.pullRequestsSaveDraftComment, {
+  payload: PullRequestSaveDraftCommentInput,
+  success: PullRequestDraftCommentLink,
+  error: PullRequestRpcError,
+});
+
+const WsPullRequestsDiscardDraftCommentRpc = Rpc.make(WS_METHODS.pullRequestsDiscardDraftComment, {
+  payload: PullRequestDiscardDraftCommentInput,
   success: Schema.Void,
   error: PullRequestRpcError,
 });
@@ -1441,6 +1479,34 @@ const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
 const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
   payload: VcsInitInput,
   error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
+});
+
+/**
+ * Ephemeral live diff preview for compact/mobile surfaces.
+ * Not the persisted T3 Review model. Future review sessions should use
+ * review.open* + review.getSnapshot.
+ */
+const WsReviewGenerateCommitMessageRpc = Rpc.make(WS_METHODS.reviewGenerateCommitMessage, {
+  payload: ReviewGenerateCommitMessageInput,
+  success: Schema.String,
+  error: Schema.Union([ReviewCommitError, EnvironmentAuthorizationError]),
+});
+
+const WsReviewCommitRpc = Rpc.make(WS_METHODS.reviewCommit, {
+  payload: ReviewCommitInput,
+  success: ReviewCommitResult,
+  error: Schema.Union([ReviewCommitError, EnvironmentAuthorizationError]),
+});
+const WsReviewRevertRpc = Rpc.make(WS_METHODS.reviewRevert, {
+  payload: ReviewRevertInput,
+  success: Schema.Void,
+  error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
+});
+
+const WsReviewSetStagedRpc = Rpc.make(WS_METHODS.reviewSetStaged, {
+  payload: ReviewSetStagedInput,
+  success: Schema.Void,
+  error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
@@ -2003,9 +2069,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsSetFilesViewedRpc,
   WsPullRequestsRunActionRpc,
   WsPullRequestsUpdateRpc,
+  WsPullRequestsUploadAttachmentRpc,
   WsPullRequestsCommentRpc,
   WsPullRequestsUpdateCommentRpc,
   WsPullRequestsSubmitReviewRpc,
+  WsPullRequestsSaveDraftCommentRpc,
+  WsPullRequestsDiscardDraftCommentRpc,
   WsPullRequestsReplyToThreadRpc,
   WsPullRequestsSetThreadResolutionRpc,
   WsPullRequestsSetReactionRpc,
@@ -2060,6 +2129,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
+  WsReviewSetStagedRpc,
+  WsReviewCommitRpc,
+  WsReviewGenerateCommitMessageRpc,
+  WsReviewRevertRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,
