@@ -10,6 +10,12 @@ Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
+// Paid personal teams can sign push and Live Activity entitlements; each is an
+// explicit opt-in so free personal teams keep building without them.
+const iosPersonalTeamPushNotifications =
+  isIosPersonalTeamBuild && repoEnv.T3CODE_IOS_PERSONAL_TEAM_PUSH_NOTIFICATIONS === "1";
+const iosPersonalTeamLiveActivities =
+  iosPersonalTeamPushNotifications && repoEnv.T3CODE_IOS_PERSONAL_TEAM_LIVE_ACTIVITIES === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
@@ -283,15 +289,14 @@ const config: ExpoConfig = {
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    // Personal builds use their configured team and bundle capabilities.
+    appleTeamId: isIosPersonalTeamBuild ? undefined : "ARK85ZXQ4Z",
+    associatedDomains: isIosPersonalTeamBuild
+      ? undefined
+      : [`applinks:${variant.relyingParty}`, `webcredentials:${variant.relyingParty}`],
     entitlements: {
       "com.apple.developer.user-fonts": ["app-usage"],
-      "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
+      "keychain-access-groups": [`$(AppIdentifierPrefix)${iosBundleIdentifier}`],
     },
     infoPlist: {
       UISupportedInterfaceOrientations: [
@@ -403,7 +408,9 @@ const config: ExpoConfig = {
       {
         icon: variant.assets.androidNotificationIcon,
         color: variant.assets.androidNotificationColor,
-        mode: APP_VARIANT === "development" ? "development" : "production",
+        // Personal teams sign with development profiles, which only carry sandbox APNs.
+        mode:
+          APP_VARIANT === "development" || isIosPersonalTeamBuild ? "development" : "production",
       },
     ],
     // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
@@ -493,8 +500,8 @@ const config: ExpoConfig = {
     "./plugins/withIosCocoaPodsUuidCache.cjs",
     // Compile out the unused pedometer to avoid an iOS motion purpose string.
     ["expo-sensors", { motionPermission: false }],
-    // Mods run in reverse order; expo-widgets must create and wipe the target before assets are added.
-    ...(!isIosPersonalTeamBuild
+    // Mods run in reverse order; expo-widgets must create the target before assets are added.
+    ...(!isIosPersonalTeamBuild || iosPersonalTeamLiveActivities
       ? ["./plugins/withWidgetLogoAsset.cjs", "./plugins/withAgentWidgetRefresh.cjs", widgetsPlugin]
       : []),
     "./plugins/withAndroidNetworkSecurityConfig.cjs",
@@ -504,11 +511,15 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
+    ...(isIosPersonalTeamBuild && !iosPersonalTeamPushNotifications
+      ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"]
+      : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    iosPersonalTeamPushNotifications,
+    iosPersonalTeamLiveActivities,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
       backgroundUrl: repoEnv.T3CODE_BACKGROUND_RELAY_URL ?? null,

@@ -47,7 +47,7 @@ import {
   startAgentLiveActivity,
 } from "./agentLiveActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import { supportsAgentAwarenessLiveActivities, supportsAgentAwarenessPush } from "./capabilities";
 import {
   agentWidgetToken,
   configureAgentWidgetRefresh,
@@ -181,11 +181,11 @@ function readRelayConfig(): { readonly url: string } | null {
 }
 
 function canRegisterRemoteLiveActivities(): boolean {
-  return Platform.OS === "ios";
+  return Platform.OS === "ios" && supportsAgentAwarenessLiveActivities();
 }
 
 function canRegisterPushNotifications(): boolean {
-  return Platform.OS === "ios" || Platform.OS === "android";
+  return (Platform.OS === "ios" || Platform.OS === "android") && supportsAgentAwarenessPush();
 }
 
 function shouldRegisterAgentAwarenessDeviceForProvider(
@@ -949,7 +949,12 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
       appVersion: Constants.expoConfig?.version,
       ...(bundleId ? { bundleId } : {}),
       ...(Platform.OS === "ios"
-        ? { apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant) }
+        ? {
+            apsEnvironment: resolveApsEnvironment(
+              Constants.expoConfig?.extra?.appVariant,
+              Constants.expoConfig?.extra?.iosPersonalTeamBuild === true,
+            ),
+          }
         : {}),
       ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
       notificationsEnabled: pushTokenRegistration.notificationsEnabled,

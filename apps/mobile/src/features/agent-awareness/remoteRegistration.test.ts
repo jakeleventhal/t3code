@@ -41,7 +41,7 @@ import {
   saveAgentAwarenessRegistrationRecord,
 } from "../../persistence/imperative";
 import type { Preferences } from "../../persistence/mobile-preferences";
-import { makeRelayDeviceRegistrationRequest } from "./registrationPayload";
+import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 import {
   __resetAgentAwarenessRemoteRegistrationForTest,
   armAgentAwarenessLiveActivityForLocalWork,
@@ -801,6 +801,72 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     ).toMatchObject({
       liveActivitiesEnabled: false,
       notificationsEnabled: false,
+    });
+  });
+
+  it("enables sandbox device notifications without enabling Personal Team Live Activities", () => {
+    Constants.expoConfig!.extra = {
+      iosPersonalTeamBuild: true,
+      iosPersonalTeamPushNotifications: true,
+      iosPersonalTeamLiveActivities: false,
+    };
+
+    expect(resolveApsEnvironment("production", true)).toBe("sandbox");
+    expect(
+      makeRelayDeviceRegistrationRequest({
+        deviceId: "device-1",
+        label: "Julius's iPhone",
+        iosMajorVersion: 18,
+        appVersion: "1.0.0",
+        pushToken: "apns-token",
+        pushToStartToken: "push-to-start-token",
+        notificationsEnabled: true,
+        preferences: {},
+      }),
+    ).toEqual({
+      deviceId: "device-1",
+      label: "Julius's iPhone",
+      platform: "ios",
+      iosMajorVersion: 18,
+      appVersion: "1.0.0",
+      pushToken: "apns-token",
+      pushToStartToken: "push-to-start-token",
+      preferences: {
+        liveActivitiesEnabled: false,
+        notificationsEnabled: true,
+        notifyOnApproval: true,
+        notifyOnInput: true,
+        notifyOnCompletion: true,
+        notifyOnFailure: true,
+      },
+    });
+  });
+
+  it("enables Personal Team Live Activities only when the build opts into them", () => {
+    Constants.expoConfig!.extra = {
+      iosPersonalTeamBuild: true,
+      iosPersonalTeamPushNotifications: true,
+      iosPersonalTeamLiveActivities: true,
+    };
+
+    expect(
+      makeRelayDeviceRegistrationRequest({
+        deviceId: "device-1",
+        label: "Julius's iPhone",
+        iosMajorVersion: 18,
+        appVersion: "1.0.0",
+        pushToken: "apns-token",
+        pushToStartToken: "push-to-start-token",
+        notificationsEnabled: true,
+        preferences: {},
+      }),
+    ).toMatchObject({
+      pushToken: "apns-token",
+      pushToStartToken: "push-to-start-token",
+      preferences: {
+        liveActivitiesEnabled: true,
+        notificationsEnabled: true,
+      },
     });
   });
 
