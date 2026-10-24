@@ -86,6 +86,7 @@ import {
   shouldRetryThreadOutboxDelivery,
   type QueuedThreadMessage,
 } from "./thread-outbox-model";
+import { serializeComposerMessageForServer, uploadedComposerContext } from "../lib/composerContext";
 import { createThreadOutboxManager, ThreadOutboxManagerError } from "./thread-outbox-manager";
 import {
   expoThreadOutboxStorage,
@@ -136,6 +137,26 @@ describe("thread outbox", () => {
     expect(
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
+  });
+  it("delivers a stored Assistant request's screen as context, apart from its text", () => {
+    const currentView = 'On their mobile device, the user is viewing the Code thread "Fix login".';
+    const message: QueuedThreadMessage = {
+      ...queuedMessage({ messageId: "assistant-quick", createdAt: "2026-10-24T09:00:00.000Z" }),
+      text: "Why does this fail?",
+      context: { version: 1, records: [], currentView },
+      dispatchMode: "queue",
+    };
+    const stored = decodeQueuedThreadMessage(
+      JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message))),
+    );
+    expect(stored).toEqual(message);
+    expect(
+      serializeComposerMessageForServer(
+        stored.text,
+        uploadedComposerContext(stored.context, stored.attachments, []),
+        true,
+      ),
+    ).toEqual({ text: "Why does this fail?", context: { version: 1, records: [], currentView } });
   });
   it.each(["read", "json", "schema"] as const)(
     "recovers usable messages without permitting cleanup after a record %s failure",

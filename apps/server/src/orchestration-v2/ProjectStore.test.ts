@@ -49,6 +49,7 @@ it.layer(ProjectStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemor
           Option.getOrNull(yield* projects.get(projectId))?.defaultModelSelection,
           modelSelection,
         );
+        assert.isNull(Option.getOrThrow(yield* projects.get(projectId)).botRole);
       }),
     );
   },

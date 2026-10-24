@@ -20,8 +20,28 @@ import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
 import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import type { WorkspaceTab } from "./workspace-tabs-state";
+import { ActiveBotCallBar } from "../bots/ActiveBotCall";
+import { AssistantOrb } from "../bots/AssistantOrb";
+import { BotsScreen } from "../bots/BotsScreen";
+import { useAssistantEnvironmentId } from "../bots/use-assistant";
+import { useBotCallSummary } from "../bots/use-bot-call";
 
 const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
+// Clears the list behind the call bar, which sits beside New thread in Code.
+const CALL_BAR_CLEARANCE = 66;
+// Clears the list behind the Assistant button where no New thread sits below it.
+const ASSISTANT_ORB_CLEARANCE = 56;
+
+function BotsPane() {
+  return (
+    <>
+      <AndroidScreenHeader title="Bots" />
+      <ScreenContent>
+        <BotsScreen />
+      </ScreenContent>
+    </>
+  );
+}
 
 export function WorkspaceRootScreen() {
   const floatingTabsEnabled = useAndroidFloatingTabs();
@@ -32,10 +52,16 @@ export function WorkspaceRootScreen() {
   const { fabClearance, scale, fabSize } = useAndroidControlSizing();
   const window = useWindowDimensions();
   const floating = floatingTabsMetrics(enabled.length + 1, scale, fabSize, window.width);
+  const tab = workspace.state.selectedTab;
+  const assistantEnvironmentId = useAssistantEnvironmentId();
+  // The Assistant floats over Code's lists, stacked above New thread where Threads shows it.
+  const assistantOrb =
+    (tab === "threads" || tab === "pullRequests") && assistantEnvironmentId !== null;
+  const callBar = useBotCallSummary() !== null;
   const context = useMemo(
     () => ({
       ...workspace,
-      bottomClearance: floatingTabsEnabled
+      bottomClearance: Math.max(assistantOrb ? ASSISTANT_ORB_CLEARANCE : 0, callBar ? CALL_BAR_CLEARANCE : 0) + (floatingTabsEnabled
         ? insets.bottom +
           FLOATING_TABS.bottom +
           FLOATING_TABS.edge +
@@ -45,9 +71,10 @@ export function WorkspaceRootScreen() {
           )
         : workspace.state.selectedTab === "threads"
           ? fabClearance + 16
-          : 16,
+          : 16),
     }),
     [
+      assistantOrb, callBar,
       floatingTabsEnabled,
       workspace,
       fabClearance,
@@ -57,34 +84,54 @@ export function WorkspaceRootScreen() {
       fabSize,
     ],
   );
-  const tab = workspace.state.selectedTab;
 
   if (layout.usesSplitView) {
     if (enabled.length === 0) return <View className="flex-1 bg-screen" />;
     return (
-      <WorkspaceTabPanes
-        tabs={TABS}
-        selected={tab}
-        renderTab={(tab) =>
-          tab === "threads" ? (
-            <HomeRouteScreen />
-          ) : tab !== "pullRequests" ? (
-            <WorkspaceExtraTab tab={tab} />
-          ) : (
-            <>
-              <NativeStackScreenOptions options={{ headerShown: false }} />
-              <AndroidScreenHeader title="Pull requests" />
-              <View className="flex-1 items-center justify-center px-10">
-                <EmptyState
-                  title="Select a pull request"
-                  detail="Choose a pull request from the sidebar to review it."
-                  variant="plain"
-                />
-              </View>
-            </>
-          )
-        }
-      />
+      <>
+        <WorkspaceTabPanes
+          tabs={TABS}
+          selected={tab}
+          renderTab={(tab) =>
+            tab === "threads" ? (
+              <HomeRouteScreen />
+            ) : tab === "bots" ? (
+              <>
+                <NativeStackScreenOptions options={{ headerShown: false }} />
+                <AndroidScreenHeader title="Bots" />
+                <View className="flex-1 items-center justify-center px-10">
+                  <EmptyState
+                    title="Select a conversation"
+                    detail="Choose a bot or one of its conversations from the sidebar."
+                    variant="plain"
+                  />
+                </View>
+              </>
+            ) : tab !== "pullRequests" ? (
+              <WorkspaceExtraTab tab={tab} />
+            ) : (
+              <>
+                <NativeStackScreenOptions options={{ headerShown: false }} />
+                <AndroidScreenHeader title="Pull requests" />
+                <View className="flex-1 items-center justify-center px-10">
+                  <EmptyState
+                    title="Select a pull request"
+                    detail="Choose a pull request from the sidebar to review it."
+                    variant="plain"
+                  />
+                </View>
+              </>
+            )
+          }
+        />
+        {callBar ? (
+          <ActiveBotCallBar
+            thread={null}
+            className="absolute"
+            style={{ left: 16, right: 16, bottom: insets.bottom + 16 }}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -110,6 +157,8 @@ export function WorkspaceRootScreen() {
               renderTab={(tab) =>
                 tab === "threads" ? (
                   <HomeRouteScreen />
+                ) : tab === "bots" ? (
+                  <BotsPane />
                 ) : tab !== "pullRequests" ? (
                   <WorkspaceExtraTab tab={tab} />
                 ) : (
@@ -126,6 +175,12 @@ export function WorkspaceRootScreen() {
             />
           )}
         </SafeAreaInsetsContext>
+        {assistantOrb ? (
+          <AssistantOrb environmentId={assistantEnvironmentId} style={{ right: 16, bottom: context.bottomClearance - ASSISTANT_ORB_CLEARANCE + 8 }} />
+        ) : null}
+        {callBar ? (
+          <ActiveBotCallBar thread={null} className="absolute" style={{ left: 16, right: assistantOrb ? 16 + fabSize + 12 : 16, bottom: context.bottomClearance - CALL_BAR_CLEARANCE + 8 }} />
+        ) : null}
         {floatingTabsEnabled ? (
           <FloatingWorkspaceTabs fillWidth onNewThread={startNewTask} />
         ) : (

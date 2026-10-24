@@ -66,6 +66,7 @@ import {
   PaletteIcon,
   RotateCcwIcon,
   SettingsIcon,
+  SparklesIcon,
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
@@ -230,6 +231,8 @@ import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
+import { withoutBotProjects } from "./bots/botRoom.logic";
+import { useAssistantCommands } from "./bots/AssistantShortcut";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
@@ -420,7 +423,9 @@ function OpenCommandPaletteDialog(props: {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
-  const projects = useProjects();
+  const allProjects = useProjects();
+  // Bots open from their room; project pickers and path matching cover Code projects.
+  const projects = withoutBotProjects(allProjects);
   const referenceThreadRef =
     pathname === "/pull-requests"
       ? environments.some(
@@ -474,6 +479,7 @@ function OpenCommandPaletteDialog(props: {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
+  const assistantCommands = useAssistantCommands();
   const currentView = viewStack.at(-1)?.view ?? null;
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
@@ -1223,7 +1229,7 @@ function OpenCommandPaletteDialog(props: {
       ? null
       : {
           target: promptLinkTarget,
-          project: projects.find(
+          project: allProjects.find(
             (project) =>
               project.environmentId === promptLinkProjectRef?.environmentId &&
               project.id === promptLinkProjectRef.projectId,
@@ -1479,6 +1485,32 @@ function OpenCommandPaletteDialog(props: {
         await navigate({ to: "/pull-requests", search: readPullRequestListPreferences() });
       },
     });
+  }
+
+  if (assistantCommands.available) {
+    actionItems.push(
+      {
+        kind: "action",
+        value: "action:assistant-ask",
+        searchTerms: ["assistant", "ask", "bot", "bots", "quick"],
+        title: "Ask Assistant",
+        icon: <SparklesIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "assistant.toggle",
+        run: async () => {
+          assistantCommands.toggle();
+        },
+      },
+      {
+        kind: "action",
+        value: "action:assistant-open",
+        searchTerms: ["assistant", "bot", "bots", "chat", "open"],
+        title: "Open Assistant chat",
+        icon: <SparklesIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          assistantCommands.openChat();
+        },
+      },
+    );
   }
 
   actionItems.push({

@@ -359,6 +359,29 @@ const ready = Effect.gen(function* () {
   const tabId = PreviewTabId.make(opened.tabId!);
   return { browser, broker, tabId };
 });
+
+it.live("reading an unknown or closed tab never creates a browser or substitutes another tab", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const missing = { threadId: scope.thread.threadId, tabId: "missing-tab" };
+      expect(yield* browser.readPage(missing).pipe(Effect.flip)).toMatchObject({
+        reason: "not-open",
+      });
+      expect(contexts).toHaveLength(0);
+      const { tabId } = yield* ready;
+      expect(yield* browser.readPage(missing).pipe(Effect.flip)).toMatchObject({
+        reason: "not-open",
+      });
+      expect(contexts).toHaveLength(1);
+      yield* (yield* Manager.PreviewManager).close({ threadId: scope.thread.threadId, tabId });
+      expect(
+        yield* browser.readPage({ threadId: scope.thread.threadId, tabId }).pipe(Effect.flip),
+      ).toMatchObject({ reason: "not-open" });
+      expect(contexts).toHaveLength(1);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
 const viewerInput = (tabId: string, canOperate: boolean) => ({
   threadId: scope.thread.threadId,
   tabId,

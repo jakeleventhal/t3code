@@ -1,5 +1,6 @@
 import { orderItemsByPreferredIds, sortSidebarV2ProjectGroups } from "../components/Sidebar.logic";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
+import { withoutBotProjects } from "../components/bots/botRoom.logic";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
 import { useEnvironmentIdentities, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useQuietThreadShells } from "../state/entities";
@@ -7,7 +8,7 @@ import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore"
 import { useClientSettings } from "./useSettings";
 
 export function useSidebarProjectGroups() {
-  const projects = useProjects();
+  const projects = withoutBotProjects(useProjects());
   // Activity order lags a running thread's streaming ticks until its next
   // real change; reading every tick re-rendered the whole sidebar with it.
   const threads = useQuietThreadShells();

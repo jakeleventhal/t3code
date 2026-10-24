@@ -10,6 +10,7 @@ import {
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
+import { isBotProject } from "../bots/botRoom.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -174,6 +175,9 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
         props.scopedProjectKeys !== null &&
         !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
       ) {
+        continue;
+      }
+      if (isBotProject(props.projectByKey.get(`${session.environmentId}:${session.projectId}`))) {
         continue;
       }
       if (draftKey === props.routeDraftId) {

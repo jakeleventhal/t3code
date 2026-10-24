@@ -109,6 +109,70 @@ const requireRoot = Effect.gen(function* () {
   return Option.getOrThrow(yield* scratch.scratchRoot);
 });
 
+it.effect("reopens a stable bot folder without overwriting its working data", () =>
+  withScratch(
+    () =>
+      Effect.gen(function* () {
+        const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+        const fs = yield* FileSystem.FileSystem;
+        const id = ProjectId.make("bot:../../fitness");
+        const first = yield* folders.prepareBotWorkspace(id);
+        yield* fs.writeFileString(`${first}/history.csv`, "date,weight\n2026-10-23,180\n");
+        assert.equal(yield* folders.prepareBotWorkspace(id), first);
+        assert.equal(
+          yield* fs.readFileString(`${first}/history.csv`),
+          "date,weight\n2026-10-23,180\n",
+        );
+        assert.notEqual(yield* folders.prepareBotWorkspace(ProjectId.make("another")), first);
+        assert.deepEqual(yield* fs.readDirectory(first), ["history.csv"]);
+      }),
+    { git: Layer.mock(GitVcsDriver.GitVcsDriver)({}) },
+  ),
+);
+
+it.effect("creates bot workspaces without a repository or generated project files", () =>
+  withScratch(
+    () =>
+      Effect.gen(function* () {
+        const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+        const projects = yield* ProjectService.ProjectService;
+        const fileSystem = yield* FileSystem.FileSystem;
+        for (const botRole of ["assistant", "specialist"] as const) {
+          const created = yield* folders.createNamedProject({ name: botRole, botRole });
+          assert.isUndefined(created.commitError);
+          assert.deepEqual(yield* fileSystem.readDirectory(created.workspaceRoot), []);
+          const project = Option.getOrThrow(yield* projects.getById(created.projectId));
+          assert.equal(project.botRole, botRole);
+          assert.equal(project.workspaceRoot, created.workspaceRoot);
+          assert.isNull(project.repositoryIdentity);
+        }
+      }),
+    { git: Layer.mock(GitVcsDriver.GitVcsDriver)({}) },
+  ),
+);
+
+it.effect(
+  "rejects a bot workspace that would inherit a parent repository and removes its folder",
+  () =>
+    withScratch(
+      ({ baseDir }) =>
+        Effect.gen(function* () {
+          yield* git(baseDir, ["init", "--quiet"]);
+          const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+          const projects = yield* ProjectService.ProjectService;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const error = yield* Effect.flip(
+            folders.createNamedProject({ name: "Fitness", botRole: "specialist" }),
+          );
+          assert.equal(error._tag, "NamedProjectFolderError");
+          assert.deepEqual(yield* fileSystem.readDirectory(folders.namedProjectsRoot), []);
+          assert.deepEqual((yield* projects.snapshot).projects, []);
+          assert.equal((yield* git(baseDir, ["status", "--porcelain"])).stdout.trim(), "");
+        }),
+      { git: Layer.mock(GitVcsDriver.GitVcsDriver)({}) },
+    ),
+);
+
 it.effect("offers nothing when the data dir sits inside a Git checkout", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;

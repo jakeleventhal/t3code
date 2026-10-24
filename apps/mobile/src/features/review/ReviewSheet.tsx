@@ -62,6 +62,7 @@ import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
 import { buildReviewSectionMenu } from "./review-section-menu";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useThreadAssistant } from "../bots/AssistantOrb";
 
 function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
@@ -84,6 +85,7 @@ function ReviewHeader(
       if (section) props.onSelectSection(section.id);
     },
   });
+  const openAssistant = useThreadAssistant(props);
   return (
     <AppBar
       title={presentation.title}
@@ -92,8 +94,9 @@ function ReviewHeader(
       hideBottomBorder
       options={{ headerTintColor: props.iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
-      actions={
-        props.showChangedFilesToggle
+      actions={[
+        ...(openAssistant ? [{ accessibilityLabel: "Assistant", icon: "sparkles" as const, onPress: openAssistant }] : []),
+        ...(props.showChangedFilesToggle
           ? [
               {
                 accessibilityLabel: panes.auxiliaryPaneVisible
@@ -104,8 +107,8 @@ function ReviewHeader(
                 onPress: toggleAuxiliaryPane,
               },
             ]
-          : undefined
-      }
+          : []),
+      ]}
       menus={[
         ...(presentation.gitMenu ? [presentation.gitMenu] : []),
         ...(props.showSectionToolbar

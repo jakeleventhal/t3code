@@ -5,6 +5,7 @@ import {
   EasDeviceHostConfig,
   type ServerSettings,
   UsageLimitSourceConfig,
+  VoiceApiConnection,
   secretSettingsFields,
 } from "@t3tools/contracts";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
@@ -33,6 +34,7 @@ const providerSecretFields = new Map([
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
+const voiceApiSecretFields = secretSettingsFields(VoiceApiConnection);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -155,5 +157,24 @@ export function mapSettingsSecrets(
       ) as EasDeviceHostConfig,
   );
 
-  return { ...settings, providerInstances, sourceControlHosts, usageLimitSources, easDeviceHosts };
+  const voiceConnections = Object.fromEntries(
+    Object.entries(settings.voiceConnections).map(([id, connection]) => [
+      id,
+      connection.kind === "codex-subscription"
+        ? connection
+        : mapFields(
+            connection,
+            voiceApiSecretFields,
+            (field) => `voice-connection-${encode(id)}-${encode(connection.kind)}-${encode(field)}`,
+          ),
+    ]),
+  ) as ServerSettings["voiceConnections"];
+  return {
+    ...settings,
+    providerInstances,
+    sourceControlHosts,
+    usageLimitSources,
+    easDeviceHosts,
+    voiceConnections,
+  };
 }

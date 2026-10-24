@@ -292,8 +292,12 @@ const config: ExpoConfig = {
     },
     // JS back dispatch needs RN's Android 16 shim and withAndroidPredictiveBackCompat on Android 13-15.
     predictiveBackGestureEnabled: true,
-    // expo-sensors declares this for its pedometer, which the app does not use.
-    blockedPermissions: ["android.permission.ACTIVITY_RECOGNITION"],
+    // The app uses neither expo-sensors' pedometer nor WebRTC screen sharing.
+    blockedPermissions: [
+      "android.permission.ACTIVITY_RECOGNITION",
+      "android.permission.SYSTEM_ALERT_WINDOW",
+    ],
+    permissions: ["android.permission.CHANGE_NETWORK_STATE"],
   },
   web: {
     favicon: variant.assets.appIcon,

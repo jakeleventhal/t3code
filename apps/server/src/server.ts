@@ -1079,4 +1079,8 @@ const layerMakeServer = Layer.unwrap(
   }),
 ).pipe(Layer.provide(ProcessRunner.layer));
 
-export const runServer = Layer.launch(layerMakeServer);
+export const runServer: Effect.Effect<
+  never,
+  Layer.Error<typeof layerMakeServer>,
+  ServerConfig.ServerConfig | NodeServices.NodeServices
+> = Layer.launch(layerMakeServer);

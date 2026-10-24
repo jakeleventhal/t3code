@@ -12,6 +12,8 @@ import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
 import { PullRequestToolbar } from "../pull-requests/PullRequestToolbar.android";
 import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
+import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { BotsScreen } from "../bots/BotsScreen";
 
 export function AndroidWorkspaceSidebar(props: {
   readonly children: ReactNode;
@@ -36,6 +38,15 @@ export function AndroidWorkspaceSidebar(props: {
       renderTab={(tab) =>
         tab === "threads" ? (
           props.children
+        ) : tab === "bots" ? (
+          <WorkspaceTabsContext value={context}>
+            <View className="flex-1 bg-header">
+              <AndroidScreenHeader title="Bots" />
+              <ScreenContent insetHorizontal>
+                <BotsScreen />
+              </ScreenContent>
+            </View>
+          </WorkspaceTabsContext>
         ) : tab !== "pullRequests" ? (
           <View className="flex-1 bg-screen" />
         ) : (

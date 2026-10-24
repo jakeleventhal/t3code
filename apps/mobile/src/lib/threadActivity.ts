@@ -8,6 +8,7 @@ import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thre
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
+import { voiceCallStatusLabel } from "@t3tools/client-runtime/work-log/voice-call";
 import {
   turnItemDetailRevision,
   turnItemHasDetail,
@@ -401,6 +402,12 @@ export function isContextHandoffActivityGroup(entry: ThreadFeedActivityGroup): b
   );
 }
 
+export function isVoiceCallActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  return (
+    entry.activities.length === 1 && entry.activities[0]?.projectedItem.item.type === "voice_call"
+  );
+}
+
 export function isSecretRequestActivityGroup(entry: ThreadFeedActivityGroup): boolean {
   return (
     entry.activities.length === 1 &&
@@ -516,7 +523,9 @@ function itemIsProminent(item: OrchestrationV2TurnItem): boolean {
     item.type === "thread_created" ||
     item.type === "system_notice" ||
     item.type === "proposed_plan" ||
-    item.type === "secret_request"
+    item.type === "secret_request" ||
+    // A call is part of the conversation, not work a finished turn folds away.
+    item.type === "voice_call"
   );
 }
 
@@ -638,6 +647,8 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
       return "zap";
     case "secret_request":
       return "lock";
+    case "voice_call":
+      return "message";
   }
 }
 
@@ -697,6 +708,8 @@ function itemSummary(
       return "Thread created";
     case "secret_request":
       return item.label;
+    case "voice_call":
+      return `Call with ${item.call.botTitle}`;
     case "dynamic_tool": {
       const classified = classifyToolActivity({
         itemType: "dynamic_tool_call",
@@ -756,6 +769,8 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
       return item.targetThreadId;
     case "secret_request":
       return item.reason || null;
+    case "voice_call":
+      return voiceCallStatusLabel(item.call);
     case "subagent":
       return item.result ?? item.progress ?? item.prompt;
     case "dynamic_tool":

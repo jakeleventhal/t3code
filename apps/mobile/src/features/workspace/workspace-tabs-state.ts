@@ -1,3 +1,4 @@
+import type { NavigationState } from "@react-navigation/native";
 import {
   NAVIGATION_TAB_ORDER,
   navigationCustomizationAvailable,
@@ -12,13 +13,31 @@ export function resolveWorkspaceTabOrder(saved: readonly unknown[] | undefined) 
 }
 
 export type WorkspaceTab = NavigationTab;
+/** Bots holds bot conversations; every other section belongs to Code. */
+export type WorkspaceRoom = "code" | "bots";
+export type CodeWorkspaceTab = Exclude<WorkspaceTab, "bots">;
+export type WorkspaceRoute = NavigationState["routes"][number];
+
+export function workspaceTabRoom(tab: WorkspaceTab): WorkspaceRoom {
+  return tab === "bots" ? "bots" : "code";
+}
+
+/** The section a room shows, for tabs that keep rendering a room the state has left. */
+export function workspaceRoomTab(
+  state: Pick<WorkspaceTabsState, "selectedTab" | "codeTab">,
+  room: WorkspaceRoom,
+): WorkspaceTab {
+  if (room === "bots") return "bots";
+  return state.selectedTab === "bots" ? state.codeTab : state.selectedTab;
+}
+
 /** Lists with their own search: the searchable tabs and the Settings list. */
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
 /** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
-  return settingsOpen || tab === "threads" || tab === "pullRequests";
+  return settingsOpen || tab === "threads" || tab === "pullRequests" || tab === "bots";
 }
 
 export interface WorkspaceTabState {
@@ -29,7 +48,12 @@ export interface WorkspaceTabState {
 }
 
 export interface WorkspaceTabsState {
+  readonly room: WorkspaceRoom;
+  /** The pages each room was left on, while the other room owns the navigation stack. */
+  readonly parkedRoutes: Readonly<Record<WorkspaceRoom, readonly WorkspaceRoute[]>>;
   readonly selectedTab: WorkspaceTab;
+  /** The section Code returns to from Bots. */
+  readonly codeTab: CodeWorkspaceTab;
   readonly selectionRevision: number;
   readonly tabs: Readonly<Record<WorkspaceSearchTab, WorkspaceTabState>>;
 }
@@ -40,18 +64,30 @@ function emptyTab(): WorkspaceTabState {
 
 export function initialWorkspaceTabsState(): WorkspaceTabsState {
   return {
+    room: "code",
+    parkedRoutes: { code: [], bots: [] },
     selectedTab: "threads",
+    codeTab: "threads",
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),
       pullRequests: emptyTab(),
       usage: emptyTab(),
       settings: emptyTab(),
+      bots: emptyTab(),
     },
   };
 }
 
 export type WorkspaceTabsAction =
+  | {
+      readonly type: "room";
+      readonly room: WorkspaceRoom;
+      /** The pages the current room is leaving, to bring back when it is entered again. */
+      readonly leaving?: readonly WorkspaceRoute[];
+      /** The Code section to enter; Code's own last section otherwise. */
+      readonly tab?: CodeWorkspaceTab;
+    }
   | { readonly type: "select"; readonly tab: WorkspaceTab }
   | { readonly type: "search"; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "query"; readonly query: string; readonly tab?: WorkspaceSearchTab }
@@ -63,14 +99,38 @@ export function workspaceTabsReducer(
   state: WorkspaceTabsState,
   action: WorkspaceTabsAction,
 ): WorkspaceTabsState {
-  if (action.type === "select")
-    return action.tab === state.selectedTab
-      ? state
-      : {
-          ...state,
-          selectedTab: action.tab,
-          selectionRevision: state.selectionRevision + 1,
-        };
+  if (action.type === "room") {
+    if (action.room === state.room) return state;
+    const selectedTab = action.room === "bots" ? "bots" : (action.tab ?? state.codeTab);
+    return {
+      ...state,
+      room: action.room,
+      parkedRoutes: {
+        ...state.parkedRoutes,
+        [state.room]: action.leaving ?? [],
+        [action.room]: [],
+      },
+      selectedTab,
+      codeTab: selectedTab === "bots" ? state.codeTab : selectedTab,
+      selectionRevision: state.selectionRevision + 1,
+    };
+  }
+  if (action.type === "select") {
+    if (action.tab === state.selectedTab) return state;
+    // Crossing rooms here has no stack to park; callers that hold one use selectTab.
+    if (workspaceTabRoom(action.tab) !== state.room)
+      return workspaceTabsReducer(state, {
+        type: "room",
+        room: workspaceTabRoom(action.tab),
+        ...(action.tab === "bots" ? {} : { tab: action.tab }),
+      });
+    return {
+      ...state,
+      selectedTab: action.tab,
+      codeTab: action.tab === "bots" ? state.codeTab : action.tab,
+      selectionRevision: state.selectionRevision + 1,
+    };
+  }
   const tab = action.tab ?? state.selectedTab;
   if (tab !== "threads" && tab !== "pullRequests" && tab !== "settings") return state;
   const current = state.tabs[tab];

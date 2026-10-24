@@ -80,6 +80,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import {
   AppState,
@@ -172,6 +173,7 @@ import { PendingUserInputCard } from "./PendingUserInputCard";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
 import { ThreadCreationFailedCard } from "./ThreadCreationFailedCard";
 import {
+  CONTROL_OVERLAY_OFFSET,
   FLOATING_WORKING_CONTROL_COVERAGE,
   FloatingWorkingControl,
 } from "./floating-working-control";
@@ -188,6 +190,7 @@ import {
 } from "./ThreadComposer";
 import { ComposerPopoverHost } from "./ComposerPopoverHost";
 import { ThreadFeed, type ThreadFeedHandle, type ThreadFeedHistoryControls } from "./ThreadFeed";
+import type { ThreadFeedRevealTarget } from "./thread-feed-reveal";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
@@ -247,6 +250,8 @@ export interface ThreadDetailScreenProps {
   readonly connectionStateLabel: EnvironmentConnectionPhase;
   readonly threadSyncStatus?: EnvironmentThreadStatus;
   readonly historyControls?: ThreadFeedHistoryControls;
+  readonly revealTarget?: ThreadFeedRevealTarget | null;
+  readonly onRevealSettled?: (key: string, found: boolean) => void;
   readonly activeThreadBusy: boolean;
   readonly canStopThread: boolean;
   readonly queuedRunEdit: QueuedRunEdit | null;
@@ -300,6 +305,13 @@ export interface ThreadDetailScreenProps {
   readonly onSubmitUserInput: () => Promise<unknown>;
   readonly onDismissUserInput: () => Promise<unknown>;
   readonly showContent?: boolean;
+  /** Sits at the trailing end of the floating control row, riding the composer and keyboard. */
+  readonly floatingAccessory?: ReactNode;
+  /**
+   * The app's live call, a row above the composer's notices. The overlay's height is the
+   * list's bottom inset, so it never covers the conversation.
+   */
+  readonly callBar?: ReactNode;
 }
 
 const USAGE_LIMITS_PANEL_GAP = 12;
@@ -1002,6 +1014,9 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
       ),
     [userInputCoverageApplies],
   );
+  const floatingAccessoryStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -floatingControlLift.value }],
+  }));
   const handleEndFollowEnabledChange = (enabled: boolean) => {
     endFollowEnabledRef.current = enabled;
     setEndFollowEnabled(enabled);
@@ -1330,6 +1345,8 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
               }
               contentMaxWidth={contentMaxWidth}
               historyControls={props.historyControls}
+              revealTarget={props.revealTarget}
+              onRevealSettled={props.onRevealSettled}
               contentSideInsets={nativeMetrics?.safeArea}
               layoutVariant={layoutVariant}
               usesAutomaticContentInsets={props.usesAutomaticContentInsets}
@@ -1421,6 +1438,16 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                       });
                     }}
                   />
+                {props.floatingAccessory ? (
+                  <Animated.View
+                    pointerEvents="box-none"
+                    className="absolute right-1 size-11"
+                    style={[{ top: -CONTROL_OVERLAY_OFFSET }, floatingAccessoryStyle]}
+                  >
+                    {props.floatingAccessory}
+                  </Animated.View>
+                ) : null}
+                  {props.callBar}
                   {props.queuedRunEdit !== null ? (
                     <Animated.View
                       className="shrink-0"

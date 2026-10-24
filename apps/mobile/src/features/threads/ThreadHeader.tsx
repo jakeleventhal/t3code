@@ -26,6 +26,23 @@ export function ThreadHeader(
   const native = useThreadHeaderOptions(props);
   const androidHeaderActions = useMemo<ReadonlyArray<AppBarAction>>(() => {
     const actions: AppBarAction[] = [];
+    if (props.botIdentity) {
+      actions.push({
+        accessibilityLabel: "Bot profile",
+        icon: "person.crop.circle",
+        onPress: props.botIdentity.onPress,
+      });
+    }
+    if (props.onCall) {
+      actions.push({ accessibilityLabel: "Call", icon: "phone", onPress: props.onCall });
+    }
+    if (props.onOpenVoiceSettings) {
+      actions.push({
+        accessibilityLabel: "Voice settings",
+        icon: "headphones",
+        onPress: props.onOpenVoiceSettings,
+      });
+    }
     if (props.onReturnToThread) {
       actions.push({
         accessibilityLabel: "Return to chat",
@@ -71,6 +88,9 @@ export function ThreadHeader(
     props.onOpenGitInspector,
     toggleAuxiliaryPane,
     props.onReturnToThread,
+    props.onOpenVoiceSettings,
+    props.onCall,
+    props.botIdentity,
     props.hasThreadCwd,
     props.hasWorkspaceRoot,
     props.gitControls.canOpenTerminal,

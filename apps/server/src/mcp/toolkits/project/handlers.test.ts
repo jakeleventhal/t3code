@@ -1,7 +1,9 @@
 import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  CommandId,
   ProjectId,
+  ThreadId,
   ProviderInstanceId,
   type Project as ProjectRecord,
   type ModelSelection,
@@ -23,6 +25,7 @@ import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotService from "../../../bots/BotService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../../vcs/VcsProcess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -198,6 +201,56 @@ it.effect(
       });
       expect(fromSettings.launched[0]?.modelSelection).toEqual(overrideModel);
     }),
+);
+
+it.effect("bot tools preserve caller mode limits and stamp MCP provenance", () =>
+  Effect.gen(function* () {
+    const harness = clientLaunchHarness({ runtimeModeCeiling: "auto-accept-edits", launched: [] });
+    const opened: Array<Parameters<BotService.BotService["Service"]["open"]>> = [];
+    const created: Array<Parameters<BotService.BotService["Service"]["create"]>> = [];
+    const result = { projectId: ProjectId.make("fitness"), threadId: ThreadId.make("main") };
+    const dependencies = Layer.merge(
+      harness.dependencies,
+      Layer.mock(BotService.BotService)({
+        open: (...args) =>
+          Effect.sync(() => {
+            opened.push(args);
+            return result;
+          }),
+        create: (...args) =>
+          Effect.sync(() => {
+            created.push(args);
+            return result;
+          }),
+      }),
+    );
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const options = {
+      modelSelection: harness.modelSelection,
+      runtimeMode: "auto-accept-edits" as const,
+      interactionMode: "default" as const,
+    };
+    const open = yield* toolkit
+      .handle("t3_bot_open", options)
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(open.at(-1)?.result).toEqual(result);
+    const request = { ...options, commandId: CommandId.make("new-fitness"), name: "Fitness" };
+    const create = yield* toolkit
+      .handle("t3_bot_create", request)
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(create.at(-1)?.result).toEqual(result);
+    expect(opened).toEqual([[options, { createdBy: "agent", creationSource: "mcp" }]]);
+    expect(created).toEqual([[request, { createdBy: "agent", creationSource: "mcp" }]]);
+    const denied = yield* toolkit
+      .handle("t3_bot_create", { ...request, runtimeMode: "full-access" })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(denied.at(-1)?.result).toMatchObject({ code: "runtime_mode_escalation_denied" });
+    expect(created).toHaveLength(1);
+  }),
 );
 
 it.effect("a launch binds only an existing checkout that is one of the project's worktrees", () =>

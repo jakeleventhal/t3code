@@ -436,6 +436,7 @@ const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   "reviewGuideModelSelection",
   "textGenerationModelSelection",
   "pullRequestMergeMethod",
+  "voiceSelection",
 ]);
 
 function stripDefaultServerSettings(current: unknown, defaults: unknown): unknown | undefined {

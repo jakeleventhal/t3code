@@ -1,6 +1,7 @@
 import { useWorkspaceSidebarHeaderItem } from "../layout/useWorkspaceSidebarHeaderItem";
 import { StackActions, useNavigation } from "@react-navigation/native";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { useWindowDimensions } from "react-native";
 import { threadHeaderAppearance } from "./thread-header-appearance";
 import { isDuoDevice } from "../../lib/device-type";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
@@ -8,6 +9,7 @@ import { useDeviceType } from "../../native/native-layout-metrics";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
+import { BotHeaderTitle, type BotChatIdentity } from "../bots/BotHeaderTitle";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -24,6 +26,12 @@ export function useThreadHeaderOptions(props: {
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
   readonly draft?: boolean;
+  /** Bot chats only: opens this bot's voice settings. */
+  readonly onOpenVoiceSettings?: () => void;
+  /** Bot chats only, and not on the conversation already on the call. */
+  readonly onCall?: () => void;
+  /** Bot chats only: the header shows the bot, and tapping it opens the bot's profile. */
+  readonly botIdentity?: BotChatIdentity;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const deviceType = useDeviceType();
@@ -31,8 +39,52 @@ export function useThreadHeaderOptions(props: {
   const navigation = useNavigation();
   const { layout, startNewTask } = useAdaptiveWorkspaceLayout();
   const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
-  const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
-  const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const gitCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
+  const gitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const { onOpenVoiceSettings, onCall, botIdentity } = props;
+  const { width } = useWindowDimensions();
+  const renderBotTitle = useCallback(
+    () =>
+      botIdentity ? <BotHeaderTitle {...botIdentity} maxWidth={Math.max(0, width - 200)} /> : null,
+    [botIdentity, width],
+  );
+  const voiceHeaderItems = useMemo<NativeHeaderItems>(
+    () => [
+      ...(onCall
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Call",
+              icon: { name: "phone", type: "sfSymbol" as const },
+              identifier: "thread-right-call",
+              label: "Call",
+              onPress: onCall,
+              type: "button" as const,
+            }),
+          ]
+        : []),
+      ...(onOpenVoiceSettings
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Voice settings",
+              icon: { name: "headphones", type: "sfSymbol" as const },
+              identifier: "thread-right-voice-settings",
+              label: "Voice settings",
+              onPress: onOpenVoiceSettings,
+              type: "button" as const,
+            }),
+          ]
+        : []),
+    ],
+    [onOpenVoiceSettings, onCall],
+  );
+  const threadCenterHeaderItems = useMemo(
+    () => [...voiceHeaderItems, ...gitCenterHeaderItems],
+    [voiceHeaderItems, gitCenterHeaderItems],
+  );
+  const compactRightHeaderItems = useMemo(
+    () => [...voiceHeaderItems, ...gitRightHeaderItems],
+    [voiceHeaderItems, gitRightHeaderItems],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       ...(!usesDuoHeader
@@ -86,7 +138,7 @@ export function useThreadHeaderOptions(props: {
 
   const options: AppNativeStackNavigationOptions = {
     ...threadHeaderAppearance(props.usesNativeHeaderGlass),
-    headerTitle: props.title,
+    headerTitle: botIdentity ? renderBotTitle : props.title,
     title: props.title,
     headerBackVisible: !layout.usesSplitView,
     unstable_headerLeftItems: layout.usesSplitView
@@ -98,7 +150,8 @@ export function useThreadHeaderOptions(props: {
     unstable_headerRightItems: () =>
       usesDuoHeader || layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
     unstable_headerToolbarItems: () => [],
-    unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
+    unstable_headerSubtitle:
+      props.usesNativeHeaderGlass && !botIdentity ? props.subtitle : undefined,
     contentStyle: undefined,
   };
   const { environmentId, threadId, gitStatus } = props.gitControls;
@@ -115,6 +168,12 @@ export function useThreadHeaderOptions(props: {
       gitStatus?.isDefaultRef,
       gitStatus?.refName,
       gitStatus?.pr?.url,
+      // The bot title renders through a stabilized factory, so what it shows is keyed here.
+      botIdentity?.project.title,
+      botIdentity?.project.projectIcon,
+      botIdentity?.project.faviconPath,
+      botIdentity?.topic,
+      width,
     ],
     sidebar: false,
     fallback:

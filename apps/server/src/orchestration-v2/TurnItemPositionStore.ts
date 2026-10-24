@@ -101,17 +101,38 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
           ),
       );
 
-    return TurnItemPositionStoreV2.of({
-      allocate,
-      // Per-event normalization shares the enclosing orchestration span.
-      normalize: Effect.fnUntraced(function* (item, runOrdinal) {
-        return yield* allocate({
+    // Voice calls have no coding run. Place them after existing conversation
+    // items instead of putting every call in the pre-run history bucket.
+    const normalize: TurnItemPositionStoreV2Shape["normalize"] = Effect.fnUntraced(
+      function* (item, runOrdinal) {
+        if (item.type === "voice_call" && runOrdinal === undefined) {
+          const rows = yield* sql<{
+            ordinal: number | null;
+          }>`SELECT MAX(ordinal) AS ordinal FROM orchestration_v2_turn_item_positions WHERE thread_id = ${item.threadId}`.pipe(
+            Effect.mapError(
+              (cause) =>
+                new TurnItemPositionStoreError({
+                  threadId: item.threadId,
+                  turnItemId: item.id,
+                  cause,
+                }),
+            ),
+          );
+          runOrdinal = Math.floor((rows[0]?.ordinal ?? 0) / 1_000_000);
+        }
+        const ordinal = yield* allocate({
           threadId: item.threadId,
           turnItemId: item.id,
           runId: item.runId,
           ...(runOrdinal === undefined ? {} : { runOrdinal }),
-        }).pipe(Effect.map((ordinal) => (item.ordinal === ordinal ? item : { ...item, ordinal })));
-      }),
+        });
+        return item.ordinal === ordinal ? item : { ...item, ordinal };
+      },
+    );
+
+    return TurnItemPositionStoreV2.of({
+      allocate,
+      normalize,
     });
   }),
 );

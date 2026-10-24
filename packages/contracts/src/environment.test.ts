@@ -14,6 +14,22 @@ const descriptor = {
 } as const;
 
 describe("ExecutionEnvironmentDescriptor", () => {
+  it("requires voice settings support to be advertised separately from bot conversations", () => {
+    expect(decodeDescriptor(descriptor).capabilities.botVoiceConfiguration).toBeUndefined();
+    const decoded = decodeDescriptor({ ...descriptor, capabilities: { botConversations: true } });
+    expect(decoded.capabilities.botVoiceConfiguration).toBeUndefined();
+    expect(
+      decodeDescriptor({ ...descriptor, capabilities: { botVoiceConfiguration: true } })
+        .capabilities.botVoiceConfiguration,
+    ).toBe(true);
+  });
+  it("keeps bot conversations disabled for older environments unless advertised", () => {
+    expect(decodeDescriptor(descriptor).capabilities.botConversations).toBeUndefined();
+    expect(
+      decodeDescriptor({ ...descriptor, capabilities: { botConversations: true } }).capabilities
+        .botConversations,
+    ).toBe(true);
+  });
   it("decodes old, recognized and future manual installation descriptors", () => {
     expect(decodeDescriptor(descriptor).capabilities.serverInstallation).toBeUndefined();
     for (const installation of [{ kind: "npx" }, { kind: "npm-global", prefix: "/opt/node" }]) {

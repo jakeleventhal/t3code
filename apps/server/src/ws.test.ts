@@ -49,6 +49,10 @@ import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
+import * as BotService from "./bots/BotService.ts";
+import * as VoiceConfiguration from "./bots/VoiceConfiguration.ts";
+import * as VoiceCalls from "./bots/VoiceCalls.ts";
+import * as VoiceSessions from "./bots/VoiceSessions.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
@@ -396,6 +400,10 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DocumentText.DocumentText)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
+  Layer.mock(BotService.BotService)({}),
+  Layer.mock(VoiceConfiguration.VoiceConfiguration)({}),
+  Layer.mock(VoiceCalls.VoiceCalls)({}),
+  Layer.mock(VoiceSessions.VoiceSessions)({}),
   Layer.mock(TraceDiagnostics.TraceDiagnostics)({}),
   Layer.mock(ProjectFaviconResolver.ProjectFaviconResolver)({}),
   Layer.mock(ProjectEnrichment.ProjectEnrichmentService)({}),

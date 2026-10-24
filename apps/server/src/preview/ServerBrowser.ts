@@ -11,6 +11,9 @@ import {
   resolveBrowserProfiles,
   type BrowserProfile,
   type PreviewReportProfilesInput,
+  type PreviewReadPageInput,
+  type PreviewPageContext,
+  PreviewReadPageError,
   PREVIEW_AUTOMATION_SERVER_OPERATIONS,
   PreviewViewportSetting as PreviewViewportSettingSchema,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
@@ -210,6 +213,9 @@ export interface ServerBrowserViewer {
 export class ServerBrowser extends Context.Service<
   ServerBrowser,
   {
+    readonly readPage: (
+      input: PreviewReadPageInput,
+    ) => Effect.Effect<PreviewPageContext, PreviewReadPageError>;
     readonly attachViewer: (input: {
       readonly threadId: string;
       readonly tabId: string;
@@ -2522,7 +2528,24 @@ const make = Effect.gen(function* () {
       catch: (cause) => new PreviewClearProfileError({ profileId, cause }),
     });
 
+  const readPage = Effect.fn("ServerBrowser.readPage")(function* (input: PreviewReadPageInput) {
+    // Reading the caller's visible tab must never reopen a closed one, start a
+    // browser, or borrow a different tab from another device or agent.
+    const tab = tabs.get(tabKey(input.threadId, input.tabId));
+    if (!tab || tab.page.isClosed()) return yield* new PreviewReadPageError({ reason: "not-open" });
+    return yield* Effect.tryPromise({
+      try: () => ServerBrowserPage.readPageContext(tab.page, tab.cdp),
+      catch: (cause) => new PreviewReadPageError({ reason: "unavailable", cause }),
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: "5 seconds",
+        orElse: () => Effect.fail(new PreviewReadPageError({ reason: "unavailable" })),
+      }),
+    );
+  });
+
   return ServerBrowser.of({
+    readPage,
     attachViewer,
     clearProfile,
     reportProfiles,

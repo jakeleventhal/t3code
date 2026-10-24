@@ -7,6 +7,18 @@ import { selectThreadPanelOpen, useRightPanelStore } from "../../rightPanelStore
 import { observeResize } from "../../lib/observeResize";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+/**
+ * The composer plus the Assistant orb or call dock floating just above it. Both sit under the
+ * preview's layer, so a preview kept clear of the composer must clear them too.
+ */
+function measureComposerHeight(overlay: HTMLElement | null): number {
+  if (!overlay) return 0;
+  const bounds = overlay.getBoundingClientRect();
+  const slot = overlay.querySelector<HTMLElement>("[data-assistant-orb-slot]");
+  const top = slot ? Math.min(bounds.top, slot.getBoundingClientRect().top) : bounds.top;
+  return bounds.bottom - top;
+}
+
 export function ChatCanvas({
   store,
   threadRef,
@@ -53,7 +65,7 @@ export function ChatCanvas({
         padding: Number.parseFloat(styles.paddingLeft),
         maxChatWidth: Number.parseFloat(styles.width),
         minChatWidth: Number.parseFloat(styles.minWidth),
-        composerHeight: composerOverlayElement?.getBoundingClientRect().height ?? 0,
+        composerHeight: measureComposerHeight(composerOverlayElement),
         timelineGutter: timelineElement
           ? (timelineElement.offsetWidth - timelineElement.clientWidth) / 2
           : 0,

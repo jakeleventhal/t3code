@@ -3,6 +3,8 @@ import {
   type EventId,
   MAX_SCRIPT_ID_LENGTH,
   type ModelSelection,
+  type ProjectBotRole,
+  type ThreadId,
   type ProjectIconOverride,
   ProjectId,
   type ProjectScript,
@@ -22,6 +24,7 @@ export interface ProjectCreateCommand {
   readonly projectId: ProjectId;
   readonly title: string;
   readonly workspaceRoot: string;
+  readonly botRole?: ProjectBotRole | null;
   readonly scripts?: ReadonlyArray<ProjectScript>;
 }
 
@@ -31,6 +34,8 @@ export interface ProjectMetaUpdateCommand {
   readonly projectId: ProjectId;
   readonly title?: string;
   readonly workspaceRoot?: string;
+  readonly botRole?: ProjectBotRole | null;
+  readonly botMainThreadId?: ThreadId | null;
   readonly defaultModelSelection?: ModelSelection | null;
   readonly defaultThreadEnvMode?: ThreadEnvMode | null;
   readonly autoPull?: boolean;
@@ -157,6 +162,7 @@ export function planProjectCommand(input: {
           projectId: command.projectId,
           title: command.title,
           workspaceRoot: command.workspaceRoot,
+          ...(command.botRole === undefined ? {} : { botRole: command.botRole }),
           defaultModelSelection: null,
           faviconPath: null,
           projectIcon: null,
@@ -198,6 +204,10 @@ export function planProjectCommand(input: {
           projectId: command.projectId,
           ...(command.title === undefined ? {} : { title: command.title }),
           ...(command.workspaceRoot === undefined ? {} : { workspaceRoot: command.workspaceRoot }),
+          ...(command.botRole === undefined ? {} : { botRole: command.botRole }),
+          ...(command.botMainThreadId === undefined
+            ? {}
+            : { botMainThreadId: command.botMainThreadId }),
           ...(command.defaultModelSelection === undefined
             ? {}
             : { defaultModelSelection: command.defaultModelSelection }),

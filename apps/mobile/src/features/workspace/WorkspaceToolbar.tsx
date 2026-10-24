@@ -49,6 +49,8 @@ function ToolbarButton(props: {
 export function WorkspaceToolbar(props: {
   readonly sidebar?: boolean;
   readonly onNewTask: () => void;
+  /** Only the UIKit toolbar has a slot for it; this variant has no split layout. */
+  readonly onOpenAssistant?: () => void;
 }) {
   const workspace = useWorkspaceTabs();
   const input = useRef<TextInputInstance>(null);

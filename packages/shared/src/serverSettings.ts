@@ -384,6 +384,7 @@ export function applyServerSettingsPatch(
     worktreeCleanup: worktreeCleanupPatch,
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
+    voiceConnections: voiceConnectionsPatch,
     sourceControlHosts: sourceControlHostsPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
     usageModelAliases: usageModelAliasesPatch,
@@ -577,6 +578,9 @@ export function applyServerSettingsPatch(
             usageLimitSourcesPatch,
           ),
         }
+      : {}),
+    ...(voiceConnectionsPatch !== undefined
+      ? { voiceConnections: mergeSettingsEntries(current.voiceConnections, voiceConnectionsPatch) }
       : {}),
     ...(usagePriceOverridesPatch !== undefined
       ? {

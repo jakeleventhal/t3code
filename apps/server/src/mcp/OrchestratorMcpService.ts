@@ -950,6 +950,8 @@ function jsonText(value: unknown): string {
 
 function turnItemText(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
+    case "voice_call":
+      return `Voice call with ${item.call.botTitle} (${item.call.callId}); ${item.call.endReason ?? "ongoing"}. Read its transcript with t3_bot_call_read({threadId:${JSON.stringify(item.threadId)},callId:${JSON.stringify(item.call.callId)}}).`;
     case "notification":
       return [item.summary, item.detail].filter((part) => part !== undefined).join("\n");
     case "user_message":
@@ -2684,6 +2686,7 @@ const make = Effect.gen(function* () {
         .listProjectThreads({
           projectId,
           includeSubagents: input.includeSubagents !== false,
+          ...(input.location === undefined ? {} : { location: input.location }),
         })
         .pipe(
           Effect.mapError((error) =>

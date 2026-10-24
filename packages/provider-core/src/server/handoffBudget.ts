@@ -129,6 +129,9 @@ export function historicalMessage(
 ): OrchestrationV2HistoricalMessage | null {
   let text: string;
   switch (item.type) {
+    case "voice_call":
+      text = `Voice conversation with ${item.call.botTitle}, started ${item.call.startedAt}, ${item.call.endReason ?? "ongoing"}. Its text transcript is stored separately. Retrieve it with t3_bot_call_read({threadId:${JSON.stringify(item.threadId)},callId:${JSON.stringify(item.call.callId)}}); continue with afterOrdinal=nextOrdinal until null.`;
+      break;
     case "user_message":
     case "assistant_message":
       text = item.text;

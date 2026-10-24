@@ -7,6 +7,34 @@ import {
 } from "./orchestrationV2.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import {
+  BotOpenInput,
+  BotCreateInput,
+  BotConversationResult,
+  BotOperationError,
+  BotFilesInput,
+  BotFilesPage,
+  BotSetAvatarInput,
+} from "./bots.ts";
+import {
+  VoiceCallContext,
+  VoiceCallContextInput,
+  VoiceCatalog,
+  VoiceCallError,
+  VoiceTranscriptPage,
+  VoiceTranscriptPageInput,
+  VoiceCallBeginInput,
+  VoiceCallAppendInput,
+  VoiceCallEndInput,
+  VoiceCallSummary,
+  VoiceActiveCall,
+  VoiceCallConnectInput,
+  VoiceCallConnectionInfo,
+  VoiceConnectionError,
+  VoiceCallWorkInput,
+  VoiceCallWorkResult,
+  VoiceWorkError,
+} from "./botVoice.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -270,6 +298,9 @@ import {
   PreviewListResult,
   PreviewClearProfileError,
   PreviewClearProfileInput,
+  PreviewReadPageInput,
+  PreviewPageContext,
+  PreviewReadPageError,
   PreviewReportProfilesInput,
   PreviewNavigateInput,
   PreviewOpenInput,
@@ -393,6 +424,20 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
+  botsOpen: "bots.open",
+  botsCreate: "bots.create",
+  botsFiles: "bots.files",
+  botsSetAvatar: "bots.setAvatar",
+  botsVoiceCatalog: "bots.voiceCatalog",
+  botsVoiceTranscript: "bots.voiceTranscript",
+  botsVoiceBegin: "bots.voiceBegin",
+  botsVoiceAppend: "bots.voiceAppend",
+  botsVoiceEnd: "bots.voiceEnd",
+  botsVoiceActive: "bots.voiceActive",
+  botsVoiceObserve: "bots.voiceObserve",
+  botsVoiceContext: "bots.voiceContext",
+  botsVoiceConnect: "bots.voiceConnect",
+  botsVoiceWork: "bots.voiceWork",
   projectsCreateNew: "projects.createNew",
 
   shellOpenInEditor: "shell.openInEditor",
@@ -460,6 +505,7 @@ export const WS_METHODS = {
   previewRefresh: "preview.refresh",
   previewClose: "preview.close",
   previewList: "preview.list",
+  previewReadPage: "preview.readPage",
   previewClearProfile: "preview.clearProfile",
   previewReportProfiles: "preview.reportProfiles",
   previewReportStatus: "preview.reportStatus",
@@ -1268,6 +1314,85 @@ const WsProjectsCreateNewRpc = Rpc.make(WS_METHODS.projectsCreateNew, {
   error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsBotsOpenRpc = Rpc.make(WS_METHODS.botsOpen, {
+  payload: BotOpenInput,
+  success: BotConversationResult,
+  error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsBotsCreateRpc = Rpc.make(WS_METHODS.botsCreate, {
+  payload: BotCreateInput,
+  success: BotConversationResult,
+  error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsBotsFilesRpc = Rpc.make(WS_METHODS.botsFiles, {
+  payload: BotFilesInput,
+  success: BotFilesPage,
+  error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
+});
+const WsBotsSetAvatarRpc = Rpc.make(WS_METHODS.botsSetAvatar, {
+  payload: BotSetAvatarInput,
+  success: Project,
+  error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsBotsVoiceCatalogRpc = Rpc.make(WS_METHODS.botsVoiceCatalog, {
+  payload: Schema.Struct({}),
+  success: VoiceCatalog,
+  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+const WsBotsVoiceTranscriptRpc = Rpc.make(WS_METHODS.botsVoiceTranscript, {
+  payload: VoiceTranscriptPageInput,
+  success: VoiceTranscriptPage,
+  error: Schema.Union([VoiceCallError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceBeginRpc = Rpc.make(WS_METHODS.botsVoiceBegin, {
+  payload: VoiceCallBeginInput,
+  success: VoiceCallSummary,
+  error: Schema.Union([VoiceCallError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceAppendRpc = Rpc.make(WS_METHODS.botsVoiceAppend, {
+  payload: VoiceCallAppendInput,
+  error: Schema.Union([VoiceCallError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceEndRpc = Rpc.make(WS_METHODS.botsVoiceEnd, {
+  payload: VoiceCallEndInput,
+  error: Schema.Union([VoiceCallError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceActiveRpc = Rpc.make(WS_METHODS.botsVoiceActive, {
+  payload: Schema.Struct({}),
+  success: VoiceActiveCall,
+  error: Schema.Union([VoiceCallError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceObserveRpc = Rpc.make(WS_METHODS.botsVoiceObserve, {
+  payload: VoiceCallContextInput,
+  success: Schema.String,
+  error: Schema.Union([VoiceCallError, VoiceConnectionError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsBotsVoiceContextRpc = Rpc.make(WS_METHODS.botsVoiceContext, {
+  payload: VoiceCallContextInput,
+  success: VoiceCallContext,
+  error: Schema.Union([VoiceCallError, VoiceConnectionError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceConnectRpc = Rpc.make(WS_METHODS.botsVoiceConnect, {
+  payload: VoiceCallConnectInput,
+  success: VoiceCallConnectionInfo,
+  error: Schema.Union([VoiceCallError, VoiceConnectionError, EnvironmentAuthorizationError]),
+});
+const WsBotsVoiceWorkRpc = Rpc.make(WS_METHODS.botsVoiceWork, {
+  payload: VoiceCallWorkInput,
+  success: VoiceCallWorkResult,
+  error: Schema.Union([
+    VoiceCallError,
+    VoiceConnectionError,
+    VoiceWorkError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
@@ -1539,6 +1664,12 @@ const WsPreviewListRpc = Rpc.make(WS_METHODS.previewList, {
   payload: PreviewListInput,
   success: PreviewListResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsPreviewReadPageRpc = Rpc.make(WS_METHODS.previewReadPage, {
+  payload: PreviewReadPageInput,
+  success: PreviewPageContext,
+  error: Schema.Union([PreviewReadPageError, EnvironmentAuthorizationError]),
 });
 
 const WsPreviewClearProfileRpc = Rpc.make(WS_METHODS.previewClearProfile, {
@@ -2030,6 +2161,20 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
   WsProjectsCreateNewRpc,
+  WsBotsOpenRpc,
+  WsBotsCreateRpc,
+  WsBotsFilesRpc,
+  WsBotsSetAvatarRpc,
+  WsBotsVoiceCatalogRpc,
+  WsBotsVoiceTranscriptRpc,
+  WsBotsVoiceBeginRpc,
+  WsBotsVoiceAppendRpc,
+  WsBotsVoiceEndRpc,
+  WsBotsVoiceActiveRpc,
+  WsBotsVoiceObserveRpc,
+  WsBotsVoiceContextRpc,
+  WsBotsVoiceConnectRpc,
+  WsBotsVoiceWorkRpc,
   WsProjectsWriteFileRpc,
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
@@ -2079,6 +2224,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewRefreshRpc,
   WsPreviewCloseRpc,
   WsPreviewListRpc,
+  WsPreviewReadPageRpc,
   WsPreviewClearProfileRpc,
   WsPreviewReportProfilesRpc,
   WsPreviewReportStatusRpc,

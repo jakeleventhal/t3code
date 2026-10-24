@@ -30,6 +30,7 @@ import {
   recordHomeTransitionStart,
 } from "./features/home/home-route-visibility";
 import { AndroidWorkspaceTabsProvider } from "./features/workspace/AndroidWorkspaceTabsProvider";
+import { WORKSPACE_OVERLAY_ROUTES } from "./features/workspace/workspace-rooms";
 import {
   PullRequestRouteScreen,
   PullRequestFileRouteScreen,
@@ -72,6 +73,10 @@ import {
   FullscreenThreadRouteScreen,
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
+import { ActiveCallScreenSlot } from "./features/bots/ActiveBotCall";
+import { AssistantQuickSheet } from "./features/bots/AssistantQuickSheet";
+import { NewBotSheet } from "./features/bots/NewBotSheet";
+import { BotProfileSheet } from "./features/bots/BotProfileSheet";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -130,6 +135,12 @@ import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRoute
 import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsLabsRouteScreen } from "./features/settings/ThreadSettingsSections";
+import {
+  SettingsVoiceBotRouteScreen,
+  SettingsVoiceConnectionRouteScreen,
+  SettingsVoiceDefaultRouteScreen,
+  SettingsVoiceRouteScreen,
+} from "./features/settings/SettingsVoiceRouteScreen";
 import { SettingsEnvironmentFilterProvider } from "./features/settings/settings-environment-filter";
 import { openSettings, settingsOpenIn } from "./features/settings/settings-navigation";
 import { DEFAULT_SETTINGS_PAGE } from "./features/workspace/workspace-tab-navigation";
@@ -216,6 +227,26 @@ const LEGAL_DOCUMENT_HEADER_OPTIONS: AppScreenOptions = {
   presentation: "fullScreenModal",
 };
 
+// Android cannot host a keyboard-driven input inside a formSheet; it gets a full-screen modal.
+const KEYBOARD_SHEET_OPTIONS: AppScreenOptions =
+  Platform.OS === "android"
+    ? { presentation: "fullScreenModal", headerShown: false }
+    : {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        headerShown: false,
+        sheetAllowedDetents: [0.5, 0.92],
+        sheetGrabberVisible: true,
+      };
+
+// The quick Assistant stays a compact card over Code. Android draws it over a transparent modal
+// instead, since its formSheet cannot follow the keyboard.
+const ASSISTANT_QUICK_OPTIONS: AppScreenOptions =
+  Platform.OS === "android"
+    ? { presentation: "transparentModal", animation: "slide_from_bottom", headerShown: false }
+    : KEYBOARD_SHEET_OPTIONS;
+
+const NESTED_NAVIGATOR_OPTIONS = { nativeContentInsetHorizontally: false, headerShown: false };
+
 // Thread settings keep the Duo's vertical bar so cancel, search, filter and confirm sit in the
 // rail. The picker stack spans the sheet so its header reaches the rail, and insets its content.
 const THREAD_SETTINGS_SHEET_OPTIONS = {
@@ -230,6 +261,27 @@ const THREAD_SETTINGS_SHEET_OPTIONS = {
 const SETTINGS_PAGE_OPTIONS = SHEET_GLASS_HEADER_OPTIONS;
 
 const SETTINGS_SCREENS = {
+  SettingsVoice: createNativeStackScreen({
+    screen: SettingsVoiceRouteScreen,
+    linking: "voice",
+    options: { title: "Voice" },
+  }),
+  SettingsVoiceDefault: createNativeStackScreen({
+    screen: SettingsVoiceDefaultRouteScreen,
+    linking: "voice/:environmentId/default",
+    options: { title: "Default voice" },
+  }),
+  SettingsVoiceBot: createNativeStackScreen({
+    screen: SettingsVoiceBotRouteScreen,
+    linking: "voice/:environmentId/bots/:projectId",
+    options: { title: "Voice" },
+  }),
+  // Holds a secret draft, so it has no URL to restore into.
+  SettingsVoiceConnection: createNativeStackScreen({
+    screen: SettingsVoiceConnectionRouteScreen,
+    options: { title: "Connection" },
+  }),
+
   Settings: createNativeStackScreen({
     screen: SettingsRouteScreen,
     linking: "settings",
@@ -872,6 +924,28 @@ const RootStackConfig = createWorkspaceStackNavigator({
       linking: `${THREAD_LINKING_PREFIX}/attachments/:attachmentId`,
       options: SOLID_HEADER_OPTIONS,
     }),
+    AssistantQuick: createNativeStackScreen({
+      screen: AssistantQuickSheet,
+      options: ASSISTANT_QUICK_OPTIONS,
+    }),
+    NewBot: createNativeStackScreen({
+      screen: NewBotSheet,
+      options: KEYBOARD_SHEET_OPTIONS,
+    }),
+    BotProfile: createNativeStackScreen({
+      screen: BotProfileSheet,
+      options: {
+        gestureEnabled: true,
+        headerShown: false,
+        ...(Platform.OS === "android"
+          ? { presentation: "card" as const }
+          : {
+              ...HORIZONTAL_FORM_SHEET_OPTIONS,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+            }),
+      },
+    }),
     ThreadSettingsSheet: createNativeStackScreen({
       screen: ExistingThreadSettingsRouteScreen,
       options: {
@@ -1065,7 +1139,11 @@ export const RootStack = RootStackConfig.with(function AdaptiveRootStack({ Navig
   /* oxlint-disable react/no-unstable-nested-components -- React Navigation invokes screenLayout as a render callback. */
   return (
     <Navigator
-      screenLayout={(props) => <GuardedScreenLayout {...props} />}
+      screenLayout={(props) => (
+        <GuardedScreenLayout route={props.route}>
+          <ActiveCallScreenSlot routeName={props.route.name}>{props.children}</ActiveCallScreenSlot>
+        </GuardedScreenLayout>
+      )}
       screenOptions={({ route }) =>
         Platform.OS === "android"
           ? { animation: androidWorkspaceDestinationAnimation(route.name, usesSplitView) }

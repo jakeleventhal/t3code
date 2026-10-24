@@ -60,6 +60,8 @@ import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection
 import { type AssistantCitationRequest } from "./AssistantCitationSource";
 import { useAssistantCitationTarget } from "./useAssistantCitationTarget";
 import { resolveCitationPhase, type CitedHistory } from "./citationProcedure";
+import type { TimelineSourceRequest } from "~/lib/timelineSourceNavigation";
+import { useTimelineSourceTarget } from "./useTimelineSourceTarget";
 import {
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
@@ -199,6 +201,10 @@ export interface MessagesTimelineHistoryControls {
 interface MessagesTimelineProps {
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
+  timelineSource?: TimelineSourceRequest | null;
+  /** The thread is catching up with its server; an entry not loaded yet may still arrive. */
+  historySyncing?: boolean;
+  citationHistoryLoading?: boolean;
   onCiteAssistantText?: (
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
@@ -308,6 +314,9 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
+  timelineSource = null,
+  historySyncing = false,
+  citationHistoryLoading = false,
   onCiteAssistantText,
   isWorking,
   runlessWorkActive = false,
@@ -391,6 +400,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<RunId>>(
     () => listState.rememberedPosition?.disclosures?.runs ?? new Set(),
   );
+  const expandCitedRun = useStableCallback((runId: RunId) => {
+    setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
+  });
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
     () => listState.rememberedPosition?.disclosures?.workGroups ?? new Set(),
   );
@@ -711,12 +723,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
       listIdentityKey,
       listOpenedOn,
       rememberedPosition,
-      citationPending: citationRequest !== null,
+      citationPending: citationRequest !== null || timelineSource !== null,
       releaseForFind: findOpenAtOpening,
       onPositioned: setPositionedThreadKey,
     });
   }, [
     citationRequest,
+    timelineSource,
     findOpenAtOpening,
     listIdentityKey,
     listOpenedOn,
@@ -728,6 +741,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const getTurnFoldRunId = (entryId: string) =>
+    (
+      findFoldRunIds ??
+      timelineTurnFoldRunIdsByEntryId({
+        timelineEntries,
+        latestRun,
+        runningRunId,
+        isWorking,
+        runlessWorkActive,
+      })
+    ).get(entryId);
   const {
     target: readyCitationRequest,
     positioning: citationPositioning,
@@ -751,6 +775,22 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onCitationListLoad();
     setFindListReady(true);
   };
+  const { positioning: sourcePositioning, alwaysRenderKey: sourceAlwaysRenderKey } =
+    useTimelineSourceTarget({
+      request: timelineSource,
+      entries: timelineEntries,
+      rows,
+      listRef,
+      listReady: findListReady,
+      viewport: timelineViewportElement,
+      historyLoading: citationHistoryLoading,
+      historySyncing,
+      history: historyControls,
+      getTurnFoldRunId,
+      onExpandTurn: expandCitedRun,
+      onManualNavigation: navigateTimeline,
+    });
+  const targetPositioning = citationPositioning || sourcePositioning;
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   // Every full-screen viewer reports false when it unmounts, so a row that leaves the list
   // while full screen releases its pin too.
@@ -766,6 +806,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     ...(firstMessageRow ? [firstMessageRow.id] : []),
     ...(lastMessageRow && lastMessageRow !== firstMessageRow ? [lastMessageRow.id] : []),
     ...(citationAlwaysRender?.keys ?? []),
+    ...(sourceAlwaysRenderKey === null ? [] : [sourceAlwaysRenderKey]),
     ...(fullscreenAppRowId === null ? [] : [fullscreenAppRowId]),
     ...new Set(
       [...playingAudioRows].filter(([audio]) => audio.isConnected).map(([, rowId]) => rowId),
@@ -939,7 +980,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const handleScroll = () => {
     if (restoringThreadPosition || listRef.current?.getState?.().data !== rows) return;
     const isAtEnd = rememberPosition(liveFollowEnabled && !anchoredEndSpace);
-    if (isAtEnd !== undefined && !citationPositioning) {
+    if (isAtEnd !== undefined && !targetPositioning) {
       onIsAtEndChange(isAtEnd);
     }
     reportContentOverflow();
@@ -1284,7 +1325,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
               renderItem={renderItem}
               estimatedItemSize={90}
               initialScrollAtEnd={
-                !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
+                !findActive &&
+                citationRequest === null &&
+                timelineSource === null &&
+                rememberedPosition?.atEnd !== false
               }
               // Legend needs a data refresh to mount new pins without a scroll event.
               dataVersion={`${readyCitationRequest?.key ?? listIdentityKey}:${alwaysRenderKeys.join(",")}`}
@@ -1293,7 +1337,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
               contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
               maintainScrollAtEnd={
-                citationPositioning ||
+                targetPositioning ||
                 (restoringThreadPosition && rememberedPosition?.atEnd === false) ||
                 anchoredEndSpace ||
                 !liveFollowEnabled ||
@@ -1306,7 +1350,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               }
               maintainVisibleContentPosition={
                 findActive ||
-                citationPositioning ||
+                targetPositioning ||
                 (restoringThreadPosition && rememberedPosition?.atEnd === false)
                   ? false
                   : maintainVisibleContentPosition

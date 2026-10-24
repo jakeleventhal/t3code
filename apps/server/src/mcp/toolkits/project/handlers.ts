@@ -7,6 +7,8 @@ import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageInt
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotService from "../../../bots/BotService.ts";
+import * as VoiceCalls from "../../../bots/VoiceCalls.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
@@ -53,6 +55,44 @@ const access = Effect.gen(function* () {
   return yield* Project.ProjectService;
 });
 export const layer = McpToolAccess.toLayer(ProjectToolkit, {
+  t3_bot_files: McpToolAccess.reads((input) =>
+    BotService.BotService.pipe(
+      Effect.flatMap((bots) => bots.files(input)),
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+      ),
+    ),
+  ),
+  t3_bot_call_read: McpToolAccess.reads((input) =>
+    VoiceCalls.VoiceCalls.pipe(
+      Effect.flatMap((calls) => calls.transcript(input)),
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+      ),
+    ),
+  ),
+  t3_bot_open: McpToolAccess.startsThreads(
+    (input) => input,
+    (input, modes) =>
+      BotService.BotService.pipe(
+        Effect.flatMap((bots) =>
+          bots.open({ ...input, ...modes }, { createdBy: "agent", creationSource: "mcp" }),
+        ),
+        Effect.mapError(unavailable),
+      ),
+  ),
+  t3_bot_create: McpToolAccess.startsThreads(
+    (input) => input,
+    (input, modes) =>
+      BotService.BotService.pipe(
+        Effect.flatMap((bots) =>
+          bots.create({ ...input, ...modes }, { createdBy: "agent", creationSource: "mcp" }),
+        ),
+        Effect.mapError(unavailable),
+      ),
+  ),
   t3_thread_launch: McpToolAccess.startsThreads(
     (input) => input,
     (input, { runtimeMode, interactionMode }) =>
@@ -245,7 +285,10 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           });
         const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
         const created = yield* folders
-          .createNamedProject({ name: input.title })
+          .createNamedProject({
+            name: input.title,
+            ...(input.botRole === undefined ? {} : { botRole: input.botRole }),
+          })
           .pipe(
             Effect.mapError(
               (error) =>

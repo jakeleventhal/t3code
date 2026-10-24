@@ -14,7 +14,17 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsSetAvatar]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceBegin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceContext]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceConnect]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceWork]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceAppend]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoiceEnd]: AuthOrchestrationOperateScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
+  [WS_METHODS.previewReadPage]: AuthPreviewOperateScope,
   [WS_METHODS.serverRunStorageCleanup]: AuthSettingsWriteScope,
   [WS_METHODS.serverCheckOtlpEndpoint]: AuthSettingsWriteScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,

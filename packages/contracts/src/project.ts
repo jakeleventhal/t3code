@@ -10,6 +10,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   ProjectId,
+  ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
   type UnknownUnionMember,
@@ -19,6 +20,9 @@ const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_READ_FILE_PATH_MAX_LENGTH = 512;
+
+export const ProjectBotRole = Schema.Literals(["assistant", "specialist"]);
+export type ProjectBotRole = typeof ProjectBotRole.Type;
 
 export const ProjectScriptIcon = Schema.Literals([
   "play",
@@ -152,6 +156,8 @@ export const Project = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  botRole: Schema.optional(Schema.NullOr(ProjectBotRole)),
+  botMainThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   faviconPath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   projectIcon: Schema.optional(Schema.NullOr(ReceivedProjectIcon)),
@@ -185,6 +191,7 @@ export type ProjectChange = typeof ProjectChange.Type;
 export const ProjectCreatePayload = Schema.Struct({
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  botRole: Schema.optional(Schema.NullOr(ProjectBotRole)),
   createWorkspaceRootIfMissing: Schema.optional(Schema.Boolean),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
@@ -194,6 +201,7 @@ export type ProjectCreatePayload = typeof ProjectCreatePayload.Type;
 export const ProjectUpdatePayload = Schema.Struct({
   title: Schema.optional(TrimmedNonEmptyString),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  botRole: Schema.optional(Schema.NullOr(ProjectBotRole)),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   autoPull: Schema.optional(Schema.Boolean),
   projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
@@ -526,6 +534,7 @@ export type ProjectEnsureScratchResult = typeof ProjectEnsureScratchResult.Type;
 
 export const ProjectCreateNewInput = Schema.Struct({
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+  botRole: Schema.optional(Schema.NullOr(ProjectBotRole)),
 });
 export type ProjectCreateNewInput = typeof ProjectCreateNewInput.Type;
 

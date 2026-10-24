@@ -28,6 +28,7 @@ export type SettingsPath =
   | "/settings/threads"
   | "/settings/browser"
   | "/settings/devices"
+  | "/settings/voice"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
   | "/settings/worktrees"
@@ -94,6 +95,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/threads": "Threads",
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",
+  "/settings/voice": "Voice",
   "/settings/scheduled-tasks": "Scheduled tasks",
   "/settings/source-control": "Source control",
   "/settings/worktrees": "Worktrees",
@@ -1095,6 +1097,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "voice-accounts",
+    title: "Voice accounts",
+    to: "/settings/voice",
+    searchTerms: ["bots calls openai xai grok chatgpt subscription codex api key speech"],
+    environmentOnly: true,
+  },
+  {
+    id: "voice-default",
+    title: "Default bot voice",
+    to: "/settings/voice",
+    searchTerms: ["bots calls speech assistant"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1119,6 +1136,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/threads": null,
   "/settings/browser": null,
   "/settings/devices": null,
+  "/settings/voice": "project-defaults",
   "/settings/source-control": "environment-defaults",
   "/settings/worktrees": "project-defaults",
   "/settings/connections": "connections",

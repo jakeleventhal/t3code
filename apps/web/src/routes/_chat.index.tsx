@@ -4,6 +4,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { isElectron } from "../env";
+import { withoutBotProjects } from "../components/bots/botRoom.logic";
 import { NoProjectsHero } from "../components/NoProjectsHero";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
@@ -44,7 +45,7 @@ function IndexDraftLanding() {
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
 
   const mostRecentProject =
-    sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ?? null;
+    sortScopedProjectsForSidebar(withoutBotProjects(projects), threads, "updated_at")[0] ?? null;
   const attempt = startState.retryRequest;
 
   useEffect(() => {

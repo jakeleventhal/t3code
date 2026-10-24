@@ -242,6 +242,34 @@ export const PreviewClearProfileInput = Schema.Struct({
 });
 export type PreviewClearProfileInput = typeof PreviewClearProfileInput.Type;
 
+export const PreviewReadPageInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+});
+export type PreviewReadPageInput = typeof PreviewReadPageInput.Type;
+
+export const PreviewPageContext = Schema.Struct({
+  url: Schema.String.check(Schema.isMaxLength(2048)),
+  title: Schema.String.check(Schema.isMaxLength(512)),
+  content: Schema.String.check(Schema.isMaxLength(6000)),
+  truncated: Schema.Boolean,
+});
+export type PreviewPageContext = typeof PreviewPageContext.Type;
+
+export class PreviewReadPageError extends Schema.TaggedError<PreviewReadPageError>()(
+  "PreviewReadPageError",
+  {
+    reason: Schema.Literals(["not-open", "unavailable"]),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message() {
+    return this.reason === "not-open"
+      ? "The browser tab is no longer open on this environment."
+      : "The browser page could not be read. It may still be loading or changing.";
+  }
+}
+
 export const PreviewListInput = Schema.Struct({
   threadId: ThreadId,
 });

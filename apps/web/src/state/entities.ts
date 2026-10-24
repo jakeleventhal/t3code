@@ -319,6 +319,33 @@ export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): bo
   );
 }
 
+/** Older servers can't create Assistant or bots; reading ones already loaded still works. */
+export function useEnvironmentSupportsBotConversations(
+  environmentId: EnvironmentId | null,
+): boolean {
+  const configs = useServerConfigs();
+  return (
+    environmentId !== null &&
+    configs.get(environmentId)?.environment.capabilities.botConversations === true
+  );
+}
+
+/** Bot profile files and photos need a newer server; names, emoji and routines don't. */
+export function useEnvironmentSupportsBotProfiles(environmentId: EnvironmentId | null): boolean {
+  const configs = useServerConfigs();
+  return (
+    environmentId !== null &&
+    configs.get(environmentId)?.environment.capabilities.botProfiles === true
+  );
+}
+
+export function readEnvironmentSupportsBotConversations(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .botConversations === true
+  );
+}
+
 export function readEnvironmentSupportsPinReorder(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities

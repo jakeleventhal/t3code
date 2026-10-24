@@ -35,12 +35,23 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { WorkspaceTabsProvider, useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import {
+  WorkspaceRoomContext,
+  WorkspaceTabsProvider,
+  useWorkspaceTabs,
+} from "../workspace/WorkspaceTabsContext";
 import { WorkspaceNativeTabs } from "../workspace/WorkspaceNativeTabs.ios";
-import { workspaceUsesColumns } from "../workspace/workspace-tabs-state";
 import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
 import { setNativelyPoppingWorkspaceRoute } from "../workspace/workspace-detail-selection";
+import {
+  workspaceRoomTab,
+  workspaceTabRoom,
+  workspaceUsesColumns,
+  type WorkspaceRoom,
+  type WorkspaceTab,
+} from "../workspace/workspace-tabs-state";
+import { useRoomAlignment } from "../bots/use-room-alignment";
 import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 
 import { useAdaptiveWorkspaceLayout } from "./AdaptiveWorkspaceLayout";
@@ -175,7 +186,7 @@ function ColumnScreen(props: {
 }
 
 function WorkspaceColumns(
-  props: ViewProps & { readonly primary: Route; readonly detail: Route[] },
+  props: ViewProps & { readonly primary: Route; readonly detail: readonly Route[] },
 ) {
   const {
     layout,
@@ -231,20 +242,30 @@ function WorkspaceColumns(
     });
   }
 
-  const workspaceTabs = useWorkspaceTabs();
-  const selectedTab = workspaceTabs?.state.selectedTab;
-  const settingsOpen = workspaceTabs?.settingsOpen ?? false;
+  const workspace = useWorkspaceTabs()!;
+  const room = use(WorkspaceRoomContext) ?? workspace.state.room;
+  const selectedTab = workspaceRoomTab(workspace.state, room);
+  const workspaceTabs = workspace;
+  const settingsOpen = workspace.settingsOpen;
   const openNewTask = startNewTask;
   // The cover detail rail needs room for thread tools above the fixed tabs.
-  // The unfolded Duo keeps compose in its detail bar.
+  // The unfolded Duo keeps compose in its detail bar; new chats start Code work, not bot chats.
   const detailCompose =
-    deviceType === "duo-unfolded" && selectedTab !== "pullRequests" && !settingsOpen
+    deviceType === "duo-unfolded" &&
+    selectedTab !== "pullRequests" &&
+    selectedTab !== "bots" &&
+    !settingsOpen
       ? openNewTask
       : undefined;
   const inspector = use(NativeWorkspaceInspectorContext);
   const hostRef = useRef<SplitHostCommands>(null);
   const activeDetailKey = props.detail.at(-1)?.key;
-  const compactColumn = activeDetailKey ? "secondary" : "primary";
+  // A tab's host is created when it is first selected, possibly already holding a page. RNS fills
+  // the columns on a later mount transaction than the one UIKit can collapse in, and collapsing
+  // onto the not-yet-filled page strands it under the list. Collapse onto the list until one of
+  // this host's screens has appeared, then show the page as opening a row does.
+  const [columnsAppeared, setColumnsAppeared] = useState(false);
+  const compactColumn = activeDetailKey && columnsAppeared ? "secondary" : "primary";
   const collapsed = useRef(!layout.usesSplitView);
   const collapsedColumn = useRef<CollapsedSplitColumn>({ visible: compactColumn, leaving: null });
   const threadParams = props.detail.findLast((route) => route.name === "Thread")?.params;
@@ -291,6 +312,7 @@ function WorkspaceColumns(
     type: "willAppear" | "didAppear" | "willDisappear",
     key: string,
   ) => {
+    if (type === "didAppear") setColumnsAppeared(true);
     if (!collapsed.current || layout.usesSplitView) return;
     const transition = collapsedSplitTransition(
       collapsedColumn.current,
@@ -499,20 +521,78 @@ function WorkspaceStackView(props: ViewProps & { readonly nativeColumns: boolean
   const workspace = useWorkspaceTabs()!;
   // Native dismiss commits the route pop after the transition. Restore the dock
   // when the primary screen starts appearing, including interactive back gestures.
-  const [primaryVisible, setPrimaryVisible] = useState(false);
+  // Only the selected room's tab reports, and a room switch starts out unknown.
+  const [primaryVisible, setPrimaryVisible] = useState<{
+    readonly room: WorkspaceRoom;
+    readonly visible: boolean;
+  }>({ room: "code", visible: false });
   const metrics = useNativeLayoutMetrics();
   const projection = projectWorkspaceStack(props.state, (route) => {
     const presentation = props.descriptors[route.key]?.options.presentation;
     return presentation !== undefined && presentation !== "card";
   });
-  // Detail-only histories must stay single-stack: placeholder descriptors cannot own sidebar actions or setOptions.
+  // A page opened in the other room's stack renders in its own room from the first frame.
+  const alignment = useRoomAlignment(projection.detail);
+  const room = alignment?.room ?? workspace.state.room;
+  const detail = alignment?.detail ?? projection.detail;
+  // A tab left for the other room still holds a native stack; it must not drive navigation.
+  const inertNavigation = useMemo(
+    () => ({
+      ...props.navigation,
+      dispatch: () => {},
+      emit: (() => ({
+        defaultPrevented: false,
+        preventDefault: () => {},
+      })) as unknown as typeof props.navigation.emit,
+    }),
+    [props.navigation],
+  );
+  // Linking normally restores Home via initialRouteName. A detail-only history
+  // must stay a single stack: placeholder descriptors cannot own an interactive
+  // sidebar because React Navigation rejects their actions and setOptions.
   const primaryRoute = projection.primary;
   if (!primaryRoute) return <V5StackView {...props} />;
   const primaryDescriptor = props.descriptors[primaryRoute.key]!;
   const descriptors = props.descriptors;
   const baseRoute = { key: `${props.state.key}:workspace`, name: "Workspace" };
-  const visibleRoute = projection.detail.at(-1) ?? primaryRoute;
-  const workspacePage = !workspaceUsesColumns(workspace.state.selectedTab, workspace.settingsOpen);
+  const visibleRoute = detail.at(-1) ?? primaryRoute;
+  const workspacePage = !workspaceUsesColumns(
+    workspaceRoomTab(workspace.state, room),
+    workspace.settingsOpen,
+  );
+  const renderTab = (tab: WorkspaceTab, active: boolean) => {
+    const roomDetail = active ? detail : [];
+    const navigation = active ? props.navigation : inertNavigation;
+    const columns =
+      props.nativeColumns && workspaceUsesColumns(tab, active && workspace.settingsOpen);
+    return columns ? (
+      <WorkspaceColumns
+        {...props}
+        navigation={navigation}
+        descriptors={descriptors}
+        primary={primaryRoute}
+        detail={roomDetail}
+      />
+    ) : (
+      <V5CardStackView
+        {...props}
+        navigation={navigation}
+        onNativePopChange={active ? setNativelyPoppingWorkspaceRoute : undefined}
+        onRootVisibilityChange={
+          active
+            ? (visible) => setPrimaryVisible({ room: workspaceTabRoom(tab), visible })
+            : undefined
+        }
+        descriptors={descriptors}
+        state={{
+          ...props.state,
+          routes: [primaryRoute, ...roomDetail],
+          index: roomDetail.length,
+          preloadedRoutes: [],
+        }}
+      />
+    );
+  };
   const baseDescriptor: Descriptor = {
     ...primaryDescriptor,
     navigation: props.descriptors[visibleRoute.key]!.navigation,
@@ -521,36 +601,16 @@ function WorkspaceStackView(props: ViewProps & { readonly nativeColumns: boolean
     options: { headerShown: false },
     render: () => (
       <WorkspaceNativeTabs
+        room={room}
+        renderTab={renderTab}
         hidden={
           !workspacePage &&
-          projection.detail.length > 0 &&
-          !primaryVisible &&
+          detail.length > 0 &&
+          !(primaryVisible.room === room && primaryVisible.visible) &&
           !layout.usesSplitView &&
           (metrics?.verticalBarEdge ?? "none") === "none"
         }
-      >
-        {props.nativeColumns && !workspacePage ? (
-          <WorkspaceColumns
-            {...props}
-            descriptors={descriptors}
-            primary={primaryRoute}
-            detail={projection.detail}
-          />
-        ) : (
-          <V5CardStackView
-            {...props}
-            onRootVisibilityChange={setPrimaryVisible}
-            onNativePopChange={setNativelyPoppingWorkspaceRoute}
-            descriptors={descriptors}
-            state={{
-              ...props.state,
-              routes: [primaryRoute, ...projection.detail],
-              index: projection.detail.length,
-              preloadedRoutes: [],
-            }}
-          />
-        )}
-      </WorkspaceNativeTabs>
+      />
     ),
   };
   const overlays = partitionStackPresentations(projection.overlays, (route) => {
@@ -638,7 +698,7 @@ function WorkspaceStackNavigator({
   return (
     <NativeWorkspaceModeContext value={usesNativeWorkspaceColumns}>
       <NavigationContent>
-        <WorkspaceTabsProvider settingsOpen={settingsOpen}>
+        <WorkspaceTabsProvider stack={navigation} settingsOpen={settingsOpen}>
           <WorkspaceStackView
             nativeColumns={usesNativeWorkspaceColumns}
             {...rest}

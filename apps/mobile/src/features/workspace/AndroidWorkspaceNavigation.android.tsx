@@ -26,6 +26,7 @@ import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
 import { useNavigationTabOrder, useHiddenNavigationTabs } from "./navigation-tabs";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
+import { workspaceTabRoom } from "./workspace-tabs-state";
 
 // Matches RAIL_WIDTH in the native rail.
 export const ANDROID_WORKSPACE_RAIL_WIDTH = 72;
@@ -136,6 +137,9 @@ export function AndroidWorkspaceNavigation(props: {
         onTabSelected={(event) => {
           Keyboard.dismiss();
           const tab = event.nativeEvent.tab;
+          if (tab !== "settings" && workspaceTabRoom(tab) !== workspace.state.room) {
+            workspace.selectTab(tab);
+          } else {
           if (tab !== "settings") workspace.dispatch({ type: "select", tab });
           // Reset the root stack even when a nested settings navigator has focus.
           // The provider renders inside the root stack's layout, so the container's root state is
@@ -146,6 +150,7 @@ export function AndroidWorkspaceNavigation(props: {
               ...CommonActions.reset(androidWorkspaceTabNavigationState(rootState, tab, rail)),
               target: root.key,
             });
+            }
           }
           props.onSelect?.();
         }}

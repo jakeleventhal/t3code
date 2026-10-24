@@ -43,6 +43,7 @@ export interface ProjectCreateInput extends ProjectCreatePayload {
 export interface ProjectUpdateInput extends ProjectUpdatePayload {
   readonly commandId: CommandId;
   readonly projectId: ProjectId;
+  readonly botMainThreadId?: ThreadId | null;
 }
 
 export interface ProjectBootstrapInput extends ProjectCreateInput {}
@@ -161,6 +162,8 @@ export const make = Effect.gen(function* () {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    botRole: row.botRole ?? null,
+    botMainThreadId: row.botMainThreadId ?? null,
     repositoryIdentity: enrichment?.repositoryIdentity ?? null,
     faviconPath: row.faviconPath ?? enrichment?.faviconPath ?? null,
     defaultModelSelection: row.defaultModelSelection,
@@ -338,6 +341,7 @@ export const make = Effect.gen(function* () {
         projectId: input.projectId,
         title: input.title,
         workspaceRoot,
+        ...(input.botRole === undefined ? {} : { botRole: input.botRole }),
         ...(input.scripts === undefined ? {} : { scripts: input.scripts }),
       });
       yield* projectEnrichment.invalidate([workspaceRoot]);
@@ -365,6 +369,8 @@ export const make = Effect.gen(function* () {
         projectId: input.projectId,
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(workspaceRoot === previousRoot ? {} : { workspaceRoot }),
+        ...(input.botRole === undefined ? {} : { botRole: input.botRole }),
+        ...(input.botMainThreadId === undefined ? {} : { botMainThreadId: input.botMainThreadId }),
         ...(input.defaultModelSelection === undefined
           ? {}
           : { defaultModelSelection: input.defaultModelSelection }),

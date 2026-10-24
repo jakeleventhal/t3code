@@ -110,6 +110,8 @@ import {
 import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
+import { botProjectKeys, isBotProject, withoutBotProjects } from "./bots/botRoom.logic";
+import { SidebarRoomSwitch } from "./bots/SidebarRoomSwitch";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
@@ -310,6 +312,7 @@ type SidebarOptimisticDrop = {
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  readonly botProjectKeys: ReadonlySet<string> | null;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
@@ -381,6 +384,7 @@ function useSidebarThreads(input: {
     threads,
     routeRowThreadKey,
   } = input;
+  const excludedProjectKeys = botProjectKeys(useProjects());
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const inboxReturnsVersion = useSyncExternalStore(
     inboxReturns.subscribe,
@@ -417,6 +421,7 @@ function useSidebarThreads(input: {
   const partition = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
+    botProjectKeys: excludedProjectKeys,
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
@@ -522,7 +527,9 @@ function useSidebarThreads(input: {
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
   const preciseNow = new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
+  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter(
+    (thread) => !input.botProjectKeys?.has(`${thread.environmentId}:${thread.projectId}`),
+  );
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -704,7 +711,8 @@ function isOptimisticDropReleased(input: {
 
 // Build maps in a hook so the compiler can prove they are frozen and cache them.
 function useSidebarLookups() {
-  const projects = useProjects();
+  const allProjects = useProjects();
+  const projects = withoutBotProjects(allProjects);
   const environments = useEnvironmentIdentities();
   const serverConfigs = useServerConfigs();
   const providerEntriesByEnvironment = useAtomValue(sidebarProviderEntriesAtom);
@@ -712,8 +720,9 @@ function useSidebarLookups() {
   const environmentLabelById = new Map(
     environments.map((environment) => [environment.environmentId, environment.label] as const),
   );
+  // Search results still reach bot threads, so lookups cover every project.
   const projectByKey = new Map(
-    projects.map((project) => [`${project.environmentId}:${project.id}`, project] as const),
+    allProjects.map((project) => [`${project.environmentId}:${project.id}`, project] as const),
   );
   const projectDisplayNameByKey = new Map(
     projectGroups.flatMap((group) =>
@@ -1059,6 +1068,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         scopedProjectKeys !== null &&
         !scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
       ) {
+        continue;
+      }
+      if (isBotProject(projectByKey.get(`${session.environmentId}:${session.projectId}`))) {
         continue;
       }
       count += 1;
@@ -2699,6 +2711,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         className="min-h-full"
         fixedHeader={
           <SidebarGroup className="z-[1]">
+            <SidebarRoomSwitch room="code" />
+            <div className="h-2" aria-hidden />
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}

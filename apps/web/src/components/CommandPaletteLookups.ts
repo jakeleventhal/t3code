@@ -12,6 +12,7 @@ import { useProjects, useThreadShells } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
+import { withoutBotProjects } from "./bots/botRoom.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 
 // Each helper reads its own source hook so the compiler caches the derived value on that
@@ -61,7 +62,7 @@ export const selectCommandPaletteClientSettings = (settings: ClientSettings) => 
 });
 
 export function useSortedProjectGroups(environmentLabelById: ReadonlyMap<EnvironmentId, string>) {
-  const projects = useProjects();
+  const projects = withoutBotProjects(useProjects());
   const threads = useThreadShells();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);

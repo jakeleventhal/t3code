@@ -50,6 +50,7 @@ describe("Duo list clearance", () => {
 
 describe("workspace root navigation", () => {
   it("pairs Settings, chats and pull requests with a detail column, and keeps Usage one page", () => {
+    expect(workspaceUsesColumns("bots")).toBe(true);
     expect(workspaceUsesColumns("usage")).toBe(false);
     expect(workspaceUsesColumns("usage", true)).toBe(true);
     expect(workspaceUsesColumns("threads")).toBe(true);
@@ -57,7 +58,12 @@ describe("workspace root navigation", () => {
   });
 
   it("keeps the registered defaults while customization is unavailable", () => {
-    expect(resolveWorkspaceTabOrder(undefined)).toEqual(["threads", "pullRequests", "usage"]);
+    expect(resolveWorkspaceTabOrder(undefined)).toEqual([
+      "threads",
+      "pullRequests",
+      "usage",
+      "bots",
+    ]);
     expect(resolveWorkspaceTabOrder(["home", "usage", "issues", "threads"])).toEqual(
       resolveWorkspaceTabOrder(undefined),
     );
@@ -159,5 +165,28 @@ describe("workspace root navigation", () => {
     expect(workspaceTabForNativeSlot(order, "first")).toBe("threads");
     expect(workspaceTabForNativeSlot(order, "third")).toBe("usage");
     expect(workspaceTabForNativeSlot(order, "removed")).toBeNull();
+  });
+
+  it("visiting Bots leaves the Code section, search, and position where they were", () => {
+    let state = workspaceTabsReducer(initialWorkspaceTabsState(), {
+      type: "select",
+      tab: "pullRequests",
+    });
+    state = workspaceTabsReducer(state, { type: "search" });
+    state = workspaceTabsReducer(state, { type: "query", query: "flaky" });
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "pullRequests", offset: 320 });
+    const code = state;
+    state = workspaceTabsReducer(state, { type: "room", room: "bots" });
+    expect(state).toMatchObject({ room: "bots", selectedTab: "bots", codeTab: "pullRequests" });
+    state = workspaceTabsReducer(state, { type: "room", room: "code" });
+    expect(state).toMatchObject({ room: "code", selectedTab: "pullRequests", tabs: code.tabs });
+    expect(workspaceTabsReducer(state, { type: "room", room: "code" })).toBe(state);
+  });
+
+  it("selecting the Bots section enters Bots, and another section returns to Code", () => {
+    let state = workspaceTabsReducer(initialWorkspaceTabsState(), { type: "select", tab: "bots" });
+    expect(state).toMatchObject({ room: "bots", selectedTab: "bots", codeTab: "threads" });
+    state = workspaceTabsReducer(state, { type: "select", tab: "usage" });
+    expect(state).toMatchObject({ room: "code", selectedTab: "usage", codeTab: "usage" });
   });
 });

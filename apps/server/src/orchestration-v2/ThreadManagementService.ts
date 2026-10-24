@@ -395,6 +395,7 @@ export interface ThreadManagementServiceShape {
   readonly listProjectThreads: (input: {
     readonly projectId: ProjectId;
     readonly includeSubagents: boolean;
+    readonly location?: "active" | "archive";
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
@@ -745,27 +746,29 @@ const make = Effect.gen(function* () {
     );
 
   const listProjectThreads: ThreadManagementServiceShape["listProjectThreads"] = (input) =>
-    orchestrator.getShellSnapshot({ projectId: input.projectId, location: "active" }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ThreadManagementProjectThreadsListError({
-            projectId: input.projectId,
-            cause,
-          }),
-      ),
-      Effect.map((snapshot) =>
-        snapshot.threads
-          .filter(
-            (thread) =>
-              input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
-          )
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
-              right.id.localeCompare(left.id),
-          ),
-      ),
-    );
+    orchestrator
+      .getShellSnapshot({ projectId: input.projectId, location: input.location ?? "active" })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ThreadManagementProjectThreadsListError({
+              projectId: input.projectId,
+              cause,
+            }),
+        ),
+        Effect.map((snapshot) =>
+          (input.location === "archive" ? snapshot.archivedThreads : snapshot.threads)
+            .filter(
+              (thread) =>
+                input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
+            )
+            .toSorted(
+              (left, right) =>
+                DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
+                right.id.localeCompare(left.id),
+            ),
+        ),
+      );
 
   const sendToThread: ThreadManagementServiceShape["sendToThread"] = Effect.fn(
     "ThreadManagementService.sendToThread",

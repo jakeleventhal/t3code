@@ -219,6 +219,7 @@ export function resolveAutoSettlementAt(input: {
   const activityAtMs =
     latestMillis([
       toMillis(thread.latestUserMessageAt),
+      toMillis(thread.latestUserAuthoredMessageAt),
       toMillis(thread.latestRunRequestedAt),
       toMillis(thread.latestRunStartedAt),
       toMillis(thread.latestRunCompletedAt),
