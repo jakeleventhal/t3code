@@ -25,16 +25,15 @@ export class PersonalBackgroundConfig extends Context.Reference<typeof Publisher
   { defaultValue: (): typeof PublisherConfig.Type | null => null },
 ) {}
 
-export const layer = Layer.effect(
-  PersonalBackgroundConfig,
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const paths = yield* Path.Path;
-    const path = paths.join(NodeOS.homedir(), ".config", "t3-personal-relay", "publisher.json");
-    if (!(yield* fs.exists(path))) return null;
-    const config = yield* decodePublisherConfig(yield* fs.readFileString(path)).pipe(
-      Effect.mapError(() => new PersonalBackgroundConfigInvalid()),
-    );
-    return { ...config, url: config.url.replace(/\/$/, "") };
-  }),
-);
+const make = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const paths = yield* Path.Path;
+  const path = paths.join(NodeOS.homedir(), ".config", "t3-personal-relay", "publisher.json");
+  if (!(yield* fs.exists(path))) return null;
+  const config = yield* decodePublisherConfig(yield* fs.readFileString(path)).pipe(
+    Effect.mapError(() => new PersonalBackgroundConfigInvalid()),
+  );
+  return { ...config, url: config.url.replace(/\/$/, "") };
+});
+
+export const layer = Layer.effect(PersonalBackgroundConfig, make);

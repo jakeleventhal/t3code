@@ -299,6 +299,11 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications.length, 1);
       assert.isTrue(publications[0]?.url.startsWith("https://personal.example.test/") ?? false);
       assert.equal(publications[0]?.authorization, "Bearer personal-credential");
+      const publicCredential = yield* secrets.get(RELAY_ENVIRONMENT_CREDENTIAL_SECRET);
+      assert.equal(
+        Option.getOrNull(Option.map(publicCredential, (bytes) => new TextDecoder().decode(bytes))),
+        "credential-1",
+      );
     }).pipe(
       Effect.provideService(PersonalBackgroundConfig.PersonalBackgroundConfig, {
         url: "https://personal.example.test",
