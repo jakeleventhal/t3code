@@ -556,6 +556,26 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     var tapIndex = tapOffset - lineRange.location
     guard tapIndex >= 0, tapIndex < (lineText as NSString).length else { return }
 
+    // Likewise, a line reaching the viewport bottom may continue below it when
+    // scrolled into history. Read forward only then, so a tap never opens the
+    // clipped prefix of a wrapped URL.
+    if NSMaxRange(lineRange) == fullText.length && !viewportText.hasSuffix("\n") {
+      let screenEnd = boundaryPoint(GHOSTTY_POINT_SCREEN, GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
+      guard let screenSuffix = readText(from: tappedPoint, to: screenEnd).map({ $0 as NSString }),
+            screenSuffix.length > 0
+      else { return }
+      // The suffix dump starts with the tapped character itself.
+      let tappedLength = min((tappedCell as NSString).length, screenSuffix.length)
+      let lineEnd = screenSuffix.lineRange(for: NSRange(location: 0, length: 0))
+      var tail = screenSuffix.substring(
+        with: NSRange(location: tappedLength, length: max(0, lineEnd.length - tappedLength))
+      )
+      while tail.hasSuffix("\n") || tail.hasSuffix("\r") {
+        tail.removeLast()
+      }
+      lineText = (lineText as NSString).substring(to: tapIndex + 1) + tail
+    }
+
     // A line touching the viewport top may start in scrollback. Only then read
     // back to the screen origin, so a URL wrapped above the viewport keeps its
     // scheme. The rest of the line still comes from the viewport dump.
