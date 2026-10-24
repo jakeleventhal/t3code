@@ -72,7 +72,8 @@ export function personalBackgroundRelayUrl(): string | null {
 export const layer = (relayUrl: string) =>
   ManagedRelay.layer({
     relayUrl,
-    backgroundRelayUrl: personalBackgroundRelayUrl() ?? resolveCloudPublicConfig().relay.backgroundUrl ?? undefined,
+    backgroundRelayUrl:
+      personalBackgroundRelayUrl() ?? resolveCloudPublicConfig().relay.backgroundUrl ?? undefined,
     clientId: RelayMobileClientId,
     accessTokenStore: managedRelayAccessTokenStore,
   }).pipe(Layer.provideMerge(layerRelayDpopSigner));
