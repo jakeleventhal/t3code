@@ -23,6 +23,7 @@ import {
   formatAssistantCitationForComposer,
   isCollapsedCursorAdjacentToInlineToken,
   isPathSuggestionCurrent,
+  parseStandaloneComposerSlashCommand,
   replaceTextRange,
 } from "./composer-logic";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
@@ -532,6 +533,16 @@ describe("isCollapsedCursorAdjacentToInlineToken", () => {
 
     expect(isCollapsedCursorAdjacentToInlineToken(text, tokenEnd, "left")).toBe(true);
     expect(isCollapsedCursorAdjacentToInlineToken(text, tokenStart, "right")).toBe(true);
+  });
+});
+
+describe("parseStandaloneComposerSlashCommand", () => {
+  it("parses standalone /voice command", () => {
+    expect(parseStandaloneComposerSlashCommand("/Voice ")).toBe("voice");
+  });
+
+  it("ignores /voice with extra message text", () => {
+    expect(parseStandaloneComposerSlashCommand("/voice please")).toBeNull();
   });
 });
 
