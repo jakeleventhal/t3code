@@ -4,6 +4,7 @@ import type {
   NodeId,
   OrchestrationV2Checkpoint,
   OrchestrationV2DomainEvent,
+  OrchestrationV2ConversationMessage,
   OrchestrationV2ContextHandoff,
   OrchestrationV2Subagent,
   OrchestrationV2ThreadProjection,
@@ -98,6 +99,10 @@ function summarizeDynamicValue(value: unknown): unknown {
 
 export function projectTurnItemForWire(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
+    case "voice_call": {
+      const { voiceOwner: _owner, voiceWriters: _writers, ...projected } = item;
+      return projected;
+    }
     case "handoff": {
       const { summary: _summary, ...projected } = item;
       return projected;
@@ -202,6 +207,7 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
       };
     case "handoff":
     case "file_change":
+    case "voice_call":
       return projectTurnItemForWire(item);
     default:
       return item;
@@ -229,6 +235,7 @@ export function projectThreadProjectionForWire(
   };
   return {
     ...projection,
+    messages: projection.messages.map(projectMessageForWire),
     contextHandoffs: projection.contextHandoffs.map(projectContextHandoffForWire),
     turnItems: projection.turnItems.map(project),
     visibleTurnItems: projection.visibleTurnItems.map((row) => ({
@@ -238,9 +245,22 @@ export function projectThreadProjectionForWire(
   };
 }
 
+function projectMessageForWire(
+  message: OrchestrationV2ConversationMessage,
+): OrchestrationV2ConversationMessage {
+  if (message.voiceCall === undefined) return message;
+  const { fragments: _fragments, ...identity } = message.voiceCall;
+  return { ...message, voiceCall: identity, text: "", textOmitted: true };
+}
+
 export function projectDomainEventForWire(
   event: OrchestrationV2DomainEvent,
 ): OrchestrationV2DomainEvent {
+  // The card is small; transcript text is fetched only when expanded. The full
+  // message remains in the event log for handoffs, search, and session recovery.
+  if (event.type === "message.updated" && event.payload.voiceCall !== undefined) {
+    return { ...event, payload: projectMessageForWire(event.payload) };
+  }
   return event.type === "turn-item.updated"
     ? { ...event, payload: projectTurnItemForWire(event.payload) }
     : event.type === "context-handoff.updated"

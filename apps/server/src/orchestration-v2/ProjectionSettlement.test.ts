@@ -17,10 +17,15 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import { isAutoSettlementCandidate, resolveAutoSettlementAt } from "./ThreadSettlementService.ts";
+import {
+  isAutoSettlementCandidate,
+  resolveAutoSettlementAt,
+  threadHasQueuedTurnStart,
+} from "./ThreadSettlementService.ts";
 
 const layerSql = ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory));
 const now = DateTime.makeUnsafe("2026-09-04T12:00:00Z");
@@ -347,6 +352,88 @@ it.effect.each([
       DateTime.formatIso(written),
     );
   }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect.each([
+  ["sql", layerSql],
+  ["memory", ProjectionStore.layerMemory],
+] as const)(
+  "%s: spoken lines count as human activity without queueing a harness turn",
+  ([, testLayer]) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = yield* createThread("voice-activity");
+      yield* createRun(threadId);
+      const written = DateTime.subtract(now, { hours: 2 });
+      const write = (voice: boolean, at: DateTime.Utc) =>
+        store.apply({
+          id: EventId.make(`event:voice-activity:${voice}:${DateTime.toEpochMillis(at)}`),
+          type: "message.updated",
+          threadId,
+          occurredAt: at,
+          payload: {
+            createdBy: "user",
+            creationSource: "web",
+            id: MessageId.make(`message:voice-activity:${voice}:${DateTime.toEpochMillis(at)}`),
+            threadId,
+            runId: null,
+            nodeId: null,
+            role: "user",
+            text: voice ? "That makes sense" : "Investigate this",
+            attachments: [],
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+            ...(voice
+              ? {
+                  voiceCall: {
+                    callId: "call",
+                    entryId: "line",
+                    ordinal: 0,
+                    revision: 0,
+                    final: true,
+                  },
+                }
+              : {}),
+          },
+        });
+      yield* write(false, written);
+      yield* write(true, now);
+      const candidate = (yield* store.getSettlementCandidates(threadId))[0]!;
+      const shell = (yield* store.getShellSnapshot()).threads.find(
+        (thread) => thread.id === threadId,
+      )!;
+      for (const state of [candidate, shell]) {
+        assert.equal(
+          DateTime.toEpochMillis(state.latestUserMessageAt!),
+          DateTime.toEpochMillis(written),
+        );
+        assert.equal(
+          DateTime.toEpochMillis(state.latestUserAuthoredMessageAt!),
+          DateTime.toEpochMillis(now),
+        );
+        assert.isFalse(threadHasQueuedTurnStart(state, DateTime.toEpochMillis(now)));
+      }
+      yield* write(false, now);
+      const queued = (yield* store.getShellSnapshot()).threads.find(
+        (thread) => thread.id === threadId,
+      )!;
+      assert.isTrue(threadHasQueuedTurnStart(queued, DateTime.toEpochMillis(now)));
+    }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect("queued-input lookup skips transcript history through a partial index", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN
+      SELECT message.updated_at FROM orchestration_v2_projection_messages message
+      WHERE message.thread_id = 'voice-thread' AND message.role = 'user'
+        AND json_extract(message.payload_json, '$.voiceCall') IS NULL
+      ORDER BY message.updated_at DESC, message.message_id DESC LIMIT 1`;
+    assert.isTrue(
+      plan.some((row) => row.detail.includes("orchestration_v2_user_turn_messages_idx")),
+    );
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
 const pullRequestLink = (number: number) => ({

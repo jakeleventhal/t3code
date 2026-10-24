@@ -71,6 +71,7 @@ import {
 } from "../workspace/workspacePaneMemory";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useThreadAssistant } from "../bots/AssistantOrb";
 
 export function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
@@ -80,6 +81,7 @@ export function ReviewHeader(
 ) {
   const presentation = useReviewHeaderPresentation(props);
   const iconColor = String(useUniwindTheme()["--color-icon"]);
+  const openAssistant = useThreadAssistant(props);
   return (
     <AppBar
       title={presentation.title}
@@ -88,6 +90,11 @@ export function ReviewHeader(
       hideBottomBorder
       options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
+      actions={
+        openAssistant
+          ? [{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]
+          : []
+      }
       menus={[
         ...(presentation.gitMenu ? [presentation.gitMenu] : []),
         ...(presentation.refreshAction

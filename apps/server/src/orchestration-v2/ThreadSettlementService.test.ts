@@ -198,6 +198,25 @@ describe("isAutoSettlementCandidate", () => {
 });
 
 describe("resolveAutoSettlementAt", () => {
+  it("recent voice conversation resets inactivity without implying a queued turn", () => {
+    const thread = shell({
+      latestUserMessageAt: at(-10 * DAY_MS),
+      latestUserAuthoredMessageAt: at(-DAY_MS),
+    });
+    expect(ThreadSettlementService.threadHasQueuedTurnStart(thread, NOW_MS)).toBe(false);
+    const input = {
+      thread,
+      pullRequest: null,
+      nowMs: NOW_MS,
+      autoSettleAfterDays: 3,
+      autoSettleOnMerge: true,
+    };
+    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toBeNull();
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({ ...input, nowMs: NOW_MS + 3 * DAY_MS }),
+    ).toEqual(thread.latestUserAuthoredMessageAt);
+  });
+
   it("keeps threads with a PR from inactivity settlement only when asked", () => {
     const input = {
       thread: shell({

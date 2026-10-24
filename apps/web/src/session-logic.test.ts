@@ -37,6 +37,7 @@ import {
   createMessageAttachmentPreviewProjector,
   providerErrorPresentation,
   type TimelineEntry,
+  timelineEntryIsPersistentResourceCard,
   workEntryIndicatesToolFailure,
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolSuccess,
@@ -1357,6 +1358,26 @@ describe("native provider presentation in the v2 timeline", () => {
     expect(entry.entry.toolLifecycleStatus).toBe("completed");
     expect(workEntryDisplayIndicatesToolFailure(entry.entry)).toBe(true);
     expect(workEntryIndicatesToolSuccess(entry.entry)).toBe(false);
+  });
+
+  it("shows a call as its own conversation card, never as work a turn folds away", () => {
+    const item = {
+      ...base,
+      type: "voice_call" as const,
+      call: {
+        callId: "call-1",
+        botTitle: "Fitness",
+        startedAt: "2026-09-04T12:00:00.000Z",
+        endedAt: "2026-09-04T12:04:05.000Z",
+        endReason: "user" as const,
+      },
+    } satisfies OrchestrationV2TurnItem;
+    const [entry] = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [visible(item)],
+      optimisticMessages: [],
+    });
+    expect(entry).toMatchObject({ kind: "event", projectedItem: { item: { call: item.call } } });
+    expect(timelineEntryIsPersistentResourceCard(entry!)).toBe(true);
   });
 });
 

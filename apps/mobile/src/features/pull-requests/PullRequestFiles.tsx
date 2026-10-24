@@ -7,7 +7,7 @@ import {
   useRoute,
   type StaticScreenProps,
 } from "@react-navigation/native";
-import type { PullRequestChangeBreakdown } from "@t3tools/contracts";
+import { EnvironmentId, type PullRequestChangeBreakdown } from "@t3tools/contracts";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -36,6 +36,7 @@ import {
 } from "./usePullRequestDiff";
 import { usePullRequestFileFilter } from "./usePullRequestFileFilter";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
+import { useOpenAssistantQuick } from "../bots/AssistantOrb";
 
 const BREAKDOWN_LABELS = {
   code: "Code",
@@ -408,6 +409,7 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
   const { diff, filter, viewed, parsed, loading } = files;
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [animationsReady, setAnimationsReady] = useState(false);
+  const openAssistant = useOpenAssistantQuick(EnvironmentId.make(params.environmentId));
   const toggleDirectory = (directory: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -422,7 +424,14 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
         subtitle={`#${params.number} · ${params.commit?.slice(0, 7) ?? params.repository}`}
         onClose={() => navigation.goBack()}
         // iOS gets the native menu below; SheetHeader would render this as a custom bar item.
-        trailing={Platform.OS === "android" ? <FileFilterMenu filter={filter} /> : undefined}
+        trailing={
+          Platform.OS === "android" ? (
+            <View className="flex-row items-center gap-1">
+              <IconButton icon="sparkles" accessibilityLabel="Assistant" onPress={openAssistant} />
+              <FileFilterMenu filter={filter} />
+            </View>
+          ) : undefined
+        }
       />
       <Toolbar placement="right">
         <Toolbar.Menu
@@ -438,6 +447,7 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
             <Toolbar.Label>Hide test files</Toolbar.Label>
           </Toolbar.MenuAction>
         </Toolbar.Menu>
+        <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
       </Toolbar>
       <ScreenContent>
         <AnimatedLegendList

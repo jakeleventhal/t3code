@@ -24,6 +24,7 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/snap-shot"
   | "/settings/providers"
+  | "/settings/voice"
   | "/settings/integrations"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
@@ -83,6 +84,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
+  "/settings/voice": "Voice",
   "/settings/integrations": "Integrations",
   "/settings/scheduled-tasks": "Scheduled tasks",
   "/settings/source-control": "Source control",
@@ -1048,6 +1050,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "voice-accounts",
+    title: "Voice accounts",
+    to: "/settings/voice",
+    searchTerms: ["bots calls openai xai grok chatgpt subscription codex api key speech"],
+    environmentOnly: true,
+  },
+  {
+    id: "voice-default",
+    title: "Default bot voice",
+    to: "/settings/voice",
+    searchTerms: ["bots calls speech assistant"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1067,6 +1084,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
+  "/settings/voice": "project-defaults",
   "/settings/integrations": null,
   "/settings/source-control": "environment-defaults",
   "/settings/storage": "project-defaults",

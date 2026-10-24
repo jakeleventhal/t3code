@@ -17,6 +17,7 @@ import {
   type PreviewAutomationTypeInput,
   type PreviewAutomationUploadInput,
   type PreviewAutomationWaitForInput,
+  type PreviewPageContext,
 } from "@t3tools/contracts";
 import { constVoid } from "effect/Function";
 import type { CDPSession, ConsoleMessage, Frame, Locator, Page } from "playwright-core";
@@ -403,6 +404,124 @@ const maskTree = (tree: string, dotted: RegExp) =>
       );
     })
     .join("\n");
+
+/** A read-only alternative to automation snapshots: no images, locators or ref invalidation. */
+export const readPageContext = async (page: Page, cdp: CDPSession): Promise<PreviewPageContext> => {
+  const url = page.url();
+  const frames = page.frames();
+  if (frames.length > 16) throw tooBusy();
+  const { read } = await openReaders(page, cdp);
+  const before = await read();
+  if (before.some((values) => values === undefined)) throw tooBusy();
+  const sessions = new Set<CDPSession>([cdp]);
+  for (const frame of frames) {
+    if (frame === page.mainFrame()) continue;
+    const session = frameSessions.get(frame);
+    // Same-process children use their parent's CDP session. If a desktop host
+    // cannot expose a different process, its AX read below fails the capture.
+    if (session !== undefined) sessions.add(await session);
+  }
+  const owners = new Map<string, CDPSession>();
+  const roots = new Map<string, CDPSession>();
+  const main = await cdp.send("Page.getFrameTree");
+  const addFrames = (node: typeof main.frameTree, session: CDPSession) => {
+    owners.set(node.frame.id, session);
+    for (const child of node.childFrames ?? []) addFrames(child, session);
+  };
+  for (const session of sessions) {
+    const { frameTree } = session === cdp ? main : await session.send("Page.getFrameTree");
+    addFrames(frameTree, session);
+    roots.set(frameTree.frame.id, session);
+  }
+  // An out-of-process frame must be read through its own session, even when its
+  // id also appears in the parent's frame tree.
+  for (const [id, session] of roots) owners.set(id, session);
+  if (owners.size > 16) throw tooBusy();
+  const trees = [
+    (await cdp.send("Accessibility.getFullAXTree", { frameId: main.frameTree.frame.id })).nodes,
+  ];
+  for (const [frameId, session] of owners) {
+    if (frameId === main.frameTree.frame.id) continue;
+    const { nodes } = await session.send("Accessibility.getFullAXTree", { frameId });
+    trees.push(nodes);
+  }
+  const title = await page.title();
+  const after = await read(before);
+  if (
+    page.url() !== url ||
+    after.some((values, i) => !values || JSON.stringify(values) !== JSON.stringify(before[i]))
+  )
+    throw pageChanged();
+  const dotted = dottedPattern(after.flatMap((values) => values ?? []));
+  const mask = (text: string) => (dotted ? text.replace(dotted, MASKED_VALUE) : text);
+  const lines: string[] = [];
+  let length = 0;
+  let truncated = false;
+  for (const [index, nodes] of trees.entries()) {
+    if (index > 0) {
+      lines.push("[Embedded frame]");
+      length += 17;
+    }
+    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+    const fieldContents = new Set<string>();
+    for (const node of nodes) {
+      if (
+        !["textbox", "searchbox", "combobox", "spinbutton", "slider"].includes(
+          String(node.role?.value),
+        ) &&
+        !node.properties?.some(
+          (property) => property.name === "editable" && property.value.value !== false,
+        )
+      )
+        continue;
+      const pending = [...(node.childIds ?? [])];
+      while (pending.length > 0) {
+        const id = pending.pop()!;
+        if (fieldContents.has(id)) continue;
+        fieldContents.add(id);
+        pending.push(...(byId.get(id)?.childIds ?? []));
+      }
+    }
+    for (const node of nodes) {
+      // AX values include typed form contents. Names and roles identify the
+      // controls; StaticText supplies page prose without reading input values.
+      const role = node.role?.value;
+      if (
+        node.ignored ||
+        fieldContents.has(node.nodeId) ||
+        role === "InlineTextBox" ||
+        role === "RootWebArea"
+      )
+        continue;
+      const raw = node.name?.value;
+      if (typeof raw !== "string" || !raw.trim()) continue;
+      const name = mask(raw).replace(/\s+/g, " ").trim();
+      const line = `${typeof role === "string" ? role : "text"}: ${name}`;
+      if (length + line.length + 1 > 6000) {
+        truncated = true;
+        break;
+      }
+      lines.push(line);
+      length += line.length + 1;
+    }
+    if (truncated) break;
+  }
+  let safeUrl: string;
+  try {
+    const parsed = new URL(url);
+    safeUrl = ["http:", "https:", "file:"].includes(parsed.protocol)
+      ? `${parsed.protocol === "file:" ? "file://" : parsed.origin}${parsed.pathname}`
+      : parsed.protocol;
+  } catch {
+    safeUrl = "";
+  }
+  return {
+    url: safeUrl.slice(0, 2048),
+    title: mask(title).slice(0, 512),
+    content: lines.join("\n").slice(0, 6000),
+    truncated,
+  };
+};
 
 /** Chromium sizes the capture, so the reported size is read from the PNG header. */
 const pngSize = (base64: string) => {

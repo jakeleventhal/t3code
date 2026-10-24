@@ -36,6 +36,7 @@ import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { openSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceTab } from "../workspace/useSelectWorkspaceTab";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { botProjectKeys, isBotThread } from "../bots/bot-room";
 
 export function HomeRouteScreen() {
   const { width: windowWidth } = useWindowDimensions();
@@ -46,12 +47,34 @@ export function HomeRouteScreen() {
   const { layout, panes, primarySidebarSearchQuery, setPrimarySidebarSearchQuery, startNewTask } =
     useAdaptiveWorkspaceLayout();
   const selectDetail = useSelectWorkspaceDetail();
-  const projects = useProjects();
+  const allProjects = useProjects();
   // Stop rebuilding the streaming thread list while Thread covers Home.
   const visible = useHomeRouteVisible();
-  const threads = useAtomValueWhileVisible(
+  const allThreads = useAtomValueWhileVisible(
     environmentThreadShells.navigationThreadShellsAtom,
     visible,
+  );
+  // Bot conversations live in Bots; Code lists only coding projects.
+  const botKeys = useMemo(() => botProjectKeys(allProjects), [allProjects]);
+  const projects = useMemo(
+    () =>
+      botKeys.size === 0
+        ? allProjects
+        : allProjects.filter(
+            (project) =>
+              !isBotThread(botKeys, {
+                environmentId: project.environmentId,
+                projectId: project.id,
+              }),
+          ),
+    [allProjects, botKeys],
+  );
+  const threads = useMemo(
+    () =>
+      botKeys.size === 0
+        ? allThreads
+        : allThreads.filter((thread) => !isBotThread(botKeys, thread)),
+    [allThreads, botKeys],
   );
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
@@ -114,7 +137,14 @@ export function HomeRouteScreen() {
     regenerateThreadTitle,
     unsettleThread,
   } = useThreadListActions();
-  const pendingTasks = usePendingNewTasks();
+  const allPendingTasks = usePendingNewTasks();
+  const pendingTasks = useMemo(
+    () =>
+      botKeys.size === 0
+        ? allPendingTasks
+        : allPendingTasks.filter((task) => !isBotThread(botKeys, task)),
+    [allPendingTasks, botKeys],
+  );
   const { openPendingTask, confirmDeletePendingTask } =
     usePendingTaskListActions(selectThreadRoute);
   const environments = useMemo(() => {

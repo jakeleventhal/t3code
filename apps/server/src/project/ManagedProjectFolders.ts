@@ -2,6 +2,7 @@ import {
   CommandId,
   type GitManagerServiceError,
   ProjectId,
+  type ProjectCreateNewInput,
   type ThreadId,
   VcsProcessSpawnError,
 } from "@t3tools/contracts";
@@ -12,6 +13,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Hex from "effect/encoding/Hex";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -98,6 +100,9 @@ export class ManagedProjectFolders extends Context.Service<
       readonly text: string;
     }) => Effect.Effect<Option.Option<string>, ScratchFolderError>;
     readonly namedProjectsRoot: string;
+    readonly prepareBotWorkspace: (
+      projectId: ProjectId,
+    ) => Effect.Effect<string, NamedProjectFolderError>;
     /** Removes failed/cancelled creations' folders only while no project owns them. */
     readonly createNamedProject: (input: { readonly name: string }) => Effect.Effect<
       {
@@ -343,6 +348,30 @@ const make = Effect.gen(function* () {
 
   const namedProjectsRoot = path.resolve(config.baseDir, "projects");
 
+  const prepareBotWorkspace = Effect.fn("ManagedProjectFolders.prepareBotWorkspace")(function* (
+    projectId: ProjectId,
+  ) {
+    const digest = yield* crypto.digest("SHA-256", new TextEncoder().encode(projectId)).pipe(
+      Effect.map(Hex.encode),
+      Effect.mapError((cause) => new NamedProjectFolderError({ folder: config.baseDir, cause })),
+    );
+    const folder = path.resolve(config.baseDir, "bots", digest);
+    yield* fileSystem
+      .makeDirectory(folder, { recursive: true })
+      .pipe(Effect.mapError((cause) => new NamedProjectFolderError({ folder, cause })));
+    const inRepository = yield* gitWorkflow.isRepository(folder).pipe(
+      Effect.catchIf(isGitMissing, () => Effect.succeed(false)),
+      Effect.mapError((cause) => new NamedProjectFolderError({ folder, cause })),
+    );
+    if (inRepository) {
+      return yield* new NamedProjectFolderError({
+        folder,
+        cause: "Bot folders must be outside a Git repository.",
+      });
+    }
+    return folder;
+  });
+
   const claimNamedFolder = Effect.fn("ManagedProjectFolders.claimNamedFolder")(function* (
     name: string,
   ) {
@@ -424,9 +453,23 @@ const make = Effect.gen(function* () {
     const workspaceRoot = yield* claimNamedFolder(input.name);
     const removeFolder = fileSystem.remove(workspaceRoot, { recursive: true }).pipe(Effect.ignore);
     const prepared = yield* Effect.all([
-      scaffoldRepository(workspaceRoot, input.name).pipe(
-        Effect.mapError((cause) => new NamedProjectFolderError({ folder: workspaceRoot, cause })),
-      ),
+      input.botRole == null
+        ? scaffoldRepository(workspaceRoot, input.name).pipe(
+            Effect.mapError(
+              (cause) => new NamedProjectFolderError({ folder: workspaceRoot, cause }),
+            ),
+          )
+        : gitWorkflow.isRepository(workspaceRoot).pipe(
+            Effect.catchIf(isGitMissing, () => Effect.succeed(false)),
+            Effect.flatMap((isRepository) =>
+              isRepository
+                ? Effect.fail("A bot folder cannot inherit a parent repository.")
+                : Effect.succeed(undefined),
+            ),
+            Effect.mapError(
+              (cause) => new NamedProjectFolderError({ folder: workspaceRoot, cause }),
+            ),
+          ),
       crypto
         .randomUUIDv4()
         .pipe(Effect.mapError((cause) => new NamedProjectCreateError({ workspaceRoot, cause }))),
@@ -438,6 +481,7 @@ const make = Effect.gen(function* () {
         projectId: ProjectId.make(id),
         title: input.name,
         workspaceRoot,
+        ...(input.botRole === undefined ? {} : { botRole: input.botRole }),
       })
       .pipe(
         // Re-check ownership before deleting rejected creations; interruption after commit or conflicts can leave an owner.
@@ -464,6 +508,7 @@ const make = Effect.gen(function* () {
     isScratchProject,
     folderForThread,
     namedProjectsRoot,
+    prepareBotWorkspace,
     createNamedProject,
   });
 });

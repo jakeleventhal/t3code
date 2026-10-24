@@ -21,6 +21,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as BotContext from "../bots/BotContext.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
@@ -272,6 +273,10 @@ it.effect.each(storageCases)(
         .pipe(Effect.flip);
       assert.instanceOf(missingThread, ProjectionStore.ProjectionStoreThreadNotFoundError);
 
+      const continuity = storage === "sqlite" ? "The call corrected the goal to 180." : "";
+      const steeredText = continuity
+        ? `${continuity}\n\nUser message:\nUse the smaller fix.`
+        : "Use the smaller fix.";
       const calls: string[] = [];
       const layerSessions = Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
         get: () =>
@@ -308,7 +313,7 @@ it.effect.each(storageCases)(
           messageId,
         });
         yield* reply.respond({ threadId, providerSessionId, requestId, decision: "accept" });
-        assert.deepEqual(calls, ["interrupt", "Use the smaller fix.", "reply"]);
+        assert.deepEqual(calls, ["interrupt", steeredText, "reply"]);
         const wrongSession = ProviderSessionId.make("session:wrong");
         assert.equal(
           (yield* Effect.exit(
@@ -342,11 +347,20 @@ it.effect.each(storageCases)(
           payload: { ...turn, status: "completed", completedAt: now },
         });
         yield* control.interrupt({ threadId, providerThreadId, providerTurnId, providerSessionId });
-        assert.deepEqual(calls, ["interrupt", "Use the smaller fix.", "reply", "interrupt"]);
+        assert.deepEqual(calls, ["interrupt", steeredText, "reply", "interrupt"]);
       }).pipe(
         Effect.provide(
           Layer.merge(ProviderTurnControlService.layer, RuntimeRequestService.layer).pipe(
             Layer.provide(layerSessions),
+            Layer.provide(
+              Layer.mock(BotContext.BotContext)({
+                readForWork: (id, since) => {
+                  assert.equal(id, threadId);
+                  assert.deepEqual(since, context.providerTurn!.startedAt);
+                  return Effect.succeed(continuity);
+                },
+              }),
+            ),
           ),
         ),
       );

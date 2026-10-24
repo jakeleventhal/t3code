@@ -102,6 +102,8 @@ import IconNetwork from "@tabler/icons-react-native/IconNetwork";
 import IconPalette from "@tabler/icons-react-native/IconPalette";
 import IconPencil from "@tabler/icons-react-native/IconPencil";
 import IconPlug from "@tabler/icons-react-native/IconPlug";
+import IconPhone from "@tabler/icons-react-native/IconPhone";
+import IconPhoneOff from "@tabler/icons-react-native/IconPhoneOff";
 import IconPhoto from "@tabler/icons-react-native/IconPhoto";
 import IconPin from "@tabler/icons-react-native/IconPin";
 import IconPinnedOff from "@tabler/icons-react-native/IconPinnedOff";
@@ -250,6 +252,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "person.fill.xmark": IconUserX,
   "person.badge.clock": IconUserQuestion,
   "person.badge.plus": IconUserPlus,
+  phone: IconPhone,
+  "phone.down": IconPhoneOff,
   photo: IconPhoto,
   pin: IconPin,
   "pin.slash": IconPinnedOff,

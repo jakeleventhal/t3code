@@ -73,11 +73,14 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
   } satisfies ServerConfig.ServerConfig["Service"];
 });
 
-it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
+// The test worker's IPC channel is not the T3 service launcher's channel.
+const layerHost = Layer.merge(NodeServices.layer, Layer.succeed(HostProcess.Environment, {}));
+
+it.layer(layerHost)("ServerEnvironmentLive", (it) => {
   it.effect("publishes proven install ownership only for manually updated servers", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const baseDir = yield* fs.makeTempDirectoryScoped();
+      const baseDir = yield* fs.makeTempDirectoryScoped().pipe(Effect.flatMap(fs.realPath));
       const prefix = `${baseDir}/node`;
       const entry = `${prefix}/lib/node_modules/t3/dist/bin.mjs`;
       yield* fs.makeDirectory(`${prefix}/lib/node_modules/t3/dist`, { recursive: true });
@@ -220,6 +223,8 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(second.capabilities.usagePriceOverrides).toBe(true);
       expect(second.capabilities.threadActiveReorder).toBe(true);
       expect(second.capabilities.threadTitleRegeneration).toBe(true);
+      expect(second.capabilities.botConversations).toBe(true);
+      expect(second.capabilities.botVoiceConfiguration).toBe(true);
       expect(second.capabilities.threadPullRequests).toBe(true);
       expect(second.capabilities.threadPullRequestLinking).toBe(true);
       expect(second.capabilities.serverResolvedCommandContext).toBe(true);

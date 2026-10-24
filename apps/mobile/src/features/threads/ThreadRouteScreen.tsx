@@ -93,6 +93,10 @@ import {
 import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
 import { ThreadHeader } from "./ThreadHeader";
+import { AssistantOrb } from "../bots/AssistantOrb";
+import { botRole } from "../bots/bot-room";
+import { ActiveBotCallBar } from "../bots/ActiveBotCall";
+import { useBotConversationCall } from "../bots/use-bot-call";
 import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
@@ -160,6 +164,10 @@ type ThreadRouteScreenRouteProps = StaticScreenProps<{
   readonly draft?: NewTaskDraftRouteParams;
   readonly inspector?: ThreadInspectorTarget;
   readonly prompt?: string | string[];
+  /** Set together to open the chat at a message or turn item, such as a bot file's origin. */
+  readonly revealKey?: string;
+  readonly revealMessageId?: string;
+  readonly revealTurnItemId?: string;
 }>;
 
 interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
@@ -399,6 +407,28 @@ function ThreadRouteContent(
   const environmentIdRaw = firstRouteParam(params.environmentId);
   const environmentId = environmentIdRaw ? EnvironmentId.make(environmentIdRaw) : null;
   const threadId = firstRouteParam(params.threadId);
+  const revealTarget = params.revealKey
+    ? {
+        key: params.revealKey,
+        messageId: params.revealMessageId ?? null,
+        turnItemId: params.revealTurnItemId ?? null,
+      }
+    : null;
+  const handleRevealSettled = (key: string, found: boolean) => {
+    if (params.revealKey !== key) return;
+    // Consumed once, so returning to this chat later doesn't jump again.
+    navigation.setParams({
+      revealKey: undefined,
+      revealMessageId: undefined,
+      revealTurnItemId: undefined,
+    });
+    if (!found) {
+      Dialog.alert(
+        "Couldn’t find it in this chat",
+        "It may have been removed. The rest of the conversation is still here.",
+      );
+    }
+  };
   const routeThreadIdentity =
     environmentIdRaw !== null && threadId !== null ? `${environmentIdRaw}:${threadId}` : null;
   const [inspectorSelection, setInspectorSelection] = useState<ThreadInspectorSelection | null>(
@@ -951,6 +981,49 @@ function ThreadRouteContent(
       serverOwned: false,
     };
   })();
+  // A bot chat keeps its voice settings one tap from the header, beside Call.
+  const voiceSettingsProject =
+    selectedThreadProject &&
+    botRole(selectedThreadProject) !== null &&
+    routeEnvironmentRuntime?.serverConfig?.environment.capabilities.botVoiceConfiguration === true
+      ? selectedThreadProject
+      : null;
+  const handleOpenVoiceSettings = voiceSettingsProject
+    ? () =>
+        openSettings(navigation, "SettingsVoiceBot", {
+          environmentId: voiceSettingsProject.environmentId,
+          projectId: voiceSettingsProject.id,
+        })
+    : undefined;
+  // Every chat with a bot opens the same profile, so its main chat and topics lead to one place.
+  const botProfileProject =
+    selectedThreadProject && botRole(selectedThreadProject) !== null ? selectedThreadProject : null;
+  const botIdentity = botProfileProject
+    ? {
+        project: botProfileProject,
+        topic:
+          selectedThread && selectedThread.id !== botProfileProject.botMainThreadId
+            ? selectedThread.title
+            : null,
+        onPress: () =>
+          navigation.navigate("BotProfile", {
+            environmentId: String(botProfileProject.environmentId),
+            projectId: String(botProfileProject.id),
+          }),
+      }
+    : undefined;
+  const callThread = selectedThread
+    ? { environmentId: selectedThread.environmentId, threadId: selectedThread.id }
+    : null;
+  const handleCall = useBotConversationCall({
+    thread: callThread,
+    project:
+      selectedThreadProject && botRole(selectedThreadProject) !== null
+        ? selectedThreadProject
+        : null,
+    connected: routeConnectionState === "connected",
+    onOpenSettings: handleOpenVoiceSettings,
+  });
   if (!environmentId || !threadId) {
     return <OpeningThreadLoadingScreen />;
   }
@@ -996,6 +1069,9 @@ function ThreadRouteContent(
                 onOpenGitInspector={handleOpenGitInspector}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
+                onOpenVoiceSettings={handleOpenVoiceSettings}
+                onCall={handleCall}
+                botIdentity={botIdentity}
               />
             )
           }
@@ -1052,6 +1128,8 @@ function ThreadRouteContent(
           connectionStateLabel={routeConnectionState}
           threadSyncStatus={selectedThreadDetailState.status}
           historyControls={historyControls}
+          revealTarget={revealTarget}
+          onRevealSettled={handleRevealSettled}
           activeThreadBusy={composer.activeThreadBusy}
           canStopThread={awaitingBootstrapTurn || composer.interruptibleRunId !== null}
           queuedRunEdit={composer.queuedRunEdit}
@@ -1094,6 +1172,16 @@ function ThreadRouteContent(
           onChangeUserInputCustomAnswer={requests.onChangeUserInputCustomAnswer}
           onSubmitUserInput={requests.onSubmitUserInput}
           onDismissUserInput={requests.onDismissUserInput}
+          floatingAccessory={
+            // Code work keeps the Assistant one tap away; bot chats are already a conversation.
+            selectedThreadProject && botRole(selectedThreadProject) === null ? (
+              <AssistantOrb
+                environmentId={selectedThread.environmentId}
+                style={{ right: 0, top: 0 }}
+              />
+            ) : null
+          }
+          callBar={<ActiveBotCallBar thread={callThread} className="px-4 pb-2" />}
         />
       </>
     </>

@@ -339,6 +339,7 @@ const config: ExpoConfig = {
       "android.permission.ACTIVITY_RECOGNITION",
       "android.permission.SYSTEM_ALERT_WINDOW",
     ],
+    permissions: ["android.permission.CHANGE_NETWORK_STATE"],
   },
   web: {
     favicon: variant.assets.appIcon,

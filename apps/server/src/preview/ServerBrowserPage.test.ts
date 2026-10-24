@@ -56,6 +56,57 @@ describe("server browser element refs", () => {
   };
   const repeatedRows = `<ul>${Array.from({ length: 5 }, (_, i) => `<li>row ${i + 1}<button data-testid="delete-row" onclick="this.parentElement.remove()">delete</button></li>`).join("")}</ul>`;
 
+  it("reads page controls without screenshots or invalidating another snapshot's refs", async () => {
+    await page.setContent(
+      '<h1>Welcome</h1><button onclick="this.textContent=\'Clicked\'">Login</button><input aria-label="Email" value="private@example.com"><input type="password" aria-label="Password" value="hidden-password"><div contenteditable style="-webkit-text-security:disc">masked-edit</div>',
+    );
+    const locator = buttonLocator((await takeSnapshot()).accessibilityTree, "Login");
+    const result = await ServerBrowserPage.readPageContext(page, cdp);
+    expect(result.content).toContain("button: Login");
+    expect(result.content).toContain("heading: Welcome");
+    expect(JSON.stringify(result)).not.toMatch(
+      /private@example.com|hidden-password|masked-edit|screenshot|\[ref=/,
+    );
+    await ServerBrowserPage.click(page, { locator });
+    expect(await page.getByRole("button").textContent()).toBe("Clicked");
+  });
+
+  it("reads embedded frame controls and bounds large page responses", async () => {
+    await page.setContent(
+      '<iframe srcdoc="<button>Frame login</button><input type=password value=frame-secret>"></iframe>',
+    );
+    await page.frameLocator("iframe").getByRole("button").waitFor();
+    const result = await ServerBrowserPage.readPageContext(page, cdp);
+    expect(result.content).toContain("button: Frame login");
+    expect(result.content).not.toContain("frame-secret");
+    await page.setContent(
+      Array.from(
+        { length: 400 },
+        (_, i) => `<p>Long page paragraph ${i} with more visible words.</p>`,
+      ).join(""),
+    );
+    const large = await ServerBrowserPage.readPageContext(page, cdp);
+    expect(large.content.length).toBeLessThanOrEqual(6000);
+    expect(large.truncated).toBe(true);
+  });
+
+  it("omits URL credentials, query strings and fragments from page context", async () => {
+    await page.route(
+      (url) => url.hostname === "grounding.test",
+      (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: "<title>Login</title><button>Sign in</button>",
+        }),
+    );
+    await page.goto(
+      "https://user:fixture-password@grounding.test/login?token=fixture-token#private",
+    );
+    const result = await ServerBrowserPage.readPageContext(page, cdp);
+    expect(result.url).toBe("https://grounding.test/login");
+    expect(JSON.stringify(result)).not.toMatch(/fixture-password|fixture-token|private/);
+  });
+
   it("clicks the fifth repeated delete control without touching row one", async () => {
     await page.setContent(repeatedRows);
     const result = await takeSnapshot();

@@ -93,31 +93,66 @@ describe("command permissions", () => {
       ),
   );
 
-  it.effect("requires the destination preview grant to close a browser tab", () =>
+  it.effect("requires the destination orchestration grant to open or create bots", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const registry = yield* setup;
-        const close = createCommandPermissions(runtime, WS_METHODS.previewClose);
         registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(close.permissionAtom(env))).toBe(false);
-        expect((yield* close.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthPreviewOperateScope],
-            permissions: [AuthPreviewOperateScope],
-          }),
-        );
-        expect(registry.get(close.permissionAtom(env))).toBe(true);
-        yield* close.authorize(registry, env);
         registry.set(sessions(other), AsyncResult.success(grant(false)));
-        expect(registry.get(close.permissionAtom(other))).toBe(false);
-        expect((yield* close.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
+        for (const method of [
+          WS_METHODS.botsOpen,
+          WS_METHODS.botsCreate,
+          WS_METHODS.botsSetAvatar,
+          WS_METHODS.botsVoiceBegin,
+          WS_METHODS.botsVoiceConnect,
+          WS_METHODS.botsVoiceContext,
+          WS_METHODS.botsVoiceWork,
+          WS_METHODS.botsVoiceAppend,
+          WS_METHODS.botsVoiceEnd,
+        ]) {
+          const permissions = createCommandPermissions(runtime, method);
+          expect(registry.get(permissions.permissionAtom(env))).toBe(true);
+          yield* permissions.authorize(registry, env);
+          expect(registry.get(permissions.permissionAtom(other))).toBe(false);
+          expect((yield* permissions.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          registry.set(sessions(env), AsyncResult.success(grant(false)));
+          expect((yield* permissions.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+        }
+      }),
+    ),
+  );
+  it.effect("requires the destination preview grant to close or inspect a browser tab", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        for (const method of [WS_METHODS.previewClose, WS_METHODS.previewReadPage]) {
+          const close = createCommandPermissions(runtime, method);
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          expect(registry.get(close.permissionAtom(env))).toBe(false);
+          expect((yield* close.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          registry.set(
+            sessions(env),
+            AsyncResult.success({
+              ...grant(false),
+              scopes: [AuthPreviewOperateScope],
+              permissions: [AuthPreviewOperateScope],
+            }),
+          );
+          expect(registry.get(close.permissionAtom(env))).toBe(true);
+          yield* close.authorize(registry, env);
+          registry.set(sessions(other), AsyncResult.success(grant(false)));
+          expect(registry.get(close.permissionAtom(other))).toBe(false);
+          expect((yield* close.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+        }
       }),
     ),
   );

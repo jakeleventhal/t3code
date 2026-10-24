@@ -23,6 +23,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isVoiceCallActivityGroup,
   buildThreadFeed,
   threadFeedCompactionLabels,
   createThreadFeedCache,
@@ -688,6 +689,47 @@ describe("buildThreadFeed", () => {
     expect(messageFoldRunId(buildThreadFeed([projected(userMessage(), 0)]), "message-user")).toBe(
       null,
     );
+  });
+
+  it("shows a call as its own card that a folded run never hides", () => {
+    const callBase = base("item-call", "2026-06-20T00:00:02.500Z", 2);
+    const feed = buildThreadFeed([
+      projected(userMessage(), 0),
+      projected(command(), 1),
+      projected(
+        {
+          ...callBase,
+          type: "voice_call",
+          call: {
+            callId: "call-1",
+            botTitle: "Fitness",
+            startedAt: "2026-06-20T00:00:02.000Z",
+            endedAt: null,
+            endReason: null,
+          },
+        },
+        2,
+      ),
+      projected(assistantMessage(), 3),
+    ]);
+
+    const collapsed = deriveThreadFeedPresentation(
+      feed,
+      {
+        runId,
+        status: "completed",
+        startedAt: "2026-06-20T00:00:01.000Z",
+        completedAt: "2026-06-20T00:00:03.000Z",
+      },
+      new Set(),
+    );
+    const calls = collapsed.filter(
+      (entry) => entry.type === "activity-group" && isVoiceCallActivityGroup(entry),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      activities: [{ summary: "Call with Fitness", detail: "Ongoing" }],
+    });
   });
 
   it("folds progress messages while keeping the final assistant answer visible", () => {

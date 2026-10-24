@@ -1,4 +1,4 @@
-import type { NavigationState } from "@react-navigation/native";
+import { useNavigation, type NavigationState } from "@react-navigation/native";
 import {
   createContext,
   use,
@@ -10,7 +10,9 @@ import {
 } from "react";
 import { Platform } from "react-native";
 import { androidWorkspaceSettingsOpen } from "./android-workspace-tabs";
-import { WorkspaceTabsProvider } from "./WorkspaceTabsContext";
+import { useRoomAlignment } from "../bots/use-room-alignment";
+import { WorkspaceTabsProvider, type WorkspaceRoomStack } from "./WorkspaceTabsContext";
+import { workspaceDetailRoutes } from "./workspace-rooms";
 
 interface AndroidWorkspaceRoot {
   /**
@@ -29,6 +31,13 @@ export function useAndroidWorkspaceRoot() {
   return use(AndroidWorkspaceRootContext);
 }
 
+/** Hands a page opened in the other room's stack to that room. */
+function AndroidRoomAlignment(props: { readonly state: NavigationState }) {
+  const detail = useMemo(() => workspaceDetailRoutes(props.state.routes), [props.state.routes]);
+  useRoomAlignment(detail, props.state);
+  return null;
+}
+
 /** Android keeps one tab controller above the root navigator and split sidebar. */
 export function AndroidWorkspaceTabsProvider(props: {
   readonly state: NavigationState;
@@ -42,8 +51,15 @@ export function AndroidWorkspaceTabsProvider(props: {
   const key = props.state.key;
   const settingsOpen = Platform.OS === "android" && androidWorkspaceSettingsOpen(props.state);
   const root = useMemo(() => ({ key, getState, settingsOpen }), [key, getState, settingsOpen]);
+  // The layout's navigation is the container; room resets carry the root key as their target.
+  const navigation = useNavigation();
+  const stack = useMemo<WorkspaceRoomStack>(
+    () => ({ getState, dispatch: (action) => navigation.dispatch(action) }),
+    [getState, navigation],
+  );
   return Platform.OS === "android" ? (
-    <WorkspaceTabsProvider>
+    <WorkspaceTabsProvider stack={stack}>
+      <AndroidRoomAlignment state={props.state} />
       <AndroidWorkspaceRootContext value={root}>{props.children}</AndroidWorkspaceRootContext>
     </WorkspaceTabsProvider>
   ) : (

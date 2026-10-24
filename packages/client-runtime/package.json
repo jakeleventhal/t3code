@@ -227,6 +227,42 @@
       "types": "./src/state/projects.ts",
       "default": "./src/state/projects.ts"
     },
+    "./state/bot-voice": {
+      "types": "./src/state/bot-voice.ts",
+      "default": "./src/state/bot-voice.ts"
+    },
+    "./state/bots": {
+      "types": "./src/state/bots.ts",
+      "default": "./src/state/bots.ts"
+    },
+    "./voice-call": {
+      "types": "./src/voice-call/controller.ts",
+      "default": "./src/voice-call/controller.ts"
+    },
+    "./voice-call/pcm-audio": {
+      "types": "./src/voice-call/pcm-audio.ts",
+      "default": "./src/voice-call/pcm-audio.ts"
+    },
+    "./voice-call/live-session": {
+      "types": "./src/voice-call/live-session.ts",
+      "default": "./src/voice-call/live-session.ts"
+    },
+    "./voice-call/live-media": {
+      "types": "./src/voice-call/live-media.ts",
+      "default": "./src/voice-call/live-media.ts"
+    },
+    "./voice-call/persistence": {
+      "types": "./src/voice-call/persistence.ts",
+      "default": "./src/voice-call/persistence.ts"
+    },
+    "./voice-call/environment-runtime": {
+      "types": "./src/voice-call/environment-runtime.ts",
+      "default": "./src/voice-call/environment-runtime.ts"
+    },
+    "./voice-call/live-connector": {
+      "types": "./src/voice-call/live-connector.ts",
+      "default": "./src/voice-call/live-connector.ts"
+    },
     "./state/provider-instance-display": {
       "types": "./src/state/providerInstanceDisplay.ts",
       "default": "./src/state/providerInstanceDisplay.ts"
@@ -382,6 +418,10 @@
     "./work-log/command-label": {
       "types": "./src/work-log/commandLabel.ts",
       "default": "./src/work-log/commandLabel.ts"
+    },
+    "./work-log/voice-call": {
+      "types": "./src/work-log/voiceCall.ts",
+      "default": "./src/work-log/voiceCall.ts"
     },
     "./work-log/scroll-anchor": {
       "types": "./src/work-log/scrollAnchor.ts",

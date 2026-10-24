@@ -7,11 +7,18 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode
 import { View, useWindowDimensions, type NativeSyntheticEvent } from "react-native";
 import { Tabs, type TabSelectedEvent, type TabSelectionRejectedEvent } from "react-native-screens";
 
-import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
+import {
+  WorkspaceRoomContext,
+  WorkspaceTabsContext,
+  useWorkspaceTabs,
+} from "./WorkspaceTabsContext";
 import {
   NATIVE_WORKSPACE_TAB_SLOTS,
   workspaceTabForNativeSlot,
+  workspaceRoomTab,
+  workspaceTabRoom,
   workspaceUsesColumns,
+  type WorkspaceRoom,
   type WorkspaceTab,
 } from "./workspace-tabs-state";
 import {
@@ -27,10 +34,16 @@ import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 
 const PULL_REQUEST_ICON = require("../../../assets/icons/pull-request.png");
 
-/** Retain each native controller tree; removing its root can leave RNS's stack empty. */
+/**
+ * Retain each native controller tree; removing its root can leave RNS's stack empty. Every tab
+ * renders the one workspace stack, so a tab left for the other room keeps only its root page:
+ * that room's pages are parked, and must not stay mounted beside the live copy in another tab.
+ */
 function RetainedWorkspaceTab(props: {
   readonly tab: WorkspaceTab;
   readonly active: boolean;
+  /** The room the selected tab shows this frame. */
+  readonly room: WorkspaceRoom;
   readonly children: ReactNode;
 }) {
   const workspace = useWorkspaceTabs()!;
@@ -61,21 +74,35 @@ function RetainedWorkspaceTab(props: {
     [optionsByRoute, setRouteOptions],
   );
   const [content, setContent] = useState(
-    props.active ? { workspace, children: props.children } : null,
+    props.active ? { workspace, children: props.children, room: props.room, live: true } : null,
   );
-  if (props.active && (content?.workspace !== workspace || content?.children !== props.children))
-    setContent({ workspace, children: props.children });
+  if (props.active) {
+    if (
+      !content?.live ||
+      content.workspace !== workspace ||
+      content.children !== props.children ||
+      content.room !== props.room
+    )
+      setContent({ workspace, children: props.children, room: props.room, live: true });
+  } else if (content?.live && content.room !== props.room) {
+    setContent({ ...content, children: props.children, live: false });
+  }
   return content ? (
     <NativeWorkspaceTabActivityContext value={activity}>
       <WorkspaceSlotOptionsContext value={slotOptions}>
-        <WorkspaceTabsContext value={content.workspace}>{content.children}</WorkspaceTabsContext>
+        <WorkspaceRoomContext value={content.room}>
+          <WorkspaceTabsContext value={content.workspace}>{content.children}</WorkspaceTabsContext>
+        </WorkspaceRoomContext>
       </WorkspaceSlotOptionsContext>
     </NativeWorkspaceTabActivityContext>
   ) : null;
 }
 
 export function WorkspaceNativeTabs(props: {
-  readonly children: ReactNode;
+  /** The room the stack belongs to, already aligned for this frame. */
+  readonly room: WorkspaceRoom;
+  /** Renders the stack for a section; a section that is not selected gets its root page only. */
+  readonly renderTab: (tab: WorkspaceTab, active: boolean) => ReactNode;
   readonly hidden: boolean;
 }) {
   const workspace = useWorkspaceTabs()!;
@@ -91,7 +118,9 @@ export function WorkspaceNativeTabs(props: {
   const compactSidebarTabs = deviceType === "phone" || !layout.usesSplitView;
   const { width } = useWindowDimensions();
   const { colors } = useControlTheme();
-  const selectedTab = workspace.state.selectedTab;
+  const { state } = workspace;
+  // An aligned page can lead the room state by a frame; show the section of the room it is in.
+  const selectedTab = workspaceRoomTab(state, props.room);
   const selectedSlot = workspace.settingsOpen ? -1 : primaryTabs.indexOf(selectedTab);
   const request = useMemo(
     () => ({
@@ -127,6 +156,7 @@ export function WorkspaceNativeTabs(props: {
           const settings = slot === "settings";
           const tab = settings ? (overflow ?? selectedTab) : primaryTabs[index];
           if (!tab) return null;
+          const active = settings ? selectedSlot === -1 : selectedSlot === index;
           return (
             <Tabs.Screen
               // Stable slot controllers keep UIKit's stacks attached when a section moves into Settings.
@@ -143,15 +173,14 @@ export function WorkspaceNativeTabs(props: {
                 selectedIcon:
                   !settings && tab === "threads"
                     ? { type: "sfSymbol", name: "text.bubble.fill" }
-                    : undefined,
+                    : !settings && tab === "bots"
+                      ? { type: "sfSymbol", name: "square.grid.2x2.fill" }
+                      : undefined,
                 overrideScrollViewContentInsetAdjustmentBehavior: false,
               }}
             >
-              <RetainedWorkspaceTab
-                tab={tab}
-                active={settings ? selectedSlot === -1 : selectedSlot === index}
-              >
-                {props.children}
+              <RetainedWorkspaceTab tab={tab} active={active} room={props.room}>
+                {props.renderTab(active ? selectedTab : tab, active)}
               </RetainedWorkspaceTab>
             </Tabs.Screen>
           );

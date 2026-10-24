@@ -23,6 +23,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
 import { useNavigationTabOrder, useHiddenNavigationTabs } from "./navigation-tabs";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
+import { workspaceTabRoom } from "./workspace-tabs-state";
 
 // Matches RAIL_WIDTH in the native rail.
 export const ANDROID_WORKSPACE_RAIL_WIDTH = 72;
@@ -114,13 +115,18 @@ export function AndroidWorkspaceNavigation(props: {
         onTabSelected={(event) => {
           Keyboard.dismiss();
           const tab = event.nativeEvent.tab;
-          if (tab !== "settings") workspace.dispatch({ type: "select", tab });
-          // Reset the root stack even when a nested settings navigator has focus.
-          if (root) {
-            navigation.dispatch({
-              ...CommonActions.reset(androidWorkspaceTabNavigationState(root.getState(), tab)),
-              target: root.key,
-            });
+          // Crossing between Code and Bots parks the open pages and brings back the others.
+          if (tab !== "settings" && workspaceTabRoom(tab) !== workspace.state.room) {
+            workspace.selectTab(tab);
+          } else {
+            if (tab !== "settings") workspace.dispatch({ type: "select", tab });
+            // Reset the root stack even when a nested settings navigator has focus.
+            if (root) {
+              navigation.dispatch({
+                ...CommonActions.reset(androidWorkspaceTabNavigationState(root.getState(), tab)),
+                target: root.key,
+              });
+            }
           }
           props.onSelect?.();
         }}

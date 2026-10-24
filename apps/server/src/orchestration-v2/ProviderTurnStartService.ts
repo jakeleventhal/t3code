@@ -26,6 +26,7 @@ import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
+import * as BotContext from "../bots/BotContext.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -101,6 +102,7 @@ export const layer: Layer.Layer<
   ProviderTurnStartServiceV2,
   never,
   | EventSink.EventSinkV2
+  | BotContext.BotContext
   | ContextHandoffService.ContextHandoffServiceV2
   | IdAllocator.IdAllocatorV2
   | FileSystem.FileSystem
@@ -118,6 +120,7 @@ export const layer: Layer.Layer<
   ProviderTurnStartServiceV2,
   Effect.gen(function* () {
     const eventSink = yield* EventSink.EventSinkV2;
+    const botContext = yield* BotContext.BotContext;
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
@@ -434,6 +437,7 @@ export const layer: Layer.Layer<
                 text: projectComposerContextForProvider({
                   text: message.text,
                   records: message.context?.records ?? [],
+                  currentView: message.context?.currentView,
                 }),
                 hasAttachments: false,
               }),
@@ -1035,9 +1039,10 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      const userText = projectComposerContextForProvider({
+      const authoredText = projectComposerContextForProvider({
         text: message.text,
         records: message.context?.records ?? [],
+        currentView: message.context?.currentView,
       });
       // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
       const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
@@ -1105,6 +1110,19 @@ export const layer: Layer.Layer<
           .filter((source) => source.nativeThreadId === undefined)
           .map((source) => source.runId),
       );
+      // Use the previous accepted run's start, not its completion: speech can
+      // arrive while that run works, or be finalized after its prompt was built.
+      // A fresh native session gets the recent suffix even if another provider
+      // already heard it. Normal text history still uses the existing handoff.
+      const lastBotContextAt = projection.runs.reduce<DateTime.Utc | null>((latest, source) => {
+        if (!nativeInputRunIds.has(source.id) || source.startedAt === null) return latest;
+        return latest === null || DateTime.isGreaterThan(source.startedAt, latest)
+          ? source.startedAt
+          : latest;
+      }, null);
+      const continuity = yield* botContext.readForWork(input.threadId, lastBotContextAt);
+      const userText =
+        continuity === "" ? authoredText : `${continuity}\n\nUser message:\n${authoredText}`;
       const legacyRecoveredRunIds = new Set(
         projection.runs
           .filter(

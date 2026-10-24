@@ -147,7 +147,8 @@ function SettingsRouteLayout() {
   return (
     <SettingsScopeProvider
       search={rawSearch}
-      singleEnvironment={pathname === "/settings/providers"}
+      // Voice accounts and their catalog belong to one environment, like providers.
+      singleEnvironment={pathname === "/settings/providers" || pathname === "/settings/voice"}
       onChange={(next) => {
         // Send every axis so retain middleware recognizes "all" as an explicit target.
         void navigate({

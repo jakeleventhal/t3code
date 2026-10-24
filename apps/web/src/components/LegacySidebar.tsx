@@ -217,6 +217,8 @@ import {
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { withoutBotProjects } from "./bots/botRoom.logic";
+import { SidebarRoomSwitch } from "./bots/SidebarRoomSwitch";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
@@ -3056,7 +3058,7 @@ function openAddProjectCommandPalette() {
 
 // Separate hooks cache real inputs; later sidebar hooks would invalidate every row's props.
 function useLegacySidebarProjects() {
-  const projects = useProjects();
+  const projects = withoutBotProjects(useProjects());
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const { environments } = useEnvironments();
@@ -3638,6 +3640,9 @@ export default function LegacySidebar({ routeReveal }: { routeReveal: SidebarRou
         <SidebarThreadDetailPrewarmer key={scopedThreadKey(threadRef)} threadRef={threadRef} />
       ))}
       <SidebarChromeHeader isElectron={isElectron} />
+      <div className="shrink-0 px-(--sidebar-content-inset) pt-(--sidebar-content-inset)">
+        <SidebarRoomSwitch room="code" />
+      </div>
 
       <SidebarProjectsContent
         showArm64IntelBuildWarning={showArm64IntelBuildWarning}

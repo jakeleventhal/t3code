@@ -19,6 +19,7 @@ import { ThreadHandoffDivider, ThreadHandoffRow } from "./thread-handoff-row";
 import { GuestBubbleTint, GuestMessageName } from "./guestMessageStyle";
 import { ThreadGuestPendingMessage, useThreadGuestShare } from "./ThreadGuestShareBar";
 import { SecretRequestCard } from "./SecretRequestCard";
+import { VoiceCallCard } from "./VoiceCallCard";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import {
   WorktreeWorkingHeader,
@@ -193,6 +194,7 @@ import {
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
   isSecretRequestActivityGroup,
+  isVoiceCallActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestRun,
   messageFoldRunId,
@@ -207,6 +209,7 @@ import {
   type ThreadFeedReflowAnchor,
   type ThreadWorkGroupScrollPosition,
 } from "./thread-feed-live-follow";
+import { planThreadFeedReveal, type ThreadFeedRevealTarget } from "./thread-feed-reveal";
 import {
   collapsedWorkLogHeight,
   ThreadDisclosureChevron,
@@ -355,6 +358,10 @@ export interface ThreadFeedProps {
   readonly contentTopInset?: number;
   readonly contentBottomInset?: number;
   readonly historyControls?: ThreadFeedHistoryControls;
+  /** Scrolled into view once, paging in older history when it isn't loaded. */
+  readonly revealTarget?: ThreadFeedRevealTarget | null;
+  /** Called when the reveal ends; `found` is false when the item could not be shown. */
+  readonly onRevealSettled?: (key: string, found: boolean) => void;
   readonly contentMaxWidth?: number;
   readonly contentSideInsets?: { readonly left: number; readonly right: number };
   readonly layoutVariant?: LayoutVariant;
@@ -1284,6 +1291,9 @@ function renderFeedEntry(
     readonly onCopyWorkRow: (rowId: string, value: string) => void;
     readonly onToggleWorkGroup: (groupId: string, anchorKey?: string) => void;
     readonly onToggleWorkRow: (rowId: string, anchorKey?: string, groupId?: string) => void;
+    readonly onToggleVoiceCall: (rowId: string, entryId: string) => void;
+    readonly onVoiceCallTranscriptPending: (entryId: string) => void;
+    readonly onVoiceCallTranscriptSettled: (entryId: string) => void;
     readonly onToggleTurnFold: (runId: RunId) => void;
     readonly onOpenTurnDiff: (checkpoint: ThreadCheckpointSummary) => void;
     readonly onPressPreview: (source: FilePreviewSource) => void;
@@ -1434,6 +1444,21 @@ function renderFeedEntry(
         projectedItem={entry.activities[0]!.projectedItem}
         iconColor={iconSubtleColor}
         surfaceColor={props.screenColor}
+      />
+    );
+  }
+
+  if (entry.type === "activity-group" && isVoiceCallActivityGroup(entry)) {
+    const activity = entry.activities[0]!;
+    return (
+      <VoiceCallCard
+        environmentId={props.environmentId}
+        projectedItem={activity.projectedItem}
+        expanded={props.expandedWorkRows[activity.id] ?? false}
+        iconColor={iconSubtleColor}
+        onToggle={() => props.onToggleVoiceCall(activity.id, entry.id)}
+        onTranscriptPending={() => props.onVoiceCallTranscriptPending(entry.id)}
+        onTranscriptSettled={() => props.onVoiceCallTranscriptSettled(entry.id)}
       />
     );
   }
@@ -2160,6 +2185,12 @@ export const ThreadFeed = memo(function ThreadFeed({
   const disclosureSettleFrameRef = useRef<number | null>(null);
   const disclosureSettleSecondFrameRef = useRef<number | null>(null);
   const disclosureAnchorKeyRef = useRef<string | null>(null);
+  // A call transcript arrives over the network after its card opens or asks for
+  // another page. The disclosure pause holds until that page lands, or end
+  // maintenance would pin the feed past the words the reader is about to read.
+  const pendingCallTranscriptRef = useRef<string | null>(null);
+  const openedCallEntryRef = useRef<string | null>(null);
+  const previousLatestTurnRef = useRef(props.latestRun);
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
@@ -2721,6 +2752,8 @@ export const ThreadFeed = memo(function ThreadFeed({
     clearUserScrollSettle();
     userScrollSessionRef.current = true;
     cancelReflow();
+    // The reader has taken over; don't move them to a call they opened earlier.
+    openedCallEntryRef.current = null;
     // Pause before the first scroll event. Otherwise a stream update can run
     // maintainScrollAtEnd between touch-down and the drag leaving its threshold.
     transitionEndFollow({ type: "user-scroll-begin" });
@@ -2876,6 +2909,61 @@ export const ThreadFeed = memo(function ThreadFeed({
     setViewportHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
   };
 
+  // One search per request. It stops following the live end so paged-in history and the jump
+  // keep their place, and every step waits for the render that the previous step caused.
+  const revealRef = useRef<{ key: string; requestedPages: Set<string>; done: boolean } | null>(
+    null,
+  );
+  const { revealTarget, onRevealSettled } = props;
+  const contentReady = props.contentPresentation.kind === "ready";
+  useEffect(() => {
+    if (!revealTarget || !contentReady) return;
+    if (revealRef.current?.key !== revealTarget.key) {
+      revealRef.current = { key: revealTarget.key, requestedPages: new Set(), done: false };
+    }
+    const reveal = revealRef.current;
+    if (reveal.done) return;
+    const step = planThreadFeedReveal({
+      target: revealTarget,
+      feed: props.feed,
+      presented: presentedFeed,
+      expandedRunIds: expandedTurnIds,
+      history: props.historyControls ?? null,
+      requestedPages: reveal.requestedPages,
+    });
+    if (step.type === "wait") return;
+    if (step.type === "unavailable") {
+      reveal.done = true;
+      onRevealSettled?.(revealTarget.key, false);
+      return;
+    }
+    setEndFollow(false);
+    if (step.type === "load-earlier") {
+      reveal.requestedPages.add(step.cursor);
+      props.historyControls?.onLoadEarlier();
+      return;
+    }
+    if (step.type === "expand") {
+      setInteractionState((current) => ({
+        ...current,
+        expandedTurnIds: new Set(current.expandedTurnIds).add(step.runId),
+      }));
+      return;
+    }
+    reveal.done = true;
+    // Ask right away: the list itself waits for rows to measure before it moves, and asking
+    // supersedes its initial end scroll. Deferring lets that scroll finish first, and its end
+    // watchdog then pins a target near the end back to the bottom. Jump rather than animate: the
+    // user asked for this place, and it must not move content under Reduce Motion.
+    void listRef.current?.scrollToIndex({
+      animated: false,
+      index: step.index,
+      viewPosition: 0.3,
+      viewOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET,
+    });
+    onRevealSettled?.(revealTarget.key, true);
+  });
+
   const anchoredEndSpace = resolveChatListAnchoredEndSpace(
     presentedFeed,
     props.anchorMessageId,
@@ -2941,7 +3029,28 @@ export const ThreadFeed = memo(function ThreadFeed({
     }
     disclosureSettleFrameRef.current = requestAnimationFrame(() => {
       disclosureSettleSecondFrameRef.current = requestAnimationFrame(() => {
+        disclosureSettleFrameRef.current = null;
+        disclosureSettleSecondFrameRef.current = null;
+        if (pendingCallTranscriptRef.current !== null) {
+          return;
+        }
+        const openedCallEntryId = openedCallEntryRef.current;
+        openedCallEntryRef.current = null;
         const listState = listRef.current?.getState();
+        const openedCallIndex =
+          openedCallEntryId === null ? undefined : listState?.indexByKey(openedCallEntryId);
+        if (openedCallIndex !== undefined) {
+          // Start the reader at the call's first words with its header in view.
+          // The list clamps this when the whole call already fits above the end.
+          // Jump rather than animate: this positioning is automatic, and it
+          // must not move content under Reduce Motion.
+          void listRef.current?.scrollToIndex({
+            animated: false,
+            index: openedCallIndex,
+            viewPosition: 0,
+            viewOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET,
+          });
+        }
         if (listState) {
           transitionEndFollow({
             type: "disclosure-settled",
@@ -2951,8 +3060,6 @@ export const ThreadFeed = memo(function ThreadFeed({
         }
         disclosureAnchorKeyRef.current = null;
         setDisclosureToggleSettling(false);
-        disclosureSettleFrameRef.current = null;
-        disclosureSettleSecondFrameRef.current = null;
       });
     });
   };
@@ -3025,6 +3132,24 @@ export const ThreadFeed = memo(function ThreadFeed({
           : { expandedWorkGroups: { ...current.expandedWorkGroups, [groupId]: expanded } }),
       };
     });
+  };
+
+  const onToggleVoiceCall = (rowId: string, entryId: string) => {
+    const opening = !(expandedWorkRows[rowId] ?? false);
+    pendingCallTranscriptRef.current = opening ? entryId : null;
+    openedCallEntryRef.current = opening ? entryId : null;
+    onToggleWorkRow(rowId, entryId);
+  };
+  const onVoiceCallTranscriptPending = (entryId: string) => {
+    pendingCallTranscriptRef.current = entryId;
+    suspendEndScrollMaintenanceForDisclosure(entryId);
+  };
+  const onVoiceCallTranscriptSettled = (entryId: string) => {
+    if (pendingCallTranscriptRef.current !== entryId) {
+      return;
+    }
+    pendingCallTranscriptRef.current = null;
+    settleDisclosureAfterLayout();
   };
 
   const onToggleTurnFold = (runId: RunId) => {
@@ -3132,6 +3257,9 @@ export const ThreadFeed = memo(function ThreadFeed({
             onCopyWorkRow,
             onToggleWorkGroup,
             onToggleWorkRow,
+            onToggleVoiceCall,
+            onVoiceCallTranscriptPending,
+            onVoiceCallTranscriptSettled,
             onToggleTurnFold,
             onOpenTurnDiff,
             onPressPreview,

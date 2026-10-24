@@ -1653,8 +1653,11 @@ export function presentThreadShellFromProjection(
       status: runtime?.status ?? "idle",
       pendingRuntimeRequest,
       latestVisibleMessage: null,
+      // Words spoken on a call land as user messages, but are not a typed send.
       latestUserMessageAt:
-        projection.messages.findLast((message) => message.role === "user")?.updatedAt ?? null,
+        projection.messages.findLast(
+          (message) => message.role === "user" && message.voiceCall === undefined,
+        )?.updatedAt ?? null,
       hasActionableProposedPlan: projection.plans.some(
         (plan) => plan.kind === "proposed_plan" && plan.status === "active",
       ),

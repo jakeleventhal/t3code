@@ -39,7 +39,13 @@ import {
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
-import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
+import { AssistantShortcut } from "./bots/AssistantShortcut";
+import { BotCallRoot } from "./bots/BotCallRoot";
+import BotsSidebar from "./bots/BotsSidebar";
+import { FloatingAssistant } from "./bots/FloatingAssistant";
+import { BotRoomLocationTracker, useAppRoom } from "./bots/useBotRoom";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
@@ -384,6 +390,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
+  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const room = useAppRoom();
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // A clamped drag may not change width, so viewport changes need a separate subscription.
@@ -428,7 +436,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           collapsible="offcanvas"
           data-app-sidebar=""
           role="navigation"
-          aria-label="Threads"
+          aria-label={isOnSettings ? "Settings" : room === "bots" ? "Bots" : "Threads"}
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
@@ -440,7 +448,14 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           }}
           style={windowControlsInsetStyle}
         >
-          {legacySidebarEnabled ? (
+          {isOnSettings ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <SettingsSidebarNav pathname={pathname} />
+            </>
+          ) : room === "bots" ? (
+            <BotsSidebar />
+          ) : legacySidebarEnabled ? (
             <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
             <ThreadSidebar routeReveal={sidebarRouteReveal} />
@@ -450,6 +465,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />
+        <BotRoomLocationTracker />
+        <AssistantShortcut />
+        {!isOnSettings && room === "code" ? <FloatingAssistant /> : null}
+        <BotCallRoot />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

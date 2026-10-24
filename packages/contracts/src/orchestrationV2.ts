@@ -46,6 +46,7 @@ import {
   OrchestrationSearchThreadsInput,
   OrchestrationSearchThreadsResult,
 } from "./threadSearch.ts";
+import { VoiceCallSummary, VoiceTranscriptIdentity } from "./botVoice.ts";
 import {
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetFullThreadDiffResult,
@@ -1192,6 +1193,8 @@ export const OrchestrationV2IdleCompaction = Schema.Literals(["beforeCacheExpire
 export type OrchestrationV2IdleCompaction = typeof OrchestrationV2IdleCompaction.Type;
 
 export const OrchestrationV2ConversationMessage = Schema.Struct({
+  voiceCall: Schema.optional(VoiceTranscriptIdentity),
+  textOmitted: Schema.optional(Schema.Boolean),
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
   scheduledTaskId: Schema.optional(ScheduledTaskId),
@@ -1443,6 +1446,16 @@ const OrchestrationV2SecretRequestFields = {
 } as const;
 
 export const OrchestrationV2TurnItem = Schema.Union([
+  Schema.Struct({
+    ...OrchestrationV2TurnItemBaseFields,
+    type: Schema.Literal("voice_call"),
+    call: VoiceCallSummary,
+    /** Only persisted state carries the writer identity; never exposed in wire/detail views. */
+    voiceOwner: Schema.optional(Schema.String),
+    voiceWriters: Schema.optional(
+      Schema.Array(Schema.Struct({ owner: Schema.String, ordinalOffset: Schema.Number })),
+    ),
+  }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("notification"),
@@ -2280,6 +2293,15 @@ const OrchestrationV2TurnItemJsonBaseFields = {
 } as const;
 
 export const OrchestrationV2TurnItemJson = Schema.Union([
+  Schema.Struct({
+    ...OrchestrationV2TurnItemJsonBaseFields,
+    type: Schema.Literal("voice_call"),
+    call: VoiceCallSummary,
+    voiceOwner: Schema.optional(Schema.String),
+    voiceWriters: Schema.optional(
+      Schema.Array(Schema.Struct({ owner: Schema.String, ordinalOffset: Schema.Number })),
+    ),
+  }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("notification"),

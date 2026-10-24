@@ -1,5 +1,10 @@
 import { McpAttachmentInput } from "../attachment/input.ts";
 import {
+  BotOpenInput,
+  BotCreateInput,
+  BotConversationResult,
+  BotFilesInput,
+  BotFilesPage,
   NonNegativeInt,
   ModelSelection,
   TrimmedNonEmptyString,
@@ -24,9 +29,13 @@ import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import { Tool, Toolkit } from "effect/ai";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotService from "../../../bots/BotService.ts";
+import * as VoiceCalls from "../../../bots/VoiceCalls.ts";
+import { VoiceTranscriptPage, VoiceTranscriptPageInput } from "@t3tools/contracts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
@@ -149,7 +158,45 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
+const BotOpenTool = Tool.make("t3_bot_open", {
+  ...shared,
+  description:
+    "Open a bot's durable main conversation. Omit projectId for this environment's Assistant. Creates the conversation only when absent; does not send a message or change an existing conversation's model or modes.",
+  parameters: BotOpenInput.mapFields(Struct.omit(["creationSource"])),
+  success: BotConversationResult,
+  dependencies: [...shared.dependencies, BotService.BotService],
+}).annotate(Tool.Destructive, false);
+
+const BotCreateTool = Tool.make("t3_bot_create", {
+  ...shared,
+  description:
+    "Create a specialist bot with its own workspace and main conversation. Reuse the same commandId when retrying the same request; different commandIds create distinct bots. Does not start an agent turn.",
+  parameters: BotCreateInput.mapFields(Struct.omit(["creationSource"])),
+  success: BotConversationResult,
+  dependencies: [...shared.dependencies, BotService.BotService],
+}).annotate(Tool.Destructive, false);
+
 export const ProjectToolkit = Toolkit.make(
+  Tool.make("t3_bot_files", {
+    description:
+      "List files shared in this bot's conversations and published reports, newest first. Pass nextCursor as cursor to continue. This lists chat assets with source conversation references, not the bot's working directory.",
+    parameters: BotFilesInput,
+    success: BotFilesPage,
+    failure: OrchestratorMcpFailure,
+    failureMode: "return",
+    dependencies: [McpInvocationContext.McpInvocationContext, BotService.BotService],
+  }).annotate(Tool.Readonly, true),
+  Tool.make("t3_bot_call_read", {
+    description:
+      "Read a page of a bot call's saved text transcript. Use the callId from the voice_call timeline card in t3_thread_read(view=activity). Pass nextOrdinal as afterOrdinal to continue; null means the end. Audio is never stored. This does not start a call or access a microphone.",
+    parameters: VoiceTranscriptPageInput,
+    success: VoiceTranscriptPage,
+    failure: OrchestratorMcpFailure,
+    failureMode: "return",
+    dependencies: [McpInvocationContext.McpInvocationContext, VoiceCalls.VoiceCalls],
+  }).annotate(Tool.Readonly, true),
+  BotOpenTool,
+  BotCreateTool,
   ThreadLaunchTool,
   ProjectListTool,
   ProjectReadTool,

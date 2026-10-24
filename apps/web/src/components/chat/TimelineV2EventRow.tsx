@@ -1,3 +1,4 @@
+import type { VoiceCallSummary } from "@t3tools/contracts";
 import { WorkLogBlock } from "./WorkLog";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
@@ -19,6 +20,7 @@ import {
   V2LifecycleRow,
 } from "./V2LifecycleRow";
 import { SecretRequestCard } from "./SecretRequestCard";
+import { BotCallCard } from "../bots/BotCallCard";
 import { TimelineRowCtx, type TimelineRow } from "./timelineRowContext";
 import { v2EventPresentation, subagentGroupTiming } from "./TimelineV2EventRow.logic";
 
@@ -36,6 +38,9 @@ export function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
         visibility={visibility}
       />
     );
+  }
+  if (item.type === "voice_call") {
+    return <VoiceCallTimelineRow row={row} call={item.call} />;
   }
   if (isV2LifecycleItem(item)) {
     return (
@@ -208,6 +213,34 @@ export function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
         </div>
       </div>
     </section>
+  );
+}
+
+function VoiceCallTimelineRow({
+  row,
+  call,
+}: {
+  row: Extract<TimelineRow, { kind: "event" }>;
+  call: VoiceCallSummary;
+}) {
+  const ctx = use(TimelineRowCtx);
+  // Kept beside other disclosures so an open call survives the row scrolling out of the list.
+  const disclosureId = `voice-call:${row.id}`;
+  const [open, setOpen] = useState(() => ctx.workGroupViewState.expandedEntries.has(disclosureId));
+  const onOpenChange = (next: boolean) => {
+    ctx.onToggleWorkEntry(row.id, open);
+    if (next) ctx.workGroupViewState.expandedEntries.add(disclosureId);
+    else ctx.workGroupViewState.expandedEntries.delete(disclosureId);
+    setOpen(next);
+  };
+  return (
+    <BotCallCard
+      environmentId={ctx.activeThreadEnvironmentId}
+      threadId={row.projectedItem.sourceThreadId}
+      call={call}
+      open={open}
+      onOpenChange={onOpenChange}
+    />
   );
 }
 

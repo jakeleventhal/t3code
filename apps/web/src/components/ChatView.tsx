@@ -268,6 +268,10 @@ import {
   resolveScrollToEndClearance,
 } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { registerAssistantOrbSlot } from "./bots/botRoomStore";
+import { BotCallBarSlot } from "./bots/BotCallRoot";
+import { BotProfileHost } from "./bots/BotProfile";
+import { isBotProject } from "./bots/botRoom.logic";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
 import { useOpenFavoriteEditorShortcut } from "./chat/OpenInPickerShortcut";
@@ -567,6 +571,13 @@ export default function ChatView(props: ChatViewProps) {
       : null;
   })() as AssistantCitationRequest | null;
   const citationHistory = useCitedHistory(citationRequest);
+  // The location's own state object, so the timeline sees one stable request per navigation.
+  const routeTimelineSource = useLocation({ select: (location) => location.state.timelineSource });
+  const timelineSource =
+    routeTimelineSource?.environmentId === environmentId &&
+    routeTimelineSource.threadId === threadId
+      ? routeTimelineSource
+      : null;
   const { resolvedTheme } = useTheme();
   const composerRuntimeMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.runtimeMode ?? null,
@@ -1319,8 +1330,11 @@ export default function ChatView(props: ChatViewProps) {
   } = useLocalDispatchState({
     activeThread,
     activeLatestRun,
+    // Words spoken on a call land as user messages too, but never acknowledge a typed send.
     latestUserMessageId:
-      serverProjection?.messages.findLast((message) => message.role === "user")?.id ?? null,
+      serverProjection?.messages.findLast(
+        (message) => message.role === "user" && message.voiceCall === undefined,
+      )?.id ?? null,
     phase,
     activePendingApproval: activePendingApproval?.requestId ?? null,
     activePendingUserInput: activePendingUserInput?.requestId ?? null,
@@ -3208,6 +3222,9 @@ export default function ChatView(props: ChatViewProps) {
                 readyWorkspaceRoot={activeWorkspaceRoot ?? null}
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistory={citationHistory}
+                timelineSource={paintOnlyDisplayedTimeline ? null : timelineSource}
+                historySyncing={threadSyncPhase !== null}
+                citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline
                   ? {
                       onCiteAssistantText: citeAssistantTextStable,
@@ -3391,6 +3408,15 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
+                  {/* On the chat lane, which a floating preview lays out beside or keeps
+                      above, so the Assistant orb and call dock stay uncovered. */}
+                  {isDraftHeroState ? null : (
+                    <div
+                      ref={registerAssistantOrbSlot}
+                      data-assistant-orb-slot
+                      className="pointer-events-none absolute right-0 bottom-full mb-2 size-8"
+                    />
+                  )}
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full">
                       <div
@@ -3409,6 +3435,7 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
+                  {routeKind === "server" ? <BotCallBarSlot threadKey={routeThreadKey} /> : null}
                   <div
                     ref={draftHeroComposerAnchorRef}
                     className="relative z-10"
@@ -3807,6 +3834,9 @@ export default function ChatView(props: ChatViewProps) {
         />
       </div>
 
+      {activeProject && isBotProject(activeProject) ? (
+        <BotProfileHost project={activeProject} />
+      ) : null}
       {rightPanelPresent && activeThreadRef ? (
         <ChatRightPanel
           sheet={shouldUsePlanSidebarSheet}

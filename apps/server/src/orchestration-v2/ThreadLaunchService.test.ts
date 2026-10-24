@@ -73,6 +73,45 @@ const modelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
   model: "gpt-5.1-codex",
 } as const;
+
+it.effect("lists archived conversations separately and keeps them readable", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const threadId = ThreadId.make("thread:archived-topic");
+    yield* threads.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-archived-topic"),
+      threadId,
+      projectId,
+      title: "Earlier fitness conversation",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* threads.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("archive-topic"),
+      threadId,
+    });
+    const active = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
+    const archived = yield* threads.listProjectThreads({
+      projectId,
+      includeSubagents: false,
+      location: "archive",
+    });
+    assert.isFalse(active.some((thread) => thread.id === threadId));
+    assert.isTrue(archived.some((thread) => thread.id === threadId));
+    assert.equal(
+      (yield* threads.getThreadProjection(threadId)).thread.title,
+      "Earlier fitness conversation",
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
 const project = {
   id: projectId,
   title: "Project",

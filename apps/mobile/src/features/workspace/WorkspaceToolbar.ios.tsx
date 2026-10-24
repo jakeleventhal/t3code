@@ -21,12 +21,15 @@ import { WorkspaceTabToolbarButtons } from "./WorkspaceSectionToolbar";
 
 const SEARCH_LABELS = {
   threads: "Search threads",
+  bots: "Search bots",
   pullRequests: "Search pull requests",
   settings: "Search settings",
 } as const;
 
 export function WorkspaceToolbar(props: {
   readonly onNewTask: () => void;
+  /** Where no Assistant button floats over the list, it sits in the toolbar instead. */
+  readonly onOpenAssistant?: () => void;
   readonly sidebar?: boolean;
 }) {
   const workspace = useWorkspaceTabs()!;
@@ -191,6 +194,14 @@ export function WorkspaceToolbar(props: {
           {searchButton}
           {nativeToolbarCompose && foldedSearch ? <Toolbar.Spacer width={8} /> : null}
           {composeButton}
+          {props.onOpenAssistant ? (
+            <Toolbar.Button
+              identifier="workspace-assistant"
+              accessibilityLabel="Assistant"
+              icon="sparkles"
+              onPress={props.onOpenAssistant}
+            />
+          ) : null}
           {selectedTab !== "threads" ||
           isDuoDevice(deviceType) ||
           deviceType === "pad" ||

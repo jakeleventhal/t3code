@@ -1620,7 +1620,8 @@ export function threadShellFromProjection(
       (left, right) =>
         DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
     );
-  const latestUserMessage = userMessages[0] ?? null;
+  // Spoken lines are human activity, but never imply a queued harness turn.
+  const latestUserMessage = userMessages.find((message) => message.voiceCall === undefined) ?? null;
   const pendingBackgroundTasks = derivePendingBackgroundWork({
     latestRun,
     providerThreads: projection.providerThreads,
@@ -4383,7 +4384,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           SELECT payload_json FROM orchestration_v2_projection_turn_items
           WHERE thread_id = ${threadId}
             AND type IN ('user_message','assistant_message','command_execution','error',
-              'run_interrupt_result','file_change','proposed_plan')
+              'run_interrupt_result','file_change','proposed_plan','voice_call')
             AND ${runIds === undefined ? sql`1` : sql`run_id IN ${sql.in(runIds)}`}
           ORDER BY ordinal ASC, turn_item_id ASC
         `;
@@ -5908,6 +5909,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE message.thread_id = t.thread_id
                   AND message.role = 'user'
                   AND NOT ${isIdleCompactionMessage("message")}
+                  AND json_extract(message.payload_json, '$.voiceCall') IS NULL
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
               ) AS latest_user_message_at,
@@ -6163,6 +6165,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 FROM orchestration_v2_projection_messages message
                 WHERE message.thread_id = t.thread_id AND message.role = 'user'
                   AND NOT ${isIdleCompactionMessage("message")}
+                  AND json_extract(message.payload_json, '$.voiceCall') IS NULL
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
               ) AS latest_user_message_at,
@@ -7589,6 +7592,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                     "run_interrupt_result",
                     "file_change",
                     "proposed_plan",
+                    "voice_call",
                   ].includes(item.type) &&
                   (runIds === undefined || (item.runId !== null && runIds.includes(item.runId))),
               ),

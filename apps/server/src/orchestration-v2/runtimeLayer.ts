@@ -16,6 +16,14 @@ import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as BotService from "../bots/BotService.ts";
+import * as VoiceConfiguration from "../bots/VoiceConfiguration.ts";
+import * as VoiceCalls from "../bots/VoiceCalls.ts";
+import * as CodexVoice from "../bots/CodexVoice.ts";
+import * as VoiceSessions from "../bots/VoiceSessions.ts";
+import * as BotContext from "../bots/BotContext.ts";
+import * as BotWorkspace from "../bots/BotWorkspace.ts";
+import * as VoiceApi from "../bots/VoiceApi.ts";
 import * as CheckpointCaptureService from "./CheckpointCaptureService.ts";
 import * as CheckpointService from "./CheckpointService.ts";
 import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
@@ -164,10 +172,14 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
   ),
 );
 
+const layerBotContextProvided = BotContext.layer.pipe(
+  Layer.provide(Layer.mergeAll(ProjectionStore.layer, ProjectStore.layer, BotWorkspace.layer)),
+);
 const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       layerContextHandoffServiceProvided,
+      layerBotContextProvided,
       layerEventSinkProvided,
       IdAllocator.layer,
       ProjectionStore.layer,
@@ -180,7 +192,13 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
 );
 
 const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
-  Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerProviderSessionManagerProvided,
+      layerBotContextProvided,
+    ),
+  ),
 );
 const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
   Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
@@ -265,6 +283,34 @@ export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe
 );
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
+);
+const layerBotProvided = BotService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerProjectService,
+      BotWorkspace.layer,
+      layerManagedProjectFoldersProvided,
+      layerThreadManagementProvided,
+      ProjectionStore.layer,
+    ),
+  ),
+);
+const layerVoiceCallsProvided = VoiceCalls.layer.pipe(
+  Layer.provide(Layer.mergeAll(layerEventSinkProvided, ProjectionStore.layer, ProjectStore.layer)),
+);
+const layerVoiceSessionsProvided = VoiceSessions.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerVoiceCallsProvided,
+      layerBotContextProvided,
+      ProjectStore.layer,
+      VoiceApi.layer,
+      CodexVoice.layer,
+      VoiceConfiguration.layer,
+      ProjectionStore.layer,
+      layerThreadManagementProvided,
+    ),
+  ),
 );
 const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
   Layer.provide(
@@ -366,6 +412,10 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
+  layerBotProvided,
+  VoiceConfiguration.layer,
+  layerVoiceCallsProvided,
+  layerVoiceSessionsProvided,
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,
   layerSecretRequestsProvided,

@@ -1,7 +1,13 @@
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
-import { useIsFocused, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import {
+  useIsFocused,
+  useNavigation,
+  useNavigationState,
+  useRoute,
+  type StaticScreenProps,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { EnvironmentId, ThreadId, type PreviewSessionSnapshot } from "@t3tools/contracts";
 import { normalizePreviewUrl, previewPdfAssetUrl } from "@t3tools/shared/preview";
@@ -12,9 +18,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ControlPill } from "../../components/ui/ControlPill";
 import { useAppForeground } from "../../lib/appState";
-import { AppBar } from "../../components/ui/AppBar";
+import { AppBar, type AppBarAction } from "../../components/ui/AppBar";
 
 import { useThreadServerBrowserTabs } from "../../state/preview";
+import { useThreadAssistant } from "../bots/AssistantOrb";
 import { usePreparedConnection } from "../../state/session";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { BrowserTabMenu } from "./BrowserTabMenu";
@@ -37,7 +44,16 @@ type BrowserPreviewRouteScreenProps = StaticScreenProps<{
 
 export function BrowserPreviewRouteScreen({ route }: BrowserPreviewRouteScreenProps) {
   const navigation = useNavigation();
+  const routeKey = useRoute().key;
   const onClose = useCallback(() => navigation.goBack(), [navigation]);
+  // The route remembers the tab, so returning from Bots reopens the page being read.
+  const onSelectTab = useCallback((tabId: string) => navigation.setParams({ tabId }), [navigation]);
+  // The quick Assistant covers only part of the page, so the page keeps playing under it.
+  const underQuickAssistant = useNavigationState(
+    (state) =>
+      state.routes[state.index]?.name === "AssistantQuick" &&
+      state.routes[state.index - 1]?.key === routeKey,
+  );
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       <BrowserPreviewStack.Navigator
@@ -56,6 +72,8 @@ export function BrowserPreviewRouteScreen({ route }: BrowserPreviewRouteScreenPr
               threadId={ThreadId.make(route.params.threadId)}
               initialTabId={route.params.tabId ?? null}
               onClose={onClose}
+              onSelectTab={onSelectTab}
+              underQuickAssistant={underQuickAssistant}
             />
           )}
         </BrowserPreviewStack.Screen>
@@ -69,17 +87,22 @@ function BrowserPreviewScreen({
   threadId,
   initialTabId,
   onClose,
+  onSelectTab,
+  underQuickAssistant,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly initialTabId: string | null;
   readonly onClose: () => void;
+  readonly onSelectTab: (tabId: string) => void;
+  readonly underQuickAssistant: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { themeVariables } = useAppearancePreferences();
   const prepared = usePreparedConnection(environmentId);
   const httpBaseUrl = Option.isSome(prepared) ? prepared.value.httpBaseUrl : null;
-  const focused = useIsFocused();
+  const screenFocused = useIsFocused();
+  const focused = screenFocused || underQuickAssistant;
   const foreground = useAppForeground();
   const [selectedTabId, setSelectedTabId] = useState(initialTabId);
   const [pictureInPicture, setPictureInPicture] = useState(NO_PICTURE_IN_PICTURE);
@@ -95,9 +118,13 @@ function BrowserPreviewScreen({
     setPictureInPicture(NO_PICTURE_IN_PICTURE);
     setSelectedTabId(tabId);
   }
+  // A fallback tab goes into the route too, so navigation state names the page on screen.
   useEffect(() => {
-    if (focused && loaded && tabs.length === 0) onClose();
-  }, [focused, loaded, tabs.length, onClose]);
+    if (tabId !== null && tabId !== initialTabId) onSelectTab(tabId);
+  }, [tabId, initialTabId, onSelectTab]);
+  useEffect(() => {
+    if (screenFocused && loaded && tabs.length === 0) onClose();
+  }, [screenFocused, loaded, tabs.length, onClose]);
   const onPictureInPicture = useCallback((state: PreviewPictureInPictureState, detail?: string) => {
     setPictureInPicture({ supported: state.supported, active: state.active });
     if (detail) Dialog.alert("Picture in picture is unavailable", detail);
@@ -105,8 +132,13 @@ function BrowserPreviewScreen({
   const selectTab = (next: string) => {
     setPictureInPicture(NO_PICTURE_IN_PICTURE);
     setSelectedTabId(next);
+    onSelectTab(next);
   };
   const live = (focused && foreground) || pictureInPicture.active;
+  const openAssistant = useThreadAssistant({ environmentId, threadId });
+  const assistantActions: AppBarAction[] = openAssistant
+    ? [{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]
+    : [];
 
   return (
     <View className="flex-1 bg-sheet" style={{ paddingBottom: insets.bottom }}>
@@ -115,12 +147,13 @@ function BrowserPreviewScreen({
         sidebar={false}
         onBack={onClose}
         options={{ headerBackVisible: false }}
-        actions={
+        actions={[
+          ...assistantActions,
           // Android WebView cannot play video in picture in picture.
-          Platform.OS === "ios" &&
+          ...(Platform.OS === "ios" &&
           pictureInPicture.supported &&
           (pictureInPicture.active || pdfUri === null)
-            ? [
+            ? ([
                 {
                   accessibilityLabel: pictureInPicture.active
                     ? "Exit picture in picture"
@@ -132,9 +165,9 @@ function BrowserPreviewScreen({
                   selected: pictureInPicture.active,
                   onPress: () => streamRef.current?.togglePictureInPicture(),
                 },
-              ]
-            : []
-        }
+              ] satisfies AppBarAction[])
+            : []),
+        ]}
         menus={
           tabs.length > 1
             ? [

@@ -3,7 +3,7 @@ import { WORKSPACE_TAB_LABELS, useEnabledNavigationTabs } from "./navigation-tab
 import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
 import { SettingsRouteScreen } from "../settings/SettingsRouteScreen";
 import { WorkspaceSectionToolbar } from "./WorkspaceSectionToolbar";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { use, useCallback, useMemo } from "react";
 import { Platform, View, useWindowDimensions } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
@@ -28,6 +28,7 @@ import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
 import {
+  WorkspaceRoomContext,
   WorkspaceTabsContext,
   WorkspaceTabsProvider,
   useWorkspaceTabs,
@@ -35,6 +36,7 @@ import {
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
 import {
   WORKSPACE_DOCK,
+  workspaceRoomTab,
   workspaceSearchBottomClearance,
   workspaceDockBottomClearance,
   workspaceToolbarHeight,
@@ -47,14 +49,27 @@ import {
 } from "./useSystemWorkspaceTabBar";
 import { openSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+import { ActiveBotCallBar } from "../bots/ActiveBotCall";
+import { AssistantOrb, useOpenAssistantQuick } from "../bots/AssistantOrb";
+import { BotsScreen } from "../bots/BotsScreen";
+import { BotsToolbar } from "../bots/BotsToolbar";
+import { useAssistantEnvironmentId } from "../bots/use-assistant";
+import { useBotCallSummary } from "../bots/use-bot-call";
 
 const TAB_TITLES = WORKSPACE_TAB_LABELS;
+
+// Clears the list behind the Assistant button, which floats above the tab bar.
+const ASSISTANT_ORB_CLEARANCE = 56;
+// The call bar shares the orb's row, so the list clears whichever is taller.
+const CALL_BAR_CLEARANCE = 66;
+const ASSISTANT_ORB_SIZE = 44;
 
 function WorkspaceRootTitle(props: {
   readonly maxWidth: number;
   readonly onOpenEnvironments: () => void;
 }) {
   const { state, settingsOpen } = useWorkspaceTabs()!;
+  const room = use(WorkspaceRoomContext) ?? state.room;
   const enabled = useEnabledNavigationTabs();
   const tabTitle = settingsOpen
     ? "Settings"
@@ -98,6 +113,16 @@ function WorkspaceRootContent() {
   const keyboardHeight = useKeyboardState((keyboard) => keyboard.height);
   const workspace = useWorkspaceTabs()!;
   const { state } = workspace;
+  // A tab keeps showing its own room while an aligned page leads the state by a frame.
+  const room = use(WorkspaceRoomContext) ?? state.room;
+  const selectedTab = workspaceRoomTab(state, room);
+  const assistantEnvironmentId = useAssistantEnvironmentId();
+  const assistantOrb =
+    (systemTabBar || compactTabs) && room === "code" && assistantEnvironmentId !== null;
+  const openAssistant = useOpenAssistantQuick(assistantEnvironmentId);
+  // Beside a split layout's open page, that page carries the call instead.
+  const focused = useIsFocused();
+  const callBar = useBotCallSummary() !== null && (!layout.usesSplitView || focused);
   const renderHeaderTitle = useCallback(
     () => (
       <WorkspaceRootTitle
@@ -109,9 +134,9 @@ function WorkspaceRootContent() {
   );
   // Settings is a workspace tab too; its list takes the place of the selected tab's.
   const settingsOpen = workspace.settingsOpen;
-  const tab = state.tabs[settingsOpen ? "settings" : state.selectedTab];
-  const bottomClearance =
-    layout.primarySidebarOverlaysContent && state.selectedTab === "usage"
+  const tab = state.tabs[settingsOpen ? "settings" : selectedTab];
+  const controlsClearance =
+    layout.primarySidebarOverlaysContent && selectedTab === "usage"
       ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight })
       : Platform.OS === "ios" && isDuoDevice(deviceType)
         ? workspaceSearchBottomClearance({
@@ -131,6 +156,11 @@ function WorkspaceRootContent() {
             : keyboardHeight > 0 && tab.searchMode !== "resting"
               ? keyboardHeight + 64
               : Math.max(insets.bottom, 12) + workspaceToolbarHeight(tab.searchMode) + 16;
+  const bottomClearance =
+    controlsClearance +
+    Math.max(assistantOrb ? ASSISTANT_ORB_CLEARANCE : 0, callBar ? CALL_BAR_CLEARANCE : 0);
+  // The orb and call bar sit 12 points above the controls the list already clears.
+  const floatingBottom = controlsClearance - 4;
   const context = useMemo(() => ({ ...workspace, bottomClearance }), [workspace, bottomClearance]);
 
   return (
@@ -143,7 +173,7 @@ function WorkspaceRootContent() {
           <NativeStackScreenOptions
             optionsVersion={[
               settingsOpen,
-              state.selectedTab,
+              selectedTab,
               state.selectionRevision,
               width,
               sidebarNavigation,
@@ -153,7 +183,7 @@ function WorkspaceRootContent() {
               title: settingsOpen
                 ? "Settings"
                 : enabled.length
-                  ? TAB_TITLES[state.selectedTab]
+                  ? TAB_TITLES[selectedTab]
                   : "Navigation",
               headerShown: true,
               headerTransparent: NATIVE_LIQUID_GLASS_SUPPORTED,
@@ -168,7 +198,7 @@ function WorkspaceRootContent() {
               // Beside a detail column the tab bar names the tab and the detail header the page,
               // so the sidebar keeps the brand.
               headerTitle:
-                sidebarNavigation || (!settingsOpen && state.selectedTab !== "usage")
+                sidebarNavigation || (!settingsOpen && selectedTab !== "usage")
                   ? renderHeaderTitle
                   : undefined,
             }}
@@ -178,11 +208,11 @@ function WorkspaceRootContent() {
             title="T3 Code"
             titleContent={renderHeaderTitle()}
             actions={[
-              ...(state.selectedTab === "threads" || state.selectedTab === "pullRequests"
+              ...(selectedTab === "threads" || selectedTab === "pullRequests"
                 ? [
                     {
                       accessibilityLabel:
-                        state.selectedTab === "threads" ? "Search threads" : "Search pull requests",
+                        selectedTab === "threads" ? "Search threads" : "Search pull requests",
                       icon: "magnifyingglass" as const,
                       onPress: () => {
                         dispatchHardwareKeyboardCommand("focusSearch");
@@ -207,27 +237,53 @@ function WorkspaceRootContent() {
             <SettingsRouteScreen />
           ) : enabled.length === 0 ? (
             <WorkspaceNoTabs />
-          ) : state.selectedTab === "threads" ? (
+          ) : selectedTab === "bots" ? (
+            <BotsScreen />
+          ) : selectedTab === "threads" ? (
             <HomeRouteScreen />
-          ) : state.selectedTab === "pullRequests" ? (
+          ) : selectedTab === "pullRequests" ? (
             <PullRequestsScreen />
           ) : (
-            <WorkspaceExtraTab tab={state.selectedTab} />
+            <WorkspaceExtraTab tab={selectedTab} />
           )}
         </SafeAreaInsetsContext>
         {deviceType !== "pad" && deviceType !== "phone" && sidebarPicker ? (
           <WorkspaceSidebarTabs />
         ) : null}
-        {/* Android's Settings list carries its own search in its app bar. */}
-        {enabled.length === 0 && !settingsOpen ? null : (
+        {enabled.length === 0 && !settingsOpen ? null : !settingsOpen && selectedTab === "bots" ? (
+          <BotsToolbar />
+        ) : (
             settingsOpen
               ? Platform.OS === "ios"
-              : state.selectedTab === "threads" || state.selectedTab === "pullRequests"
+              : selectedTab === "threads" || selectedTab === "pullRequests"
           ) ? (
-          <WorkspaceToolbar sidebar={sidebarNavigation} onNewTask={startNewTask} />
+          <WorkspaceToolbar
+            sidebar={sidebarNavigation}
+            onNewTask={startNewTask}
+            onOpenAssistant={
+              assistantEnvironmentId === null || assistantOrb ? undefined : openAssistant
+            }
+          />
         ) : (
           <WorkspaceSectionToolbar onNewTask={startNewTask} showCompose={false} />
         )}
+        {assistantOrb && assistantEnvironmentId !== null ? (
+          <AssistantOrb
+            environmentId={assistantEnvironmentId}
+            style={{ right: 16, bottom: floatingBottom }}
+          />
+        ) : null}
+        {callBar ? (
+          <ActiveBotCallBar
+            thread={null}
+            className="absolute"
+            style={{
+              left: 16,
+              right: assistantOrb ? 16 + ASSISTANT_ORB_SIZE + 10 : 16,
+              bottom: floatingBottom,
+            }}
+          />
+        ) : null}
       </View>
     </WorkspaceTabsContext>
   );

@@ -19,6 +19,7 @@ import { usePrimaryEnvironmentId } from "../state/environments";
 import { useEnvironmentScope } from "../state/session";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
+import { withoutBotProjects } from "../components/bots/botRoom.logic";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useScratchProject } from "../hooks/useScratchProject";
@@ -51,7 +52,7 @@ function ChatRouteGlobalShortcuts() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { scratchEnvironmentId, startScratchThread } = useScratchProject();
   const projectGroupCount = buildSidebarProjectSnapshots({
-    projects,
+    projects: withoutBotProjects(projects),
     settings: projectGroupingSettings,
     primaryEnvironmentId,
     resolveEnvironmentLabel: () => null,

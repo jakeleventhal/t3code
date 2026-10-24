@@ -13,6 +13,16 @@ export function WorkspaceEmptyDetail(props: {
   readonly onAddConnection?: () => void;
 }) {
   const pullRequests = props.tab === "pullRequests";
+  if (props.tab === "bots")
+    return (
+      <View className="flex-1 justify-center bg-screen px-10">
+        <EmptyState
+          variant="plain"
+          title="Select a conversation"
+          detail="Choose your Assistant or another bot from the sidebar."
+        />
+      </View>
+    );
   const settings = props.tab === "settings";
   if (props.tab === "usage") return <View className="flex-1 bg-screen" />;
   return (

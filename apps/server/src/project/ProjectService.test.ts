@@ -3,7 +3,13 @@ import * as Queue from "effect/Queue";
 import * as Tracer from "effect/Tracer";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CommandId, type Project, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  CommandId,
+  type Project,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -137,6 +143,83 @@ const waitForProject = Effect.fn("ProjectServiceTest.waitForProject")(function* 
         if (predicate(project)) return project;
         yield* Queue.take(completions);
       }
+    }),
+  );
+});
+
+it.layer(layerTest)("Project bot identity", (it) => {
+  it.effect("persists bot roles through reads, unrelated edits, and explicit removal", () =>
+    Effect.gen(function* () {
+      const service = yield* ProjectService.ProjectService;
+      const projectId = ProjectId.make("project:bot-role");
+      const created = yield* service.create({
+        commandId: CommandId.make("command:bot:create"),
+        projectId,
+        title: "Fitness",
+        workspaceRoot: "/work/bots/fitness",
+        botRole: "specialist",
+      });
+      assert.equal(created.botRole, "specialist");
+
+      const mainThreadId = ThreadId.make("thread:bot-main");
+      yield* service.update({
+        commandId: CommandId.make("command:bot:main"),
+        projectId,
+        botMainThreadId: mainThreadId,
+      });
+
+      yield* service.update({
+        commandId: CommandId.make("command:bot:rename"),
+        projectId,
+        title: "Training",
+      });
+      assert.equal(Option.getOrThrow(yield* service.getById(projectId)).botRole, "specialist");
+      assert.equal(Option.getOrThrow(yield* service.getShell(projectId)).botRole, "specialist");
+      assert.equal(
+        Option.getOrThrow(yield* service.getById(projectId)).botMainThreadId,
+        mainThreadId,
+      );
+      assert.equal(
+        Option.getOrThrow(yield* service.getShell(projectId)).botMainThreadId,
+        mainThreadId,
+      );
+      assert.equal(
+        (yield* service.snapshot).projects.find((project) => project.id === projectId)?.botRole,
+        "specialist",
+      );
+
+      const assistant = yield* service.update({
+        commandId: CommandId.make("command:bot:role"),
+        projectId,
+        botRole: "assistant",
+      });
+      assert.equal(assistant.botRole, "assistant");
+      yield* service.update({
+        commandId: CommandId.make("command:bot:clear"),
+        projectId,
+        botRole: null,
+      });
+      assert.isNull(Option.getOrThrow(yield* service.getById(projectId)).botRole);
+      assert.isNull(Option.getOrThrow(yield* service.getShell(projectId)).botRole);
+
+      const sql = yield* SqlClient.SqlClient;
+      const events = yield* sql<{
+        readonly role: string | null;
+        readonly fieldType: string | null;
+      }>`
+        SELECT json_extract(payload_json, '$.botRole') AS role,
+               json_type(payload_json, '$.botRole') AS "fieldType"
+        FROM orchestration_events
+        WHERE aggregate_kind = 'project' AND stream_id = ${projectId}
+        ORDER BY sequence ASC
+      `;
+      assert.deepEqual(events, [
+        { role: "specialist", fieldType: "text" },
+        { role: null, fieldType: null },
+        { role: null, fieldType: null },
+        { role: "assistant", fieldType: "text" },
+        { role: null, fieldType: "null" },
+      ]);
     }),
   );
 });

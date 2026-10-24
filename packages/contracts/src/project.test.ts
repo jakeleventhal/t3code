@@ -94,6 +94,25 @@ describe("project RPC errors", () => {
 });
 
 describe("shared project payloads", () => {
+  it("preserves bot identity in mutation envelopes and accepts its explicit removal", () => {
+    const envelope = { commandId: "command", projectId: "project" };
+    for (const botRole of ["assistant", "specialist"] as const) {
+      expect(
+        decodeProjectMutation({
+          type: "project.create",
+          ...envelope,
+          title: "Bot",
+          workspaceRoot: "/bots/example",
+          botRole,
+        }),
+      ).toMatchObject({ botRole });
+      expect(decodeProjectUpdatePayload({ botRole }).botRole).toBe(botRole);
+    }
+    expect(decodeProjectUpdatePayload({ botRole: null }).botRole).toBeNull();
+    expect(decodeProjectUpdatePayload({ title: "Renamed" })).not.toHaveProperty("botRole");
+    expect(() => decodeProjectUpdatePayload({ botRole: "unsupported" })).toThrow();
+  });
+
   it("preserves omitted, false, and null values through RPC envelopes", () => {
     const create = decodeProjectCreatePayload({
       title: " Example ",

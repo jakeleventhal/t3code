@@ -1,4 +1,6 @@
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import * as BotContext from "../../bots/BotContext.ts";
+import * as BotWorkspace from "../../bots/BotWorkspace.ts";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ProviderDriverKind, ProviderReplayTranscript } from "@t3tools/contracts";
@@ -390,10 +392,15 @@ export function layerWithRegistry<Error>(
       ),
     ),
   );
+  const layerBotContext = BotContext.layer.pipe(
+    Layer.provide(BotWorkspace.layer),
+    Layer.provide(Layer.merge(layerStores, layerDatabase)),
+  );
   const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         layerContextHandoffServiceProvided,
+        layerBotContext,
         layerEventSinkProvided,
         IdAllocator.layer,
         layerStores,
@@ -409,7 +416,9 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
-    Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
+    Layer.provide(
+      Layer.mergeAll(layerStores, layerProviderSessionManagerProvided, layerBotContext),
+    ),
   );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
     Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
@@ -456,6 +465,7 @@ export function layerWithRegistry<Error>(
         layerCheckpointServiceProvided,
         CommandPolicy.layer,
         layerContextHandoffServiceProvided,
+        layerBotContext,
         layerPersistence,
         layerProvidedRegistry,
         layerContinuationRequests,

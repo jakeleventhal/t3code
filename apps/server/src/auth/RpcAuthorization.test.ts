@@ -1,5 +1,6 @@
 import {
   AuthEnvironmentMaintainScope,
+  AuthPreviewOperateScope,
   AuthDiagnosticsReadScope,
   AuthFilesystemReadScope,
   AuthProvidersManageScope,
@@ -7,6 +8,8 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProviderInstanceId,
   ThreadId,
+  RunId,
+  MessageId,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthSourceControlWriteScope,
@@ -29,6 +32,10 @@ import {
 import * as RpcAuthorization from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
+  it("separates bot profile reads from avatar writes", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.botsFiles)).toBe(AuthOrchestrationReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.botsSetAvatar)).toBe(AuthOrchestrationOperateScope);
+  });
   it("declares exactly one scope for every RPC in the server group", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
   });
@@ -40,6 +47,30 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.scheduledTasksRotateWebhookToken,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+  });
+
+  it("separates preview control from observation", () => {
+    for (const method of [
+      WS_METHODS.previewOpen,
+      WS_METHODS.previewNavigate,
+      WS_METHODS.previewResize,
+      WS_METHODS.previewRefresh,
+      WS_METHODS.previewClose,
+      WS_METHODS.previewReadPage,
+      WS_METHODS.previewReportStatus,
+      WS_METHODS.previewAdjust,
+      WS_METHODS.previewClearProfile,
+      WS_METHODS.previewReportProfiles,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthPreviewOperateScope);
+    }
+    for (const method of [
+      WS_METHODS.previewList,
+      WS_METHODS.subscribePreviewEvents,
+      WS_METHODS.subscribeDiscoveredLocalServers,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
   });
 
@@ -88,6 +119,99 @@ it("requires operate permission for tool updates even alongside a read-only chec
 });
 
 describe("RPC scope middleware", () => {
+  it.effect("read-only clients can read call history but cannot create, append, or end calls", () =>
+    Effect.gen(function* () {
+      const methods = [
+        WS_METHODS.botsVoiceTranscript,
+        WS_METHODS.botsVoiceBegin,
+        WS_METHODS.botsVoiceConnect,
+        WS_METHODS.botsVoiceWork,
+        WS_METHODS.botsVoiceAppend,
+        WS_METHODS.botsVoiceEnd,
+      ] as const;
+      const voiceGroup = WsRpcGroup.omit(
+        ...[...WsRpcGroup.requests.keys()].filter(
+          (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, (typeof methods)[number]> =>
+            !(methods as ReadonlyArray<string>).includes(tag),
+        ),
+      );
+      let writes = 0;
+      const client = yield* RpcTest.makeClient(voiceGroup).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceTranscript, () =>
+              Effect.succeed({ entries: [], nextOrdinal: null }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceBegin, (input) =>
+              Effect.sync(() => {
+                writes++;
+                return {
+                  callId: input.callId,
+                  botTitle: "Assistant",
+                  startedAt: "2026-10-24T00:00:00Z",
+                  endedAt: null,
+                  endReason: null,
+                };
+              }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceAppend, () =>
+              Effect.sync(() => {
+                writes++;
+              }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceConnect, () =>
+              Effect.sync(() => {
+                writes++;
+                return { kind: "openai-live" as const, sessionId: "session", sdp: "answer" };
+              }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceWork, (input) =>
+              Effect.sync(() => {
+                writes++;
+                return {
+                  threadId: input.threadId,
+                  runId: RunId.make("work"),
+                  messageId: MessageId.make("work"),
+                };
+              }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoiceEnd, () =>
+              Effect.sync(() => {
+                writes++;
+              }),
+            ),
+            RpcAuthorization.layer([AuthOrchestrationReadScope]),
+          ),
+        ),
+      );
+      const input = {
+        threadId: ThreadId.make("voice-thread"),
+        callId: "call",
+        endpointId: "endpoint",
+      };
+      expect(yield* client[WS_METHODS.botsVoiceTranscript](input)).toEqual({
+        entries: [],
+        nextOrdinal: null,
+      });
+      const errors = [
+        yield* client[WS_METHODS.botsVoiceBegin](input).pipe(Effect.flip),
+        yield* client[WS_METHODS.botsVoiceWork]({
+          ...input,
+          requestId: "delegation",
+          text: "Check this",
+        }).pipe(Effect.flip),
+        yield* client[WS_METHODS.botsVoiceConnect]({
+          ...input,
+          transport: { type: "webrtc", sdp: "offer" },
+        }).pipe(Effect.flip),
+        yield* client[WS_METHODS.botsVoiceAppend]({ ...input, entries: [] }).pipe(Effect.flip),
+        yield* client[WS_METHODS.botsVoiceEnd]({ ...input, reason: "user" }).pipe(Effect.flip),
+      ];
+      for (const error of errors)
+        expect(error).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
+      expect(writes).toBe(0);
+    }).pipe(Effect.scoped),
+  );
   const tested = [WS_METHODS.serverProbe, WS_METHODS.serverRetryResourceTelemetry] as const;
   const group = WsRpcGroup.omit(
     ...[...WsRpcGroup.requests.keys()].filter(
@@ -142,6 +266,41 @@ describe("settings mutation authorization", () => {
     operation: "remove" as const,
     instanceId: ProviderInstanceId.make("codex_work"),
   };
+
+  it.effect("protects voice credentials independently from voice selection", () =>
+    Effect.gen(function* () {
+      let handled = 0;
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
+              Effect.sync(() => {
+                handled++;
+                return DEFAULT_SERVER_SETTINGS;
+              }),
+            ),
+            RpcAuthorization.layer([AuthSettingsWriteScope]),
+          ),
+        ),
+      );
+      yield* client[WS_METHODS.serverUpdateSettings]({
+        patch: {
+          voiceSelection: { connectionId: "personal", model: "gpt-live-1", voice: "marin" },
+        },
+      });
+      for (const voiceConnections of [
+        { personal: null },
+        { personal: { kind: "openai-api" as const, name: "Personal", apiKey: "private-test-key" } },
+      ]) {
+        expect(
+          yield* client[WS_METHODS.serverUpdateSettings]({ patch: { voiceConnections } }).pipe(
+            Effect.flip,
+          ),
+        ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
+      }
+      expect(handled).toBe(1);
+    }).pipe(Effect.scoped),
+  );
 
   it.effect("allows provider-only mutations while denying mixed settings without their grant", () =>
     Effect.gen(function* () {

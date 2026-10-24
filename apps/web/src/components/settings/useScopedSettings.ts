@@ -47,18 +47,19 @@ export function useScopedSettingSource(keys: readonly (keyof ServerSettings)[]) 
   return scopedSettingsSource(targets, keys);
 }
 
-function useRunScopedPlan() {
+/** Resolves true only when every environment in the plan saved it. */
+export function useRunScopedSettingsPlan() {
   const persistServer = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
-  return (plan: ReturnType<typeof planScopedSettingsPatch>) => {
+  return (plan: ReturnType<typeof planScopedSettingsPatch>): Promise<boolean> => {
     if (plan.unavailableReason) {
       toastManager.add({
         type: "warning",
         title: "Setting not saved",
         description: plan.unavailableReason,
       });
-      return;
+      return Promise.resolve(false);
     }
-    void persistScopedSettingsPatch(
+    return persistScopedSettingsPatch(
       plan,
       async (request) => {
         const missing = requiredScopesForServerSettingsPatch(request.input.patch).find(
@@ -77,7 +78,7 @@ function useRunScopedPlan() {
       },
       persistClientSettingsPatch,
     ).then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
-      if (failedEnvironments.length === 0) return;
+      if (failedEnvironments.length === 0) return true;
       toastManager.add({
         type: "error",
         title:
@@ -91,34 +92,37 @@ function useRunScopedPlan() {
             : []),
         ].join("\n"),
       });
+      return false;
     });
   };
 }
 
 export function useUpdateScopedSettings() {
   const { scope, environments } = useSettingsScope();
-  const run = useRunScopedPlan();
-  return (patch: ScopedSettingsPatch) => run(planScopedSettingsPatch(scope, environments, patch));
+  const run = useRunScopedSettingsPlan();
+  return (patch: ScopedSettingsPatch) => {
+    void run(planScopedSettingsPatch(scope, environments, patch));
+  };
 }
 
 export function useClearScopedSettings() {
   const context = useOptionalSettingsScope();
-  const run = useRunScopedPlan();
+  const run = useRunScopedSettingsPlan();
   return (keys: readonly ProjectScopedServerSettingKey[]) => {
     if (context === null) return;
-    run(planScopedSettingsClear(context.scope, context.environments, keys));
+    void run(planScopedSettingsClear(context.scope, context.environments, keys));
   };
 }
 
 export function useClearProjectOverrides() {
   const context = useOptionalSettingsScope();
-  const run = useRunScopedPlan();
+  const run = useRunScopedSettingsPlan();
   return (
     entries: readonly ProjectOverrideEntry[],
     keys: readonly ProjectScopedServerSettingKey[],
   ) => {
     if (context === null) return;
-    run(planProjectOverridesClear(context.environments, entries, keys));
+    void run(planProjectOverridesClear(context.environments, entries, keys));
   };
 }
 

@@ -10,6 +10,7 @@ import {
 
 const decodeRecord = Schema.decodeUnknownOption(ComposerContextRecord);
 const decodeContext = Schema.decodeUnknownSync(OrchestrationMessageContext);
+const encodeContext = Schema.encodeUnknownSync(Schema.toCodecJson(OrchestrationMessageContext));
 
 const base = { version: 1, contextId: "ctx_1" } as const;
 
@@ -225,5 +226,13 @@ describe("OrchestrationMessageContext", () => {
         records: [knownRecords.skill, { ...knownRecords.terminal, contextId: " ctx_1 " }],
       }),
     ).toThrow();
+  });
+
+  it("round-trips a bounded device snapshot with no inline context records", () => {
+    const context = { version: 1, records: [], currentView: "Viewing PR 42" };
+    const wire = encodeContext(context);
+    expect(decodeContext(wire)).toEqual(context);
+    expect(() => decodeContext({ ...context, currentView: "x".repeat(8_192) })).not.toThrow();
+    expect(() => decodeContext({ ...context, currentView: "x".repeat(8_193) })).toThrow();
   });
 });
