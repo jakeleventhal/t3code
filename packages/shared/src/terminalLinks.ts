@@ -28,13 +28,19 @@ function trimClosingDelimiters(value: string, kind: TerminalLinkKind): string {
   );
   if (output.length === 0) return output;
 
+  // Count once and trim the unmatched trailing run in one slice; re-counting per
+  // character is quadratic on long delimiter runs in terminal output.
   const trimUnbalanced = (open: string, close: string) => {
-    while (output.endsWith(close)) {
-      const opens = output.split(open).length - 1;
-      const closes = output.split(close).length - 1;
-      if (opens >= closes) return;
-      output = output.slice(0, -1);
+    const opens = output.split(open).length - 1;
+    const closes = output.split(close).length - 1;
+    const excess = Math.max(0, closes - opens);
+    if (excess === 0) return;
+
+    let trailing = 0;
+    while (trailing < output.length && output[output.length - 1 - trailing] === close) {
+      trailing += 1;
     }
+    output = output.slice(0, output.length - Math.min(excess, trailing));
   };
 
   trimUnbalanced("(", ")");
