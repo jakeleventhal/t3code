@@ -2090,7 +2090,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
           <SelectableMarkdownText
             key={segment.id}
             markdown={text}
-        workspaceRoot={props.workspaceRoot}
+            workspaceRoot={props.workspaceRoot}
             contextClipboardFragment={contextClipboardFragment}
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}

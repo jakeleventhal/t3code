@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
-import { CHAT_MARKDOWN_REMARK_PLUGINS, CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS } from "@t3tools/shared/markdownPipeline";
+import {
+  CHAT_MARKDOWN_REMARK_PLUGINS,
+  CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+} from "@t3tools/shared/markdownPipeline";
 import { describe, expect, it } from "vite-plus/test";
 
 import { remarkStandaloneMediaLinks } from "./markdown-media-links";
@@ -12,7 +15,9 @@ function renderMarkdown(
   return renderToStaticMarkup(
     <ReactMarkdown
       remarkPlugins={[
-        ...(options?.lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+        ...(options?.lineBreaks
+          ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS
+          : CHAT_MARKDOWN_REMARK_PLUGINS),
         [
           remarkStandaloneMediaLinks,
           {
