@@ -1,11 +1,14 @@
 import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
 
 import type { Preferences } from "../../persistence/mobile-preferences";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import { supportsAgentAwarenessLiveActivities, supportsAgentAwarenessPush } from "./capabilities";
 
-// Development builds use sandbox APNs; distribution builds use production APNs.
-export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
-  return appVariant === "development" ? "sandbox" : "production";
+// Personal Xcode builds use sandbox APNs for every app variant.
+export function resolveApsEnvironment(
+  appVariant: unknown,
+  iosPersonalTeamBuild = false,
+): "sandbox" | "production" {
+  return appVariant === "development" || iosPersonalTeamBuild ? "sandbox" : "production";
 }
 
 export function makeRelayDeviceRegistrationRequest(
@@ -25,7 +28,8 @@ export function makeRelayDeviceRegistrationRequest(
   ),
 ): RelayDeviceRegistrationRequest {
   const pushAvailable = supportsAgentAwarenessPush();
-  const liveActivitiesEnabled = pushAvailable && input.preferences.liveActivitiesEnabled !== false;
+  const liveActivitiesEnabled =
+    supportsAgentAwarenessLiveActivities() && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,
     label: input.label,
