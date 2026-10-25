@@ -1,8 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import {
-  peerRequestPreview,
-  type PeerRequestRow,
-} from "@t3tools/client-runtime/state/peer-requests";
+import { type PeerRequestRow } from "@t3tools/client-runtime/state/peer-requests";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   ArrowUpRightIcon,
@@ -14,9 +11,9 @@ import {
   XIcon,
 } from "lucide-react";
 
+import { BotAvatar } from "./BotAvatar";
 import { cn } from "../../lib/utils";
-import { useQuietThreadShell } from "../../state/entities";
-import { useEnvironmentPresentation } from "../../state/presentation";
+import { useProjects, useQuietThreadShell } from "../../state/entities";
 import { ComposerBanner } from "../chat/ComposerBanner";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -50,15 +47,18 @@ function useCounterpart(row: PeerRequestRow) {
         : scopeThreadRef(row.hostEnvironmentId, row.item.sourceThreadId)
       : scopeThreadRef(row.item.environmentId, row.item.result?.threadId ?? row.item.threadId);
   const shell = useQuietThreadShell(ref);
-  const machine =
-    useEnvironmentPresentation(ref?.environmentId ?? null).presentation?.entry.target.label ?? null;
+  const bot = useProjects().find(
+    (project) =>
+      project.environmentId === ref?.environmentId &&
+      (project.id === shell?.projectId || project.botMainThreadId === ref?.threadId),
+  );
   const title =
-    shell?.title ?? (row.direction === "incoming" ? row.item.sourceTitle : null) ?? null;
-  const name = title === null ? (machine ? `a bot on ${machine}` : "another bot") : `“${title}”`;
+    bot?.title ?? shell?.title ?? (row.direction === "incoming" ? row.item.sourceTitle : null);
+  const name = title ? `“${title}”` : "another bot";
   return {
     // Always a bot's request, never the user's own words.
     label: `${row.direction === "incoming" ? "From" : "To"} ${name}`,
-    where: machine,
+    bot,
     // Only a conversation this client has seen can be opened.
     ref: shell === null ? null : ref,
   };
@@ -70,7 +70,11 @@ function Counterpart({ row, onNavigate }: { row: PeerRequestRow; onNavigate?: ()
   const ref = counterpart.ref;
   const content = (
     <>
-      <BotIcon aria-hidden className="size-3 shrink-0" />
+      {counterpart.bot ? (
+        <BotAvatar bot={counterpart.bot} />
+      ) : (
+        <BotIcon aria-hidden className="size-3 shrink-0" />
+      )}
       <span className="truncate">{counterpart.label}</span>
     </>
   );
@@ -93,9 +97,7 @@ function Counterpart({ row, onNavigate }: { row: PeerRequestRow; onNavigate?: ()
       >
         {content}
       </TooltipTrigger>
-      <TooltipPopup side="top">
-        {counterpart.where ? `Open conversation on ${counterpart.where}` : "Open conversation"}
-      </TooltipPopup>
+      <TooltipPopup side="top">Open conversation</TooltipPopup>
     </Tooltip>
   );
 }
@@ -182,9 +184,7 @@ export function PeerRequestCardList({
             <StateIcon row={row} />
             <span className="shrink-0">{row.label}</span>
             <Counterpart row={row} {...(onNavigate ? { onNavigate } : {})} />
-            <span className="min-w-0 flex-1 truncate text-foreground">
-              {peerRequestPreview(row.item)}
-            </span>
+            <span className="flex-1" />
             <Actions row={row} size="icon-micro" {...(onNavigate ? { onNavigate } : {})} />
           </div>
           {row.detail ? <p className="pr-1 wrap-anywhere">{row.detail}</p> : null}
@@ -229,14 +229,6 @@ export function PeerRequestComposerBanner({
                     <span className="shrink-0 text-muted-foreground">
                       <Counterpart row={row} />
                     </span>
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
-                        {peerRequestPreview(row.item)}
-                      </TooltipTrigger>
-                      <TooltipPopup side="top" className="max-w-96 break-words">
-                        {row.item.text}
-                      </TooltipPopup>
-                    </Tooltip>
                   </ComposerBanner.Content>
                   <ComposerBanner.Actions>
                     <Actions row={row} size="icon-xs" />

@@ -438,3 +438,22 @@ export function botThreadsAccessibilityLabel(badge: {
   const count = `${badge.open} open ${badge.open === 1 ? "thread" : "threads"}`;
   return badge.needsYou ? `Threads, ${count}, one needs you` : `Threads, ${count}`;
 }
+
+export function botNotificationBadge(
+  projects: ReadonlyArray<EnvironmentProject>,
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+): string | undefined {
+  const keys = new Set(
+    projects
+      .filter((project) => botRole(project) !== null)
+      .map((project) => `${project.environmentId}:${project.id}`),
+  );
+  let unread = 0;
+  for (const thread of threads) {
+    if (thread.archivedAt !== null || !keys.has(`${thread.environmentId}:${thread.projectId}`))
+      continue;
+    if (botThreadStatus(thread) === "needs-you") return "!";
+    if (threadHasUnseenCompletion(thread)) unread++;
+  }
+  return unread === 0 ? undefined : unread > 99 ? "99+" : String(unread);
+}

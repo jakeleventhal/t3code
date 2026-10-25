@@ -94,10 +94,10 @@ describe("peerRequestCounterpartLabel", () => {
         title: null,
         machine: "Laptop",
       }),
-    ).toBe("From a bot on Laptop");
+    ).toBe("From another bot");
     expect(
       peerRequestCounterpartLabel({ row: row("outgoing"), title: null, machine: "Server" }),
-    ).toBe("To a bot on Server");
+    ).toBe("To another bot");
     expect(peerRequestCounterpartLabel({ row: row("outgoing"), title: null, machine: null })).toBe(
       "To another bot",
     );

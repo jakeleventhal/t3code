@@ -18,13 +18,12 @@ export function peerRequestCounterpartLabel(input: {
   /** The counterpart conversation's title, when this client has it. */
   readonly title: string | null;
   /** The counterpart's machine, when this client knows it. */
-  readonly machine: string | null;
+  readonly machine?: string | null;
 }): string {
   const { row } = input;
   const title =
     input.title ??
     (row.direction === "incoming" && row.item.sourceTitle.length > 0 ? row.item.sourceTitle : null);
-  const name =
-    title !== null ? `“${title}”` : input.machine ? `a bot on ${input.machine}` : "another bot";
+  const name = title !== null ? `“${title}”` : "another bot";
   return `${row.direction === "incoming" ? "From" : "To"} ${name}`;
 }

@@ -1,3 +1,4 @@
+import { useBotNotificationBadge } from "../bots/use-bot-notification-badge";
 import {
   WORKSPACE_TAB_LABELS,
   NAVIGATION_TAB_ICONS,
@@ -112,6 +113,7 @@ export function WorkspaceNativeTabs(props: {
   readonly hidden: boolean;
 }) {
   const workspace = useWorkspaceTabs()!;
+  const botBadge = useBotNotificationBadge();
   const order = useEnabledNavigationTabs();
   const primaryTabs = order.slice(0, 4);
   const overflow = order[4];
@@ -170,6 +172,7 @@ export function WorkspaceNativeTabs(props: {
               key={slot}
               screenKey={slot}
               title=""
+              badgeValue={!settings && tab === "bots" ? botBadge : undefined}
               tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
               ios={{
                 icon: settings
@@ -205,11 +208,12 @@ export function WorkspaceNativeTabs(props: {
             left: 0,
             bottom: 0,
             width: layout.listPaneWidth ?? width,
-            height: 128,
+            height: 208,
           }}
         >
           <WorkspaceSidebarTabs
             compact={compactSidebarTabs}
+            showAssistant={compactTabs && props.room === "code"}
             reserveComposeSpace={compactSidebarTabs}
             onNewTask={
               compactSidebarTabs && !workspace.settingsOpen && selectedTab === "threads"

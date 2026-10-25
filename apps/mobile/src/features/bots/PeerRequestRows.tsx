@@ -1,20 +1,16 @@
-import {
-  peerRequestPreview,
-  type PeerRequestRow,
-} from "@t3tools/client-runtime/state/peer-requests";
+import { type PeerRequestRow } from "@t3tools/client-runtime/state/peer-requests";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { Button } from "../../components/ui/Button";
-import { useQuietThreadShell } from "../../state/entities";
+import { useProjects, useQuietThreadShell } from "../../state/entities";
 import {
   useCancelPeerRequest,
   usePeerRequestCanCancel,
   usePeerRequestRows,
 } from "../../state/peer-requests";
-import { useEnvironmentPresentation } from "../../state/presentation";
 import { useOpenLinkedThread } from "../threads/useOpenLinkedThread";
 import { peerRequestCounterpartLabel, peerRequestCounterpartRef } from "./peer-request-counterpart";
 
@@ -30,9 +26,12 @@ function PeerRequestItem(props: { readonly row: PeerRequestRow }) {
   const { row } = props;
   const ref = peerRequestCounterpartRef(row);
   const shell = useQuietThreadShell(ref);
-  const machine =
-    useEnvironmentPresentation(ref?.environmentId ?? null).presentation?.entry.target.label ?? null;
-  const label = peerRequestCounterpartLabel({ row, title: shell?.title ?? null, machine });
+  const bot = useProjects().find(
+    (project) =>
+      project.environmentId === ref?.environmentId &&
+      (project.id === shell?.projectId || project.botMainThreadId === ref?.threadId),
+  );
+  const label = peerRequestCounterpartLabel({ row, title: bot?.title ?? shell?.title ?? null });
   const openThread = useOpenLinkedThread();
   const canCancel = usePeerRequestCanCancel(row);
   const cancel = useCancelPeerRequest();
@@ -54,9 +53,6 @@ function PeerRequestItem(props: { readonly row: PeerRequestRow }) {
           <Text className="shrink-0 text-xs text-foreground-muted">{row.label}</Text>
           <CounterpartLink label={label} target={target} onOpen={openThread} />
         </View>
-        <Text className="text-xs text-foreground" numberOfLines={1}>
-          {peerRequestPreview(row.item)}
-        </Text>
         {row.detail ? <Text className="text-xs text-foreground-muted">{row.detail}</Text> : null}
       </View>
       {canCancel ? (

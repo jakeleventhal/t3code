@@ -21,8 +21,9 @@ private final class WorkspaceTabBar: UITabBar {
 
   private func tabButtons(in view: UIView, matching match: (UIView) -> Bool) -> [UIView] {
     view.subviews.filter { !$0.isHidden }.flatMap { subview in
-      if subview is UIControl, match(subview) { return [subview] }
-      return tabButtons(in: subview, matching: match)
+      let descendants = tabButtons(in: subview, matching: match)
+      if !descendants.isEmpty { return descendants }
+      return subview is UIControl && match(subview) ? [subview] : []
     }
   }
 }
@@ -30,6 +31,8 @@ private final class WorkspaceTabBar: UITabBar {
 final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
   let onSelectionChange = EventDispatcher()
   let onCompose = EventDispatcher()
+  let onComposeLayout = EventDispatcher()
+  private var reportedComposeFrame: CGRect?
   private let tabBar = WorkspaceTabBar()
   private var tabContentFrame: CGRect?
   private let composeButton = UIButton(type: .system)
@@ -38,6 +41,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
   var tabs = ["threads", "pullRequests", "usage", "settings"] {
     didSet { if tabs != oldValue { updateItems() } }
   }
+  var botBadge = "" { didSet { itemsByTab["bots"]?.badgeValue = botBadge.isEmpty ? nil : botBadge } }
   var selectedTab = "threads" { didSet { updateSelection() } }
   var selectedColor: UIColor = .systemBlue { didSet { tabBar.tintColor = selectedColor } }
   var compact = false {
@@ -143,7 +147,12 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     guard showsCompose, frame.height > 0 else { return }
     let row = convert(frame, from: tabBar)
     let size: CGFloat = compact ? 56 : 64
-    composeButton.frame = CGRect(x: bounds.width - size - 4, y: row.midY - size / 2, width: size, height: size)
+    let frame = CGRect(x: bounds.width - size - 4, y: row.midY - size / 2, width: size, height: size)
+    composeButton.frame = frame
+    if reportedComposeFrame != frame {
+      reportedComposeFrame = frame
+      onComposeLayout(["top": frame.minY, "right": bounds.width - frame.maxX])
+    }
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

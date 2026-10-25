@@ -79,22 +79,19 @@ const grokVoiceIds = [
 const options = (ids: ReadonlyArray<string>) =>
   ids.map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) }));
 const liveModels = [{ id: "gpt-live-1", label: "GPT Live", voices: options(liveVoiceIds) }];
+// Codex v3 uses its own roster; v2 voices are rejected after SDP succeeds.
+// Porto and Selva also fail admission on the subscription endpoint.
+// https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs
 const subscriptionModels = [
   {
     id: "gpt-live-subscription",
     label: "GPT Live",
     voices: options([
-      "alloy",
       "arbor",
-      "ash",
       "aube",
-      "ballad",
       "breeze",
       "bubbie",
-      "cedar",
-      "coral",
       "cove",
-      "echo",
       "ember",
       "haetsal",
       "hanul",
@@ -102,22 +99,16 @@ const subscriptionModels = [
       "juniper",
       "leher",
       "maple",
-      "marin",
       "miko",
       "neer",
-      "porto",
       "rindo",
       "rio",
       "rivage",
-      "sage",
-      "selva",
-      "shimmer",
       "sol",
       "sonna",
       "spruce",
       "tinta",
       "vale",
-      "verse",
       "viola",
     ]),
   },

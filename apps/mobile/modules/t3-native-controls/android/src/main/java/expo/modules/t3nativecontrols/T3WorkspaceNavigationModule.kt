@@ -22,6 +22,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -69,6 +71,7 @@ class T3WorkspaceNavigationModule : Module() {
     Name("T3WorkspaceNavigation")
     View(T3WorkspaceNavigationView::class) {
       Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
+      Prop("botBadge") { view: T3WorkspaceNavigationView, value: String -> view.botBadge = value }
       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
         view.selectedTab = value
       }
@@ -127,6 +130,7 @@ class T3WorkspaceNavigationView(
   private val onNewThread by EventDispatcher()
   private val onOverlayChange by EventDispatcher()
   var tabs by mutableStateOf(listOf("threads", "pullRequests", "usage", "bots", "settings"))
+  var botBadge by mutableStateOf("")
   var selectedTab by mutableStateOf("threads")
   var rail by mutableStateOf(false)
   var floating by mutableStateOf(false)
@@ -189,7 +193,7 @@ class T3WorkspaceNavigationView(
                   NavigationBarItem(
                     selected = selectedTab == tab,
                     onClick = { onTabSelected(mapOf("tab" to tab)) },
-                    icon = { Icon(tabIconPainter(tab), contentDescription = null) },
+                    icon = { tabIcon(tab) },
                     label = { Text(tabTitle(tab), fontSize = (12 * textScale).sp) },
                     colors = NavigationBarItemDefaults.colors(
                       selectedIconColor = Color(selectedColor),
@@ -394,7 +398,7 @@ class T3WorkspaceNavigationView(
         Modifier.fillMaxHeight().padding(start = (ITEM_HEIGHT - ICON_SIZE) / 2).clipToBounds(),
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        Icon(tabIconPainter(tab), contentDescription = null, tint = tint)
+        tabIcon(tab, tint)
         Text(
           title,
           Modifier.padding(start = 12.dp).alpha(labelAlpha(fraction)).clearAndSetSemantics {},
@@ -414,6 +418,13 @@ class T3WorkspaceNavigationView(
     "usage" -> "Usage"
     "bots" -> "Bots"
     else -> "Settings"
+  }
+
+  @Composable
+  private fun tabIcon(tab: String, tint: Color = androidx.compose.material3.LocalContentColor.current) {
+    BadgedBox(badge = {
+      if (tab == "bots" && botBadge.isNotEmpty()) Badge { Text(botBadge) }
+    }) { Icon(tabIconPainter(tab), contentDescription = null, tint = tint) }
   }
 
   private fun expandedTabTitle(tab: String) =

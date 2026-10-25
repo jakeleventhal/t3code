@@ -1,3 +1,4 @@
+import { useBotNotificationBadge } from "../bots/use-bot-notification-badge";
 import { selectedNavigationTab, visibleNavigationTabs } from "./navigation-tab-order";
 import { requireNativeView } from "expo";
 import { CommonActions, useNavigation } from "@react-navigation/native";
@@ -34,6 +35,7 @@ export const ANDROID_WORKSPACE_RAIL_WIDTH = 72;
 interface NativeNavigationProps extends ViewProps {
   readonly rail: boolean;
   readonly floating: boolean;
+  readonly botBadge: string;
   readonly tabs: readonly string[];
   readonly selectedTab: AndroidWorkspaceNavigationTab;
   readonly dark: boolean;
@@ -73,6 +75,7 @@ export function AndroidWorkspaceNavigation(props: {
   readonly onOverlayChange?: (overlay: boolean) => void;
 }) {
   const workspace = useWorkspaceTabs()!;
+  const botBadge = useBotNotificationBadge();
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const root = useAndroidWorkspaceRoot();
@@ -121,6 +124,7 @@ export function AndroidWorkspaceNavigation(props: {
         rail={rail}
         floating={floating}
         tabs={tabs}
+        botBadge={botBadge ?? ""}
         selectedTab={selectedTab}
         dark={themeAppearance === "dark"}
         textScale={scale}

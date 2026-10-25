@@ -1,3 +1,6 @@
+import { Fragment, useState } from "react";
+import { AssistantOrb } from "../bots/AssistantOrb";
+import { useBotNotificationBadge } from "../bots/use-bot-notification-badge";
 import { selectedNavigationTab, visibleNavigationTabs } from "./navigation-tab-order";
 import { requireNativeView } from "expo";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
@@ -13,9 +16,11 @@ const NativeSidebarTabBar = requireNativeView<
     selectedColor: string;
     appearance: string;
     showsCompose: boolean;
+    botBadge: string;
     compact?: boolean;
     onSelectionChange: (event: NativeSyntheticEvent<{ tab: string }>) => void;
     onCompose: () => void;
+    onComposeLayout: (event: NativeSyntheticEvent<{ top: number; right: number }>) => void;
   }
 >("T3NativeControls", "SidebarTabBar");
 
@@ -23,8 +28,11 @@ export function WorkspaceSidebarTabs(props: {
   readonly onNewTask?: () => void;
   readonly compact?: boolean;
   readonly reserveComposeSpace?: boolean;
+  readonly showAssistant?: boolean;
 }) {
   const workspace = useWorkspaceTabs()!;
+  const botBadge = useBotNotificationBadge();
+  const [composeFrame, setComposeFrame] = useState<{ top: number; right: number } | null>(null);
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const tabs = [...visibleNavigationTabs(order, hidden), "settings" as const];
@@ -33,40 +41,52 @@ export function WorkspaceSidebarTabs(props: {
   // UIKit loses accessible names when updating nil-titled items in place.
   const tabBarKey = tabs.join(":");
   return (
-    <NativeSidebarTabBar
-      key={tabBarKey}
-      tabs={tabs}
-      selectedTab={selectedNavigationTab(
-        order,
-        workspace.state.selectedTab,
-        workspace.settingsOpen,
-        hidden,
-      )}
-      selectedColor={colors["--color-primary"]}
-      appearance={colorScheme}
-      showsCompose={Boolean(props.onNewTask)}
-      compact={props.compact}
-      onCompose={() => props.onNewTask?.()}
-      onSelectionChange={({ nativeEvent }) => {
-        const tab = tabs.find((candidate) => candidate === nativeEvent.tab);
-        if (tab === "settings") selectTab("settings");
-        else if (tab) selectTab(tab);
-      }}
-      // Keep the host stable while UIKit updates the bars' intrinsic size and safe area together.
-      style={{
-        position: "absolute",
-        bottom: 0,
-        left: props.compact ? 8 : 0,
-        // Keep the tab icons in place when Compose disappears on other destinations.
-        right:
-          (props.compact ? 12 : 0) +
-          ((props.reserveComposeSpace ?? props.compact) && !props.onNewTask
-            ? props.compact
-              ? 64
-              : 76
-            : 0),
-        height: 128,
-      }}
-    />
+    <Fragment>
+      <NativeSidebarTabBar
+        key={tabBarKey}
+        tabs={tabs}
+        botBadge={botBadge ?? ""}
+        selectedTab={selectedNavigationTab(
+          order,
+          workspace.state.selectedTab,
+          workspace.settingsOpen,
+          hidden,
+        )}
+        selectedColor={colors["--color-primary"]}
+        appearance={colorScheme}
+        showsCompose={Boolean(props.onNewTask)}
+        compact={props.compact}
+        onCompose={() => props.onNewTask?.()}
+        onComposeLayout={({ nativeEvent }) =>
+          setComposeFrame({ top: nativeEvent.top, right: nativeEvent.right })
+        }
+        onSelectionChange={({ nativeEvent }) => {
+          const tab = tabs.find((candidate) => candidate === nativeEvent.tab);
+          if (tab === "settings") selectTab("settings");
+          else if (tab) selectTab(tab);
+        }}
+        // Keep the host stable while UIKit updates the bars' intrinsic size and safe area together.
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: props.compact ? 8 : 0,
+          // Keep the tab icons in place when Compose disappears on other destinations.
+          right:
+            (props.compact ? 12 : 0) +
+            ((props.reserveComposeSpace ?? props.compact) && !props.onNewTask
+              ? props.compact
+                ? 64
+                : 76
+              : 0),
+          height: 128,
+        }}
+      />
+      {props.showAssistant && props.onNewTask && composeFrame ? (
+        <AssistantOrb
+          prominent
+          style={{ right: 12 + composeFrame.right, bottom: 128 - composeFrame.top + 12 }}
+        />
+      ) : null}
+    </Fragment>
   );
 }

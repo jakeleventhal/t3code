@@ -1,3 +1,4 @@
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -85,8 +86,16 @@ function Muted(props: { readonly children: string }) {
 }
 
 function useEnvironmentBots(environmentId: EnvironmentId) {
-  return useProjects()
-    .filter((project) => project.environmentId === environmentId && botRole(project) !== null)
+  const projects = useProjects();
+  const designated = environmentAssistant(projects, useAssistantEnvironmentId());
+  return projects
+    .filter(
+      (project) =>
+        project.environmentId === environmentId &&
+        botRole(project) !== null &&
+        (project.botRole !== "assistant" ||
+          (project.id === designated?.id && project.environmentId === designated.environmentId)),
+    )
     .sort(
       (left, right) =>
         Number(right.botRole === "assistant") - Number(left.botRole === "assistant") ||
