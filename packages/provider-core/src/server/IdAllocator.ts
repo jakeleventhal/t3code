@@ -140,7 +140,11 @@ export interface IdAllocatorV2Derive {
     readonly nativeThreadId: string;
     readonly providerInstanceId?: ProviderInstanceId;
   }) => ThreadId;
-  readonly run: (input: { readonly threadId: ThreadId; readonly ordinal: number }) => RunId;
+  readonly run: (input: {
+    readonly threadId: ThreadId;
+    readonly ordinal: number;
+    readonly replicaEnvironmentId?: string;
+  }) => RunId;
   readonly runAttempt: (input: {
     readonly runId: RunId;
     readonly attemptOrdinal: number;
@@ -266,7 +270,18 @@ export const derive: IdAllocatorV2Derive = {
   createdThreadTurnItem: (input) =>
     TurnItemId.make(joinId("turn-item", "created-thread", input.commandId)),
   threadFromProviderThread: deriveThreadFromProviderThread,
-  run: (input) => RunId.make(joinId("run", "thread", input.threadId, "ordinal", input.ordinal)),
+  run: (input) =>
+    RunId.make(
+      joinId(
+        "run",
+        "thread",
+        input.replicaEnvironmentId
+          ? `${input.threadId}@${input.replicaEnvironmentId}`
+          : input.threadId,
+        "ordinal",
+        input.ordinal,
+      ),
+    ),
   runAttempt: (input) =>
     RunAttemptId.make(joinId("run-attempt", "run", input.runId, "attempt", input.attemptOrdinal)),
   rootNode: (input) => NodeId.make(joinId("node", "run", input.runId, "root")),

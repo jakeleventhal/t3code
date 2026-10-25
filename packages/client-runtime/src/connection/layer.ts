@@ -1,3 +1,4 @@
+import { runBotReplication } from "../rpc/botReplication.ts";
 import type { RelayEnvironmentStatusResponse } from "@t3tools/contracts/relay";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -91,6 +92,7 @@ export function layerWithOptions(options: RpcSession.RpcSessionOptions) {
       yield* watchDiscoveredCompatibility().pipe(Effect.forkScoped);
       yield* registry.start;
       yield* runPeerEnvironmentHost().pipe(Effect.forkScoped);
+      yield* runBotReplication().pipe(Effect.forkScoped);
       yield* platformSource.registrations.pipe(
         Stream.runForEach(registry.reconcilePlatform),
         Effect.forkScoped,

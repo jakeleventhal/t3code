@@ -903,7 +903,9 @@ export function shouldPrepareLegacyImportHandoff(input: {
   readonly legacyImportItemCount: number;
 }): boolean {
   return (
-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
+    (input.historyOrigin === "v1_import" || input.historyOrigin === "bot_replica") &&
+    !input.hasCompletedRun &&
+    input.legacyImportItemCount > 0
   );
 }
 
@@ -1731,7 +1733,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             );
       const needsFullContext = deliveryProviderThread.nativeThreadRef === null;
       const legacyImportItems =
-        projection.thread.historyOrigin === "v1_import"
+        projection.thread.historyOrigin === "v1_import" ||
+        projection.thread.historyOrigin === "bot_replica"
           ? yield* readHandoffItems(threadId, [null])
           : [];
       const handoffStrategy = needsFullContext
@@ -5229,6 +5232,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const project = yield* projects
       .get(projection.thread.projectId)
       .pipe(mapDispatchError(command));
+    if (
+      Option.isSome(project) &&
+      project.value.botRole != null &&
+      project.value.botReplicaReady === false
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "This bot is still syncing its conversation. Try again when syncing finishes.",
+      });
+    }
     const continuationRunId =
       command.restartContinuationOfRunId ?? command.usageLimitContinuationOfRunId;
     const continuationRun =
@@ -5602,7 +5616,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       const now = yield* DateTime.now;
       const ordinal = nextRunOrdinal(projection);
-      const runId = idAllocator.derive.run({ threadId: command.threadId, ordinal });
+      const runId = idAllocator.derive.run({
+        threadId: command.threadId,
+        ordinal,
+        ...(projection.thread.replicaEnvironmentId
+          ? { replicaEnvironmentId: projection.thread.replicaEnvironmentId }
+          : {}),
+      });
       const targetProviderThread =
         modelSelection.instanceId === queueProviderThread.providerInstanceId
           ? queueProviderThread
@@ -5910,11 +5930,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const ordinal = nextRunOrdinal(projection);
-    const runId = idAllocator.derive.run({ threadId: command.threadId, ordinal });
+    const runId = idAllocator.derive.run({
+      threadId: command.threadId,
+      ordinal,
+      ...(projection.thread.replicaEnvironmentId
+        ? { replicaEnvironmentId: projection.thread.replicaEnvironmentId }
+        : {}),
+    });
     const latestCompletedRun = projection.runs.findLast((run) => run.status === "completed");
     const latestHandoffRun = projection.runs.findLast(isHandoffSourceRun);
     const legacyImportItems =
-      projection.thread.historyOrigin === "v1_import"
+      projection.thread.historyOrigin === "v1_import" ||
+      projection.thread.historyOrigin === "bot_replica"
         ? yield* readHandoffItems(command.threadId, [null])
         : [];
     const isProviderSwitch =
@@ -6449,7 +6476,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...sourceProjection.runs
               .filter((run) => run.ordinal <= sourceRun.ordinal)
               .map((run) => run.id),
-            ...(sourceProjection.thread.historyOrigin === "v1_import" ? [null] : []),
+            ...(sourceProjection.thread.historyOrigin === "v1_import" ||
+            sourceProjection.thread.historyOrigin === "bot_replica"
+              ? [null]
+              : []),
           ]);
     const portableForkHandoff =
       !requiresPortableFork ||

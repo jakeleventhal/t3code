@@ -1,4 +1,8 @@
-import { chooseAssistantEnvironment } from "@t3tools/client-runtime/assistant-environment";
+import {
+  chooseAssistantEnvironment,
+  latestBotPreferences,
+  selectBotReplicas,
+} from "@t3tools/client-runtime/assistant-environment";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -78,6 +82,9 @@ export function useDesignatedAssistantEnvironmentId(): EnvironmentId | null {
         configs.get(environment.environmentId)?.environment.capabilities.botConversations === true,
     })),
     projects,
+    preferences: latestBotPreferences(
+      [...configs.values()].map((config) => config.settings.botSharedPreferences),
+    ),
   });
 }
 
@@ -109,4 +116,17 @@ export function BotRoomLocationTracker() {
     });
   }, [botEnvironmentId, href, pathname, room, settled, target]);
   return null;
+}
+
+export function useBotProjects() {
+  const projects = useProjects();
+  const environments = useEnvironmentConnectionSummaries();
+  const configs = useServerConfigs();
+  return selectBotReplicas({
+    projects,
+    environments: environments.map((entry) => ({ ...entry, supportsBots: true })),
+    preferences: latestBotPreferences(
+      [...configs.values()].map((config) => config.settings.botSharedPreferences),
+    ),
+  });
 }

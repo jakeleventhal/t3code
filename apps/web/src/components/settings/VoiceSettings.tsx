@@ -1,6 +1,6 @@
+import { useBotProjects } from "../bots/useBotRoom";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
-import { useLocation } from "@tanstack/react-router";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
@@ -26,7 +26,6 @@ import {
   useVoiceCatalog,
   useWriteEnvironmentSettings,
 } from "../../state/botVoice";
-import { useProjects } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -84,53 +83,56 @@ function VoiceStatus({ description }: { description: VoiceSelectionDescription }
   );
 }
 
-export function VoiceSettingsPanel() {
+export function BotVoicesSettings() {
   const { environments } = useEnvironments();
-  const projects = useProjects();
-  const [advanced, setAdvanced] = useState(false);
-  const hash = useLocation({ select: (location) => location.hash });
-  const searchedAdvanced = ["voice-accounts", "voice-default"].includes(hash);
+  const projects = useBotProjects();
   const targets = environments.filter(
     (entry) => entry.serverConfig?.environment.capabilities.botVoiceConfiguration === true,
   );
-  const render = (mode: "bots" | "advanced") =>
-    targets.map((environment) => (
-      <SettingsScopeProvider
-        key={environment.environmentId}
-        search={{ machine: environment.environmentId }}
-        onChange={() => {}}
-        singleEnvironment
-      >
-        <VoiceSettingsContent
-          environment={{ environmentId: environment.environmentId, label: environment.label }}
-          settings={environment.serverConfig!.settings}
-          projects={projects}
-          scopedProject={undefined}
-          mode={mode}
-        />
-      </SettingsScopeProvider>
-    ));
+  return (
+    <div className="flex flex-col gap-6">
+      <SettingsSection title="Voices" id="voice-bots">
+        {targets.map((environment) => (
+          <SettingsScopeProvider
+            key={environment.environmentId}
+            search={{ machine: environment.environmentId }}
+            onChange={() => {}}
+            singleEnvironment
+          >
+            <VoiceSettingsContent
+              environment={{ environmentId: environment.environmentId, label: environment.label }}
+              settings={environment.serverConfig!.settings}
+              projects={projects}
+              scopedProject={undefined}
+              mode="bots"
+            />
+          </SettingsScopeProvider>
+        ))}
+      </SettingsSection>
+      {targets.map((environment) => (
+        <SettingsScopeProvider
+          key={environment.environmentId}
+          search={{ machine: environment.environmentId }}
+          onChange={() => {}}
+          singleEnvironment
+        >
+          <VoiceSettingsContent
+            environment={{ environmentId: environment.environmentId, label: environment.label }}
+            settings={environment.serverConfig!.settings}
+            projects={projects}
+            scopedProject={undefined}
+            mode="advanced"
+          />
+        </SettingsScopeProvider>
+      ))}
+    </div>
+  );
+}
+
+export function VoiceSettingsPanel() {
   return (
     <SettingsPageContainer>
-      <p className="px-4 text-sm text-muted-foreground">
-        Choose how each bot sounds. Play a sample before choosing.
-      </p>
-      {targets.length === 0 ? (
-        <p className="px-4 text-sm text-muted-foreground">
-          Connect to your bots to change their settings.
-        </p>
-      ) : null}
-      <SettingsSection title="Bots" id="voice-bots">
-        {render("bots")}
-      </SettingsSection>
-      {!searchedAdvanced ? (
-        <div>
-          <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
-            {advanced ? "Hide advanced settings" : "Advanced settings"}
-          </Button>
-        </div>
-      ) : null}
-      {advanced || searchedAdvanced ? render("advanced") : null}
+      <BotVoicesSettings />
     </SettingsPageContainer>
   );
 }
@@ -161,14 +163,20 @@ function VoiceSettingsContent({
       bot.botRole !== "assistant" ||
       (bot.id === designated?.id && bot.environmentId === designated.environmentId),
   );
-  const defaultLabel = describeVoiceSelection(settings.voiceSelection, catalog).label;
+  const defaultDescription = describeVoiceSelection(settings.voiceSelection, catalog);
+  const defaultLabel = defaultDescription.issue
+    ? "Choose an available voice"
+    : defaultDescription.label;
   const callsSupported = useEnvironmentSupportsBotVoice(environment.environmentId);
 
+  if (mode === "advanced" && bots.length === 0) return null;
   return (
     <div className="flex flex-col gap-4">
       {mode === "advanced" ? (
         <>
-          <h3 className="px-4 text-sm font-semibold">{environment.label}</h3>
+          <p className="px-4 text-sm font-medium">
+            Voice setup · {bots.map((bot) => bot.title).join(", ")}
+          </p>
           <VoiceAccountsSection
             environment={environment}
             settings={settings}

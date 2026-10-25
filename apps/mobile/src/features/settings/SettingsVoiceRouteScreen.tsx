@@ -1,4 +1,5 @@
 import { openSettings } from "./settings-navigation";
+import { useBotProjects } from "../bots/use-assistant";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -173,7 +174,7 @@ function VoiceEnvironmentGate(props: {
 }
 
 function useEnvironmentBots(environmentId: EnvironmentId) {
-  const projects = useProjects();
+  const projects = useBotProjects();
   const designated = environmentAssistant(projects, useAssistantEnvironmentId());
   return projects
     .filter(
@@ -221,7 +222,7 @@ export function SettingsVoiceRouteScreen(
   );
 }
 
-function VoiceEnvironmentOverview(props: {
+export function VoiceEnvironmentOverview(props: {
   readonly target: SettingsTarget;
   readonly mode: "bots" | "advanced";
 }) {
@@ -231,16 +232,15 @@ function VoiceEnvironmentOverview(props: {
   const bots = useEnvironmentBots(environmentId);
   const settings = props.target.serverConfig.settings;
   const catalog = voice.catalog.data;
+  if (props.mode === "advanced" && bots.length === 0) return null;
   return (
     <View className="gap-6">
-      {props.mode === "advanced" ? (
-        <Text textRole="headline" className="px-2 font-t3-bold text-foreground">
-          {props.target.label}
-        </Text>
-      ) : null}
       <VoiceEnvironmentGate voice={voice}>
         {props.mode === "advanced" ? (
-          <SettingsSection title="Connections" footer={voice.callsNote}>
+          <SettingsSection
+            title={`Voice setup · ${bots.map((bot) => bot.title).join(", ")}`}
+            footer={voice.callsNote}
+          >
             {(catalog?.connections ?? []).map((connection) => (
               <SettingsRow
                 key={connection.id}
@@ -506,7 +506,7 @@ export function SettingsVoiceBotRouteScreen({
               {title}
             </Text>
             <Text textRole="footnote" className="text-foreground-muted">
-              Typing and deeper work keep this bot's own harness and model.
+              Choose a voice and play a sample before saving.
             </Text>
           </View>
         </View>
@@ -550,7 +550,7 @@ export function SettingsVoiceBotRouteScreen({
           <SettingsRow
             icon="headphones"
             label="Voice connections"
-            onPress={() => openSettings(navigation, "SettingsVoice", { environmentId })}
+            onPress={() => openSettings(navigation, "SettingsBots")}
           />
         </SettingsSection>
       </VoiceEnvironmentGate>

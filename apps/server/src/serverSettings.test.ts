@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
+  EMPTY_BOT_SHARED_PREFERENCES,
+  EnvironmentId,
   ModelSelection,
   ProjectId,
   ProjectScript,
@@ -944,6 +946,38 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.isFalse(settings.continueThreadsAfterServerUpdate);
       assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), raw);
     }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect(
+    "persists shared bot placement with its default-valued fields and cleared overrides",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const preferences = {
+          ...EMPTY_BOT_SHARED_PREFERENCES,
+          revision: 1,
+          author: EnvironmentId.make("jakebook"),
+          primaryEnvironmentId: EnvironmentId.make("r2d2"),
+        };
+        yield* settings.updateSettings({ botSharedPreferences: preferences });
+        const read = yield* decodeServerSettingsJson(yield* fs.readFileString(config.settingsPath));
+        assert.deepEqual(read.botSharedPreferences, preferences);
+        yield* settings.updateSettings({
+          botSharedPreferences: {
+            ...preferences,
+            revision: 2,
+            overrides: { [ProjectId.make("fitness")]: EnvironmentId.make("jakebook") },
+          },
+        });
+        const cleared = { ...preferences, revision: 3 };
+        yield* settings.updateSettings({ botSharedPreferences: cleared });
+        const reread = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.deepEqual(reread.botSharedPreferences, cleared);
+      }).pipe(Effect.provide(layerServerSettings())),
   );
 
   it.effect("keeps a default-off provider's new instance disabled and sparse on disk", () =>

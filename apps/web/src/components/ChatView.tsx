@@ -1,3 +1,4 @@
+import { useBotReplicaRoute } from "./bots/useBotReplicaRoute";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { ScrollToEndButton, WorkspaceFileDropOverlay } from "./chat/TimelineOverlays";
 import { usePasteToFocusComposer } from "./chat/usePasteToFocusComposer";
@@ -1104,6 +1105,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThread == null ? null : (environmentById.get(activeThread.environmentId) ?? null);
   const activeEnvironmentUnavailable =
     activeEnvironment !== null && activeEnvironment.connection.phase !== "connected";
+  useBotReplicaRoute(activeProject, activeThreadRef, activeEnvironmentUnavailable);
   const activeEnvironmentUnavailableLabel = activeEnvironment?.label ?? null;
   // Offline, the last answered session grant lets a bot chat queue messages on this device.
   const lastKnownCanOperateThread = useLastKnownEnvironmentScope(
@@ -1428,16 +1430,20 @@ export default function ChatView(props: ChatViewProps) {
     isServerThread && (activeRunPreparing || activeActivityRun?.status === "starting");
   const [setupQueueSendThreadKey, setSetupQueueSendThreadKey] = useState<string | null>(null);
   const downloadFileAttachment = async (attachment: ChatFileAttachment) => {
-    const connection = readPreparedConnection(environmentId);
+    const originEnvironmentId = attachment.originEnvironmentId ?? environmentId;
+    const connection = readPreparedConnection(originEnvironmentId);
     if (!connection) {
-      toastManager.add({ type: "error", title: "The environment is not connected." });
+      toastManager.add({
+        type: "error",
+        title: "The machine holding this file is offline. Reconnect it to download the file.",
+      });
       return;
     }
 
     try {
       const url = await resolveFileAttachmentUrl({
         attachment,
-        environmentId,
+        environmentId: originEnvironmentId,
         httpBaseUrl: connection.httpBaseUrl,
         createAssetUrl: createAttachmentAssetUrl,
       });

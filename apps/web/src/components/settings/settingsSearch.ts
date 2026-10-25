@@ -1078,14 +1078,14 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "voice-accounts",
     title: "Voice accounts",
-    to: "/settings/voice",
+    to: "/settings/bots",
     searchTerms: ["bots calls openai xai grok chatgpt subscription codex api key speech"],
     environmentOnly: true,
   },
   {
     id: "voice-default",
     title: "Default bot voice",
-    to: "/settings/voice",
+    to: "/settings/bots",
     searchTerms: ["bots calls speech assistant"],
     environmentOnly: true,
     scope: "environment-defaults",

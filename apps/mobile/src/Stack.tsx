@@ -147,7 +147,6 @@ import {
   SettingsVoiceBotRouteScreen,
   SettingsVoiceConnectionRouteScreen,
   SettingsVoiceDefaultRouteScreen,
-  SettingsVoiceRouteScreen,
 } from "./features/settings/SettingsVoiceRouteScreen";
 import { SettingsEnvironmentFilterProvider } from "./features/settings/settings-environment-filter";
 import { openSettings, settingsOpenIn } from "./features/settings/settings-navigation";
@@ -306,7 +305,7 @@ const SETTINGS_SCREENS = {
   }),
 
   SettingsVoice: createNativeStackScreen({
-    screen: SettingsVoiceRouteScreen,
+    screen: SettingsBotsRouteScreen,
     linking: "voice",
     options: { title: "Voice" },
   }),

@@ -11,6 +11,7 @@ import {
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
   AuthSettingsWriteScope,
+  AuthFilesystemWriteScope,
   AuthSourceControlWriteScope,
   ThreadId,
   EnvironmentId,
@@ -438,4 +439,35 @@ it.effect("requires orchestration permission for provider-backed commit message 
     registry.set(sessions(env), AsyncResult.success(grant(true)));
     expect(registry.get(command.permissionAtom(env))).toBe(true);
   }),
+);
+
+it.effect(
+  "replica import requires both workspace and bot mutation grants as well as settings",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const command = createCommandPermissions(runtime, WS_METHODS.botsReplicaReceive);
+        const required = [
+          AuthSettingsWriteScope,
+          AuthOrchestrationOperateScope,
+          AuthFilesystemWriteScope,
+        ];
+        for (const missing of required) {
+          const scopes = required.filter((scope) => scope !== missing);
+          registry.set(
+            sessions(env),
+            AsyncResult.success({ ...grant(false), scopes, permissions: scopes }),
+          );
+          expect((yield* command.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+        }
+        registry.set(
+          sessions(env),
+          AsyncResult.success({ ...grant(false), scopes: required, permissions: required }),
+        );
+        yield* command.authorize(registry, env);
+      }),
+    ),
 );

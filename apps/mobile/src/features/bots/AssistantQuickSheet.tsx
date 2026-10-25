@@ -183,14 +183,6 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const needsYou =
     connected && (mainThread?.hasPendingApprovals || mainThread?.hasPendingUserInput);
   const replyFailed = connected && mainThread?.latestRun?.status === "failed";
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!working) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [working]);
-  const startedAt = mainThread?.runtime?.activityStartedAt;
-  const elapsed = startedAt ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000)) : 0;
 
   const send = async () => {
     if (threadId === null || !canSend || setupNeeded !== null) return;
@@ -366,7 +358,10 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
       ) : working ? (
         <View className="flex-row items-center gap-2" accessibilityLiveRegion="polite">
           <Text textRole="footnote" className="flex-1 text-foreground-muted">
-            {`${mainThread?.runtime?.status === "preparing" || mainThread?.runtime?.status === "starting" ? "Assistant is starting" : "Assistant is working"} · ${elapsed}s`}
+            {mainThread?.runtime?.status === "preparing" ||
+            mainThread?.runtime?.status === "starting"
+              ? "•••  Getting ready…"
+              : "•••  Thinking…"}
           </Text>
           <IconButton
             variant="danger"

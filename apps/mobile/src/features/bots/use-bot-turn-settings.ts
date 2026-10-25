@@ -1,3 +1,5 @@
+import { botEnvironment } from "../../state/bots";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   botDefaultsPatch,
   botModelUnavailableReason,
@@ -43,6 +45,7 @@ export function useBotTurnSettings(environmentId: EnvironmentId, projectId: Proj
   const config = useEnvironmentServerConfig(environmentId);
   const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const writeSettings = useSettingsWriter();
+  const configureBots = useAtomCommand(botEnvironment.configure);
   const [pending, setPending] = useState(false);
   const settings = config?.settings ?? DEFAULT_SERVER_SETTINGS;
   const sources = botTurnSettings(settings, projectId);
@@ -72,7 +75,9 @@ export function useBotTurnSettings(environmentId: EnvironmentId, projectId: Proj
           })
         : botTurnOverridePatch(latest, projectId, change);
     setPending(true);
-    await writeSettings([], [{ environmentId, patch }]);
+    if (projectId === null && patch.botDefaults) {
+      await configureBots({ environmentId, input: patch.botDefaults });
+    } else await writeSettings([], [{ environmentId, patch }]);
     setPending(false);
   };
 

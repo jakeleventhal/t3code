@@ -1,4 +1,5 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
+import * as BotReplication from "../bots/BotReplication.ts";
 import * as PeerEnvironmentBroker from "../mcp/PeerEnvironmentBroker.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -293,6 +294,16 @@ export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
+export const layerBotReplication = BotReplication.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerProjectService,
+      layerManagedProjectFoldersProvided,
+      ProjectionStore.layer,
+      layerEventSinkProvided,
+    ),
+  ),
+);
 const layerBotProvided = BotService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -422,6 +433,7 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerBotProvided,
+  layerBotReplication,
   VoiceConfiguration.layer,
   layerVoiceCallsProvided,
   layerVoiceSessionsProvided,

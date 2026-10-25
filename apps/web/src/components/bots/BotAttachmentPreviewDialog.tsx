@@ -25,7 +25,10 @@ export function BotAttachmentPreviewDialog({
           name={attachment.name}
           mimeType={attachment.mimeType}
           sizeBytes={attachment.sizeBytes}
-          asset={{ environmentId: threadRef.environmentId, attachmentId: attachment.id }}
+          asset={{
+            environmentId: attachment.originEnvironmentId ?? threadRef.environmentId,
+            attachmentId: attachment.id,
+          }}
           htmlRender={attachment.htmlRender === true}
           threadRef={threadRef}
           onClose={onClose}

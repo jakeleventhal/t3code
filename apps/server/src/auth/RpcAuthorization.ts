@@ -155,6 +155,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsSetAvatar]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsReplicationStatus]: AuthOrchestrationReadScope,
+  [WS_METHODS.botsReplicaRead]: AuthOrchestrationReadScope,
   [WS_METHODS.botsFiles]: AuthOrchestrationReadScope,
   [WS_METHODS.botsVoiceCatalog]: AuthOrchestrationReadScope,
   [WS_METHODS.botsVoiceTranscript]: AuthOrchestrationReadScope,
@@ -294,6 +296,8 @@ const requiredScopesForRpcCall = (
         : AuthOrchestrationReadScope,
     ];
   }
+  if (method === WS_METHODS.botsReplicaRead)
+    return [AuthOrchestrationReadScope, AuthFilesystemReadScope];
   if (method === WS_METHODS.serverUpdateSettings) return requiredScopesForSettingsUpdate(payload);
   if (method === WS_METHODS.projectsMutate) {
     return requiredScopesForProjectMutation(decodeProjectMutation(payload));

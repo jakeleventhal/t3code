@@ -2,18 +2,21 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { CircleAlertIcon, MessageSquareIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CircleAlertIcon,
+  MessageSquareIcon,
+  PlusIcon,
+  SearchIcon,
+  XIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { isElectron } from "../../env";
 import { useThreadRouteRef } from "../../hooks/useThreadRouteTarget";
 import { cn } from "../../lib/utils";
 import { botEnvironment } from "../../state/bots";
-import {
-  useEnvironmentSupportsBotConversations,
-  useProjects,
-  useThreadShells,
-} from "../../state/entities";
+import { useEnvironmentSupportsBotConversations, useThreadShells } from "../../state/entities";
 import { useEnvironmentConnectionSummaries } from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import type { SidebarThreadSummary } from "../../types";
@@ -31,7 +34,6 @@ import {
   SidebarGroup,
   SidebarInput,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
@@ -50,13 +52,18 @@ import { NewBotDialog, useNewBotHost } from "./NewBotDialog";
 import { SidebarRoomSwitch } from "./SidebarRoomSwitch";
 import { useBotActions } from "./useBotActions";
 import { useBotThreadActions } from "./useBotThreadActions";
-import { useDesignatedAssistantEnvironmentId, useRouteBotProject } from "./useBotRoom";
+import {
+  useDesignatedAssistantEnvironmentId,
+  useRouteBotProject,
+  useBotProjects,
+} from "./useBotRoom";
 
 type BotEntry = BotsCollectionEntry<EnvironmentProject>;
+const EMPTY_RELATED_THREADS: ReadonlyArray<SidebarThreadSummary> = [];
 
 function StatusDot({
   thread,
-  related = [],
+  related = EMPTY_RELATED_THREADS,
   offline = false,
 }: {
   thread: SidebarThreadSummary | null;
@@ -132,10 +139,12 @@ function OpenBotThreadRow({
   bot,
   thread,
   onOpen,
+  active,
 }: {
   bot: EnvironmentProject;
   thread: SidebarThreadSummary;
   onOpen: () => void;
+  active: boolean;
 }) {
   const actions = useBotThreadActions(bot);
   const canOperate = useEnvironmentScope(bot.environmentId, AuthOrchestrationOperateScope);
@@ -164,8 +173,8 @@ function OpenBotThreadRow({
     >
       <SidebarMenuSubButton
         render={<button type="button" />}
-        isActive
-        aria-current="page"
+        isActive={active}
+        aria-current={active ? "page" : undefined}
         onClick={onOpen}
       >
         <MessageSquareIcon />
@@ -179,7 +188,7 @@ function OpenBotThreadRow({
 export default function BotsSidebar() {
   const assistantEnvironmentId = useDesignatedAssistantEnvironmentId();
   const environments = useEnvironmentConnectionSummaries();
-  const projects = useProjects();
+  const projects = useBotProjects();
   const threads = useThreadShells();
   const routeThreadRef = useThreadRouteRef();
   const routeBot = useRouteBotProject();
@@ -234,17 +243,33 @@ export default function BotsSidebar() {
     void openThread(scopeThreadRef(thread.environmentId, thread.id));
   };
 
-  // A bot row is its main conversation. Its other threads stay in the chat header's Threads menu;
-  // only the one on screen shows here, nested under its bot so the parent reads as context.
   const renderOpenThread = (bot: EnvironmentProject) => {
     if (routeBot?.id !== bot.id || routeBot.environmentId !== bot.environmentId) return null;
-    const open = conversationsFor(bot).topics.find(
-      (thread) => thread.id === routeThreadRef?.threadId,
-    );
-    if (open === undefined) return null;
+    const { main, topics } = conversationsFor(bot);
+    if (topics.length === 0) return null;
     return (
       <SidebarMenuSub>
-        <OpenBotThreadRow bot={bot} thread={open} onOpen={() => openBotThread(open)} />
+        {main ? (
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton
+              render={<button type="button" />}
+              isActive={main.id === routeThreadRef?.threadId}
+              onClick={() => openBotThread(main)}
+            >
+              <MessageSquareIcon />
+              <span>Main conversation</span>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        ) : null}
+        {topics.map((thread) => (
+          <OpenBotThreadRow
+            key={thread.id}
+            bot={bot}
+            thread={thread}
+            active={thread.id === routeThreadRef?.threadId}
+            onOpen={() => openBotThread(thread)}
+          />
+        ))}
       </SidebarMenuSub>
     );
   };
@@ -259,24 +284,39 @@ export default function BotsSidebar() {
     const { main, topics } = conversationsFor(bot);
     const key = entryKey(entry);
     const note = entryNote(entry);
+    const preview =
+      main?.source.latestVisibleMessage?.text.replace(/\s+/g, " ").trim() ||
+      (main && hasUnseenCompletion(main)
+        ? "New reply"
+        : main?.latestRun?.status === "completed"
+          ? "Replied"
+          : "No messages yet");
     return (
       <SidebarMenuItem key={key}>
-        <SidebarMenuButton
-          isActive={isOnMain(entry, main)}
-          // Offline, a bot opens only to a conversation this client still has.
+        <button
+          type="button"
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-sidebar-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50",
+            isOnMain(entry, main) && "bg-sidebar-row-selected",
+          )}
           disabled={openingKey === key || (entry.offline && main === null)}
           aria-current={isOnMain(entry, main) ? "page" : undefined}
           onClick={() => void openBot(entry)}
         >
-          <BotAvatar bot={bot} />
-          <span className="min-w-0 flex-1 truncate">{bot.title}</span>
-          {note !== null ? (
-            <span className="max-w-24 shrink-0 truncate text-xs text-sidebar-muted-foreground">
-              {note}
+          <BotAvatar bot={bot} size="list" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-base font-semibold text-sidebar-foreground">
+              {bot.title}
             </span>
-          ) : null}
+            <span className="block truncate text-sm text-sidebar-muted-foreground">
+              {note ?? preview}
+            </span>
+          </span>
           <StatusDot thread={main} related={topics} offline={entry.offline} />
-        </SidebarMenuButton>
+          {topics.length > 0 ? (
+            <ChevronDownIcon className="size-4 text-sidebar-muted-foreground" />
+          ) : null}
+        </button>
         {renderOpenThread(bot)}
       </SidebarMenuItem>
     );
@@ -311,8 +351,7 @@ export default function BotsSidebar() {
     assistant === null ||
     (assistantProject === null && (!canProvision || assistant.offline)) ||
     (assistant.offline && assistantMain === null);
-  const nothingListed =
-    assistant === null && specialists.length === 0 && otherAssistants.length === 0;
+  const nothingListed = assistant === null && specialists.length === 0;
 
   return (
     <>
@@ -363,9 +402,12 @@ export default function BotsSidebar() {
           <SidebarMenu aria-label="Bots">
             {assistant !== null ? (
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="lg"
-                  isActive={isOnMain(assistant, assistantMain)}
+                <button
+                  type="button"
+                  className={cn(
+                    "mx-auto flex w-full flex-col items-center gap-3 rounded-2xl px-4 py-5 text-center hover:bg-sidebar-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50",
+                    isOnMain(assistant, assistantMain) && "bg-sidebar-row-selected",
+                  )}
                   disabled={assistantUnavailable || openingKey === assistantKey}
                   aria-current={isOnMain(assistant, assistantMain) ? "page" : undefined}
                   onClick={() => void openBot(assistant)}
@@ -378,41 +420,46 @@ export default function BotsSidebar() {
                         botRole: "assistant",
                       }
                     }
-                    size="md"
+                    size="xl"
                   />
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-semibold text-sidebar-foreground">
-                      {assistantProject?.title ?? "Assistant"}
-                    </span>
-                    <span className="truncate text-xs font-normal text-sidebar-muted-foreground">
-                      {assistant.hostLabel === null
-                        ? assistantStatus
-                        : `${assistant.hostLabel} · ${assistantStatus}`}
-                    </span>
+                  <span className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+                    {assistantProject?.title ?? "Assistant"}
+                    <StatusDot
+                      thread={assistantMain}
+                      related={assistantProject ? conversationsFor(assistantProject).topics : []}
+                      offline={assistant.offline}
+                    />
                   </span>
-                  <StatusDot
-                    thread={assistantMain}
-                    related={assistantProject ? conversationsFor(assistantProject).topics : []}
-                    offline={assistant.offline}
-                  />
-                </SidebarMenuButton>
+                  {assistant.offline || assistantProject === null || openingKey === assistantKey ? (
+                    <span className="text-sm text-sidebar-muted-foreground">{assistantStatus}</span>
+                  ) : null}
+                </button>
                 {assistantProject ? renderOpenThread(assistantProject) : null}
+                {routeBot?.botRole === "assistant" && otherAssistants.length > 0 ? (
+                  <SidebarMenuSub aria-label="Earlier Assistant conversations">
+                    {otherAssistants.flatMap((entry) => {
+                      if (!entry.project) return [];
+                      const { main, topics } = conversationsFor(entry.project);
+                      return [...(main ? [main] : []), ...topics].map((thread) => (
+                        <OpenBotThreadRow
+                          key={`${thread.environmentId}:${thread.id}`}
+                          bot={entry.project!}
+                          thread={thread}
+                          active={
+                            thread.environmentId === routeThreadRef?.environmentId &&
+                            thread.id === routeThreadRef.threadId
+                          }
+                          onOpen={() => openBotThread(thread)}
+                        />
+                      ));
+                    })}
+                  </SidebarMenuSub>
+                ) : null}
               </SidebarMenuItem>
             ) : null}
           </SidebarMenu>
           {specialists.length > 0 ? <Separator className="my-1.5" /> : null}
           <SidebarMenu aria-label="Specialists">{specialists.map(renderBot)}</SidebarMenu>
-          {otherAssistants.length > 0 ? (
-            <>
-              <Separator className="my-1.5" />
-              <p className="px-2 pt-1 pb-0.5 text-2xs font-medium text-sidebar-muted-foreground">
-                Other Assistants
-              </p>
-              <SidebarMenu aria-label="Other Assistants">
-                {otherAssistants.map(renderBot)}
-              </SidebarMenu>
-            </>
-          ) : null}
           {query.trim().length > 0 && nothingListed ? (
             <p
               role="status"

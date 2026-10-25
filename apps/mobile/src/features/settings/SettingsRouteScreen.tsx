@@ -266,7 +266,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
       rows: [
         serverPage("SettingsProviderAccounts", "person.crop.circle", "Provider accounts"),
         serverPage("SettingsBots", "person.2", "Bots"),
-        serverPage("SettingsVoice", "headphones", "Voice"),
         serverPage("SettingsEnvironmentNewThreads", "text.bubble", "New threads"),
         serverPage("SettingsEnvironmentSourceControl", "arrow.triangle.branch", "Source control"),
         serverPage("SettingsEnvironmentAgentBehavior", "text.alignleft", "Agent behavior"),

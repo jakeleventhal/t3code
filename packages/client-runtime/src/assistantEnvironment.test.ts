@@ -1,8 +1,10 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, EMPTY_BOT_SHARED_PREFERENCES } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   chooseAssistantEnvironment,
+  chooseBotReplica,
+  selectBotReplicas,
   environmentAssistant,
   environmentAssistants,
 } from "./assistantEnvironment.ts";
@@ -113,5 +115,40 @@ describe("environmentAssistant", () => {
       "c",
       "a",
     ]);
+  });
+});
+
+describe("bot replica routing", () => {
+  const original = assistant(desk, "2026-01-01", "one-assistant");
+  const replica = { ...original, environmentId: laptop, botReplicaReady: true };
+  const third = { ...original, environmentId: server, botReplicaReady: true };
+  const preferences = { ...EMPTY_BOT_SHARED_PREFERENCES, primaryEnvironmentId: desk };
+  it("uses a ready copy when primary disconnects and returns to primary when it reconnects", () => {
+    expect(chooseBotReplica({ environments, projects: [original, replica], preferences })).toBe(
+      replica,
+    );
+    const online = environments.map((entry) => ({ ...entry, connectionState: "connected" }));
+    expect(
+      chooseBotReplica({ environments: online, projects: [replica, original], preferences }),
+    ).toBe(original);
+    expect(
+      chooseAssistantEnvironment({ environments, projects: [original, replica], preferences }),
+    ).toBe(laptop);
+  });
+  it("never routes to an incomplete copy or an unrelated Assistant", () => {
+    const projects = [
+      original,
+      { ...replica, botReplicaReady: false },
+      assistant(server, "2026-02-01"),
+    ];
+    expect(chooseAssistantEnvironment({ environments, projects, preferences })).toBe(desk);
+  });
+  it("honors a per-bot primary override and lists one identity", () => {
+    const result = selectBotReplicas({
+      environments,
+      projects: [original, replica, third],
+      preferences: { ...preferences, overrides: { [ProjectId.make(original.id)]: server } },
+    });
+    expect(result).toEqual([third]);
   });
 });

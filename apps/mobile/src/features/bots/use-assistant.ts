@@ -1,5 +1,7 @@
 import {
   chooseAssistantEnvironment,
+  latestBotPreferences,
+  selectBotReplicas,
   environmentAssistant,
 } from "@t3tools/client-runtime/assistant-environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -55,9 +57,17 @@ export function useBotHostCandidates() {
 export function useAssistantEnvironmentId(): EnvironmentId | null {
   const environments = useKnownBotEnvironments();
   const projects = useProjects();
+  const configs = useServerConfigs();
   return useMemo(
-    () => chooseAssistantEnvironment({ environments, projects }),
-    [environments, projects],
+    () =>
+      chooseAssistantEnvironment({
+        environments,
+        projects,
+        preferences: latestBotPreferences(
+          [...configs.values()].map((config) => config.settings.botSharedPreferences),
+        ),
+      }),
+    [environments, projects, configs],
   );
 }
 
@@ -103,5 +113,22 @@ export function useShowConversationInBots() {
       });
     },
     [selectRoom],
+  );
+}
+
+export function useBotProjects() {
+  const projects = useProjects();
+  const environments = useKnownBotEnvironments();
+  const configs = useServerConfigs();
+  return useMemo(
+    () =>
+      selectBotReplicas({
+        projects,
+        environments,
+        preferences: latestBotPreferences(
+          [...configs.values()].map((config) => config.settings.botSharedPreferences),
+        ),
+      }),
+    [projects, environments, configs],
   );
 }

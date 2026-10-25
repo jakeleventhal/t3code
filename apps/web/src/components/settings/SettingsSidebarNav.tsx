@@ -100,7 +100,7 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   to: SettingsPath;
   icon: ComponentType<{ className?: string }>;
 }> = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPath[])
-  .filter((to) => to !== "/settings/diagnostics")
+  .filter((to) => to !== "/settings/diagnostics" && to !== "/settings/voice")
   .map((to) => ({
     to,
     label: SETTINGS_SECTION_LABELS[to],

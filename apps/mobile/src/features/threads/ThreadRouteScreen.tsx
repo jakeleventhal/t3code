@@ -1,3 +1,4 @@
+import { useBotReplicaRoute } from "../bots/use-bot-replica-route";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
@@ -491,6 +492,7 @@ function ThreadRouteContent(
   const routeConnectionState =
     routeEnvironmentRuntime?.connectionState ?? (environmentId ? "available" : connectionState);
   const routeConnectionError = routeEnvironmentRuntime?.connectionError ?? null;
+  useBotReplicaRoute(selectedThreadProject, selectedThread, routeConnectionState !== "connected");
   const selectedThreadWithDraftSettings = selectedThread
     ? {
         ...selectedThread,

@@ -619,7 +619,14 @@ function MessageAttachmentFile(props: {
   );
 
   const shareFile = (sourceIdentifier?: string) => {
-    if (httpBaseUrl === null || openingRef.current) return;
+    if (httpBaseUrl === null) {
+      Dialog.alert(
+        "File unavailable",
+        "The machine holding this file is offline. Reconnect it to open the file.",
+      );
+      return;
+    }
+    if (openingRef.current) return;
     const controller = new AbortController();
     openingRef.current = controller;
     setOpening(true);
@@ -699,7 +706,7 @@ function MessageAttachmentFile(props: {
             kind: "document",
             name: attachment.name,
             mimeType: attachment.mimeType,
-            environmentId: props.environmentId,
+            environmentId: attachment.originEnvironmentId ?? props.environmentId,
             resource: {
               _tag: "attachment",
               attachmentId: attachment.id,
@@ -721,7 +728,11 @@ function MessageAttachmentFile(props: {
     return (
       <View className="my-1" style={{ width: 224, maxWidth: "100%" }}>
         <ThreadMarkdownVideo
-          source={attachmentVideoPreviewSource(props.environmentId, attachment, sourceIdentifier)}
+          source={attachmentVideoPreviewSource(
+            attachment.originEnvironmentId ?? props.environmentId,
+            attachment,
+            sourceIdentifier,
+          )}
           onPlaybackStart={props.onPlaybackStart}
         />
       </View>
@@ -1687,7 +1698,7 @@ function renderFeedEntry(
                       return isImageAttachment(attachment) ? (
                         <MessageAttachmentImage
                           key={attachment.id}
-                          environmentId={props.environmentId}
+                          environmentId={attachment.originEnvironmentId ?? props.environmentId}
                           attachmentId={attachment.id}
                           name={attachment.name}
                           mimeType={attachment.mimeType}
@@ -1701,7 +1712,7 @@ function renderFeedEntry(
                       ) : isFileAttachment(attachment) ? (
                         <MessageAttachmentFile
                           key={attachment.id}
-                          environmentId={props.environmentId}
+                          environmentId={attachment.originEnvironmentId ?? props.environmentId}
                           attachment={attachment}
                           onPressPreview={props.onPressPreview}
                           onPlaybackStart={props.onPlaybackStart}
