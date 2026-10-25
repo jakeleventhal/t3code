@@ -185,6 +185,7 @@ export interface MessagesTimelineHistoryControls {
 }
 
 interface MessagesTimelineProps {
+  simpleProgress?: boolean;
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
   timelineSource?: TimelineSourceRequest | null;
@@ -297,6 +298,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
+  simpleProgress = false,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
   timelineSource = null,
@@ -667,7 +669,15 @@ const ConversationTimeline = memo(function ConversationTimeline({
     availableRevertTurnCounts,
     worktreeSetup,
   });
-  const rows = useStableRows(rawRows, listIdentityKey);
+  const rows = useStableRows(
+    simpleProgress
+      ? rawRows.filter(
+          (row) =>
+            row.kind !== "thinking" && row.kind !== "work-toggle" && row.kind !== "work-live",
+        )
+      : rawRows,
+    listIdentityKey,
+  );
   // Run status/timestamps change per stream event; keep them out of shared row context.
   const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);

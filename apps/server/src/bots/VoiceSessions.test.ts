@@ -1076,3 +1076,24 @@ it.effect(
       ),
     ),
 );
+
+it.effect("subscription previews return a finite audio clip without creating a live session", () =>
+  Effect.gen(function* () {
+    const sessions = yield* VoiceSessions.VoiceSessions;
+    const result = yield* sessions.preview({
+      selection: { connectionId: "plan", model: "gpt-live-subscription", voice: "cove" },
+    });
+    assert.strictEqual(result.kind, "audio");
+    if (result.kind === "audio") {
+      assert.isTrue(result.dataUri.startsWith("data:audio/mpeg;base64,"));
+      assert.isAbove(Buffer.from(result.dataUri.split(",")[1]!, "base64").length, 10_000);
+    }
+  }).pipe(
+    Effect.provide(
+      layer({
+        openLive: () => Effect.die("Unexpected live session"),
+        grokClientSecret: unusedSecret,
+      }),
+    ),
+  ),
+);

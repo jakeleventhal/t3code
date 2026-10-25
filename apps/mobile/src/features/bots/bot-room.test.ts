@@ -10,6 +10,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 import { makeThreadShellFixture } from "../../test-fixtures";
 import {
   botProjectKeys,
+  botNotificationBadge,
   botSecondaryThreadCount,
   botThreadStatus,
   buildBotInbox,
@@ -540,4 +541,43 @@ describe("bots inbox", () => {
       ]),
     ).toEqual({ open: 3, needsYou: true });
   });
+});
+
+it("badges bot attention across hosts and clears when read or archived", () => {
+  const needs = thread({
+    environmentId: HOME,
+    id: ThreadId.make("topic"),
+    projectId: fitness.id,
+    hasPendingUserInput: true,
+  });
+  expect(botNotificationBadge([fitness, code], [needs])).toBe("!");
+  expect(botNotificationBadge([fitness, code], [{ ...needs, projectId: code.id }])).toBeUndefined();
+  expect(
+    botNotificationBadge([fitness], [{ ...needs, archivedAt: "2026-10-25T10:00:00Z" }]),
+  ).toBeUndefined();
+  expect(
+    botNotificationBadge([fitness], [{ ...needs, hasPendingUserInput: false }]),
+  ).toBeUndefined();
+});
+
+it("counts unread bot replies across hosts, gives attention priority, and clears on reading", () => {
+  const reply = thread({
+    environmentId: HOME,
+    id: ThreadId.make("reply"),
+    projectId: fitness.id,
+    latestRun: run("completed", "2026-10-25T10:00:00.000Z"),
+    lastVisitedAt: "2026-10-24T10:00:00.000Z",
+  });
+  const remoteBot = { ...fitness, environmentId: WORK };
+  const remoteReply = { ...reply, environmentId: WORK };
+  expect(botNotificationBadge([fitness, remoteBot], [reply, remoteReply])).toBe("2");
+  expect(
+    botNotificationBadge(
+      [fitness, remoteBot],
+      [reply, { ...remoteReply, hasPendingApprovals: true }],
+    ),
+  ).toBe("!");
+  expect(
+    botNotificationBadge([fitness], [{ ...reply, lastVisitedAt: "2026-10-25T11:00:00.000Z" }]),
+  ).toBeUndefined();
 });

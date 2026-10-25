@@ -1231,17 +1231,25 @@ const make = Effect.gen(function* () {
 
   const receivePeerMessage = Effect.fn("ThreadManagementService.receivePeerMessage")(
     function* (input: PeerEnvironmentThreadSendInput) {
+      const requested = yield* orchestrator.getThreadShell(input.threadId);
+      const project = requested === null ? Option.none() : yield* projects.get(requested.projectId);
+      const mainId =
+        Option.isSome(project) && project.value.botRole != null
+          ? project.value.botMainThreadId
+          : null;
       const receipt = yield* receipts.getByCommandId(input.commandId);
       if (
         Option.isSome(receipt) &&
         receipt.value.status === "accepted" &&
-        receipt.value.threadId === input.threadId &&
+        receipt.value.threadId !== null &&
+        (receipt.value.threadId === input.threadId ||
+          (mainId != null && receipt.value.threadId === mainId)) &&
         receipt.value.commandType === "message.dispatch"
       ) {
         // A lost acknowledgement can be replayed after the conversation was archived.
         // Recover the committed result before applying admission rules for new messages.
         const previous = yield* orchestrator.getThreadRecords(
-          input.threadId,
+          receipt.value.threadId,
           ["messages", "runs"],
           {
             messageIds: [input.messageId],
@@ -1251,15 +1259,24 @@ const make = Effect.gen(function* () {
         const run = previous.runs.find((candidate) => candidate.id === message?.runId);
         if (run !== undefined)
           return {
-            threadId: input.threadId,
+            threadId: receipt.value.threadId,
             messageId: input.messageId,
             runId: run.id,
             status: run.status,
             delivery: run.status === "queued" ? ("queued" as const) : ("started" as const),
           };
       }
-      const target = yield* orchestrator.getThreadShell(input.threadId);
-      if (target === null || target.deletedAt !== null) {
+      // Archived bot conversations remain history. Follow-up requests go to Main;
+      // the command receipt above keeps retries bound to the original delivery.
+      const target =
+        requested?.archivedAt != null && mainId != null && mainId !== input.threadId
+          ? yield* orchestrator.getThreadShell(mainId)
+          : requested;
+      if (
+        target === null ||
+        target.deletedAt !== null ||
+        target.projectId !== requested?.projectId
+      ) {
         return yield* new PeerEnvironmentThreadSendError({
           threadId: input.threadId,
           cause: "Thread unavailable",
@@ -1267,14 +1284,15 @@ const make = Effect.gen(function* () {
       }
       const result = yield* sendToThread({
         ...input,
+        threadId: target.id,
         projectId: target.projectId,
         attachments: [],
-        mode: "queue",
+        mode: Option.isSome(project) && project.value.botRole != null ? "auto" : "queue",
         createdBy: "agent",
         creationSource: "mcp",
       });
       return {
-        threadId: input.threadId,
+        threadId: target.id,
         messageId: input.messageId,
         runId: result.run.id,
         status: result.run.status,

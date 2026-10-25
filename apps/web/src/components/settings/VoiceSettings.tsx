@@ -1,3 +1,5 @@
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
+import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
 import { useLocation } from "@tanstack/react-router";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
@@ -152,7 +154,13 @@ function VoiceSettingsContent({
     projects,
     environment.environmentId,
   );
-  const bots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists];
+  const designated = environmentAssistant(projects, useDesignatedAssistantEnvironmentId());
+  const allBots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists];
+  const bots = allBots.filter(
+    (bot) =>
+      bot.botRole !== "assistant" ||
+      (bot.id === designated?.id && bot.environmentId === designated.environmentId),
+  );
   const defaultLabel = describeVoiceSelection(settings.voiceSelection, catalog).label;
   const callsSupported = useEnvironmentSupportsBotVoice(environment.environmentId);
 
@@ -166,7 +174,7 @@ function VoiceSettingsContent({
             settings={settings}
             catalog={catalog}
             catalogError={error}
-            bots={bots}
+            bots={allBots}
           />
           <DefaultVoiceSection
             environmentId={environment.environmentId}

@@ -6,21 +6,24 @@ import { playVoicePreview } from "./preview.ts";
 const selection = { connectionId: "grok", model: "grok-voice", voice: "ara" };
 
 describe("voice preview", () => {
-  it("plays the returned sample without opening microphone or call media", async () => {
-    const negotiate = vi.fn(async () => ({
-      kind: "audio" as const,
-      dataUri: "data:audio/mpeg;base64,AQID",
-    }));
-    const playAudio = vi.fn(async () => {});
-    const openMedia = vi.fn(async () => {
-      throw new Error("Unexpected media");
-    });
-    const signal = new AbortController().signal;
-    await playVoicePreview({ selection, kind: "xai-api", signal, negotiate, playAudio, openMedia });
-    expect(negotiate).toHaveBeenCalledWith({ selection });
-    expect(playAudio).toHaveBeenCalledWith("data:audio/mpeg;base64,AQID", signal);
-    expect(openMedia).not.toHaveBeenCalled();
-  });
+  it.each(["xai-api", "codex-subscription"] as const)(
+    "plays %s samples without microphone or call media",
+    async (kind) => {
+      const negotiate = vi.fn(async () => ({
+        kind: "audio" as const,
+        dataUri: "data:audio/mpeg;base64,AQID",
+      }));
+      const playAudio = vi.fn(async () => {});
+      const openMedia = vi.fn(async () => {
+        throw new Error("Unexpected media");
+      });
+      const signal = new AbortController().signal;
+      await playVoicePreview({ selection, kind, signal, negotiate, playAudio, openMedia });
+      expect(negotiate).toHaveBeenCalledWith({ selection });
+      expect(playAudio).toHaveBeenCalledWith("data:audio/mpeg;base64,AQID", signal);
+      expect(openMedia).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps actionable provider errors through media setup", async () => {
     const error = new VoiceConnectionError({ reason: "credentials-refused", status: 401 });

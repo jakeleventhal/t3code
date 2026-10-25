@@ -62,7 +62,17 @@ it.layer(NodeServices.layer)("bot voice configuration", (it) => {
         ],
       );
       assert.isAtLeast(catalog.connections[0]!.models[0]!.voices.length, 2);
-      assert.isAbove(catalog.connections[3]!.models.length, 0);
+      const subscriptionVoices = catalog.connections[3]!.models[0]!.voices.map((voice) => voice.id);
+      assert.include(subscriptionVoices, "cove");
+      assert.notInclude(subscriptionVoices, "ash");
+      const invalidVoice = yield* Effect.flip(
+        voice.resolveSelection({
+          connectionId: "plan",
+          model: "gpt-live-subscription",
+          voice: "ash",
+        }),
+      );
+      assert.strictEqual(invalidVoice.reason, "unavailable");
       const echoed = yield* settings.updateSettings({ voiceConnections: client.voiceConnections });
       assert.propertyVal(echoed.voiceConnections.personal, "apiKey", "test-private-openai");
       assert.propertyVal(echoed.voiceConnections.work, "apiKey", "test-private-xai");

@@ -267,7 +267,7 @@ function WorkspaceRootContent() {
         ) : (
           <WorkspaceSectionToolbar onNewTask={startNewTask} showCompose={false} />
         )}
-        {assistantOrb ? (
+        {assistantOrb && !(compactTabs && selectedTab === "threads" && !workspace.settingsOpen) ? (
           <AssistantOrb prominent style={{ right: orbRight, bottom: floatingBottom }} />
         ) : null}
         {callBar ? (

@@ -34,10 +34,11 @@ public final class T3NativeControlsModule: Module {
 
     View(T3SidebarTabBarView.self) {
       ViewName("SidebarTabBar")
-      Events("onSelectionChange", "onCompose")
+      Events("onSelectionChange", "onCompose", "onComposeLayout")
       Prop("tabs") { (view: T3SidebarTabBarView, value: [String]) in view.tabs = value }
       Prop("selectedTab") { (view: T3SidebarTabBarView, value: String) in view.selectedTab = value }
       Prop("selectedColor") { (view: T3SidebarTabBarView, value: UIColor) in view.selectedColor = value }
+      Prop("botBadge") { (view: T3SidebarTabBarView, value: String) in view.botBadge = value }
       Prop("showsCompose") { (view: T3SidebarTabBarView, value: Bool) in view.showsCompose = value }
       Prop("compact") { (view: T3SidebarTabBarView, value: Bool) in view.compact = value }
       Prop("appearance") { (view: T3SidebarTabBarView, value: String) in view.appearance = value }

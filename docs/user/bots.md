@@ -19,8 +19,9 @@ Assistant is the first entry in Bots: one conversation that continues across
 visits. It lives on the environment that already has the oldest Assistant, and
 stays there while that environment is offline. With no Assistant yet, opening it
 sets one up on a connected environment. If you have more than one Assistant from
-before, the others stay listed under **Other Assistants** with their host, and in
-**Settings → Bots** and **Settings → Voice**. Nothing is merged or deleted.
+before, the others stay listed under **Other Assistants** with their host.
+**Settings → Bots** and **Settings → Voice** show the main Assistant once.
+Nothing is merged or deleted.
 
 Bot chats have no model controls. Choose the model, reasoning, and permissions
 every bot uses in **Settings → Bots**, and give one bot its own from its
@@ -170,4 +171,5 @@ leaving the conversation; on mobile it opens the bot's voice settings. A bot's
 voice never changes the provider or model it types and works with.
 
 Use the play button beside a voice to hear a short sample before choosing it.
-Previewing leaves your selected voice and conversations unchanged.
+Previewing leaves your selected voice and conversations unchanged. ChatGPT
+subscription previews use recorded samples and do not start a call.

@@ -243,5 +243,51 @@ it.effect(
         (yield* projections.getThreadRecords(peerRequest.threadId, ["runs"])).runs.length,
         5,
       );
+      const mainThreadId = ThreadId.make("bot-main");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create-main"),
+        threadId: mainThreadId,
+        projectId: ProjectId.make("bot"),
+        title: "Main",
+        modelSelection: firstModel,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* projects.apply({
+        sequence: 2,
+        eventId: EventId.make("bind-main"),
+        aggregateKind: "project",
+        aggregateId: ProjectId.make("bot"),
+        occurredAt: now,
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "project.meta-updated",
+        payload: {
+          projectId: ProjectId.make("bot"),
+          botMainThreadId: mainThreadId,
+          updatedAt: now,
+        },
+      });
+      const followup = {
+        ...peerRequest,
+        commandId: CommandId.make("peer-followup"),
+        messageId: MessageId.make("peer-followup"),
+      };
+      const redirected = yield* threads.receivePeerMessage(followup);
+      assert.strictEqual(redirected.threadId, mainThreadId);
+      const replay = yield* threads.receivePeerMessage(followup);
+      assert.deepStrictEqual(replay, redirected);
+      assert.strictEqual(
+        (yield* projections.getThreadRecords(mainThreadId, ["messages"])).messages.length,
+        1,
+      );
+      assert.isNotNull((yield* projections.getThread(peerRequest.threadId)).archivedAt);
     }).pipe(Effect.provide(layer)),
 );

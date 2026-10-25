@@ -200,6 +200,7 @@ describe("interrupt turn", () => {
 
 describe("remote thread lifecycle commands", () => {
   const actions = [
+    ["updateMetadata", { title: "Renamed" }, { title: "Renamed" }],
     ["settle", {}, { settledOverride: "settled", pinnedAt: null, snoozedUntil: null }],
     ["unsettle", { reason: "user" }, { settledOverride: "active", settledAt: null }],
     ["snooze", { snoozedUntil: "2099-01-01T00:00:00.000Z" }, { snoozedUntil: FUTURE }],

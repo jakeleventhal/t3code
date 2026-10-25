@@ -31,6 +31,7 @@ import * as VoiceApi from "./VoiceApi.ts";
 import * as VoiceCalls from "./VoiceCalls.ts";
 import * as VoiceConfiguration from "./VoiceConfiguration.ts";
 import * as BotContext from "./BotContext.ts";
+import subscriptionSamples from "./subscriptionVoiceSamples.json" with { type: "json" };
 
 export class VoiceSessions extends Context.Service<
   VoiceSessions,
@@ -88,23 +89,19 @@ const make = Effect.gen(function* () {
         );
       return { kind: "audio", dataUri };
     }
+    if (selected.kind === "codex-subscription") {
+      // A live preview requires continuous input audio and has no playback-ended event.
+      // Recorded samples avoid microphone access and terminate with the actual clip.
+      const samples: Readonly<Record<string, string>> = subscriptionSamples;
+      const sample = samples[selected.selection.voice];
+      if (!sample) return yield* new VoiceConnectionError({ reason: "unavailable" });
+      return { kind: "audio", dataUri: `data:audio/mpeg;base64,${sample}` };
+    }
     if (!input.sdp) return yield* new VoiceConnectionError({ reason: "transport-mismatch" });
     const brief = {
       instructions: `This is a voice preview. Say exactly: "${VOICE_PREVIEW_TEXT}". Do not add anything else or request any tools.`,
       history: [],
     };
-    if (selected.kind === "codex-subscription") {
-      return {
-        kind: "webrtc",
-        ...(yield* codexVoice.connect({
-          providerInstanceId: selected.providerInstanceId,
-          voice: selected.selection.voice,
-          sdp: input.sdp,
-          cwd: process.cwd(),
-          ...brief,
-        })),
-      };
-    }
     const result = yield* api
       .openLive({
         apiKey: selected.apiKey,

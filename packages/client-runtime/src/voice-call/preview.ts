@@ -22,8 +22,11 @@ export async function playVoicePreview(input: {
   readonly playAudio: (uri: string, signal: AbortSignal) => Promise<void>;
 }) {
   input.signal.throwIfAborted();
-  if (input.kind === "xai-api") {
-    const result = await input.negotiate({ selection: input.selection });
+  if (input.kind === "xai-api" || input.kind === "codex-subscription") {
+    const result = await input.negotiate({ selection: input.selection }).catch((error: unknown) => {
+      if (isVoiceSetupError(error)) throw new VoiceCallSetupError(error.message);
+      throw error;
+    });
     input.signal.throwIfAborted();
     if (result.kind !== "audio")
       throw new Error(

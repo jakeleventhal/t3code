@@ -66,6 +66,7 @@ export function ThreadTimeline({
   return (
     <MessagesTimeline
       {...timelineProps}
+      simpleProgress={simpleProgress}
       timelineEntries={
         simpleProgress
           ? displayed.entries.filter(

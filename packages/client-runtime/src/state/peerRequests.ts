@@ -149,14 +149,14 @@ function rowCopy(
 ): { label: string; detail: string | null } {
   switch (state) {
     case "waiting":
-      return { label: "Waiting for connection", detail: null };
+      return { label: "Waiting to send", detail: null };
     case "confirming":
-      return { label: "Confirming delivery", detail: MAY_HAVE_ARRIVED };
+      return { label: "Sending request", detail: null };
     case "setup":
       return {
         label: "Setup needed",
         detail: [
-          "The receiving machine needs a newer T3 Code to accept requests from other bots.",
+          "Update T3 Code to let this bot receive requests.",
           item.uncertain ? MAY_HAVE_ARRIVED : null,
         ]
           .filter(Boolean)
@@ -166,7 +166,7 @@ function rowCopy(
       return {
         label: "Access needed",
         detail: [
-          "No connected device can send requests to the receiving machine.",
+          "Reconnect to let this bot receive requests.",
           item.uncertain ? MAY_HAVE_ARRIVED : null,
         ]
           .filter(Boolean)

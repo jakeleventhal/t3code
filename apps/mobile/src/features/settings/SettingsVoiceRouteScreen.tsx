@@ -1,4 +1,6 @@
 import { openSettings } from "./settings-navigation";
+import { useAssistantEnvironmentId } from "../bots/use-assistant";
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { useVoicePreview } from "../../voice/useVoicePreview";
@@ -171,8 +173,16 @@ function VoiceEnvironmentGate(props: {
 }
 
 function useEnvironmentBots(environmentId: EnvironmentId) {
-  return useProjects()
-    .filter((project) => project.environmentId === environmentId && botRole(project) !== null)
+  const projects = useProjects();
+  const designated = environmentAssistant(projects, useAssistantEnvironmentId());
+  return projects
+    .filter(
+      (project) =>
+        project.environmentId === environmentId &&
+        botRole(project) !== null &&
+        (project.botRole !== "assistant" ||
+          (project.id === designated?.id && project.environmentId === designated.environmentId)),
+    )
     .sort(
       (left, right) =>
         Number(right.botRole === "assistant") - Number(left.botRole === "assistant") ||

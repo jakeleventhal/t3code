@@ -448,6 +448,9 @@ export function createThreadEnvironmentAtoms<R, E>(
   return {
     ...commands,
     snapshotAtom: optimistic.snapshotAtom,
+    updateMetadata: optimistic.wrap(commands.updateMetadata, (thread, input) =>
+      input.title === undefined ? thread : { ...thread, title: input.title },
+    ),
     settle: optimistic.wrap(commands.settle, (thread, _input, now, accepted) =>
       !accepted &&
       (thread.pendingRuntimeRequest !== null ||

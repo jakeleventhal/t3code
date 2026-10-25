@@ -1,3 +1,4 @@
+import { hasUnseenCompletion } from "../Sidebar.logic";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -19,11 +20,11 @@ import {
 import { useBotRoomStore } from "./botRoomStore";
 import { useDesignatedAssistantEnvironmentId } from "./useBotRoom";
 
-function NeedsYouDot() {
+function NeedsYouDot({ unread = false }: { unread?: boolean }) {
   return (
     <>
       <span aria-hidden className="size-1.5 rounded-full bg-warning" />
-      <span className="sr-only">, needs you</span>
+      <span className="sr-only">{unread ? ", unread reply" : ", needs you"}</span>
     </>
   );
 }
@@ -99,6 +100,13 @@ export function SidebarRoomSwitch({ room }: { room: AppRoom }) {
       (botKeys?.has(`${thread.environmentId}:${thread.projectId}`) ?? false) === (room === "code"),
   );
 
+  const botsUnread = threads.some(
+    (thread) =>
+      thread.archivedAt === null &&
+      botKeys?.has(`${thread.environmentId}:${thread.projectId}`) &&
+      hasUnseenCompletion(thread),
+  );
+
   const switchTo = (next: AppRoom) => {
     if (next === room) return;
     if (next === "code") {
@@ -126,7 +134,9 @@ export function SidebarRoomSwitch({ room }: { room: AppRoom }) {
       <Toggle value="bots">
         <LayoutGridIcon />
         Bots
-        {room === "code" && otherRoomNeedsYou ? <NeedsYouDot /> : null}
+        {room === "code" && (otherRoomNeedsYou || botsUnread) ? (
+          <NeedsYouDot unread={!otherRoomNeedsYou} />
+        ) : null}
       </Toggle>
     </ToggleGroup>
   );

@@ -1,3 +1,5 @@
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
+import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
 import { useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import { useEnvironments } from "../../state/environments";
@@ -120,7 +122,12 @@ function BotSettingsContent({
     projects,
     environmentId,
   );
-  const bots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists];
+  const designated = environmentAssistant(projects, useDesignatedAssistantEnvironmentId());
+  const bots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists].filter(
+    (bot) =>
+      bot.botRole !== "assistant" ||
+      (bot.id === designated?.id && bot.environmentId === designated.environmentId),
+  );
   const disabled = !connected || !canWrite || !supported;
   const defaults = settings.botDefaults;
   const newThread = newThreadFallback(settings, providers);
