@@ -25,6 +25,7 @@ export function ThreadTimeline({
   detailLoading,
   readyMarkdownCwd,
   readyWorkspaceRoot,
+  simpleProgress = false,
   ...timelineProps
 }: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries"> & {
   /** Null until the thread's detail may load; see resolveThreadDetailRef. */
@@ -37,6 +38,7 @@ export function ThreadTimeline({
   detailLoading: boolean;
   readyMarkdownCwd: string | null;
   readyWorkspaceRoot: string | null;
+  simpleProgress?: boolean;
 }) {
   const visibleTurnItems = useThreadVisibleTurnItems(threadDetailRef);
   const serverEntries = useIncrementalTimelineEntries(activeThreadKey, {
@@ -61,5 +63,19 @@ export function ThreadTimeline({
       workspaceRoot: readyWorkspaceRoot,
     });
   }, [activeThreadKey, detailLoading, entries, readyMarkdownCwd, readyWorkspaceRoot]);
-  return <MessagesTimeline {...timelineProps} timelineEntries={displayed.entries} />;
+  return (
+    <MessagesTimeline
+      {...timelineProps}
+      timelineEntries={
+        simpleProgress
+          ? displayed.entries.filter(
+              (entry) =>
+                entry.kind !== "work" ||
+                (entry.entry.tone !== "tool" && entry.entry.tone !== "thinking") ||
+                entry.entry.toolLifecycleStatus === "failed",
+            )
+          : displayed.entries
+      }
+    />
+  );
 }

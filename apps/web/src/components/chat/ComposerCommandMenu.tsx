@@ -1,3 +1,7 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { useProject } from "../../state/entities";
+import { BotAvatar } from "../bots/BotAvatar";
+import type { ProjectContextRecord } from "@t3tools/contracts";
 import {
   BOT_MENTION_GROUP_LABELS,
   type BotMentionItem,
@@ -274,6 +278,8 @@ function groupComposerItems(items: ReadonlyArray<ComposerCommandItem>) {
 
 function ReferenceItemIcon(props: { item: BotMentionItem }) {
   const { reference } = props.item;
+  if (reference.kind === "project" && reference.botRole !== null)
+    return <MentionBotAvatar reference={reference} />;
   const Icon =
     reference.kind === "thread"
       ? MessagesSquareIcon
@@ -325,5 +331,17 @@ function SkillSourceBadge(props: { kind: ProviderSkillSourceKind; showSkillSuffi
       {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
       {props.showSkillSuffix ? " Skill" : null}
     </Badge>
+  );
+}
+
+function MentionBotAvatar({ reference }: { reference: ProjectContextRecord }) {
+  const project = useProject(scopeProjectRef(reference.environmentId, reference.projectId));
+  return (
+    <BotAvatar
+      bot={
+        project ?? { id: reference.projectId, title: reference.title, botRole: reference.botRole }
+      }
+      size="sm"
+    />
   );
 }

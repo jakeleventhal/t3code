@@ -13,7 +13,12 @@ import { AsyncResult, type Atom, type AtomRegistry } from "effect/reactivity";
 import type { createBotVoiceEnvironmentAtoms } from "../state/bot-voice.ts";
 import type { EnvironmentThreadState } from "../state/threadState.ts";
 import { executeAtomQuery, squashAtomCommandFailure } from "../state/runtime.ts";
-import { VoiceCallController, VoiceCallSetupError, type VoiceCallConnector } from "./controller.ts";
+import {
+  VoiceCallController,
+  VoiceCallSetupError,
+  type VoiceCallConnector,
+  type VoiceCallEvent,
+} from "./controller.ts";
 import {
   captureVoiceView,
   createLiveVoiceConnector,
@@ -459,40 +464,18 @@ export function createEnvironmentVoiceRuntime<R, E>(input: {
   });
   const connector: VoiceCallConnector = {
     async connect(call) {
-      let hadLiveState = false;
-      let currentCallId = call.callId;
-      let hadOwnership = false;
+      const tracker = createVoiceCallThreadTracker(call.callId);
       const detach = observe(call.target.threadRef, (state) => {
         if (call.signal.aborted) return;
-        if (state.status === "deleted" || (hadLiveState && state.status !== "live")) {
-          call.onEvent({
-            type: "failed",
-            message: "Audio stopped because this conversation disconnected.",
-          });
-          return;
-        }
-        if (state.status !== "live" || Option.isNone(state.data)) return;
-        hadLiveState = true;
-        const item = state.data.value.turnItems.find(
-          (item) => item.type === "voice_call" && item.call.callId === currentCallId,
-        );
-        if (item?.type === "voice_call") {
-          if (item.call.endpointId === call.callId) hadOwnership = true;
-          else if (hadOwnership && item.call.endpointId !== undefined) {
-            call.onEvent({ type: "ended", reason: "replaced" });
-            return;
-          }
-        }
-        if (item?.type === "voice_call" && item.call.endedAt !== null) {
-          call.onEvent({ type: "ended", reason: item.call.endReason ?? "interrupted" });
-        }
+        const event = tracker.observe(state);
+        if (event !== null) call.onEvent(event);
       });
       call.signal.addEventListener("abort", detach, { once: true });
       try {
         const connected = await persisted.connect({
           ...call,
           onEvent: (event) => {
-            if (event.type === "identity") currentCallId = event.callId;
+            if (event.type === "identity") tracker.setCallId(event.callId);
             call.onEvent(event);
           },
         });
@@ -512,4 +495,41 @@ export function createEnvironmentVoiceRuntime<R, E>(input: {
     },
   };
   return new VoiceCallController(connector, input.createCallId);
+}
+
+export function createVoiceCallThreadTracker(endpointId: string) {
+  let hadLiveState = false;
+  let currentCallId = endpointId;
+  let hadOwnership = false;
+  return {
+    setCallId(callId: string) {
+      currentCallId = callId;
+    },
+    observe(state: {
+      status: EnvironmentThreadState["status"];
+      data: Option.Option<Pick<OrchestrationV2ThreadProjection, "turnItems">>;
+    }): VoiceCallEvent | null {
+      // Synchronizing means shell events are waiting for their matching turn items,
+      // including this call's own begin/append events. The connection is still live.
+      if (
+        state.status === "deleted" ||
+        (hadLiveState && (state.status === "empty" || state.status === "cached"))
+      ) {
+        return { type: "failed", message: "Audio stopped because this conversation disconnected." };
+      }
+      if (state.status !== "live" || Option.isNone(state.data)) return null;
+      hadLiveState = true;
+      const item = state.data.value.turnItems.find(
+        (item) => item.type === "voice_call" && item.call.callId === currentCallId,
+      );
+      if (item?.type !== "voice_call") return null;
+      if (item.call.endpointId === endpointId) hadOwnership = true;
+      else if (hadOwnership && item.call.endpointId !== undefined) {
+        return { type: "ended", reason: "replaced" };
+      }
+      return item.call.endedAt !== null
+        ? { type: "ended", reason: item.call.endReason ?? "interrupted" }
+        : null;
+    },
+  };
 }

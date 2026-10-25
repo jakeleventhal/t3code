@@ -1,3 +1,5 @@
+import { useAssistantEnvironmentId } from "../bots/use-assistant";
+import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   botRuntimeSettingsUpdateMessage,
@@ -54,6 +56,7 @@ function BotsScreen(props: {
   readonly children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const bottomClearance = useWorkspaceTabs()?.bottomClearance ?? 0;
   return (
     <>
       {props.filter ? <SettingsEnvironmentFilterHeader /> : null}
@@ -66,7 +69,9 @@ function BotsScreen(props: {
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           contentContainerClassName="gap-6 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+          contentContainerStyle={{
+            paddingBottom: Math.max(insets.bottom, bottomClearance, 18) + 18,
+          }}
         >
           {props.children}
         </ScreenScrollView>
@@ -99,30 +104,42 @@ function useOpenBotTurnSettings() {
 }
 
 export function SettingsBotsRouteScreen() {
-  const { selectedTargets } = useSettingsEnvironmentFilter();
+  const { availableTargets } = useSettingsEnvironmentFilter();
+  const assistantEnvironmentId = useAssistantEnvironmentId();
+  const [advanced, setAdvanced] = useState(false);
+  const primary = availableTargets.find(
+    (target) => target.environmentId === assistantEnvironmentId,
+  );
   return (
-    <BotsScreen title="Bots" filter>
-      <Muted>
-        The model and permissions bots use when they reply. Each chat shows only a message box.
-      </Muted>
-      {selectedTargets.length === 0 ? (
-        <Muted>Select a connected environment.</Muted>
-      ) : (
-        selectedTargets.map((target) => (
-          <BotsEnvironmentOverview
-            key={target.environmentId}
-            target={target}
-            showLabel={selectedTargets.length > 1}
-          />
-        ))
-      )}
+    <BotsScreen title="Bots">
+      <Muted>Change each bot's model and permissions. Changes apply from its next message.</Muted>
+      <SettingsSection title="Bots">
+        {availableTargets.map((target) => (
+          <BotsEnvironmentOverview key={target.environmentId} target={target} advanced={false} />
+        ))}
+      </SettingsSection>
+      <SettingsSection>
+        <SettingsActionRow
+          icon="gearshape"
+          label={advanced ? "Hide advanced settings" : "Advanced settings"}
+          onPress={() => setAdvanced(!advanced)}
+        />
+      </SettingsSection>
+      {advanced ? (
+        <>
+          {availableTargets.map((target) => (
+            <BotsEnvironmentOverview key={target.environmentId} target={target} advanced />
+          ))}
+          {primary ? <BotDefaultHostSection environmentId={primary.environmentId} /> : null}
+        </>
+      ) : null}
     </BotsScreen>
   );
 }
 
 function BotsEnvironmentOverview(props: {
   readonly target: SettingsTarget;
-  readonly showLabel: boolean;
+  readonly advanced: boolean;
 }) {
   const environmentId = props.target.environmentId;
   const defaults = useBotTurnSettings(environmentId, null);
@@ -130,7 +147,7 @@ function BotsEnvironmentOverview(props: {
   const open = useOpenBotTurnSettings();
   return (
     <View className="gap-6">
-      {props.showLabel ? (
+      {props.advanced ? (
         <Text textRole="headline" className="px-2 font-t3-bold text-foreground">
           {props.target.label}
         </Text>
@@ -139,32 +156,34 @@ function BotsEnvironmentOverview(props: {
         <Muted>Update this environment to set up bots.</Muted>
       ) : (
         <>
-          <SettingsSection
-            title="Defaults for bots"
-            footer={
-              defaults.updateMessage ??
-              (defaults.setupNeeded
-                ? `Setup needed · ${defaults.setupNeeded}`
-                : "Bots use these unless they have their own.")
-            }
-          >
-            <SettingsRow
-              icon="sparkles"
-              label="Model"
-              value={defaults.modelLabel}
-              valuePosition="below"
-              onPress={() => open({ environmentId })}
-            />
-            <SettingsRow
-              icon="exclamationmark.shield"
-              label="Permissions"
-              value={defaults.runtimeModeLabel}
-              valuePosition="below"
-              onPress={() => open({ environmentId })}
-            />
-          </SettingsSection>
-          {bots.length > 0 ? (
-            <SettingsSection title="Bots">
+          {props.advanced ? (
+            <SettingsSection
+              title="Defaults for bots"
+              footer={
+                defaults.updateMessage ??
+                (defaults.setupNeeded
+                  ? `Setup needed · ${defaults.setupNeeded}`
+                  : "Bots use these unless they have their own.")
+              }
+            >
+              <SettingsRow
+                icon="sparkles"
+                label="Model"
+                value={defaults.modelLabel}
+                valuePosition="below"
+                onPress={() => open({ environmentId })}
+              />
+              <SettingsRow
+                icon="exclamationmark.shield"
+                label="Permissions"
+                value={defaults.runtimeModeLabel}
+                valuePosition="below"
+                onPress={() => open({ environmentId })}
+              />
+            </SettingsSection>
+          ) : null}
+          {!props.advanced && bots.length > 0 ? (
+            <View>
               {bots.map((bot) => (
                 <BotOverviewRow
                   key={bot.id}
@@ -174,9 +193,8 @@ function BotsEnvironmentOverview(props: {
                   assistant={bot.botRole === "assistant"}
                 />
               ))}
-            </SettingsSection>
+            </View>
           ) : null}
-          <BotDefaultHostSection environmentId={environmentId} />
         </>
       )}
     </View>

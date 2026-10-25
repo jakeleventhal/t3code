@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { useEnvironments } from "../../state/environments";
+import { SettingsScopeProvider } from "./SettingsScopeContext";
 import {
   botDefaultsPatch,
   botRuntimeSettingsUpdateMessage,
@@ -34,7 +37,6 @@ import { partitionEnvironmentBots } from "../bots/botRoom.logic";
 import { runtimeModeConfig } from "../chat/runtimeModeConfig";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { useSettingsScope } from "./SettingsScopeContext";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -43,23 +45,48 @@ import {
 } from "./settingsLayout";
 
 export function BotSettingsPanel() {
-  const { environment } = useSettingsScope();
-  if (!environment?.serverConfig) {
-    return (
-      <SettingsPageContainer>
-        <p className="px-3 text-sm text-muted-foreground sm:px-4">
-          Connect an environment to set up its bots.
-        </p>
-        <RemovedMachineUnsentMessages />
-      </SettingsPageContainer>
-    );
-  }
+  const { environments } = useEnvironments();
+  const [advanced, setAdvanced] = useState(false);
+  const targets = environments.filter(
+    (entry) => entry.serverConfig?.environment.capabilities.botConversations === true,
+  );
+  const render = (advanced: boolean) =>
+    targets.map((environment) => (
+      <SettingsScopeProvider
+        key={environment.environmentId}
+        search={{ machine: environment.environmentId }}
+        onChange={() => {}}
+        singleEnvironment
+      >
+        <BotSettingsContent
+          environmentId={environment.environmentId}
+          label={environment.label}
+          connected={environment.connection.phase === "connected"}
+          advanced={advanced}
+        />
+      </SettingsScopeProvider>
+    ));
   return (
-    <BotSettingsContent
-      environmentId={environment.environmentId}
-      label={environment.label}
-      connected={environment.connection.phase === "connected"}
-    />
+    <SettingsPageContainer>
+      <p className="px-4 text-sm text-muted-foreground">
+        Each bot's profile controls its model and permissions. Changes apply from its next message.
+      </p>
+      {targets.length === 0 ? (
+        <p className="px-4 text-sm text-muted-foreground">
+          Connect to your bots to change their settings.
+        </p>
+      ) : null}
+      <SettingsSection id="bot-overrides" title="Bots">
+        {render(false)}
+      </SettingsSection>
+      <div>
+        <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
+          {advanced ? "Hide advanced settings" : "Advanced settings"}
+        </Button>
+      </div>
+      {advanced ? render(true) : null}
+      <RemovedMachineUnsentMessages />
+    </SettingsPageContainer>
   );
 }
 
@@ -67,10 +94,12 @@ function BotSettingsContent({
   environmentId,
   label,
   connected,
+  advanced,
 }: {
   environmentId: EnvironmentId;
   label: string;
   connected: boolean;
+  advanced: boolean;
 }) {
   const settings = useEnvironmentSettings(environmentId);
   const providers = useEnvironmentBotProviders(environmentId);
@@ -101,82 +130,82 @@ function BotSettingsContent({
         });
 
   return (
-    <SettingsPageContainer>
-      <p className="max-w-2xl px-3 text-xs leading-relaxed text-muted-foreground sm:px-4">
-        {`Bot chats have no model controls; bots on ${label} use these. A bot's profile can set its own. Changes apply from each bot's next message, and a reply already running keeps its settings. New Code threads aren't affected.`}
-      </p>
+    <div className="flex flex-col gap-4">
+      {advanced ? <h3 className="px-4 text-sm font-semibold">{label}</h3> : null}
       {connected && !supported ? (
         <p role="status" className="max-w-2xl px-3 text-xs text-warning-foreground sm:px-4">
           {botRuntimeSettingsUpdateMessage(label)}
         </p>
       ) : null}
-      <SettingsSection id="bot-defaults" title="Defaults for bots">
-        <SettingsRow
-          serverScoped
-          settingKeys={["botDefaults"]}
-          id="bot-defaults-model"
-          title="Model"
-          description={
-            defaults.defaultModelSelection === null
-              ? "Not set: new bots start with the model for new threads, and existing bots keep theirs."
-              : "Every bot without its own model uses this, including reasoning."
-          }
-          status={
-            readiness?.kind === "setup-needed" ? (
-              <span className="text-warning-foreground">{`Setup needed: ${readiness.reason}`}</span>
-            ) : null
-          }
-          resetAction={
-            defaults.defaultModelSelection !== null ? (
-              <SettingResetButton
-                label="default bot model"
-                tooltip="Let each bot keep its current model"
+      {advanced ? (
+        <SettingsSection id={`bot-defaults-${environmentId}`} title="Defaults for bots">
+          <SettingsRow
+            serverScoped
+            settingKeys={["botDefaults"]}
+            id="bot-defaults-model"
+            title="Model"
+            description={
+              defaults.defaultModelSelection === null
+                ? "Not set: new bots start with the model for new threads, and existing bots keep theirs."
+                : "Every bot without its own model uses this, including reasoning."
+            }
+            status={
+              readiness?.kind === "setup-needed" ? (
+                <span className="text-warning-foreground">{`Setup needed: ${readiness.reason}`}</span>
+              ) : null
+            }
+            resetAction={
+              defaults.defaultModelSelection !== null ? (
+                <SettingResetButton
+                  label="default bot model"
+                  tooltip="Let each bot keep its current model"
+                  disabled={disabled}
+                  onClick={() =>
+                    updateSettings(botDefaultsPatch(settings, { defaultModelSelection: null }))
+                  }
+                />
+              ) : null
+            }
+            control={
+              shownModel ? (
+                <BotModelPicker
+                  environmentId={environmentId}
+                  projectId={null}
+                  settings={settings}
+                  providers={providers}
+                  selection={shownModel}
+                  disabled={disabled}
+                  onChange={(defaultModelSelection) =>
+                    updateSettings(botDefaultsPatch(settings, { defaultModelSelection }))
+                  }
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">No providers available</span>
+              )
+            }
+          />
+          <SettingsRow
+            serverScoped
+            settingKeys={["botDefaults"]}
+            id="bot-defaults-permissions"
+            title="Permissions"
+            description="What bots may do without asking."
+            control={
+              <BotPermissionsSelect
+                value={defaults.defaultRuntimeMode}
+                inheritedLabel="Not set · each bot keeps its own"
+                ariaLabel="Default bot permissions"
                 disabled={disabled}
-                onClick={() =>
-                  updateSettings(botDefaultsPatch(settings, { defaultModelSelection: null }))
+                onChange={(defaultRuntimeMode) =>
+                  updateSettings(botDefaultsPatch(settings, { defaultRuntimeMode }))
                 }
               />
-            ) : null
-          }
-          control={
-            shownModel ? (
-              <BotModelPicker
-                environmentId={environmentId}
-                projectId={null}
-                settings={settings}
-                providers={providers}
-                selection={shownModel}
-                disabled={disabled}
-                onChange={(defaultModelSelection) =>
-                  updateSettings(botDefaultsPatch(settings, { defaultModelSelection }))
-                }
-              />
-            ) : (
-              <span className="text-sm text-muted-foreground">No providers available</span>
-            )
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["botDefaults"]}
-          id="bot-defaults-permissions"
-          title="Permissions"
-          description="What bots may do without asking."
-          control={
-            <BotPermissionsSelect
-              value={defaults.defaultRuntimeMode}
-              inheritedLabel="Not set · each bot keeps its own"
-              ariaLabel="Default bot permissions"
-              disabled={disabled}
-              onChange={(defaultRuntimeMode) =>
-                updateSettings(botDefaultsPatch(settings, { defaultRuntimeMode }))
-              }
-            />
-          }
-        />
-      </SettingsSection>
-      {bots.length > 0 ? (
-        <SettingsSection id="bot-overrides" title="Bots">
+            }
+          />
+        </SettingsSection>
+      ) : null}
+      {!advanced && bots.length > 0 ? (
+        <div>
           {bots.map((bot) => {
             const own = settings.projectSettingsOverrides[bot.id];
             const ownParts = [
@@ -220,28 +249,29 @@ function BotSettingsContent({
               />
             );
           })}
+        </div>
+      ) : null}
+      {advanced ? (
+        <SettingsSection id={`bot-advanced-${environmentId}`} title="Hosting">
+          <SettingsRow
+            serverScoped
+            settingKeys={["defaultBotEnvironmentId"]}
+            id="bot-default-host"
+            title="Default host for new bots"
+            description={`Saved on ${label}, so every device connected to it shares it. Only bots you create while ${label} hosts your Assistant go there; Assistant and existing bots stay where they are.`}
+            control={
+              <DefaultBotHostSelect
+                environmentId={environmentId}
+                label={label}
+                value={settings.defaultBotEnvironmentId}
+                disabled={disabled}
+                onChange={(defaultBotEnvironmentId) => updateSettings({ defaultBotEnvironmentId })}
+              />
+            }
+          />
         </SettingsSection>
       ) : null}
-      <SettingsSection id="bot-advanced" title="Advanced">
-        <SettingsRow
-          serverScoped
-          settingKeys={["defaultBotEnvironmentId"]}
-          id="bot-default-host"
-          title="Default host for new bots"
-          description={`Saved on ${label}, so every device connected to it shares it. Only bots you create while ${label} hosts your Assistant go there; Assistant and existing bots stay where they are.`}
-          control={
-            <DefaultBotHostSelect
-              environmentId={environmentId}
-              label={label}
-              value={settings.defaultBotEnvironmentId}
-              disabled={disabled}
-              onChange={(defaultBotEnvironmentId) => updateSettings({ defaultBotEnvironmentId })}
-            />
-          }
-        />
-      </SettingsSection>
-      <RemovedMachineUnsentMessages />
-    </SettingsPageContainer>
+    </div>
   );
 }
 

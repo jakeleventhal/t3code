@@ -1,3 +1,6 @@
+import * as Schema from "effect/Schema";
+import { VoiceConnectionError, VoiceCallError } from "@t3tools/contracts";
+import { VoiceCallSetupError } from "./controller.ts";
 // @effect-diagnostics globalTimers:off - Preview-only sessions have a hard lifetime cap; Live has no audio-completed event.
 import {
   VOICE_PREVIEW_TEXT,
@@ -6,6 +9,8 @@ import {
   type VoiceSelection,
 } from "@t3tools/contracts";
 import type { LiveMediaInput, openLiveMedia } from "./live-media.ts";
+
+const isVoiceSetupError = Schema.is(Schema.Union([VoiceConnectionError, VoiceCallError]));
 
 /** No microphone, conversation context, work tools, transcript persistence, or settings writes. */
 export async function playVoicePreview(input: {
@@ -39,7 +44,12 @@ export async function playVoicePreview(input: {
       signal: abort.signal,
       playbackOnly: true,
       negotiate: async (sdp) => {
-        const result = await input.negotiate({ selection: input.selection, sdp });
+        const result = await input
+          .negotiate({ selection: input.selection, sdp })
+          .catch((error: unknown) => {
+            if (isVoiceSetupError(error)) throw new VoiceCallSetupError(error.message);
+            throw error;
+          });
         if (result.kind !== "webrtc")
           throw new Error("The host returned an incompatible voice preview.");
         return result;

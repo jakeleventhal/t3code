@@ -50,8 +50,8 @@ function inboxTime(at: string | null): string | null {
   return age === "<1m" ? "now" : age;
 }
 
-/** Opens the bot's main conversation, which is what every inbox entry stands for. */
-function useInboxEntryOpener(entry: BotInboxEntry) {
+/** Open the conversation advertised by the preview; otherwise use Main. */
+function useInboxEntryOpener(entry: BotInboxEntry, mainOnly = false) {
   const { bot } = entry;
   const selectDetail = useSelectWorkspaceDetail();
   const opener = useOpenBotConversation(bot.environmentId);
@@ -63,6 +63,10 @@ function useInboxEntryOpener(entry: BotInboxEntry) {
     disabled: (!entry.connected && bot.mainThread === null) || unavailable,
     reason: unavailable ? opener.reason : null,
     open: async () => {
+      if (!mainOnly && entry.previewThread && entry.previewThread.id !== bot.mainThread?.id) {
+        selectThread({ environmentId: bot.environmentId, id: entry.previewThread.id });
+        return;
+      }
       const target = await opener.open({
         projectId: bot.project?.id ?? null,
         known,
@@ -212,7 +216,7 @@ function accessibilityLabel(entry: BotInboxEntry, reason: string | null, showPre
 /** The Assistant leads Bots the way its orb leads Chats: one tap into its main conversation. */
 function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected: boolean }) {
   const { entry } = props;
-  const opener = useInboxEntryOpener(entry);
+  const opener = useInboxEntryOpener(entry, true);
   return (
     <Pressable
       accessibilityRole="button"
@@ -381,8 +385,8 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
 }
 
 function rowSelected(entry: BotInboxEntry, selectedThreadKey: string | null) {
-  const main = entry.bot.mainThread;
-  return main !== null && scopedThreadKey(main.environmentId, main.id) === selectedThreadKey;
+  const thread = entry.previewThread ?? entry.bot.mainThread;
+  return thread !== null && scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey;
 }
 
 /**

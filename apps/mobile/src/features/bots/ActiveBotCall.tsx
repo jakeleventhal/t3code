@@ -1,3 +1,4 @@
+import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import type { VoiceCallTarget } from "@t3tools/client-runtime/voice-call";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useIsFocused } from "@react-navigation/native";
@@ -139,6 +140,7 @@ export function ActiveCallScreenSlot(props: {
   // composers that lift by the keyboard's height.
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const insets = useSafeAreaInsets();
+  const bottomClearance = useWorkspaceTabs()?.bottomClearance ?? 0;
   const footer = live && !keyboardVisible && !OWN_CALL_BAR_ROUTES.has(props.routeName);
   return (
     <>
@@ -149,7 +151,7 @@ export function ActiveCallScreenSlot(props: {
         <ActiveBotCallBar
           thread={null}
           className="w-full max-w-2xl self-center px-4 pt-2"
-          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+          style={{ paddingBottom: Math.max(insets.bottom, bottomClearance, 8) }}
         />
       ) : null}
       {live && owner ? <CurrentViewBridge /> : null}

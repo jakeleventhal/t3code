@@ -1,7 +1,9 @@
+import * as PeerEnvironmentBroker from "../mcp/PeerEnvironmentBroker.ts";
 import * as ServerConfig from "../config.ts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
@@ -80,7 +82,10 @@ function layer(
   ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory), Layer.provideMerge(platform));
   const services = Layer.mergeAll(
     VoiceCalls.layer,
-    BotContext.layer.pipe(Layer.provideMerge(BotWorkspace.layer)),
+    BotContext.layer.pipe(
+      Layer.provideMerge(PeerEnvironmentBroker.layer),
+      Layer.provideMerge(BotWorkspace.layer),
+    ),
     VoiceConfiguration.layer,
   ).pipe(
     Layer.provideMerge(storage),
@@ -997,6 +1002,77 @@ it.effect(
           },
           grokClientSecret: () => Effect.die("Unexpected Grok call"),
         }),
+      ),
+    ),
+);
+
+it.effect(
+  "preloads local and connected specialist routing without reading their conversations",
+  () =>
+    Effect.gen(function* () {
+      yield* fixture;
+      const broker = yield* PeerEnvironmentBroker.PeerEnvironmentBroker;
+      const ready = yield* Deferred.make<void>();
+      const seen: string[] = [];
+      const remote = EnvironmentId.make("remote-bots");
+      const events = yield* broker.connect({ clientId: "directory-test" });
+      yield* events.pipe(
+        Stream.runForEach((event) => {
+          if (event.type === "connected") return Deferred.succeed(ready, undefined);
+          const operation = event.request.operation.operation;
+          seen.push(operation);
+          return broker.respond({
+            clientId: "directory-test",
+            connectionId: event.connectionId,
+            requestId: event.request.requestId,
+            outcome: {
+              ok: true,
+              result:
+                operation === "list"
+                  ? {
+                      operation: "list",
+                      environments: [
+                        { environmentId: remote, label: "Host detail", status: "connected" },
+                      ],
+                    }
+                  : {
+                      operation: "catalog",
+                      label: "Host detail",
+                      serverVersion: "test",
+                      providers: [],
+                      projects: [
+                        {
+                          id: ProjectId.make("workouty"),
+                          title: "Workouty",
+                          workspaceRoot: "/bots/workouty",
+                          botRole: "specialist",
+                          botMainThreadId: ThreadId.make("workouty-main"),
+                          defaultModelSelection: null,
+                          scripts: [],
+                          createdAt: "2026-10-25T00:00:00.000Z",
+                          updatedAt: "2026-10-25T00:00:00.000Z",
+                        },
+                      ],
+                    },
+            },
+          });
+        }),
+        Effect.forkScoped,
+      );
+      yield* Deferred.await(ready);
+      const context = yield* BotContext.BotContext;
+      const work = yield* context.readForWork(threadId, null);
+      assert.include(work, '"title":"Fitness"');
+      assert.include(work, '"title":"Workouty"');
+      assert.include(work, '"mainThreadId":"workouty-main"');
+      assert.include(work, '"environmentId":"remote-bots"');
+      assert.include(work, "Main conversation by default");
+      assert.notInclude(work, "Host detail");
+      assert.deepEqual(seen, ["list", "catalog"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layer({ openLive: () => Effect.succeed(answer), grokClientSecret: unusedSecret }),
       ),
     ),
 );

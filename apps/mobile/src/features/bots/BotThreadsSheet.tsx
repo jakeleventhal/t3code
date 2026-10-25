@@ -72,16 +72,15 @@ function ThreadRow(props: {
     const action = props.menu?.find((item) => item.id === id);
     if (action && !action.disabled) props.onMenuAction?.(action.id);
   };
-  const row = (
+  const content = (
     <RowPressable
       accessibilityRole="button"
       accessibilityLabel={`${props.title}, ${props.subtitle}`}
-      accessibilityHint={props.menu ? "Touch and hold for more actions" : undefined}
       accessibilityState={{ selected: props.current }}
       onPress={props.onPress}
-      className={props.current ? "bg-thread-selected" : "bg-grouped-card"}
+      className="flex-1"
     >
-      <View className="flex-row items-center gap-3 py-3 pl-4 pr-4">
+      <View className="flex-row items-center gap-3 py-3 pl-4 pr-2">
         <SymbolView name={props.icon} size={16} tintColorClassName="accent-icon-muted" />
         <View className="min-w-0 flex-1 gap-0.5">
           <Text
@@ -98,35 +97,42 @@ function ThreadRow(props: {
             {props.subtitle}
           </Text>
         </View>
-        {props.menu ? (
-          <Menu actions={actions} onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}>
-            <IconButton icon="ellipsis" accessibilityLabel={`Actions for ${props.title}`} />
-          </Menu>
-        ) : null}
         {props.current ? (
           <SymbolView name="checkmark" size={14} tintColorClassName="accent-icon-muted" />
         ) : null}
       </View>
-      {props.divider ? <View className="ml-11 h-px bg-border-subtle" /> : null}
     </RowPressable>
   );
-  if (!props.menu || !props.onMenuAction) return row;
-  const onMenuAction = props.onMenuAction;
   return (
-    <Menu
-      actions={props.menu.map((item) => ({
-        id: item.id,
-        title: item.title,
-        attributes: { disabled: item.disabled },
-      }))}
-      onPressAction={({ nativeEvent }) => {
-        const action = props.menu?.find((item) => item.id === nativeEvent.event);
-        if (action && !action.disabled) onMenuAction(action.id);
-      }}
-      shouldOpenOnLongPress
-    >
-      {row}
-    </Menu>
+    <View className={props.current ? "bg-thread-selected" : "bg-grouped-card"}>
+      <View className="flex-row items-center pr-2">
+        {props.menu ? (
+          <Menu
+            actions={actions}
+            onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}
+            shouldOpenOnLongPress
+            style={{ flex: 1 }}
+          >
+            {content}
+          </Menu>
+        ) : (
+          content
+        )}
+        {props.menu ? (
+          <Menu actions={actions} onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}>
+            <View
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={`Actions for ${props.title}`}
+              className="size-12 items-center justify-center"
+            >
+              <SymbolView name="ellipsis" size={22} tintColorClassName="accent-icon-muted" />
+            </View>
+          </Menu>
+        ) : null}
+      </View>
+      {props.divider ? <View className="ml-11 h-px bg-border-subtle" /> : null}
+    </View>
   );
 }
 

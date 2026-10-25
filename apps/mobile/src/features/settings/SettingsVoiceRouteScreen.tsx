@@ -1,6 +1,7 @@
 import { openSettings } from "./settings-navigation";
+import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { useVoicePreview } from "../../voice/useVoicePreview";
-import { IconButton } from "../../components/ui/IconButton";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   AuthProvidersManageScope,
@@ -17,7 +18,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { Pressable, View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as Dialog from "../../components/ui/Dialog";
@@ -117,6 +118,7 @@ function VoiceScreen(props: {
   readonly children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const bottomClearance = useWorkspaceTabs()?.bottomClearance ?? 0;
   return (
     <>
       {props.filter ? <SettingsEnvironmentFilterHeader /> : null}
@@ -129,7 +131,9 @@ function VoiceScreen(props: {
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           contentContainerClassName="gap-6 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+          contentContainerStyle={{
+            paddingBottom: Math.max(insets.bottom, bottomClearance, 18) + 18,
+          }}
         >
           {props.children}
         </ScreenScrollView>
@@ -176,36 +180,40 @@ function useEnvironmentBots(environmentId: EnvironmentId) {
     );
 }
 
-export function SettingsVoiceRouteScreen({
-  route,
-}: StaticScreenProps<{ readonly environmentId?: EnvironmentId } | undefined>) {
-  const { selectedTargets, availableTargets } = useSettingsEnvironmentFilter();
-  // A bot's shortcut pins one environment; the Settings entry follows the filter.
-  const pinned = route.params?.environmentId;
-  const targets = pinned
-    ? availableTargets.filter((target) => target.environmentId === pinned)
-    : selectedTargets;
+export function SettingsVoiceRouteScreen(
+  _props: StaticScreenProps<{ readonly environmentId?: EnvironmentId } | undefined>,
+) {
+  const { availableTargets } = useSettingsEnvironmentFilter();
+  const [advanced, setAdvanced] = useState(false);
+  const targets = availableTargets;
   return (
-    <VoiceScreen title="Voice" filter={!pinned}>
-      <Muted>How bots sound on calls. Typing still uses each bot's own harness and model.</Muted>
-      {targets.length === 0 ? (
-        <Muted>Select a connected environment.</Muted>
-      ) : (
-        targets.map((target) => (
-          <VoiceEnvironmentOverview
-            key={target.environmentId}
-            target={target}
-            showLabel={targets.length > 1}
-          />
-        ))
-      )}
+    <VoiceScreen title="Voice">
+      <Muted>Choose how each bot sounds. Play a sample before choosing.</Muted>
+      {targets.length === 0 ? <Muted>Connect to your bots to change their voices.</Muted> : null}
+      <SettingsSection title="Bots">
+        {targets.map((target) => (
+          <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="bots" />
+        ))}
+      </SettingsSection>
+      <SettingsSection>
+        <SettingsActionRow
+          icon="gearshape"
+          label={advanced ? "Hide advanced settings" : "Advanced settings"}
+          onPress={() => setAdvanced(!advanced)}
+        />
+      </SettingsSection>
+      {advanced
+        ? targets.map((target) => (
+            <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="advanced" />
+          ))
+        : null}
     </VoiceScreen>
   );
 }
 
 function VoiceEnvironmentOverview(props: {
   readonly target: SettingsTarget;
-  readonly showLabel: boolean;
+  readonly mode: "bots" | "advanced";
 }) {
   const environmentId = props.target.environmentId;
   const navigation = useNavigation();
@@ -215,49 +223,61 @@ function VoiceEnvironmentOverview(props: {
   const catalog = voice.catalog.data;
   return (
     <View className="gap-6">
-      {props.showLabel ? (
+      {props.mode === "advanced" ? (
         <Text textRole="headline" className="px-2 font-t3-bold text-foreground">
           {props.target.label}
         </Text>
       ) : null}
       <VoiceEnvironmentGate voice={voice}>
-        <SettingsSection title="Connections" footer={voice.callsNote}>
-          {(catalog?.connections ?? []).map((connection) => (
-            <SettingsRow
-              key={connection.id}
-              icon="headphones"
-              label={connection.name}
-              value={`${voiceConnectionKindLabel(connection.kind)} · ${voiceConnectionStatusLabel(connection)}`}
-              valuePosition="below"
+        {props.mode === "advanced" ? (
+          <SettingsSection title="Connections" footer={voice.callsNote}>
+            {(catalog?.connections ?? []).map((connection) => (
+              <SettingsRow
+                key={connection.id}
+                icon="headphones"
+                label={connection.name}
+                value={`${voiceConnectionKindLabel(connection.kind)} · ${voiceConnectionStatusLabel(connection)}`}
+                valuePosition="below"
+                onPress={() =>
+                  navigation.navigate("SettingsSheet", {
+                    screen: "SettingsContent",
+                    params: {
+                      screen: "SettingsVoiceConnection",
+                      params: {
+                        environmentId,
+                        connectionId: connection.id,
+                      },
+                    },
+                  })
+                }
+              />
+            ))}
+            <SettingsActionRow
+              icon="plus"
+              label="Add connection"
+              disabled={!voice.canManageConnections}
               onPress={() =>
-                openSettings(navigation, "SettingsVoiceConnection", {
-                  environmentId,
-                  connectionId: connection.id,
+                navigation.navigate("SettingsSheet", {
+                  screen: "SettingsContent",
+                  params: { screen: "SettingsVoiceConnection", params: { environmentId } },
                 })
               }
             />
-          ))}
-          <SettingsActionRow
-            icon="plus"
-            label="Add connection"
-            disabled={!voice.canManageConnections}
-            onPress={() => openSettings(navigation, "SettingsVoiceConnection", { environmentId })}
-          />
-        </SettingsSection>
-        <SettingsSection
-          title="Default for bots"
-          footer="Bots use this unless they have their own."
-        >
-          <SettingsRow
-            icon="headphones"
-            label="Voice"
-            value={voiceSelectionLabel(catalog, settings.voiceSelection)}
-            valuePosition="below"
-            onPress={() => openSettings(navigation, "SettingsVoiceDefault", { environmentId })}
-          />
-        </SettingsSection>
-        {bots.length > 0 ? (
-          <SettingsSection title="Bots">
+          </SettingsSection>
+        ) : null}
+        {props.mode === "advanced" ? (
+          <SettingsSection title="Default voice" footer="Other bots can have their own voice.">
+            <SettingsRow
+              icon="headphones"
+              label="Voice"
+              value={voiceSelectionLabel(catalog, settings.voiceSelection)}
+              valuePosition="below"
+              onPress={() => openSettings(navigation, "SettingsVoiceDefault", { environmentId })}
+            />
+          </SettingsSection>
+        ) : null}
+        {props.mode === "bots" && bots.length > 0 ? (
+          <View>
             {bots.map((bot) => {
               const source = botVoiceSource(settings, bot.id);
               return (
@@ -280,7 +300,7 @@ function VoiceEnvironmentOverview(props: {
                 />
               );
             })}
-          </SettingsSection>
+          </View>
         ) : null}
       </VoiceEnvironmentGate>
     </View>
@@ -310,7 +330,10 @@ function VoicePicker(props: {
             <SettingsChoiceRow
               key={entry.id}
               label={entry.name}
-              description={`${voiceConnectionKindLabel(entry.kind)} · ${voiceConnectionStatusLabel(entry)}`}
+              description={
+                entry.reason ??
+                (isVoiceConnectionUsable(entry) ? undefined : voiceConnectionStatusLabel(entry))
+              }
               selected={entry.id === connection?.id}
               separated={index > 0}
               disabled={props.disabled || first === null}
@@ -353,22 +376,41 @@ function VoicePicker(props: {
             const selection = { connectionId: connection.id, model: model.id, voice: entry.id };
             const playing = preview.playing === JSON.stringify(selection);
             return (
-              <View key={entry.id} className="flex-row items-center">
-                <View className="flex-1">
-                  <SettingsChoiceRow
-                    label={entry.label}
-                    selected={entry.id === props.selection?.voice}
-                    separated={index > 0}
-                    disabled={locked}
-                    onPress={() => props.onSelect(selection)}
-                  />
-                </View>
-                <IconButton
-                  icon={playing ? "stop.fill" : "play"}
+              <View
+                key={entry.id}
+                className={`flex-row items-center border-border ${entry.id === props.selection?.voice ? "bg-subtle-strong" : ""}`}
+                style={{ borderTopWidth: index > 0 ? StyleSheet.hairlineWidth : 0 }}
+              >
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{
+                    checked: entry.id === props.selection?.voice,
+                    disabled: locked,
+                  }}
+                  disabled={locked}
+                  onPress={() => props.onSelect(selection)}
+                  className="min-h-14 flex-1 flex-row items-center gap-3 px-4 py-3"
+                >
+                  <Text className="flex-1 text-base text-foreground">{entry.label}</Text>
+                  {entry.id === props.selection?.voice ? (
+                    <SymbolView name="checkmark" size={17} tintColorClassName="accent-primary" />
+                  ) : null}
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
                   accessibilityLabel={`${playing ? "Stop" : "Preview"} ${entry.label}`}
                   disabled={!isVoiceConnectionUsable(connection)}
                   onPress={() => void preview.play(selection, connection.kind)}
-                />
+                  className="size-14 items-center justify-center"
+                >
+                  <View className="size-8 items-center justify-center rounded-full bg-subtle-strong">
+                    <SymbolView
+                      name={playing ? "stop.fill" : "play"}
+                      size={14}
+                      tintColorClassName="accent-foreground"
+                    />
+                  </View>
+                </Pressable>
               </View>
             );
           })}

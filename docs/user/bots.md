@@ -108,8 +108,9 @@ Type **@** to reference this bot's shared files, bots, conversations, or Code
 projects. Internal working files aren't offered. Archived conversations appear
 when you search, and a reference alone doesn't start work elsewhere. Tell the
 bot what you want: it can read another conversation, ask a specialist to help,
-or send work to a Code thread. Substantial work stays in the receiving
-conversation, with a short linked result returned to the requesting bot.
+or send work to a Code thread. Delegated work goes to the receiving bot’s Main
+conversation unless a separate thread is requested or parallel work needs one.
+The requesting bot returns a short summary linked to the result.
 
 ## Bot profile
 
@@ -129,7 +130,7 @@ need an up-to-date server on the bot's environment.
 **Call** in a bot's chat header starts a voice call with that bot, in the
 conversation on screen; Code's Assistant panel or sheet can call Assistant too.
 Calls work on web, desktop, and mobile, and need an up-to-date server and a
-voice account in **Settings > Voice** on the bot's environment; when calling
+voice account in **Settings > Voice → Advanced settings**; when calling
 isn't possible, Call says why. In a browser, the microphone is only
 available over HTTPS or on `localhost`. One call runs at a time. In that bot's
 chat the call sits above the composer; anywhere else it stays in reach, where
@@ -142,9 +143,10 @@ of an in-app browser page on screen. A call is saved in the conversation as its
 transcript. T3 Code doesn't keep the audio; the voice provider's own retention
 policy still applies.
 
-Voice is chosen per environment in **Settings > Voice**.
+Choose a bot’s voice in **Settings > Voice** and play a sample before saving.
+Account setup and hosting details live under **Advanced settings**.
 
-- **Voice accounts**: add an OpenAI or xAI API key, or link a ChatGPT
+- **Advanced settings → Voice accounts**: add an OpenAI or xAI API key, or link a ChatGPT
   subscription. Keys are stored on the environment, not in your browser, and
   calls are billed by that provider. "Key saved" and "Sign-in linked" mean the
   account is set up, not that it has been tried on a call.

@@ -1,4 +1,5 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
+import * as PeerEnvironmentBroker from "../mcp/PeerEnvironmentBroker.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
@@ -173,7 +174,14 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
 );
 
 const layerBotContextProvided = BotContext.layer.pipe(
-  Layer.provide(Layer.mergeAll(ProjectionStore.layer, ProjectStore.layer, BotWorkspace.layer)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      ProjectStore.layer,
+      BotWorkspace.layer,
+      PeerEnvironmentBroker.layer,
+    ),
+  ),
 );
 const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
   Layer.provide(

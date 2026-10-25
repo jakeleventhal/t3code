@@ -1,3 +1,4 @@
+import * as PeerEnvironmentBroker from "../../mcp/PeerEnvironmentBroker.ts";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import * as BotContext from "../../bots/BotContext.ts";
 import * as BotWorkspace from "../../bots/BotWorkspace.ts";
@@ -397,6 +398,7 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerBotContext = BotContext.layer.pipe(
+    Layer.provide(PeerEnvironmentBroker.layer),
     Layer.provide(layerServerConfig),
     Layer.provide(BotWorkspace.layer),
     Layer.provide(Layer.merge(layerStores, layerDatabase)),

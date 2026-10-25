@@ -3278,6 +3278,7 @@ export default function ChatView(props: ChatViewProps) {
             />
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <ThreadTimeline
+                simpleProgress={isBotChat}
                 threadDetailRef={routeThreadDetailRef}
                 entriesInput={timelineEntriesInput}
                 draftEntries={isServerThread ? null : draftTimelineEntries}
@@ -3480,7 +3481,7 @@ export default function ChatView(props: ChatViewProps) {
                     <div
                       ref={registerAssistantOrbSlot}
                       data-assistant-orb-slot
-                      className="pointer-events-none absolute right-0 bottom-full mb-2 size-8"
+                      className="pointer-events-none relative mb-3 flex h-9 justify-end"
                     />
                   )}
                   {isDraftHeroState ? (

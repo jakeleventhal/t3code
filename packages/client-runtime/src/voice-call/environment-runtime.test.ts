@@ -1,3 +1,6 @@
+import * as Option from "effect/Option";
+import { EMPTY_ENVIRONMENT_THREAD_STATE } from "../state/threadState.ts";
+import { createVoiceCallThreadTracker } from "./environment-runtime.ts";
 import { MessageId, NodeId, RunId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -108,5 +111,26 @@ describe("voice work result delivery", () => {
     expect(
       voiceWorkUpdate({ ...base, runs: [{ id: runId, status: "cancelled" }] }, runId),
     ).toMatchObject({ status: "cancelled" });
+  });
+});
+
+describe("call connection lifetime", () => {
+  it("keeps audio through shell/item synchronization but stops after a real disconnect", () => {
+    const tracker = createVoiceCallThreadTracker("endpoint");
+    const empty = EMPTY_ENVIRONMENT_THREAD_STATE;
+    expect(tracker.observe(empty)).toBeNull();
+    const live = { ...empty, status: "live" as const, data: Option.some({ turnItems: [] }) };
+    expect(tracker.observe(live)).toBeNull();
+    expect(tracker.observe({ ...live, status: "synchronizing" })).toBeNull();
+    expect(tracker.observe(live)).toBeNull();
+    expect(tracker.observe({ ...live, status: "cached" })).toMatchObject({ type: "failed" });
+  });
+  it("stops when the conversation is deleted even before it first loads", () => {
+    expect(
+      createVoiceCallThreadTracker("endpoint").observe({
+        ...EMPTY_ENVIRONMENT_THREAD_STATE,
+        status: "deleted",
+      }),
+    ).toMatchObject({ type: "failed" });
   });
 });
