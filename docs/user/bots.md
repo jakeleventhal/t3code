@@ -5,28 +5,26 @@ threads, and **Bots**, your ongoing conversations with Assistant and any bots
 you add. Each side reopens where you left it, including the thread, review, or
 browser you had open in Code.
 
-Bots lists the bots on every environment you're connected to in one list. Each
-bot lives on one environment, its host, and opens there; a bot whose host is
-offline is marked **Offline** rather than moved. The host's name appears only to
-tell two bots with the same name apart. Each bot's conversations are separate: a
-bot doesn't start with another bot's history, though any agent can still look up
-other threads through T3 Code's tools when asked to. Bots need an up-to-date
-T3 Code server on their host.
+Bots brings your bots together in one list. Their conversations, instructions,
+memory, and skills can follow them between connected machines. Uploads and large
+files stay where they were stored; if that machine is unavailable, the bot can
+continue the conversation but may need you to reconnect it to use those files.
+Bots need an up-to-date T3 Code server.
 
 ## Assistant
 
 Assistant is the first entry in Bots: one conversation that continues across
-visits. It lives on the environment that already has the oldest Assistant, and
-stays there while that environment is offline. With no Assistant yet, opening it
+visits. The oldest existing Assistant supplies its identity and conversation. A synced
+copy can answer new messages when its preferred machine is unavailable. With no Assistant yet, opening it
 sets one up on a connected environment. If you have more than one Assistant from
-before, the others stay listed under **Other Assistants** with their host.
-**Settings → Bots** and **Settings → Voice** show the main Assistant once.
-Nothing is merged or deleted.
+before, their conversations remain accessible under Assistant.
+**Settings → Bots** shows the main Assistant once.
+Earlier Assistants keep their separate histories; nothing is deleted.
 
 Bot chats have no model controls. Choose the model, reasoning, and permissions
 every bot uses in **Settings → Bots**, and give one bot its own from its
 profile (its **Settings** tab on web and desktop); **Use default** returns it to
-the defaults.
+the defaults. The defaults are shared across connected machines and catch up after reconnection.
 Changes apply from the next message, and a reply already running keeps its
 settings. Until you choose bot defaults, bots keep the model they already use.
 If the chosen model isn't available on that environment, the chat shows
@@ -42,12 +40,11 @@ Press `mod+shift+space` to open the quick panel from Code, or Assistant's chat
 from Bots and Settings.
 
 On mobile, open **Bots** from the navigation bar. Bots leads with Assistant,
-then your other bots; add one with **New bot**. Older Assistants remain available
-through search. Unread and needs-attention badges include the bot’s secondary threads. In Code, the
+then your other bots; add one with **New bot**. Earlier Assistant conversations remain available
+in its **Threads** sheet. Unread and needs-attention badges include the bot’s secondary threads. In Code, the
 Assistant button opens a quick
 sheet on the same conversation with your Assistant, whichever environment the
-thread or pull request you're viewing is on. If the Assistant's environment is
-offline or needs an update, the sheet says so instead of using another one. **Open** continues in Bots. Return to the section you left to reopen
+thread or pull request you're viewing is on. If no synced copy is available, the sheet explains why Assistant cannot reply. **Open** continues in Bots. Return to the section you left to reopen
 the thread, pull request, diff, or browser page you were reading.
 
 A message sent from the quick panel or sheet tells Assistant what you're viewing
@@ -82,13 +79,19 @@ machines this device is connected to.
 ## Your own bots
 
 Click **+** in the Bots list and give the bot a name. It starts with the bot
-defaults, or the model for new threads if none are set. To keep new bots on
-another environment, choose it under **Settings → Bots → Advanced → Default
-host for new bots** on the environment that hosts your Assistant. Every device
-connected to that environment uses the same choice. It only affects bots you
-create from then on: Assistant and existing bots stay where they are, and if
-the default host is offline, **New bot** says so instead of creating the bot
-somewhere else. The bot uses its host's bot defaults.
+defaults, or the model for new threads if none are set. Choose **Settings → Bots → Primary machine** to set your preferred machine for
+new bots and new requests, or give one bot its own primary-machine preference.
+When that machine is unavailable, a ready synced copy can answer a new request.
+Work already sent stays on its original machine; T3 Code does not start it again
+elsewhere when its delivery or outcome is uncertain.
+
+Keep a T3 app connected to both machines so it can sync lightweight history and
+context over their existing connections. After syncing, either copy can continue
+without the other. Changes made while disconnected catch up when both are
+connected again. Conflicting memory edits are preserved for the bot to reconcile.
+Provider accounts remain local: the surviving machine needs the chosen provider
+and model set up before it can answer. No large uploads or provider credentials
+are copied.
 
 Each bot opens its main conversation. For parallel work, open **Threads** in the
 chat header and choose **New thread**. Threads can be renamed or archived from
@@ -131,7 +134,7 @@ need an up-to-date server on the bot's environment.
 **Call** in a bot's chat header starts a voice call with that bot, in the
 conversation on screen; Code's Assistant panel or sheet can call Assistant too.
 Calls work on web, desktop, and mobile, and need an up-to-date server and a
-voice account in **Settings > Voice → Advanced settings**; when calling
+voice account in **Settings → Bots → Voice setup**; when calling
 isn't possible, Call says why. In a browser, the microphone is only
 available over HTTPS or on `localhost`. One call runs at a time. In that bot's
 chat the call sits above the composer; anywhere else it stays in reach, where
@@ -144,10 +147,10 @@ of an in-app browser page on screen. A call is saved in the conversation as its
 transcript. T3 Code doesn't keep the audio; the voice provider's own retention
 policy still applies.
 
-Choose a bot’s voice in **Settings > Voice** and play a sample before saving.
-Account setup and hosting details live under **Advanced settings**.
+Choose a bot’s voice in **Settings → Bots** and play a sample before saving.
+Voice setup is grouped by the bots that use it.
 
-- **Advanced settings → Voice accounts**: add an OpenAI or xAI API key, or link a ChatGPT
+- **Voice setup → Voice accounts**: add an OpenAI or xAI API key, or link a ChatGPT
   subscription. Keys are stored on the environment, not in your browser, and
   calls are billed by that provider. "Key saved" and "Sign-in linked" mean the
   account is set up, not that it has been tried on a call.

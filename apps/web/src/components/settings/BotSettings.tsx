@@ -1,26 +1,27 @@
+import { useBotProjects } from "../bots/useBotRoom";
+import { BotPrimaryMachineSettings } from "./BotPrimaryMachineSettings";
+import { botEnvironment } from "../../state/bots";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { BotVoicesSettings } from "./VoiceSettings";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
-import { useLocation } from "@tanstack/react-router";
-import { useState } from "react";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import {
-  botDefaultsPatch,
   botRuntimeSettingsUpdateMessage,
   botTurnOverridePatch,
   resolveBotTurnReadiness,
 } from "@t3tools/client-runtime/bot-turn-settings";
-import { AuthSettingsWriteScope, type EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthSettingsWriteScope,
+  type ServerSettings,
+  type EnvironmentId,
+} from "@t3tools/contracts";
 
 import type { BotOutboxItem } from "../../botOutbox/botOutbox.logic";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
-import {
-  useEnvironmentSupportsBotRuntimeSettings,
-  useProjects,
-  useServerConfigs,
-} from "../../state/entities";
-import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../../state/environments";
+import { useEnvironmentSupportsBotRuntimeSettings } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { BotAvatar } from "../bots/BotAvatar";
 import {
@@ -34,12 +35,11 @@ import {
   botOutboxItemPreview,
   botOutboxItemText,
   cancelBotOutboxItem,
-  useRemovedMachineBotOutboxItems,
+  useAllBotOutboxItems,
 } from "../bots/BotOutboxQueue";
 import { partitionEnvironmentBots } from "../bots/botRoom.logic";
 import { runtimeModeConfig } from "../chat/runtimeModeConfig";
 import { Button } from "../ui/button";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -49,54 +49,46 @@ import {
 
 export function BotSettingsPanel() {
   const { environments } = useEnvironments();
-  const [advanced, setAdvanced] = useState(false);
-  const hash = useLocation({ select: (location) => location.hash });
-  const searchedAdvanced = [
-    "bot-defaults-model",
-    "bot-defaults-permissions",
-    "bot-default-host",
-  ].includes(hash);
+  const primaryId = useDesignatedAssistantEnvironmentId();
   const targets = environments.filter(
     (entry) => entry.serverConfig?.environment.capabilities.botConversations === true,
   );
   const render = (advanced: boolean) =>
-    targets.map((environment) => (
-      <SettingsScopeProvider
-        key={environment.environmentId}
-        search={{ machine: environment.environmentId }}
-        onChange={() => {}}
-        singleEnvironment
-      >
-        <BotSettingsContent
-          environmentId={environment.environmentId}
-          label={environment.label}
-          connected={environment.connection.phase === "connected"}
-          advanced={advanced}
-        />
-      </SettingsScopeProvider>
-    ));
+    targets
+      .filter((environment) => !advanced || environment.environmentId === primaryId)
+      .map((environment) => (
+        <SettingsScopeProvider
+          key={environment.environmentId}
+          search={{ machine: environment.environmentId }}
+          onChange={() => {}}
+          singleEnvironment
+        >
+          <BotSettingsContent
+            environmentId={environment.environmentId}
+            label={environment.label}
+            connected={environment.connection.phase === "connected"}
+            advanced={advanced}
+          />
+        </SettingsScopeProvider>
+      ));
   return (
     <SettingsPageContainer>
       <p className="px-4 text-sm text-muted-foreground">
-        Each bot's profile controls its model and permissions. Changes apply from its next message.
+        Choose defaults for your bots, then customize individual bots when needed. Changes apply
+        from the next message.
       </p>
       {targets.length === 0 ? (
         <p className="px-4 text-sm text-muted-foreground">
           Connect to your bots to change their settings.
         </p>
       ) : null}
+      <BotPrimaryMachineSettings />
+      {render(true)}
       <SettingsSection id="bot-overrides" title="Bots">
         {render(false)}
       </SettingsSection>
-      {!searchedAdvanced ? (
-        <div>
-          <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
-            {advanced ? "Hide advanced settings" : "Advanced settings"}
-          </Button>
-        </div>
-      ) : null}
-      {advanced || searchedAdvanced ? render(true) : null}
-      <RemovedMachineUnsentMessages />
+      <BotVoicesSettings />
+      <UnsentMessages />
     </SettingsPageContainer>
   );
 }
@@ -115,9 +107,13 @@ function BotSettingsContent({
   const settings = useEnvironmentSettings(environmentId);
   const providers = useEnvironmentBotProviders(environmentId);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const configureBots = useAtomCommand(botEnvironment.configure);
+  const updateDefaults = async (defaults: ServerSettings["botDefaults"]) => {
+    await configureBots({ environmentId, input: defaults });
+  };
   const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const supported = useEnvironmentSupportsBotRuntimeSettings(environmentId);
-  const projects = useProjects();
+  const projects = useBotProjects();
   const { assistant, extraAssistants, specialists } = partitionEnvironmentBots(
     projects,
     environmentId,
@@ -147,7 +143,6 @@ function BotSettingsContent({
 
   return (
     <div className="flex flex-col gap-4">
-      {advanced ? <h3 className="px-4 text-sm font-semibold">{label}</h3> : null}
       {connected && !supported ? (
         <p role="status" className="max-w-2xl px-3 text-xs text-warning-foreground sm:px-4">
           {botRuntimeSettingsUpdateMessage(label)}
@@ -176,9 +171,7 @@ function BotSettingsContent({
                   label="default bot model"
                   tooltip="Let each bot keep its current model"
                   disabled={disabled}
-                  onClick={() =>
-                    updateSettings(botDefaultsPatch(settings, { defaultModelSelection: null }))
-                  }
+                  onClick={() => void updateDefaults({ ...defaults, defaultModelSelection: null })}
                 />
               ) : null
             }
@@ -192,7 +185,7 @@ function BotSettingsContent({
                   selection={shownModel}
                   disabled={disabled}
                   onChange={(defaultModelSelection) =>
-                    updateSettings(botDefaultsPatch(settings, { defaultModelSelection }))
+                    void updateDefaults({ ...defaults, defaultModelSelection })
                   }
                 />
               ) : (
@@ -213,7 +206,7 @@ function BotSettingsContent({
                 ariaLabel="Default bot permissions"
                 disabled={disabled}
                 onChange={(defaultRuntimeMode) =>
-                  updateSettings(botDefaultsPatch(settings, { defaultRuntimeMode }))
+                  void updateDefaults({ ...defaults, defaultRuntimeMode })
                 }
               />
             }
@@ -267,48 +260,27 @@ function BotSettingsContent({
           })}
         </div>
       ) : null}
-      {advanced ? (
-        <SettingsSection id={`bot-advanced-${environmentId}`} title="Hosting">
-          <SettingsRow
-            serverScoped
-            settingKeys={["defaultBotEnvironmentId"]}
-            id="bot-default-host"
-            title="Default host for new bots"
-            description={`Saved on ${label}, so every device connected to it shares it. Only bots you create while ${label} hosts your Assistant go there; Assistant and existing bots stay where they are.`}
-            control={
-              <DefaultBotHostSelect
-                environmentId={environmentId}
-                label={label}
-                value={settings.defaultBotEnvironmentId}
-                disabled={disabled}
-                onChange={(defaultBotEnvironmentId) => updateSettings({ defaultBotEnvironmentId })}
-              />
-            }
-          />
-        </SettingsSection>
-      ) : null}
     </div>
   );
 }
 
-/** Messages queued for bots on a machine since removed from this app, so no chat lists them. */
-function RemovedMachineUnsentMessages() {
-  const items = useRemovedMachineBotOutboxItems();
+function UnsentMessages() {
+  const items = useAllBotOutboxItems();
   if (items.length === 0) return null;
   return (
-    <SettingsSection id="bot-unsent-removed-machines" title="Unsent messages">
+    <SettingsSection id="bot-unsent-messages" title="Unsent messages">
       <p className="px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-        These were written to bots on a machine this app no longer connects to. Add that machine
-        back to send them, or copy what you need and discard them.
+        These messages keep their original destination, even if a synced copy takes over new
+        requests. Reconnect the original machine to finish sending them.
       </p>
       {items.map((item) => (
-        <RemovedMachineUnsentMessage key={item.messageId} item={item} />
+        <UnsentMessage key={item.messageId} item={item} />
       ))}
     </SettingsSection>
   );
 }
 
-function RemovedMachineUnsentMessage({ item }: { item: BotOutboxItem }) {
+function UnsentMessage({ item }: { item: BotOutboxItem }) {
   const text = botOutboxItemText(item);
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   return (
@@ -317,7 +289,7 @@ function RemovedMachineUnsentMessage({ item }: { item: BotOutboxItem }) {
       description={
         item.uncertain
           ? "Not confirmed: it may already have reached that machine."
-          : "Not sent: its machine was removed."
+          : "Waiting to send to its original destination."
       }
       control={
         <div className="flex items-center gap-1.5">
@@ -332,68 +304,5 @@ function RemovedMachineUnsentMessage({ item }: { item: BotOutboxItem }) {
         </div>
       }
     />
-  );
-}
-
-const THIS_ENVIRONMENT = "this-environment";
-
-function DefaultBotHostSelect({
-  environmentId,
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  environmentId: EnvironmentId;
-  label: string;
-  value: EnvironmentId | null;
-  disabled: boolean;
-  onChange: (value: EnvironmentId | null) => void;
-}) {
-  const identities = useEnvironmentIdentities();
-  const connectedEnvironmentIds = useConnectedEnvironmentIds();
-  const configs = useServerConfigs();
-  const others = identities
-    .filter((identity) => identity.environmentId !== environmentId)
-    .map((identity) => {
-      const capabilities = configs.get(identity.environmentId)?.environment.capabilities;
-      const note = !connectedEnvironmentIds.includes(identity.environmentId)
-        ? " · offline"
-        : capabilities?.botConversations !== true
-          ? " · needs a newer server"
-          : "";
-      return { value: identity.environmentId, label: `${identity.label}${note}` };
-    });
-  // Another device may have picked an environment this one has never connected to.
-  const unknown =
-    value !== null && value !== environmentId && !others.some((item) => item.value === value)
-      ? [{ value, label: "Not connected to this device" }]
-      : [];
-  const hosts = [...others, ...unknown];
-  const items = [{ value: THIS_ENVIRONMENT, label: `This environment · ${label}` }, ...hosts];
-  return (
-    <Select
-      value={value === null || value === environmentId ? THIS_ENVIRONMENT : value}
-      items={items}
-      disabled={disabled}
-      onValueChange={(next) => {
-        if (next === THIS_ENVIRONMENT) onChange(null);
-        else {
-          const host = hosts.find((candidate) => candidate.value === next);
-          if (host) onChange(host.value);
-        }
-      }}
-    >
-      <SelectTrigger size="sm" aria-label="Default host for new bots">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup align="end" alignItemWithTrigger={false}>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
   );
 }

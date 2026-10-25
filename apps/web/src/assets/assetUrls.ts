@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import { environmentSession } from "~/state/session";
 import { useAtomValue } from "@effect/atom-react";
 import {
   type AssetUrlState as RuntimeAssetUrlState,
@@ -173,5 +175,51 @@ function isFileResource(resource: AssetResource): boolean {
     resource._tag === "workspace-file" ||
     resource._tag === "media-file" ||
     resource._tag === "draft-workspace-file"
+  );
+}
+
+const parseAttachmentOrigins = Schema.decodeSync(
+  Schema.fromJsonString(
+    Schema.Array(
+      Schema.Struct({
+        environmentId: EnvironmentId,
+        resource: AssetResource,
+      }),
+    ),
+  ),
+);
+const attachmentOriginUrls = Atom.family((key: string) => {
+  const targets = parseAttachmentOrigins(key);
+  return Atom.make((get) =>
+    targets.map(({ environmentId, resource }) => {
+      const connection = get(environmentSession.preparedConnectionValueAtom(environmentId));
+      if (connection._tag === "None") return null;
+      const result = get(assetEnvironment.createUrl({ environmentId, input: { resource } }));
+      return AsyncResult.isSuccess(result)
+        ? resolveAssetUrl(connection.value.httpBaseUrl, result.value.relativeUrl)
+        : null;
+    }),
+  ).pipe(Atom.setIdleTTL(60_000));
+});
+
+export function useAttachmentAssetUrls(
+  environmentId: EnvironmentId,
+  resources: ReadonlyArray<Extract<AssetResource, { readonly _tag: "attachment" }>>,
+  attachments: ReadonlyArray<{
+    readonly id: string;
+    readonly originEnvironmentId?: EnvironmentId | undefined;
+  }>,
+) {
+  return useAtomValue(
+    attachmentOriginUrls(
+      JSON.stringify(
+        resources.map((resource) => ({
+          environmentId:
+            attachments.find((attachment) => attachment.id === resource.attachmentId)
+              ?.originEnvironmentId ?? environmentId,
+          resource,
+        })),
+      ),
+    ),
   );
 }

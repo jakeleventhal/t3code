@@ -1111,6 +1111,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       ? worktreeSetup
       : null;
   const activityState: TimelineRowActivityState = {
+    simpleProgress,
     isWorking,
     isCompacting: compactionAwaitingRow,
     isRevertingCheckpoint,

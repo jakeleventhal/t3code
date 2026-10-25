@@ -6,6 +6,7 @@ import {
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
   AuthSettingsWriteScope,
+  AuthFilesystemWriteScope,
   AuthSourceControlWriteScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
@@ -17,6 +18,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.peerMessagesCancel]: AuthOrchestrationOperateScope,
   [WS_METHODS.peerMessagesFlush]: AuthOrchestrationOperateScope,
   [WS_METHODS.peerEnvironmentsSendToThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsReplicaReceive]: AuthSettingsWriteScope,
+  [WS_METHODS.botsConfigure]: AuthSettingsWriteScope,
+  [WS_METHODS.botsMergePreferences]: AuthSettingsWriteScope,
   [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsSetAvatar]: AuthOrchestrationOperateScope,
@@ -76,6 +80,8 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  if (method === WS_METHODS.botsReplicaReceive)
+    return [AuthSettingsWriteScope, AuthOrchestrationOperateScope, AuthFilesystemWriteScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

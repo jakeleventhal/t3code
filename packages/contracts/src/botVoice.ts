@@ -227,21 +227,21 @@ export class VoiceConnectionError extends Schema.TaggedError<VoiceConnectionErro
   override get message(): string {
     switch (this.reason) {
       case "not-configured":
-        return "Choose a voice account and voice in Settings → Voice.";
+        return "Choose a voice account and voice in Settings → Bots.";
       case "unavailable":
-        return "The selected voice is unavailable. Check Settings → Voice.";
+        return "The selected voice is unavailable. Check Settings → Bots.";
       case "transport-mismatch":
         return "This client cannot connect to the selected voice provider.";
       case "already-attempted":
         return "This voice connection was already attempted. Start a new call to try again.";
       case "credentials-refused":
-        return "The voice account refused the call. Sign in to that account again or update its key in Settings → Voice.";
+        return "The voice account refused the call. Sign in to that account again or update its key in Settings → Bots.";
       case "rate-limited":
-        return "The voice account has reached its usage limit. Check its billing or usage, or choose another account in Settings → Voice.";
+        return "The voice account has reached its usage limit. Check its billing or usage, or choose another account in Settings → Bots.";
       case "request-failed":
         return this.status === undefined
           ? "The host could not reach the voice provider. Check the host’s internet connection, then try again."
-          : `The voice provider refused the connection (HTTP ${this.status}). Check that the selected account supports voice in Settings → Voice, then try again.`;
+          : `The voice provider refused the connection (HTTP ${this.status}). Check that the selected account supports voice in Settings → Bots, then try again.`;
       case "invalid-response":
         return "The voice provider returned an invalid connection response.";
       case "storage":

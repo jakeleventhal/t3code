@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   botDefaultsPatch,
+  planSharedBotDefaults,
   botTurnOverridePatch,
   resolveBotTurnReadiness,
   resolveNewBotHost,
@@ -264,4 +265,43 @@ describe("resolveNewBotHost", () => {
       }),
     ).toMatchObject({ kind: "unavailable", environmentId: server });
   });
+});
+
+describe("shared bot defaults", () => {
+  const defaults = {
+    defaultModelSelection: claude,
+    defaultRuntimeMode: "approval-required" as const,
+  };
+  const target = {
+    environmentId: EnvironmentId.make("one"),
+    connected: true,
+    supported: true,
+    canWrite: true,
+    settings: DEFAULT_SERVER_SETTINGS,
+    providers,
+  };
+  it("writes the same defaults to every destination without changing per-bot overrides", () => {
+    const plan = planSharedBotDefaults({
+      defaults,
+      sourceSettings: DEFAULT_SERVER_SETTINGS,
+      targets: [target, { ...target, environmentId: EnvironmentId.make("two") }],
+    });
+    expect(plan.error).toBeNull();
+    expect(plan.writes.map((write) => write.patch)).toEqual([
+      { botDefaults: defaults },
+      { botDefaults: defaults },
+    ]);
+  });
+  it.each([{ connected: false }, { canWrite: false }, { supported: false }, { providers: [] }])(
+    "does not partially start a shared edit when a destination is unavailable: %j",
+    (change) => {
+      const plan = planSharedBotDefaults({
+        defaults,
+        sourceSettings: DEFAULT_SERVER_SETTINGS,
+        targets: [target, { ...target, environmentId: EnvironmentId.make("two"), ...change }],
+      });
+      expect(plan.error).not.toBeNull();
+      expect(plan.writes).toEqual([]);
+    },
+  );
 });

@@ -246,6 +246,7 @@ export const make = Effect.gen(function* () {
       botConversations: true,
       botProfiles: true,
       botRuntimeSettings: true,
+      botReplication: true,
       botMentions: true,
       botVoiceConfiguration: true,
       botVoice: true,

@@ -157,6 +157,7 @@ export const Project = Schema.Struct({
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
   botRole: Schema.optional(Schema.NullOr(ProjectBotRole)),
+  botReplicaReady: Schema.optional(Schema.Boolean),
   botMainThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   faviconPath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),

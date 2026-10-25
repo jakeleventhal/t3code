@@ -1,3 +1,5 @@
+import * as BotReplication from "./bots/BotReplication.ts";
+import * as PeerEnvironmentBroker from "./mcp/PeerEnvironmentBroker.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -400,6 +402,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DocumentText.DocumentText)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
+  Layer.mock(BotReplication.BotReplication)({}),
   Layer.mock(BotService.BotService)({}),
   Layer.mock(VoiceConfiguration.VoiceConfiguration)({}),
   Layer.mock(VoiceCalls.VoiceCalls)({}),

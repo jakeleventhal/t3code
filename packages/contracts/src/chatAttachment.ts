@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import {
+  EnvironmentId,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -146,6 +147,7 @@ export const SnapShotSource = Schema.Struct({
 export type SnapShotSource = typeof SnapShotSource.Type;
 
 export const ChatImageAttachment = Schema.Struct({
+  originEnvironmentId: Schema.optional(EnvironmentId),
   type: Schema.Literal("image"),
   id: ChatAttachmentId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
@@ -159,6 +161,7 @@ export const PastedTextAttachmentSource = Schema.TaggedStruct("pasted-text", {})
 export type PastedTextAttachmentSource = typeof PastedTextAttachmentSource.Type;
 
 export const ChatFileAttachment = Schema.Struct({
+  originEnvironmentId: Schema.optional(EnvironmentId),
   type: Schema.Literal("file"),
   id: ChatAttachmentId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
@@ -174,6 +177,7 @@ export type ChatFileAttachment = typeof ChatFileAttachment.Type;
 
 /** Accepts unknown attachment types for older readers; malformed known types must fail their own schema. */
 export const ChatUnknownAttachment = Schema.Struct({
+  originEnvironmentId: Schema.optional(EnvironmentId),
   type: TrimmedNonEmptyString.check(
     Schema.isMaxLength(50),
     Schema.isPattern(/^(?!(?:image|file)$)/),

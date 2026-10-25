@@ -396,6 +396,7 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerBotContext = BotContext.layer.pipe(
+    Layer.provide(layerServerSettings),
     Layer.provide(PeerEnvironmentBroker.layer),
     Layer.provide(layerServerConfig),
     Layer.provide(BotWorkspace.layer),

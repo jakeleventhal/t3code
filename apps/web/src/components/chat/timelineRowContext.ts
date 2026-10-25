@@ -91,6 +91,7 @@ export interface TimelineRowSharedState {
 }
 
 export interface TimelineRowActivityState {
+  readonly simpleProgress?: boolean;
   isWorking: boolean;
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;

@@ -27,7 +27,7 @@ import {
   SquareIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { botOutbox, botOutboxHoldsThread, createBotOutboxItem } from "../../botOutbox/botOutbox";
@@ -59,7 +59,6 @@ import { useCurrentViewReader } from "../../voice/currentView";
 import { useHasVoiceCall, useVoiceCall } from "../../voice/useVoiceCall";
 import ChatMarkdown from "../ChatMarkdown";
 import { workEntryDisplayLabel } from "../chat/MessagesTimeline.logic";
-import { formatWorkingTimerNow } from "../chat/TimelineWorkGroupRows.logic";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -311,7 +310,7 @@ function AssistantCard({
   const activeRunId = working ? (runtime?.activeRunId ?? null) : null;
   const cwd = assistant?.workspaceRoot;
   const describe = (entry: WorkLogEntry) => workEntryDisplayLabel(entry, cwd);
-  const step = working ? "Working on your request" : null;
+  const step = working ? "Thinking…" : null;
   const canOperate = call.canOperate;
   const canStop =
     canOperate && connected && deriveCanInterruptRunningThread(shell !== null, runtime);
@@ -797,11 +796,6 @@ function AssistantStrip({
             <span className="min-w-0 flex-1 truncate" role="status">
               {step ?? (status.label === "Working" ? "Thinking" : status.label)}
             </span>
-            {status.startedAt ? (
-              <span className="shrink-0 text-muted-foreground tabular-nums">
-                <WorkingTimer startedAt={status.startedAt} />
-              </span>
-            ) : null}
             {canStop ? (
               <Button size="xs" variant="outline" onClick={onStop} aria-keyshortcuts="Meta+.">
                 <SquareIcon />
@@ -867,19 +861,6 @@ function AssistantStrip({
       ) : null}
     </div>
   );
-}
-
-function WorkingTimer({ startedAt }: { startedAt: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const update = () => {
-      if (textRef.current) textRef.current.textContent = formatWorkingTimerNow(startedAt);
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [startedAt]);
-  return <span ref={textRef}>{formatWorkingTimerNow(startedAt)}</span>;
 }
 
 function QueuedRow({

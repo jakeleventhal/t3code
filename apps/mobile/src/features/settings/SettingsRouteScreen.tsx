@@ -270,7 +270,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
           selectedProjectKey !== null ? { value: projectLabel } : undefined,
         ),
         serverPage("SettingsBots", "person.2", "Bots"),
-        serverPage("SettingsVoice", "headphones", "Voice"),
         serverPage("SettingsEnvironmentSourceControl", "arrow.triangle.branch", "Source control"),
         serverPage("SettingsWorktrees", "square.on.square", "Worktrees"),
       ],

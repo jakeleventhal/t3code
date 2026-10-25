@@ -272,8 +272,19 @@ function ExpandedWorkGroupEntries({
 const workEntryKey = (entry: TimelineWorkEntry) => entry.id;
 
 export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup } =
+  const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup, simpleProgress } =
     use(TimelineRowActivityCtx);
+  if (simpleProgress)
+    return (
+      <div role="status" className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+        <span aria-hidden className="inline-flex gap-1">
+          <span className="size-1.5 rounded-full bg-current" />
+          <span className="size-1.5 rounded-full bg-current opacity-60" />
+          <span className="size-1.5 rounded-full bg-current opacity-30" />
+        </span>
+        <span>{isCompacting ? "Reviewing the conversation…" : "Thinking…"}</span>
+      </div>
+    );
   const compacting = row.compacting ?? (isCompacting ? "Compacting…" : undefined);
   const shimmer = isPreparingWorktree || compacting !== undefined;
   const label = isPreparingWorktree ? (

@@ -1,3 +1,10 @@
+import {
+  BotReplicationStatus,
+  BotReplicaReadInput,
+  BotReplicaPage,
+  BotReplicationError,
+} from "./botReplication.ts";
+import { BotSharedPreferences, BotPreferencesChange } from "./botPreferences.ts";
 import { OrchestratorMcpThreadSendResult } from "./orchestratorMcp.ts";
 import {
   OrchestrationV2SearchThreadError,
@@ -441,6 +448,11 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
+  botsReplicationStatus: "bots.replicationStatus",
+  botsReplicaRead: "bots.replicaRead",
+  botsReplicaReceive: "bots.replicaReceive",
+  botsConfigure: "bots.configure",
+  botsMergePreferences: "bots.mergePreferences",
   botsOpen: "bots.open",
   botsCreate: "bots.create",
   botsFiles: "bots.files",
@@ -1339,6 +1351,36 @@ const WsProjectsCreateNewRpc = Rpc.make(WS_METHODS.projectsCreateNew, {
   error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsbotsReplicationStatusRpc = Rpc.make(WS_METHODS.botsReplicationStatus, {
+  payload: Schema.Struct({}),
+  success: BotReplicationStatus,
+  error: Schema.Union([BotReplicationError, EnvironmentAuthorizationError]),
+});
+
+const WsbotsReplicaReadRpc = Rpc.make(WS_METHODS.botsReplicaRead, {
+  payload: BotReplicaReadInput,
+  success: BotReplicaPage,
+  error: Schema.Union([BotReplicationError, EnvironmentAuthorizationError]),
+});
+
+const WsbotsReplicaReceiveRpc = Rpc.make(WS_METHODS.botsReplicaReceive, {
+  payload: BotReplicaPage,
+  success: Schema.Void,
+  error: Schema.Union([BotReplicationError, EnvironmentAuthorizationError]),
+});
+
+const WsbotsConfigureRpc = Rpc.make(WS_METHODS.botsConfigure, {
+  payload: BotPreferencesChange,
+  success: BotSharedPreferences,
+  error: Schema.Union([BotReplicationError, EnvironmentAuthorizationError]),
+});
+
+const WsbotsMergePreferencesRpc = Rpc.make(WS_METHODS.botsMergePreferences, {
+  payload: BotSharedPreferences,
+  success: Schema.Void,
+  error: Schema.Union([BotReplicationError, EnvironmentAuthorizationError]),
+});
+
 const WsBotsOpenRpc = Rpc.make(WS_METHODS.botsOpen, {
   payload: BotOpenInput,
   success: BotConversationResult,
@@ -2231,6 +2273,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
   WsProjectsCreateNewRpc,
+  WsbotsReplicationStatusRpc,
+  WsbotsReplicaReadRpc,
+  WsbotsReplicaReceiveRpc,
+  WsbotsConfigureRpc,
+  WsbotsMergePreferencesRpc,
   WsBotsOpenRpc,
   WsBotsCreateRpc,
   WsBotsFilesRpc,

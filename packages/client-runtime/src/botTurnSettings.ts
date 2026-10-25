@@ -221,3 +221,60 @@ export function resolveNewBotHost(input: {
   }
   return { kind: "ready", environmentId, label };
 }
+
+/** A shared edit must be applicable everywhere before any host is changed. */
+export function planSharedBotDefaults(input: {
+  readonly defaults: ServerSettings["botDefaults"];
+  readonly sourceSettings: ServerSettings;
+  readonly targets: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly connected: boolean;
+    readonly supported: boolean;
+    readonly canWrite: boolean;
+    readonly settings: ServerSettings;
+    readonly providers: ReadonlyArray<ServerProvider>;
+  }>;
+}):
+  | { readonly error: string; readonly writes: readonly [] }
+  | {
+      readonly error: null;
+      readonly writes: ReadonlyArray<{
+        readonly environmentId: EnvironmentId;
+        readonly patch: ServerSettingsPatch;
+      }>;
+    } {
+  if (input.targets.length === 0 || input.targets.some((target) => !target.connected)) {
+    return { error: "Connect your bots before changing shared defaults.", writes: [] };
+  }
+  if (input.targets.some((target) => !target.supported || !target.canWrite)) {
+    return {
+      error: "Shared defaults need an up-to-date connection with settings access for every bot.",
+      writes: [],
+    };
+  }
+  const selection = input.defaults.defaultModelSelection;
+  if (
+    selection &&
+    input.targets.some(
+      (target) =>
+        (input.sourceSettings.providerInstances[selection.instanceId]?.driver ??
+          selection.instanceId) !==
+          (target.settings.providerInstances[selection.instanceId]?.driver ??
+            selection.instanceId) ||
+        botModelUnavailableReason(target.settings, null, selection, target.providers) !== null,
+    )
+  ) {
+    return {
+      error:
+        "This model is not available for every bot. Set up the same provider account and model before sharing it.",
+      writes: [],
+    };
+  }
+  return {
+    error: null,
+    writes: input.targets.map((target) => ({
+      environmentId: target.environmentId,
+      patch: { botDefaults: input.defaults },
+    })),
+  };
+}

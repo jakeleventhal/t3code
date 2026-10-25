@@ -48,7 +48,7 @@ export function BotCallTranscriptSheet(props: {
           {props.failed ? (
             <Text className="text-foreground-muted">
               The call is unavailable. You can continue in chat, or dismiss this call and try again.
-              If it keeps failing, check the bot’s voice connection in Settings → Voice.
+              If it keeps failing, check the bot’s voice connection in Settings → Bots.
             </Text>
           ) : null}
           {props.transcript}

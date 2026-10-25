@@ -18,7 +18,6 @@ import { cn } from "../../lib/cn";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { relativeTime } from "../../lib/time";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
-import { useProjects } from "../../state/entities";
 import { environmentThreadShells } from "../../state/threads";
 import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
 import { useWorkspaceEnvironments } from "../../state/workspace";
@@ -28,7 +27,7 @@ import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { buildBotInbox, type BotInboxEntry, type BotRoomBot } from "./bot-room";
 import { BotAvatar } from "./BotAvatar";
 import { botsSearchQueryAtom, setBotsSearchQuery } from "./bots-header";
-import { useAssistantEnvironmentId } from "./use-assistant";
+import { useAssistantEnvironmentId, useBotProjects } from "./use-assistant";
 import { useOpenBotConversation } from "./use-bot-conversation";
 
 const HERO_AVATAR_SIZE = 88;
@@ -399,7 +398,7 @@ export function BotsScreen() {
   const workspace = useWorkspaceTabs();
   const insets = useSafeAreaInsets();
   const primaryColumn = use(NativePrimaryColumnContext);
-  const projects = useProjects();
+  const projects = useBotProjects();
   // Streaming turns rewrite thread shells many times a second; skip that while a chat covers us.
   const visible = useHomeRouteVisible();
   const threads = useAtomValueWhileVisible(

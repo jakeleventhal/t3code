@@ -110,6 +110,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   botConversations: Schema.optionalKey(Schema.Boolean),
   botProfiles: Schema.optionalKey(Schema.Boolean),
   botRuntimeSettings: Schema.optionalKey(Schema.Boolean),
+  botReplication: Schema.optionalKey(Schema.Boolean),
   botMentions: Schema.optionalKey(Schema.Boolean),
   botVoiceConfiguration: Schema.optionalKey(Schema.Boolean),
   botVoice: Schema.optionalKey(Schema.Boolean),

@@ -1,3 +1,5 @@
+import { useAssistantEnvironmentId } from "./use-assistant";
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { scopeThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -27,7 +29,7 @@ import { SearchField } from "../../components/ui/SearchField";
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import { uuidv4 } from "../../lib/uuid";
-import { useProject } from "../../state/entities";
+import { useProject, useProjects } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { environmentThreadShells } from "../../state/threads";
 import { useArchivedThreadSnapshots } from "../archive/useArchivedThreadSnapshots";
@@ -240,12 +242,18 @@ export function BotThreadsSheet(
     readonly threadId?: string;
   }>,
 ) {
-  const environmentId = EnvironmentId.make(props.route.params.environmentId);
-  const projectId = ProjectId.make(props.route.params.projectId);
+  const routeEnvironmentId = EnvironmentId.make(props.route.params.environmentId);
+  const routeProjectId = ProjectId.make(props.route.params.projectId);
   const currentThreadId = props.route.params.threadId ?? null;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const project = useProject({ environmentId, projectId });
+  const routeProject = useProject({ environmentId: routeEnvironmentId, projectId: routeProjectId });
+  const projects = useProjects();
+  const assistant = environmentAssistant(projects, useAssistantEnvironmentId());
+  const project =
+    routeProject?.botRole === "assistant" ? (assistant ?? routeProject) : routeProject;
+  const environmentId = project?.environmentId ?? routeEnvironmentId;
+  const projectId = project?.id ?? routeProjectId;
   const threads = useAtomValue(environmentThreadShells.navigationThreadShellsAtom);
   const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canStart = useBotAvailability(environmentId).canStart;
@@ -272,6 +280,24 @@ export function BotThreadsSheet(
       </View>
     );
 
+  const earlierProjectKeys = new Set(
+    projects
+      .filter(
+        (owner) =>
+          owner.botRole === "assistant" &&
+          (owner.id !== projectId || owner.environmentId !== environmentId),
+      )
+      .map((owner) => `${owner.environmentId}:${owner.id}`),
+  );
+  const earlierConversations =
+    project?.botRole === "assistant"
+      ? threads.filter(
+          (thread) =>
+            thread.archivedAt === null &&
+            earlierProjectKeys.has(`${thread.environmentId}:${thread.projectId}`) &&
+            thread.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+        )
+      : [];
   if (project === null) {
     return (
       <View className="flex-1 bg-sheet">
@@ -359,7 +385,28 @@ export function BotThreadsSheet(
           ))}
           {canStart ? <ActionRow icon="plus" label="New thread" onPress={startThread} /> : null}
         </ListSection>
-        {list.active.length === 0 && query.trim().length > 0 ? (
+        {earlierConversations.length > 0 ? (
+          <ListSection>
+            {earlierConversations.map((thread) => (
+              <ThreadRow
+                key={`${thread.environmentId}:${thread.id}`}
+                icon="text.bubble"
+                title={thread.title}
+                subtitle="Earlier conversation"
+                current={
+                  thread.id === currentThreadId && thread.environmentId === routeEnvironmentId
+                }
+                divider
+                onPress={() =>
+                  showConversation({ environmentId: thread.environmentId, threadId: thread.id })
+                }
+              />
+            ))}
+          </ListSection>
+        ) : null}
+        {list.active.length === 0 &&
+        earlierConversations.length === 0 &&
+        query.trim().length > 0 ? (
           <Text textRole="footnote" className="px-2 text-center text-foreground-muted">
             No open threads match.
           </Text>

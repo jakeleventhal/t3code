@@ -17,6 +17,7 @@ import {
   EventId,
   GuestMessageId,
   GuestShareId,
+  EnvironmentId,
   IsoDateTime,
   MessageId,
   NodeId,
@@ -96,7 +97,11 @@ export const OrchestrationV2CreationSource = Schema.Literals([
 ]);
 export type OrchestrationV2CreationSource = typeof OrchestrationV2CreationSource.Type;
 
-export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals(["native", "v1_import"]);
+export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals([
+  "native",
+  "v1_import",
+  "bot_replica",
+]);
 export type OrchestrationV2ThreadHistoryOrigin = typeof OrchestrationV2ThreadHistoryOrigin.Type;
 
 const OrchestrationV2CreationFields = {
@@ -400,6 +405,7 @@ const LenientThreadOpens = Schema.NullOr(OrchestrationV2ThreadOpens).pipe(
 );
 
 export const OrchestrationV2AppThread = Schema.Struct({
+  replicaEnvironmentId: Schema.optional(EnvironmentId),
   ...OrchestrationV2CreationFields,
   id: ThreadId,
   projectId: ProjectId,

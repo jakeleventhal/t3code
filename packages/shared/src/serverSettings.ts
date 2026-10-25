@@ -391,6 +391,7 @@ export function applyServerSettingsPatch(
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
     botDefaults: botDefaultsPatch,
+    botSharedPreferences: botSharedPreferencesPatch,
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
     projectAutoPullOverrides: _legacyAutoPull,
     projectScriptOverrides: _legacyScripts,
@@ -487,6 +488,9 @@ export function applyServerSettingsPatch(
   const nextWithReplacementsBase = {
     ...next,
     ...(botDefaultsPatch === undefined ? {} : { botDefaults: botDefaultsPatch }),
+    ...(botSharedPreferencesPatch === undefined
+      ? {}
+      : { botSharedPreferences: botSharedPreferencesPatch }),
     favorites,
     providerModelPreferences: nextModelPreferences,
     ...(worktreeCleanupPatch === undefined

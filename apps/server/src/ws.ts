@@ -1,3 +1,4 @@
+import * as BotReplication from "./bots/BotReplication.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -1268,6 +1269,7 @@ export const layerWsRpc = (
       const projectService = yield* ProjectService.ProjectService;
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const bots = yield* BotService.BotService;
+      const botReplication = yield* BotReplication.BotReplication;
       const voiceConfiguration = yield* VoiceConfiguration.VoiceConfiguration;
       const voiceCalls = yield* VoiceCalls.VoiceCalls;
       const voiceSessions = yield* VoiceSessions.VoiceSessions;
@@ -2765,6 +2767,11 @@ export const layerWsRpc = (
               (cause) => new OrchestrationDispatchCommandError({ message: cause.message, cause }),
             ),
           ),
+        [WS_METHODS.botsReplicationStatus]: () => botReplication.status,
+        [WS_METHODS.botsReplicaRead]: (input) => botReplication.read(input),
+        [WS_METHODS.botsReplicaReceive]: (input) => botReplication.receive(input),
+        [WS_METHODS.botsConfigure]: (input) => botReplication.configure(input),
+        [WS_METHODS.botsMergePreferences]: (input) => botReplication.mergePreferences(input),
         [WS_METHODS.botsOpen]: (input) => bots.open(input),
         [WS_METHODS.botsCreate]: (input) => bots.create(input),
         [WS_METHODS.botsVoicePreview]: (input) => voiceSessions.preview(input),

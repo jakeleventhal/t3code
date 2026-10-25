@@ -164,6 +164,7 @@ export const make = Effect.gen(function* () {
     workspaceRoot: row.workspaceRoot,
     botRole: row.botRole ?? null,
     botMainThreadId: row.botMainThreadId ?? null,
+    botReplicaReady: row.botReplicaReady ?? true,
     repositoryIdentity: enrichment?.repositoryIdentity ?? null,
     faviconPath: row.faviconPath ?? enrichment?.faviconPath ?? null,
     defaultModelSelection: row.defaultModelSelection,

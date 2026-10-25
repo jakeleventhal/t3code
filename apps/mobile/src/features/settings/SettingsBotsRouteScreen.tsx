@@ -1,3 +1,6 @@
+import { useBotProjects } from "../bots/use-assistant";
+import { BotPrimaryMachineSettings } from "./BotPrimaryMachineSettings";
+import { VoiceEnvironmentOverview } from "./SettingsVoiceRouteScreen";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -86,7 +89,7 @@ function Muted(props: { readonly children: string }) {
 }
 
 function useEnvironmentBots(environmentId: EnvironmentId) {
-  const projects = useProjects();
+  const projects = useBotProjects();
   const designated = environmentAssistant(projects, useAssistantEnvironmentId());
   return projects
     .filter(
@@ -115,33 +118,29 @@ function useOpenBotTurnSettings() {
 export function SettingsBotsRouteScreen() {
   const { availableTargets } = useSettingsEnvironmentFilter();
   const assistantEnvironmentId = useAssistantEnvironmentId();
-  const [advanced, setAdvanced] = useState(false);
   const primary = availableTargets.find(
     (target) => target.environmentId === assistantEnvironmentId,
   );
   return (
     <BotsScreen title="Bots">
-      <Muted>Change each bot's model and permissions. Changes apply from its next message.</Muted>
+      <Muted>
+        Choose shared defaults and each bot's voice. Changes apply from the next message.
+      </Muted>
       <SettingsSection title="Bots">
         {availableTargets.map((target) => (
           <BotsEnvironmentOverview key={target.environmentId} target={target} advanced={false} />
         ))}
       </SettingsSection>
-      <SettingsSection>
-        <SettingsActionRow
-          icon="gearshape"
-          label={advanced ? "Hide advanced settings" : "Advanced settings"}
-          onPress={() => setAdvanced(!advanced)}
-        />
+      <SettingsSection title="Voices">
+        {availableTargets.map((target) => (
+          <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="bots" />
+        ))}
       </SettingsSection>
-      {advanced ? (
-        <>
-          {availableTargets.map((target) => (
-            <BotsEnvironmentOverview key={target.environmentId} target={target} advanced />
-          ))}
-          {primary ? <BotDefaultHostSection environmentId={primary.environmentId} /> : null}
-        </>
-      ) : null}
+      {primary ? <BotsEnvironmentOverview target={primary} advanced /> : null}
+      {availableTargets.map((target) => (
+        <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="advanced" />
+      ))}
+      <BotPrimaryMachineSettings />
     </BotsScreen>
   );
 }
@@ -156,11 +155,6 @@ function BotsEnvironmentOverview(props: {
   const open = useOpenBotTurnSettings();
   return (
     <View className="gap-6">
-      {props.advanced ? (
-        <Text textRole="headline" className="px-2 font-t3-bold text-foreground">
-          {props.target.label}
-        </Text>
-      ) : null}
       {!defaults.supported ? (
         <Muted>Update this environment to set up bots.</Muted>
       ) : (
@@ -247,30 +241,6 @@ function useBotDefaultHost(environmentId: EnvironmentId) {
     footer: `Saved on ${label}, so every device using it shares it. It applies only to new bots created while ${label} hosts your Assistant. Your Assistant and existing bots stay where they are.`,
     save,
   };
-}
-
-function BotDefaultHostSection(props: { readonly environmentId: EnvironmentId }) {
-  const navigation = useNavigation();
-  const host = useBotDefaultHost(props.environmentId);
-  return (
-    <SettingsSection title="Advanced" footer={host.updateMessage ?? host.footer}>
-      <SettingsRow
-        icon="server.rack"
-        label="Default host for new bots"
-        value={host.selected?.label}
-        valuePosition="below"
-        onPress={() =>
-          navigation.navigate("SettingsSheet", {
-            screen: "SettingsContent",
-            params: {
-              screen: "SettingsBotDefaultHost",
-              params: { environmentId: props.environmentId },
-            },
-          })
-        }
-      />
-    </SettingsSection>
-  );
 }
 
 export function SettingsBotDefaultHostRouteScreen({

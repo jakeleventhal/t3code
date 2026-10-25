@@ -1097,3 +1097,50 @@ it.effect("subscription previews return a finite audio clip without creating a l
     ),
   ),
 );
+
+it.effect(
+  "resumed work sees replies imported with older timestamps without treating them as new tasks",
+  () =>
+    Effect.gen(function* () {
+      yield* fixture;
+      const sink = yield* EventSink.EventSinkV2;
+      const sql = yield* SqlClient.SqlClient;
+      const createdAt = DateTime.makeUnsafe("2025-01-01T00:00:00Z");
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("imported-reply"),
+            type: "message.updated",
+            threadId,
+            occurredAt: createdAt,
+            payload: {
+              id: MessageId.make("imported-reply"),
+              threadId,
+              role: "assistant",
+              text: "The workout is now three days per week.",
+              runId: null,
+              nodeId: null,
+              streaming: false,
+              attachments: [],
+              createdAt,
+              updatedAt: createdAt,
+              createdBy: "agent",
+              creationSource: "server",
+            },
+          },
+        ],
+      });
+      yield* sql`INSERT INTO bot_replica_messages(message_id, source_environment_id) VALUES ('imported-reply', 'other')`;
+      const context = yield* (yield* BotContext.BotContext).readForWork(
+        threadId,
+        DateTime.makeUnsafe("2026-10-25T00:00:00Z"),
+      );
+      assert.include(context, "three days per week");
+      assert.include(context, "historical records, not new requests");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layer({ openLive: () => Effect.succeed(answer), grokClientSecret: unusedSecret }),
+      ),
+    ),
+);

@@ -1,3 +1,4 @@
+import { BotSharedPreferences, EMPTY_BOT_SHARED_PREFERENCES } from "./botPreferences.ts";
 import { EasDeviceHostConfigs, SshDeviceHostConfigs } from "./device.ts";
 import { VoiceConnection, VoiceConnectionId, VoiceSelection } from "./botVoice.ts";
 import {
@@ -1114,6 +1115,9 @@ export const BotDefaults = Schema.Struct({
 export type BotDefaults = typeof BotDefaults.Type;
 
 export const ServerSettings = Schema.Struct({
+  botSharedPreferences: BotSharedPreferences.pipe(
+    Schema.withDecodingDefault(Effect.succeed(EMPTY_BOT_SHARED_PREFERENCES)),
+  ),
   defaultBotEnvironmentId: Schema.NullOr(EnvironmentId).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -1452,6 +1456,7 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  botSharedPreferences: Schema.optionalKey(BotSharedPreferences),
   defaultBotEnvironmentId: Schema.optionalKey(Schema.NullOr(EnvironmentId)),
   botDefaults: Schema.optionalKey(BotDefaults),
   voiceConnections: Schema.optionalKey(

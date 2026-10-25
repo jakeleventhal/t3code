@@ -49,6 +49,7 @@ export * from "./t3ProjectFile.ts";
 export * from "./editor.ts";
 export * from "./project.ts";
 export * from "./bots.ts";
+export * from "./botContinuity.ts";
 export * from "./botVoice.ts";
 export * from "./filesystem.ts";
 export * from "./agentSessions.ts";
@@ -71,3 +72,6 @@ export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
 export * from "./secretRequest.ts";
 export * from "./clientRpcPermissions.ts";
+
+export * from "./botReplication.ts";
+export * from "./botPreferences.ts";

@@ -1,5 +1,7 @@
 import {
   AuthOrchestrationOperateScope,
+  AuthSettingsWriteScope,
+  clientRpcRequiredScopes,
   authScopeRequiredResponse,
   EnvironmentAuthorizationError,
   type EnvironmentId,
@@ -30,11 +32,19 @@ export class PeerRequestFailure extends Schema.TaggedError<PeerRequestFailure>()
 
 // These background carrier mutations have no mounted command registry. Verify the
 // current session at the RPC boundary; the destination server checks it again.
-const withPeerAccess = Effect.fn("EnvironmentRpc.withPeerAccess")(function* <A, E, R>(
+export const withPeerAccess = Effect.fn("EnvironmentRpc.withPeerAccess")(function* <A, E, R>(
   environmentId: EnvironmentId,
-  method: typeof WS_METHODS.peerEnvironmentsSendToThread | typeof WS_METHODS.peerMessagesFlush,
+  method:
+    | typeof WS_METHODS.peerEnvironmentsSendToThread
+    | typeof WS_METHODS.peerMessagesFlush
+    | typeof WS_METHODS.botsReplicaReceive
+    | typeof WS_METHODS.botsMergePreferences,
   effect: Effect.Effect<A, E, R>,
 ) {
+  const requiredScope =
+    method === WS_METHODS.botsReplicaReceive || method === WS_METHODS.botsMergePreferences
+      ? AuthSettingsWriteScope
+      : AuthOrchestrationOperateScope;
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
   const prepared = yield* SubscriptionRef.get(supervisor.prepared);
   const http = yield* Effect.serviceOption(HttpClient.HttpClient);
@@ -65,11 +75,13 @@ const withPeerAccess = Effect.fn("EnvironmentRpc.withPeerAccess")(function* <A, 
       authorize: (destination, requestedMethod) =>
         destination === environmentId &&
         requestedMethod === method &&
-        sessionGrantsScope(access, AuthOrchestrationOperateScope)
+        clientRpcRequiredScopes(method, undefined).every((scope) =>
+          sessionGrantsScope(access, scope),
+        )
           ? Effect.void
           : Effect.fail(
               new EnvironmentAuthorizationError({
-                ...authScopeRequiredResponse(AuthOrchestrationOperateScope),
+                ...authScopeRequiredResponse(requiredScope),
                 message: "This connection cannot send requests to the destination.",
               }),
             ),

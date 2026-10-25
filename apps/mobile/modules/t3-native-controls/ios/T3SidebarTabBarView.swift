@@ -6,12 +6,37 @@ private final class WorkspaceTabBar: UITabBar {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let labels = Set((items ?? []).compactMap(\.accessibilityLabel))
+    let accessible = tabFrames(in: self, labels: labels)
+    if accessible.count == items?.count {
+      let row = accessible.values.reduce(CGRect.null) { $0.union($1) }
+      if !row.isNull { onContentLayout?(row); return }
+    }
     // iOS 26.6 doesn't copy item identifiers onto its tab buttons; the bar holds no other controls.
     let identified = tabButtons(in: self) { $0.accessibilityIdentifier?.hasPrefix("workspace-tab-") == true }
     let buttons = identified.isEmpty ? tabButtons(in: self) { _ in true } : identified
     guard buttons.count == items?.count else { return }
     let row = buttons.reduce(CGRect.null) { $0.union(convert($1.bounds, from: $1)) }
     if !row.isNull { onContentLayout?(row) }
+  }
+
+  private func tabFrames(in view: UIView, labels: Set<String>) -> [String: CGRect] {
+    var frames: [String: CGRect] = [:]
+    // Floating UIKit bars can expose tab items through accessibility containers
+    // rather than UIControls. Their screen frames describe the visible row.
+    let elements = [view] + (view.accessibilityElements?.compactMap { $0 as? NSObject } ?? [])
+    if let window {
+      for element in elements {
+        guard let label = element.accessibilityLabel, labels.contains(label) else { continue }
+        let frame = element.accessibilityFrame
+        guard frame.width > 0, frame.height > 0 else { continue }
+        frames[label] = convert(window.convert(frame, from: window.screen.coordinateSpace), from: window)
+      }
+    }
+    for child in view.subviews where !child.isHidden {
+      frames.merge(tabFrames(in: child, labels: labels)) { previous, _ in previous }
+    }
+    return frames
   }
 
   override func safeAreaInsetsDidChange() {

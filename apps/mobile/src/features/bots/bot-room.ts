@@ -339,9 +339,7 @@ function matchesInboxQuery(entry: BotInboxEntry, query: string): boolean {
 /**
  * Every bot on every shown environment in one inbox. There is one Assistant: the one on
  * `assistantEnvironmentId` leads as the hero, even before it exists, since opening it creates it.
- * Assistants created before that rule, on other environments or as a second one on the hero's,
- * are listed as ordinary rows with their host, and placeholders for Assistants that don't exist
- * elsewhere are never shown.
+ * Earlier Assistant histories remain in its Threads sheet, rather than appearing as other bots.
  */
 export function buildBotInbox(input: {
   readonly environments: ReadonlyArray<{
@@ -370,23 +368,16 @@ export function buildBotInbox(input: {
   const entry = (bot: BotRoomBot) =>
     inboxEntry(bot, connected.get(bot.environmentId) === true, input.unsentByThreadKey);
   const hero = heroEnvironment === null ? null : entry(heroEnvironment.assistant);
-  const others = room.flatMap((environment) => [
-    ...(environment === heroEnvironment || environment.assistant.project === null
-      ? []
-      : [environment.assistant]),
-    ...environment.extraAssistants,
-    ...environment.specialists,
-  ]);
+  const others = room.flatMap((environment) => environment.specialists);
   const all = [...(hero === null ? [] : [hero]), ...others.map(entry)];
   const labelled = all.map((candidate) => {
-    const extraAssistant = candidate !== hero && candidate.bot.role === "assistant";
     const sharesName = all.some(
       (other) =>
         other !== candidate &&
         other.bot.environmentId !== candidate.bot.environmentId &&
         nameKey(other) === nameKey(candidate),
     );
-    return candidate !== hero && (extraAssistant || sharesName)
+    return candidate !== hero && sharesName
       ? { ...candidate, hostLabel: labels.get(candidate.bot.environmentId) ?? null }
       : candidate;
   });
@@ -401,10 +392,7 @@ export function buildBotInbox(input: {
     ? { hero: null, rows: labelled.sort(newestActivityFirst) }
     : {
         hero: labelled[0]!,
-        rows: labelled
-          .slice(1)
-          .filter((entry) => entry.bot.role !== "assistant")
-          .sort(newestActivityFirst),
+        rows: labelled.slice(1).sort(newestActivityFirst),
       };
 }
 

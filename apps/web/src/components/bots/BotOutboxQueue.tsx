@@ -1,4 +1,3 @@
-import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -8,8 +7,6 @@ import { useStore } from "zustand";
 
 import { botOutbox, useBotOutboxRows } from "../../botOutbox/botOutbox";
 import type { BotOutboxItem, BotOutboxRow } from "../../botOutbox/botOutbox.logic";
-import { environmentCatalog } from "../../connection/catalog";
-import { useEnvironmentIds } from "../../state/environments";
 import { cn } from "../../lib/utils";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { ComposerBanner } from "../chat/ComposerBanner";
@@ -127,16 +124,9 @@ function RowActions({ row, size }: { row: BotOutboxRow; size: "icon-micro" | "ic
   );
 }
 
-/**
- * Unsent messages for a machine no longer in this app's list. No chat shows them, so Bot
- * settings does; adding the machine back sends them.
- */
-export function useRemovedMachineBotOutboxItems(): ReadonlyArray<BotOutboxItem> {
-  const catalogReady = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
-  const environmentIds = useEnvironmentIds();
-  const items = useStore(botOutbox.store, (state) => state.items);
-  if (!catalogReady) return [];
-  return items.filter((item) => !environmentIds.includes(item.environmentId));
+/** Settings keeps pending messages reachable after the conversation switches to another copy. */
+export function useAllBotOutboxItems(): ReadonlyArray<BotOutboxItem> {
+  return useStore(botOutbox.store, (state) => state.items);
 }
 
 function useRows(environmentId: EnvironmentId, threadId: ThreadId | null) {

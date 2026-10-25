@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { VoiceSettingsPanel } from "../components/settings/VoiceSettings";
+import { BotSettingsPanel } from "../components/settings/BotSettings";
 
 export const Route = createFileRoute("/settings/voice")({
-  component: VoiceSettingsPanel,
+  component: BotSettingsPanel,
 });

@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off - Bound audio playback so failed previews release their resources.
+import { playPreviewAudio } from "./previewAudio";
 import { useEffect, useRef, useState } from "react";
 import type { EnvironmentId, VoiceSelection, VoiceConnection } from "@t3tools/contracts";
 import { playVoicePreview } from "@t3tools/client-runtime/voice-call/preview";
@@ -8,35 +8,6 @@ import { botVoiceEnvironment } from "../state/botVoice";
 import { openLiveWebRtc } from "./liveWebRtc";
 import { useServerConfigs } from "../state/entities";
 import { voiceCallController } from "./runtime";
-
-async function playAudio(uri: string, signal: AbortSignal) {
-  const audio = new Audio(uri);
-  let stop: (() => void) | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      stop = () => {
-        audio.pause();
-        resolve();
-      };
-      signal.addEventListener("abort", stop, { once: true });
-      audio.onended = () => {
-        resolve();
-      };
-      audio.onerror = () => reject(new Error("The preview audio could not be decoded."));
-      timer = setTimeout(() => reject(new Error("The preview audio timed out.")), 20_000);
-      if (signal.aborted) stop();
-      else void audio.play().catch(reject);
-    });
-  } finally {
-    clearTimeout(timer);
-    if (stop) signal.removeEventListener("abort", stop);
-    audio.onended = null;
-    audio.onerror = null;
-    audio.pause();
-    audio.src = "";
-  }
-}
 
 let activePreview: AbortController | null = null;
 
@@ -88,7 +59,7 @@ export function useVoicePreview(environmentId: EnvironmentId) {
         if (result._tag !== "Success") throw squashAtomCommandFailure(result);
         return result.value;
       },
-      playAudio,
+      playAudio: playPreviewAudio,
     })
       .catch((cause: unknown) => {
         if (!abort.signal.aborted)

@@ -32,7 +32,11 @@ import {
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
-import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
+import {
+  useAssetUrlRefresh,
+  useAttachmentAssetUrls,
+  useAssetUrlState,
+} from "../../assets/assetUrls";
 import { AttachmentImage } from "../media/AttachmentImage";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import {
@@ -80,14 +84,14 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   // Row updates rebuild attachment objects, so the asset follows only the
   // fields it reads.
   const { downloadable, id, mimeType, name } = file;
-  const environmentId = ctx.activeThreadEnvironmentId;
+  const environmentId = file.originEnvironmentId ?? ctx.activeThreadEnvironmentId;
   const asset =
     downloadable === false
       ? null
       : buildAttachmentVideoAsset(environmentId, { id, mimeType, name });
   const resource = asset?.resource ?? null;
-  const assetUrl = useAssetUrlState(ctx.activeThreadEnvironmentId, resource);
-  const refreshAssetUrl = useAssetUrlRefresh(ctx.activeThreadEnvironmentId, resource);
+  const assetUrl = useAssetUrlState(environmentId, resource);
+  const refreshAssetUrl = useAssetUrlRefresh(environmentId, resource);
   const src = assetUrl._tag === "Success" ? assetUrl.url : (file.previewUrl ?? null);
 
   if (asset === null && src === null) {
@@ -107,7 +111,7 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
       label={file.name}
       preload="visible"
       onOpen={() => {
-        const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
+        const preview = buildAttachmentVideoPreview(environmentId, file);
         if (preview) ctx.onImageExpand(preview);
       }}
       className="block aspect-[4/3] w-full"
@@ -279,7 +283,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const { onImageExpand, onFileOpen } = ctx;
   const senderThreadId = row.message.senderThreadId;
   const resources = selectMessageImageResources(row.message.attachments);
-  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
+  const previewUrls = useAttachmentAssetUrls(
+    ctx.activeThreadEnvironmentId,
+    resources,
+    row.message.attachments ?? [],
+  );
   const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
   const previewUrlsById = new Map(
     resources.flatMap((resource, index) => {
@@ -420,7 +428,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           }}
           onOpenFile={onFileOpen}
           onExpandVideo={(file) => {
-            const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
+            const preview = buildAttachmentVideoPreview(
+              file.originEnvironmentId ?? ctx.activeThreadEnvironmentId,
+              file,
+            );
             if (preview) onImageExpand(preview);
           }}
         />

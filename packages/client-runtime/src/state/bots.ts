@@ -17,6 +17,18 @@ export function createBotEnvironmentAtoms<R, E>(
     key: ({ environmentId }: { environmentId: string }) => environmentId,
   };
   return {
+    configure: createEnvironmentRpcCommand(runtime, {
+      label: "bots:configure",
+      tag: WS_METHODS.botsConfigure,
+      scheduler,
+      concurrency,
+    }),
+    replicationStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "bots:replication-status",
+      tag: WS_METHODS.botsReplicationStatus,
+      staleTimeMs: 0,
+      idleTtlMs: 60_000,
+    }),
     files: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:bots:files",
       tag: WS_METHODS.botsFiles,
