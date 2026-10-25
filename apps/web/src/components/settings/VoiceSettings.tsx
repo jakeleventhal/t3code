@@ -1,3 +1,5 @@
+import { useEnvironments } from "../../state/environments";
+import { SettingsScopeProvider } from "./SettingsScopeContext";
 import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   AuthProvidersManageScope,
@@ -18,7 +20,6 @@ import { randomUUID } from "../../lib/utils";
 import { readLocalApi } from "../../localApi";
 import {
   useEnvironmentSupportsBotVoice,
-  useEnvironmentSupportsVoiceSettings,
   useVoiceCatalog,
   useWriteEnvironmentSettings,
 } from "../../state/botVoice";
@@ -37,7 +38,6 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import { SecretInput } from "./SecretInput";
-import { useSettingsScope } from "./SettingsScopeContext";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -82,44 +82,49 @@ function VoiceStatus({ description }: { description: VoiceSelectionDescription }
 }
 
 export function VoiceSettingsPanel() {
-  const { scope, environment } = useSettingsScope();
-  const supported = useEnvironmentSupportsVoiceSettings(environment?.environmentId ?? null);
+  const { environments } = useEnvironments();
   const projects = useProjects();
-  if (!environment?.serverConfig) {
-    return (
-      <SettingsPageContainer>
-        <p className="px-3 text-sm text-muted-foreground sm:px-4">
-          Connect an environment to set up voice for its bots.
-        </p>
-      </SettingsPageContainer>
-    );
-  }
-  if (!supported) {
-    return (
-      <SettingsPageContainer>
-        <p className="px-3 text-sm text-muted-foreground sm:px-4">
-          Update T3 Code on {environment.label} to set up voice for its bots.
-        </p>
-      </SettingsPageContainer>
-    );
-  }
-  const scopedMember =
-    scope.kind === "project" || scope.kind === "checkout"
-      ? scope.members.find((member) => member.environmentId === environment.environmentId)
-      : undefined;
-  const scopedProject = scopedMember
-    ? (projects.find(
-        (project) =>
-          project.environmentId === scopedMember.environmentId && project.id === scopedMember.id,
-      ) ?? null)
-    : null;
+  const [advanced, setAdvanced] = useState(false);
+  const targets = environments.filter(
+    (entry) => entry.serverConfig?.environment.capabilities.botVoiceConfiguration === true,
+  );
+  const render = (mode: "bots" | "advanced") =>
+    targets.map((environment) => (
+      <SettingsScopeProvider
+        key={environment.environmentId}
+        search={{ machine: environment.environmentId }}
+        onChange={() => {}}
+        singleEnvironment
+      >
+        <VoiceSettingsContent
+          environment={{ environmentId: environment.environmentId, label: environment.label }}
+          settings={environment.serverConfig!.settings}
+          projects={projects}
+          scopedProject={undefined}
+          mode={mode}
+        />
+      </SettingsScopeProvider>
+    ));
   return (
-    <VoiceSettingsContent
-      environment={{ environmentId: environment.environmentId, label: environment.label }}
-      settings={environment.serverConfig.settings}
-      projects={projects}
-      scopedProject={scopedMember ? scopedProject : undefined}
-    />
+    <SettingsPageContainer>
+      <p className="px-4 text-sm text-muted-foreground">
+        Choose how each bot sounds. Play a sample before choosing.
+      </p>
+      {targets.length === 0 ? (
+        <p className="px-4 text-sm text-muted-foreground">
+          Connect to your bots to change their settings.
+        </p>
+      ) : null}
+      <SettingsSection title="Bots" id="voice-bots">
+        {render("bots")}
+      </SettingsSection>
+      <div>
+        <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
+          {advanced ? "Hide advanced settings" : "Advanced settings"}
+        </Button>
+      </div>
+      {advanced ? render("advanced") : null}
+    </SettingsPageContainer>
   );
 }
 
@@ -128,7 +133,9 @@ function VoiceSettingsContent({
   settings,
   projects,
   scopedProject,
+  mode,
 }: {
+  mode: "bots" | "advanced";
   environment: VoiceEnvironment;
   settings: ServerSettings;
   projects: ReadonlyArray<EnvironmentProject>;
@@ -145,44 +152,38 @@ function VoiceSettingsContent({
   const callsSupported = useEnvironmentSupportsBotVoice(environment.environmentId);
 
   return (
-    <SettingsPageContainer>
-      <p className="max-w-2xl px-3 text-xs leading-relaxed text-muted-foreground sm:px-4">
-        How bots sound on calls. Typing and deeper work keep each bot's own provider and model.{" "}
-        {callsSupported
-          ? "Calls work with OpenAI API, xAI API, and ChatGPT subscription voices. A saved key or sign-in is checked when a call connects."
-          : "This environment's T3 Code server doesn't support calls yet; the accounts and voices you save here are kept for when it does."}
-      </p>
-      {scopedProject == null ? null : isBotProject(scopedProject) ? (
-        <ScopedBotVoiceSection bot={scopedProject} catalog={catalog} defaultLabel={defaultLabel} />
-      ) : (
-        <p className="px-3 text-sm text-muted-foreground sm:px-4">
-          Voice applies to bots. Choose a bot or an environment above.
-        </p>
-      )}
-      <VoiceAccountsSection
-        environment={environment}
-        settings={settings}
-        catalog={catalog}
-        catalogError={error}
-        bots={bots}
-      />
-      {scopedProject === undefined ? (
+    <div className="flex flex-col gap-4">
+      {mode === "advanced" ? (
         <>
+          <h3 className="px-4 text-sm font-semibold">{environment.label}</h3>
+          <VoiceAccountsSection
+            environment={environment}
+            settings={settings}
+            catalog={catalog}
+            catalogError={error}
+            bots={bots}
+          />
           <DefaultVoiceSection
             environmentId={environment.environmentId}
             catalog={catalog}
             selection={settings.voiceSelection}
           />
-          <BotVoicesSection
-            environment={environment}
-            settings={settings}
-            catalog={catalog}
-            bots={bots}
-            defaultLabel={defaultLabel}
-          />
         </>
+      ) : scopedProject != null && isBotProject(scopedProject) ? (
+        <ScopedBotVoiceSection bot={scopedProject} catalog={catalog} defaultLabel={defaultLabel} />
+      ) : bots.length > 0 ? (
+        <BotVoicesSection
+          environment={environment}
+          settings={settings}
+          catalog={catalog}
+          bots={bots}
+          defaultLabel={defaultLabel}
+        />
       ) : null}
-    </SettingsPageContainer>
+      {!callsSupported ? (
+        <p className="px-4 text-sm text-muted-foreground">Update T3 Code to enable calls.</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -286,7 +287,7 @@ function BotVoicesSection({
 }) {
   const write = useWriteEnvironmentSettings();
   return (
-    <SettingsSection id="voice-bots" title="Bots">
+    <div>
       {bots.length === 0 ? (
         <SettingsRow
           title={`No bots on ${environment.label}`}
@@ -340,7 +341,7 @@ function BotVoicesSection({
           );
         })
       )}
-    </SettingsSection>
+    </div>
   );
 }
 

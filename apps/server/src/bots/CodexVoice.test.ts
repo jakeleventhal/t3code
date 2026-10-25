@@ -48,6 +48,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         );
         assert.equal(request.headers.authorization, "Bearer fake-subscription-token");
         assert.equal(request.headers["chatgpt-account-id"], "selected-workspace");
+        assert.equal(request.headers["openai-alpha"], "quicksilver=v2");
         assert.equal(request.body._tag, "Uint8Array");
         if (request.body._tag !== "Uint8Array") return Effect.die("Expected JSON");
         const body = JSON.parse(new TextDecoder().decode(request.body.body));

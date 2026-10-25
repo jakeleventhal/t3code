@@ -74,6 +74,7 @@ import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/com
 import * as Haptics from "expo-haptics";
 import {
   useCallback,
+  useMemo,
   useContext,
   useEffect,
   useEffectEvent,
@@ -745,7 +746,25 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     props.selectedThreadFeed.some(
       (entry) => "acknowledged" in entry && entry.acknowledged === true,
     );
-  const selectedThreadFeed = props.selectedThreadFeed;
+  const selectedThreadFeed = useMemo(
+    () =>
+      props.simplifiedComposer
+        ? props.selectedThreadFeed.flatMap<ThreadFeedEntry>((entry) => {
+            if (entry.type === "thinking") return [];
+            if (entry.type === "work-toggle") return entry.hasFailure ? [entry] : [];
+            if (entry.type === "activity-group") {
+              const activities = entry.activities.filter(
+                (activity) =>
+                  activity.status === "failure" ||
+                  (activity.workEntry.tone !== "tool" && activity.workEntry.tone !== "thinking"),
+              );
+              return activities.length ? [{ ...entry, activities }] : [];
+            }
+            return [entry];
+          })
+        : props.selectedThreadFeed,
+    [props.selectedThreadFeed, props.simplifiedComposer],
+  );
   // A palette message result opens the thread at that message: earlier
   // history loads until the message is in the feed, which then scrolls to it.
   const jumpMessageId = useSyncExternalStore(subscribeThreadMessageJump, () =>
@@ -1318,7 +1337,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
               threadId={props.selectedThread.id}
               detailRef={props.selectedThreadDetailRef}
               workspaceRoot={props.threadCwd}
-              feed={props.selectedThreadFeed}
+              feed={selectedThreadFeed}
               pendingHandoff={props.pendingHandoff}
               worktreeSetup={props.worktreeSetup}
               setupWorkingStartedAt={props.setupWorkingStartedAt}

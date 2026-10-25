@@ -205,6 +205,7 @@ export interface BotInboxEntry {
   readonly status: BotInboxStatus;
   /** The open thread waiting on the user, when the main conversation itself is not. */
   readonly needsThread: EnvironmentThreadShell | null;
+  readonly previewThread: EnvironmentThreadShell | null;
   /** What the main conversation last said, or a plain account of where it stands. */
   readonly preview: string | null;
   /** The main conversation's latest message or reply; null before it has any. */
@@ -286,9 +287,13 @@ function inboxEntry(
           ? "working"
           : null,
     needsThread,
+    previewThread:
+      mainStatus === "needs-you"
+        ? main
+        : (needsThread ?? (!mainUnread && unreadThread ? unreadThread : main)),
     needsAttention: mainStatus === "needs-you" || needsThread !== null,
     preview:
-      !mainUnread && unreadThread
+      mainStatus !== "needs-you" && !mainUnread && unreadThread
         ? `↳ ${unreadThread.title} · New reply`
         : mainPreview(bot, mainUnread),
     activityAt:
@@ -381,7 +386,7 @@ export function buildBotInbox(input: {
         other.bot.environmentId !== candidate.bot.environmentId &&
         nameKey(other) === nameKey(candidate),
     );
-    return extraAssistant || sharesName
+    return candidate !== hero && (extraAssistant || sharesName)
       ? { ...candidate, hostLabel: labels.get(candidate.bot.environmentId) ?? null }
       : candidate;
   });

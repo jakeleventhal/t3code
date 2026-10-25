@@ -9,6 +9,7 @@ private final class WorkspaceTabBar: UITabBar {
     // iOS 26.6 doesn't copy item identifiers onto its tab buttons; the bar holds no other controls.
     let identified = tabButtons(in: self) { $0.accessibilityIdentifier?.hasPrefix("workspace-tab-") == true }
     let buttons = identified.isEmpty ? tabButtons(in: self) { _ in true } : identified
+    guard buttons.count == items?.count else { return }
     let row = buttons.reduce(CGRect.null) { $0.union(convert($1.bounds, from: $1)) }
     if !row.isNull { onContentLayout?(row) }
   }

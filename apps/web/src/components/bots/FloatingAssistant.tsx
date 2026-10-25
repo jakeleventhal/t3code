@@ -66,7 +66,6 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ASSISTANT_CARD_TURN_LIMIT,
-  assistantCardCurrentStep,
   assistantCardRows,
   recentTurnItems,
   resolveAssistantCardStatus,
@@ -173,8 +172,8 @@ function AssistantCorner({
             render={
               <Button
                 ref={orbRef}
-                variant="glass"
-                size="icon-sm"
+                variant="default"
+                size="lg"
                 aria-label={orbLabel}
                 aria-expanded={open}
                 aria-haspopup="dialog"
@@ -183,6 +182,7 @@ function AssistantCorner({
             }
           >
             <SparklesIcon />
+            <span>{name}</span>
             {dotClass ? (
               <span
                 aria-hidden
@@ -311,7 +311,7 @@ function AssistantCard({
   const activeRunId = working ? (runtime?.activeRunId ?? null) : null;
   const cwd = assistant?.workspaceRoot;
   const describe = (entry: WorkLogEntry) => workEntryDisplayLabel(entry, cwd);
-  const step = working ? assistantCardCurrentStep(rows, activeRunId, describe) : null;
+  const step = working ? "Working on your request" : null;
   const canOperate = call.canOperate;
   const canStop =
     canOperate && connected && deriveCanInterruptRunningThread(shell !== null, runtime);
@@ -430,7 +430,7 @@ function AssistantCard({
         </div>
       </div>
       <AssistantTranscript
-        rows={rows}
+        rows={rows.filter((row) => row.kind !== "steps")}
         threadRef={mainThreadRef}
         cwd={cwd}
         activeRunId={activeRunId}

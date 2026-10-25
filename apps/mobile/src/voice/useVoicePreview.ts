@@ -93,7 +93,7 @@ export function useVoicePreview(environmentId: EnvironmentId) {
       openMedia: openLiveNativeWebRtc,
       negotiate: async (input) => {
         const result = await request({ environmentId, input });
-        if (result._tag !== "Success") throw new Error(String(squashAtomCommandFailure(result)));
+        if (result._tag !== "Success") throw squashAtomCommandFailure(result);
         return result.value;
       },
       playAudio,

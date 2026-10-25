@@ -1,3 +1,4 @@
+import * as PeerEnvironmentBroker from "../mcp/PeerEnvironmentBroker.ts";
 import * as BotContext from "./BotContext.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import { assert, it } from "@effect/vitest";
@@ -141,7 +142,10 @@ const fixture = Effect.gen(function* () {
     } else return yield* Effect.die(`Unexpected command ${command.type}`);
     return { sequence: 1, storedEvents: [] };
   });
-  const serviceLayer = Layer.mergeAll(BotService.layer, BotContext.layer).pipe(
+  const serviceLayer = Layer.mergeAll(
+    BotService.layer,
+    BotContext.layer.pipe(Layer.provide(PeerEnvironmentBroker.layer)),
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         BotWorkspace.layer,

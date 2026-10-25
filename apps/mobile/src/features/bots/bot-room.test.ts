@@ -370,20 +370,26 @@ describe("bots inbox", () => {
     expect(waiting.needsAttention).toBe(true);
     expect(entry([main({}), side], false).needsAttention).toBe(true);
     expect(waiting.needsThread?.title).toBe("Squat form");
+    expect(waiting.previewThread?.id).toBe(side.id);
 
     const mainWaiting = entry([main({ hasPendingUserInput: true }), side]);
     expect(mainWaiting.status).toBe("needs-you");
     expect(mainWaiting.needsThread).toBeNull();
+    expect(mainWaiting.previewThread?.id).toBe(ThreadId.make("fitness-main"));
     const unreadSide = {
       ...side,
       hasPendingApprovals: false,
       latestRun: run("completed", "2026-10-02T00:00:00.000Z"),
       lastVisitedAt: "2026-10-01T00:00:00.000Z",
     };
+    const mainNeedsInput = entry([main({ hasPendingUserInput: true }), unreadSide]);
+    expect(mainNeedsInput.previewThread?.id).toBe(ThreadId.make("fitness-main"));
+    expect(mainNeedsInput.preview).not.toContain("Squat form");
     const unread = entry([main({}), unreadSide]);
     expect(unread.unread).toBe(true);
     expect(unread.needsAttention).toBe(false);
     expect(unread.preview).toBe("↳ Squat form · New reply");
+    expect(unread.previewThread?.id).toBe(unreadSide.id);
   });
 
   it("previews what the shell knows, never inventing a message", () => {

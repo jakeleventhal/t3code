@@ -292,10 +292,16 @@ export function matchBotMentionItems(input: {
       group: isBot ? "bots" : "projects",
       reference: projectReferenceRecord(project),
       label: project.title,
-      description: withHost(
-        project.botRole === "assistant" ? "Assistant" : isBot ? "Bot" : "Project",
-        project.environmentId,
-      ),
+      description: (() => {
+        const description =
+          project.botRole === "assistant" ? "Assistant" : isBot ? "Bot" : "Project";
+        const ambiguous = [...projectsByKey.values()].some(
+          (other) =>
+            projectKey(other.environmentId, other.id) !==
+              projectKey(project.environmentId, project.id) && other.title === project.title,
+        );
+        return ambiguous ? withHost(description, project.environmentId) : description;
+      })(),
     };
   };
   const fileItem = (file: BotFile): BotMentionItem => {

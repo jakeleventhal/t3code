@@ -1,3 +1,6 @@
+import { useProject } from "../../state/entities";
+import { BotAvatar } from "../bots/BotAvatar";
+import type { ProjectContextRecord } from "@t3tools/contracts";
 import {
   BOT_MENTION_GROUP_LABELS,
   type BotMentionItem,
@@ -193,6 +196,10 @@ const CommandRow = memo(function CommandRow(props: {
     >
       {props.item.type === "path" ? (
         <PierreEntryIcon path={props.item.path} kind={props.item.kind} size={16} />
+      ) : props.item.type === "reference" &&
+        props.item.reference.kind === "project" &&
+        props.item.reference.botRole !== null ? (
+        <MentionBotAvatar reference={props.item.reference} />
       ) : iconName ? (
         <SymbolView
           name={iconName}
@@ -283,3 +290,18 @@ export const ComposerCommandPopover = memo(function ComposerCommandPopover(
     </PopoverSurface>
   );
 });
+
+function MentionBotAvatar({ reference }: { reference: ProjectContextRecord }) {
+  const project = useProject({
+    environmentId: reference.environmentId,
+    projectId: reference.projectId,
+  });
+  return (
+    <BotAvatar
+      role={reference.botRole ?? "specialist"}
+      title={reference.title}
+      size={22}
+      project={project}
+    />
+  );
+}

@@ -152,6 +152,7 @@ const make = Effect.gen(function* () {
       ).pipe(
         HttpClientRequest.bearerToken(auth.apiKey),
         HttpClientRequest.setHeader("ChatGPT-Account-Id", auth.accountId),
+        HttpClientRequest.setHeader("OpenAI-Alpha", "quicksilver=v2"),
         HttpClientRequest.bodyJson({
           sdp: input.sdp,
           session: {

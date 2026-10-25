@@ -61,89 +61,106 @@ export function BotCallDock({
     <div
       role="group"
       aria-label={`Call with ${title}`}
-      className="surface-glass flex items-center gap-1 rounded-full border border-border/60 py-1 ps-1.5 pe-1 shadow-sm"
+      className="surface-glass flex w-[min(380px,calc(100vw-2rem))] flex-col rounded-xl border border-border/60 p-2 shadow-sm"
     >
-      <BotAvatar bot={project ?? call.bot} className={cn(!failed && "ring-2 ring-success")} />
-      <div className="flex min-w-0 max-w-40 flex-col px-1 leading-tight">
-        <span className="truncate text-xs font-semibold">{title}</span>
-        <span
-          className={cn(
-            "truncate text-2xs",
-            failed ? "text-destructive-foreground" : "text-muted-foreground",
-          )}
+      <div className="flex items-center gap-1">
+        <BotAvatar bot={project ?? call.bot} className={cn(!failed && "ring-2 ring-success")} />
+        <div className="flex min-w-0 flex-1 flex-col px-1 leading-tight">
+          <span className="truncate text-xs font-semibold">{title}</span>
+          <span
+            className={cn(
+              "truncate text-2xs",
+              failed ? "text-destructive-foreground" : "text-muted-foreground",
+            )}
+          >
+            {botCallPhaseLabel(call.phase, call.muted)}
+          </span>
+        </div>
+        <CallIconButton
+          label={call.muted ? "Unmute" : "Mute"}
+          pressed={call.muted}
+          disabled={!canMute}
+          onClick={() => controls.toggleMute(call.callId)}
         >
-          {status}
-        </span>
-      </div>
-      <CallIconButton
-        label={call.muted ? "Unmute" : "Mute"}
-        pressed={call.muted}
-        disabled={!canMute}
-        onClick={() => controls.toggleMute(call.callId)}
-      >
-        {call.muted ? <MicOffIcon /> : <MicIcon />}
-      </CallIconButton>
-      <Popover open={expanded} onOpenChange={onExpandedChange}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <PopoverTrigger
-                render={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label={expanded ? "Hide transcript" : "Show transcript"}
-                  />
-                }
-              />
+          {call.muted ? <MicOffIcon /> : <MicIcon />}
+        </CallIconButton>
+        <Popover open={expanded} onOpenChange={onExpandedChange}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PopoverTrigger
+                  render={
+                    <Button
+                      size="icon-xs"
+                      variant="ghost-muted"
+                      aria-label={expanded ? "Hide transcript" : "Show transcript"}
+                    />
+                  }
+                />
+              }
+            >
+              <ChevronUpIcon />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {expanded ? "Hide transcript" : "Show transcript"}
+            </TooltipPopup>
+          </Tooltip>
+          <PopoverPopup
+            side="top"
+            align="end"
+            sideOffset={8}
+            padding="none"
+            width="md"
+            aria-label="Call transcript"
+            // Mouse and keyboard opens land in the type box. Touch takes the first button instead,
+            // so opening the drawer to read does not raise the on-screen keyboard.
+            initialFocus={(interactionType) =>
+              interactionType === "touch" ||
+              (drawerRef.current?.querySelector<HTMLElement>("[data-call-composer]") ?? true)
             }
           >
-            <ChevronUpIcon />
-          </TooltipTrigger>
-          <TooltipPopup side="top">{expanded ? "Hide transcript" : "Show transcript"}</TooltipPopup>
-        </Tooltip>
-        <PopoverPopup
-          side="top"
-          align="end"
-          sideOffset={8}
-          padding="none"
-          width="md"
-          aria-label="Call transcript"
-          // Mouse and keyboard opens land in the type box. Touch takes the first button instead,
-          // so opening the drawer to read does not raise the on-screen keyboard.
-          initialFocus={(interactionType) =>
-            interactionType === "touch" ||
-            (drawerRef.current?.querySelector<HTMLElement>("[data-call-composer]") ?? true)
-          }
+            <div ref={drawerRef} className="flex w-full flex-col">
+              <div className="flex items-center gap-2 border-b px-3 py-2">
+                <span className="text-sm font-semibold">Transcript</span>
+                <span className="truncate text-xs text-muted-foreground">{title}</span>
+                <span className="flex-1" />
+                <Button size="xs" variant="outline" onClick={() => controls.openChat(call)}>
+                  <MaximizeIcon />
+                  Open chat
+                </Button>
+              </div>
+              {call.error ? (
+                <p
+                  role="status"
+                  className="px-3 py-2 text-sm text-destructive-foreground wrap-anywhere"
+                >
+                  {status}
+                </p>
+              ) : null}
+              {transcript}
+              {composer}
+              <div className="flex justify-end px-3 pb-2 text-2xs text-muted-foreground">
+                <span>Esc to close</span>
+              </div>
+            </div>
+          </PopoverPopup>
+        </Popover>
+        <CallIconButton label="Open chat" onClick={() => controls.openChat(call)}>
+          <MaximizeIcon />
+        </CallIconButton>
+        <CallIconButton
+          label={failed ? "Dismiss" : "End call"}
+          variant="ghost-destructive"
+          onClick={() => controls.end(call.callId)}
         >
-          <div ref={drawerRef} className="flex w-full flex-col">
-            <div className="flex items-center gap-2 border-b px-3 py-2">
-              <span className="text-sm font-semibold">Transcript</span>
-              <span className="truncate text-xs text-muted-foreground">{title}</span>
-              <span className="flex-1" />
-              <Button size="xs" variant="outline" onClick={() => controls.openChat(call)}>
-                <MaximizeIcon />
-                Open chat
-              </Button>
-            </div>
-            {transcript}
-            {composer}
-            <div className="flex justify-end px-3 pb-2 text-2xs text-muted-foreground">
-              <span>Esc to close</span>
-            </div>
-          </div>
-        </PopoverPopup>
-      </Popover>
-      <CallIconButton label="Open chat" onClick={() => controls.openChat(call)}>
-        <MaximizeIcon />
-      </CallIconButton>
-      <CallIconButton
-        label={failed ? "Dismiss" : "End call"}
-        variant="ghost-destructive"
-        onClick={() => controls.end(call.callId)}
-      >
-        <PhoneOffIcon />
-      </CallIconButton>
+          <PhoneOffIcon />
+        </CallIconButton>
+      </div>
+      {call.error ? (
+        <p role="status" className="px-1 pt-2 text-xs text-destructive-foreground wrap-anywhere">
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }

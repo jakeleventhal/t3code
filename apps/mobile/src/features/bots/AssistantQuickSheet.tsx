@@ -1,4 +1,5 @@
 import { openSettings } from "../settings/settings-navigation";
+import { IconButton } from "../../components/ui/IconButton";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
@@ -367,9 +368,10 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
           <Text textRole="footnote" className="flex-1 text-foreground-muted">
             {`${mainThread?.runtime?.status === "preparing" || mainThread?.runtime?.status === "starting" ? "Assistant is starting" : "Assistant is working"} · ${elapsed}s`}
           </Text>
-          <Button
-            tone="secondary"
-            label="Stop"
+          <IconButton
+            variant="danger"
+            icon="stop.fill"
+            accessibilityLabel="Stop Assistant"
             onPress={() => {
               if (threadId) void interrupt({ environmentId, input: { threadId } });
             }}
