@@ -186,6 +186,7 @@ function BotVoicePopoverContent({
             : `${project.title} uses the default. Picking a voice here gives it its own.`}
       </p>
       <VoiceSelectionPicker
+        environmentId={project.environmentId}
         catalog={catalog}
         selection={shown}
         disabled={!canWrite}

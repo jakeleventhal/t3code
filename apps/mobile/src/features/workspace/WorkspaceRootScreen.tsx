@@ -162,7 +162,7 @@ function WorkspaceRootContent() {
   // The orb and call bar sit 12 points above the controls the list already clears.
   const floatingBottom = controlsClearance - 4;
   // On the compact bar the orb lines up over the compose circle that trails the tabs.
-  const orbRight = compactTabs ? 12 : 16;
+  const orbRight = 16;
   const context = useMemo(() => ({ ...workspace, bottomClearance }), [workspace, bottomClearance]);
 
   return (

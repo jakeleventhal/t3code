@@ -1,3 +1,4 @@
+import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   resolveProviderInstanceEnabled,
   type ProjectId,
@@ -65,7 +66,7 @@ export function voiceCallsNote(input: {
 export function subscriptionVoiceSources(
   settings: ServerSettings,
 ): ReadonlyArray<{ readonly id: ProviderInstanceId; readonly label: string }> {
-  return Object.entries(settings.providerInstances).flatMap(([id, instance]) => {
+  return Object.entries(voiceProviderInstances(settings)).flatMap(([id, instance]) => {
     const config = instance.config;
     const managed =
       config !== null &&

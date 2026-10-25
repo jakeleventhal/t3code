@@ -124,6 +124,7 @@ describe("RPC scope middleware", () => {
       const methods = [
         WS_METHODS.botsVoiceTranscript,
         WS_METHODS.botsVoiceBegin,
+        WS_METHODS.botsVoicePreview,
         WS_METHODS.botsVoiceConnect,
         WS_METHODS.botsVoiceWork,
         WS_METHODS.botsVoiceAppend,
@@ -141,6 +142,12 @@ describe("RPC scope middleware", () => {
           Layer.mergeAll(
             voiceGroup.toLayerHandler(WS_METHODS.botsVoiceTranscript, () =>
               Effect.succeed({ entries: [], nextOrdinal: null }),
+            ),
+            voiceGroup.toLayerHandler(WS_METHODS.botsVoicePreview, () =>
+              Effect.sync(() => {
+                writes++;
+                return { kind: "audio" as const, dataUri: "audio" };
+              }),
             ),
             voiceGroup.toLayerHandler(WS_METHODS.botsVoiceBegin, (input) =>
               Effect.sync(() => {
@@ -194,6 +201,9 @@ describe("RPC scope middleware", () => {
         nextOrdinal: null,
       });
       const errors = [
+        yield* client[WS_METHODS.botsVoicePreview]({
+          selection: { connectionId: "api", model: "gpt-live-1", voice: "marin" },
+        }).pipe(Effect.flip),
         yield* client[WS_METHODS.botsVoiceBegin](input).pipe(Effect.flip),
         yield* client[WS_METHODS.botsVoiceWork]({
           ...input,

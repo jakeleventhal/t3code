@@ -87,8 +87,15 @@ export function planRoomSwitch(input: {
   const home = input.routes.find((route) => route.name === "Home") ?? { name: "Home" };
   const detail = workspaceDetailRoutes(input.routes);
   const leaving = input.from === input.to ? [] : detail;
+  // Updating the existing bot page avoids popping to Home and pushing a replacement
+  // while the thread picker sheet dismisses.
+  const existingBotPage =
+    input.from === "bots" && input.to === "bots" && target?.name === "Thread"
+      ? detail.findLast((route) => route.name === "Thread")
+      : undefined;
+  const destination = target && existingBotPage ? { ...target, key: existingBotPage.key } : target;
   const entering: readonly RoomRoute[] =
-    target !== null ? [target] : input.from === input.to ? detail : input.parked;
+    destination !== null ? [destination] : input.from === input.to ? detail : input.parked;
   return { routes: [home, ...entering], leaving };
 }
 

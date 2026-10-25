@@ -1,6 +1,6 @@
 import type { VoiceCallDraft } from "@t3tools/client-runtime/voice-call";
 import { useRef, type ComponentRef, type ReactNode } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,16 +15,44 @@ import type { BotCallTranscriptLine } from "./bot-call";
 /** Mounted only while the user has the transcript open; the slots carry their own subscriptions. */
 export function BotCallTranscriptSheet(props: {
   readonly botTitle: string;
+  readonly status: string;
+  readonly failed: boolean;
   readonly onClose: () => void;
   readonly onOpenChat: () => void;
   readonly transcript: ReactNode;
   readonly composer: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const pinned = useRef(true);
   return (
     <Sheet title={`Call with ${props.botTitle}`} onClose={props.onClose}>
       <KeyboardAvoidingView automaticOffset behavior="padding" className="flex-1">
-        <View className="flex-1">{props.transcript}</View>
+        <ScrollView
+          ref={scrollRef}
+          scrollEventThrottle={100}
+          onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
+            pinned.current =
+              contentSize.height - contentOffset.y - layoutMeasurement.height < PINNED_SLOP;
+          }}
+          onContentSizeChange={() => {
+            if (pinned.current) scrollRef.current?.scrollToEnd({ animated: false });
+          }}
+          className="flex-1"
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerClassName="gap-3 px-4 py-3"
+        >
+          <Text className={props.failed ? "text-danger-foreground" : "text-foreground-muted"}>
+            {props.status}
+          </Text>
+          {props.failed ? (
+            <Text className="text-foreground-muted">
+              The call is unavailable. You can continue in chat, or dismiss this call and try again.
+              If it keeps failing, check the bot’s voice connection in Settings → Voice.
+            </Text>
+          ) : null}
+          {props.transcript}
+        </ScrollView>
         <View
           className="gap-1 border-t border-border px-4 pt-2"
           style={{ paddingBottom: Math.max(12, insets.bottom) }}
@@ -49,29 +77,13 @@ const PINNED_SLOP = 24;
 export function BotCallTranscript(props: {
   readonly entries: ReadonlyArray<BotCallTranscriptLine>;
 }) {
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const pinned = useRef(true);
   if (props.entries.length === 0) {
     return (
       <Text className="px-4 py-6 text-center text-sm text-foreground-muted">Nothing said yet.</Text>
     );
   }
   return (
-    <ScrollView
-      ref={scrollRef}
-      className="flex-1"
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-      contentContainerClassName="gap-2 px-4 py-3"
-      scrollEventThrottle={100}
-      onScroll={({ nativeEvent }) => {
-        const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-        pinned.current =
-          contentSize.height - contentOffset.y - layoutMeasurement.height < PINNED_SLOP;
-      }}
-      onContentSizeChange={() => {
-        if (pinned.current) scrollRef.current?.scrollToEnd({ animated: false });
-      }}
-    >
+    <View className="gap-2">
       {props.entries.map((entry) => (
         <Text
           key={entry.id}
@@ -87,7 +99,7 @@ export function BotCallTranscript(props: {
           {entry.text}
         </Text>
       ))}
-    </ScrollView>
+    </View>
   );
 }
 

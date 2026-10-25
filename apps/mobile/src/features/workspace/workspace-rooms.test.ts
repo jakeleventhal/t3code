@@ -287,3 +287,21 @@ describe("pages opened in the other room", () => {
     ).toBeNull();
   });
 });
+
+it("switches bot threads under the sheet without replacing the native conversation page", () => {
+  const plan = planRoomSwitch({
+    from: "bots",
+    to: "bots",
+    parked: [],
+    routes: [
+      { name: "Home", key: "home" },
+      { name: "Thread", key: "bot-page", params: botThread },
+      { name: "BotThreads", key: "sheet" },
+    ],
+    target: { name: "Thread", params: { ...botThread, threadId: "parallel" } },
+  });
+  expect(plan?.routes).toEqual([
+    { name: "Home", key: "home" },
+    { name: "Thread", key: "bot-page", params: { ...botThread, threadId: "parallel" } },
+  ]);
+});

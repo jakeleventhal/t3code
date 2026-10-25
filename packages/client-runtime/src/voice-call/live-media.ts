@@ -12,6 +12,7 @@ export interface LiveMediaTransport {
 }
 
 export interface LiveMediaInput {
+  readonly playbackOnly?: boolean;
   readonly signal: AbortSignal;
   readonly negotiate: (
     sdp: string,
@@ -60,12 +61,17 @@ export async function openLiveMedia(
     callbacks: {
       ...input.callbacks,
       onClosed: (reason) => {
-        if (!ready) rejectSetup(new Error("The voice session ended during setup."));
+        if (!ready)
+          rejectSetup(
+            new VoiceCallSetupError(
+              "The voice provider closed the connection during setup. Try again or choose another voice account.",
+            ),
+          );
         cleanup();
         input.callbacks.onClosed(reason);
       },
       onFailure: (message) => {
-        rejectSetup(new Error(message));
+        rejectSetup(new VoiceCallSetupError(message));
         cleanup();
         input.callbacks.onFailure(message);
       },

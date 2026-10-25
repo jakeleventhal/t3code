@@ -510,7 +510,8 @@
     "./reviewFileClassification": {
       "types": "./src/reviewFileClassification.ts",
       "import": "./src/reviewFileClassification.ts"
-    }
+    },
+    "./voiceProviderInstances": "./src/voiceProviderInstances.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

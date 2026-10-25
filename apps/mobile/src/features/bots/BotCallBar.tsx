@@ -38,56 +38,60 @@ export function BotCallBar(props: {
       ? call.error
       : botCallPhaseLabel(call.phase, call.muted);
   return (
-    <View className="flex-row items-center gap-0.5 rounded-full border border-border bg-card py-0.5 ps-2 pe-0.5">
-      <BotAvatar
-        role={call.bot.botRole ?? "specialist"}
-        title={title}
-        size={30}
-        project={project}
-      />
-      <View
-        accessible
-        accessibilityLabel={`Call with ${title}`}
-        accessibilityValue={{ text: status }}
-        className="min-w-0 flex-1 px-1.5"
-      >
-        <Text className="font-t3-medium text-sm text-foreground" numberOfLines={1}>
-          {title}
-        </Text>
-        <Text
-          className={cn("text-xs", failed ? "text-danger-foreground" : "text-foreground-muted")}
-          numberOfLines={1}
+    <View className="gap-2 rounded-3xl border border-border bg-card p-2">
+      <View className="flex-row items-center gap-0.5">
+        <BotAvatar
+          role={call.bot.botRole ?? "specialist"}
+          title={title}
+          size={30}
+          project={project}
+        />
+        <View
+          accessible
+          accessibilityLabel={`Call with ${title}`}
+          accessibilityValue={{ text: status }}
+          className="min-w-0 flex-1 px-1.5"
         >
-          {status}
-        </Text>
+          <Text className="font-t3-medium text-sm text-foreground" numberOfLines={1}>
+            {title}
+          </Text>
+        </View>
+        <IconButton
+          accessibilityLabel={call.muted ? "Unmute" : "Mute"}
+          icon={call.muted ? "mic.slash" : "mic"}
+          variant="tonal"
+          selected={call.muted}
+          disabled={!botCallCanToggleMute(call.phase)}
+          onPress={() => controls.toggleMute(call.callId)}
+        />
+        <IconButton
+          accessibilityLabel={failed ? "Show call error" : "Show call details"}
+          icon="chevron.up"
+          onPress={() => props.onExpandedChange(true)}
+        />
+        <IconButton
+          accessibilityLabel="Open chat"
+          icon="arrow.up.left.and.arrow.down.right"
+          onPress={() => controls.openChat(call)}
+        />
+        <IconButton
+          accessibilityLabel={failed ? "Dismiss" : "End call"}
+          icon="phone.down"
+          variant="danger"
+          onPress={() => controls.end(call.callId)}
+        />
       </View>
-      <IconButton
-        accessibilityLabel={call.muted ? "Unmute" : "Mute"}
-        icon={call.muted ? "mic.slash" : "mic"}
-        variant="tonal"
-        selected={call.muted}
-        disabled={!botCallCanToggleMute(call.phase)}
-        onPress={() => controls.toggleMute(call.callId)}
-      />
-      <IconButton
-        accessibilityLabel="Show transcript"
-        icon="chevron.up"
-        onPress={() => props.onExpandedChange(true)}
-      />
-      <IconButton
-        accessibilityLabel="Open chat"
-        icon="arrow.up.left.and.arrow.down.right"
-        onPress={() => controls.openChat(call)}
-      />
-      <IconButton
-        accessibilityLabel={failed ? "Dismiss" : "End call"}
-        icon="phone.down"
-        variant="danger"
-        onPress={() => controls.end(call.callId)}
-      />
+      <Text
+        className={cn("px-2 text-sm", failed ? "text-danger-foreground" : "text-foreground-muted")}
+        accessibilityLiveRegion="polite"
+      >
+        {status}
+      </Text>
       {props.expanded ? (
         <BotCallTranscriptSheet
           botTitle={title}
+          status={status}
+          failed={failed}
           onClose={() => props.onExpandedChange(false)}
           onOpenChat={() => controls.openChat(call)}
           transcript={props.transcript}

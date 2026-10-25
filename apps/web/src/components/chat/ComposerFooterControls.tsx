@@ -154,6 +154,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   isRunning: boolean;
   canInterrupt: boolean;
   followUpBehavior: "queue" | "steer";
+  bot?: boolean;
   canSteer: boolean;
   alternateShortcutLabel: string | null;
   showPlanFollowUpPrompt: boolean;
@@ -192,6 +193,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         <ContextWindowMeterPlaceholder />
       ) : null}
       <ComposerPrimaryActions
+        bot={props.bot ?? false}
         compact={props.compact}
         canOperateThread={props.canOperateThread}
         pendingAction={props.pendingAction}

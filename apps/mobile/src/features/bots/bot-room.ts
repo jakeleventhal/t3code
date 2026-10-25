@@ -28,7 +28,7 @@ export interface BotRoomEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly assistant: BotRoomBot;
-  /** Assistants besides this environment's own, oldest first. Listed, never merged or hidden. */
+  /** Assistants besides this environment's own, oldest first. Kept searchable so their histories remain accessible. */
   readonly extraAssistants: ReadonlyArray<BotRoomBot>;
   readonly specialists: ReadonlyArray<BotRoomBot>;
 }
@@ -209,8 +209,9 @@ export interface BotInboxEntry {
   readonly preview: string | null;
   /** The main conversation's latest message or reply; null before it has any. */
   readonly activityAt: string | null;
-  /** The main conversation has a reply the user has not seen. */
+  /** The main conversation or one of its threads has an unseen reply. */
   readonly unread: boolean;
+  readonly needsAttention: boolean;
   /** Messages this device holds for the main conversation until its host takes them. */
   readonly unsent: number;
   /** Set only where the name alone would not say which bot this is. */
@@ -270,7 +271,9 @@ function inboxEntry(
     mainStatus === "needs-you"
       ? null
       : (topicStatuses.find((entry) => entry.status === "needs-you")?.topic ?? null);
-  const unread = main !== null && threadHasUnseenCompletion(main);
+  const mainUnread = main !== null && threadHasUnseenCompletion(main);
+  const unreadThread = bot.topics.find(threadHasUnseenCompletion);
+  const unread = mainUnread || unreadThread !== undefined;
   return {
     bot,
     connected,
@@ -283,7 +286,11 @@ function inboxEntry(
           ? "working"
           : null,
     needsThread,
-    preview: mainPreview(bot, unread),
+    needsAttention: mainStatus === "needs-you" || needsThread !== null,
+    preview:
+      !mainUnread && unreadThread
+        ? `↳ ${unreadThread.title} · New reply`
+        : mainPreview(bot, mainUnread),
     activityAt:
       main === null
         ? null
@@ -387,7 +394,13 @@ export function buildBotInbox(input: {
   }
   return hero === null
     ? { hero: null, rows: labelled.sort(newestActivityFirst) }
-    : { hero: labelled[0]!, rows: labelled.slice(1).sort(newestActivityFirst) };
+    : {
+        hero: labelled[0]!,
+        rows: labelled
+          .slice(1)
+          .filter((entry) => entry.bot.role !== "assistant")
+          .sort(newestActivityFirst),
+      };
 }
 
 /** A bot's open threads besides its main conversation, for the count on its Threads button. */

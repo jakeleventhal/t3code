@@ -33,6 +33,7 @@ interface ComposerPrimaryActionsProps {
   canInterrupt: boolean;
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
+  bot?: boolean;
   alternateShortcutLabel?: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
@@ -88,6 +89,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   canInterrupt,
   followUpBehavior = "steer",
   canSteer = true,
+  bot = false,
   alternateShortcutLabel = null,
   showPlanFollowUpPrompt,
   promptHasText,
@@ -116,6 +118,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const redesign = useClientSettings((s) => s.redesignEnabled);
   const shortcutModifiers = useShortcutModifierState();
   const isQueuing =
+    !bot &&
     !isEditingQueuedMessage &&
     resolveComposerDispatchMode({
       running: isRunning,
@@ -303,9 +306,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     submitStatus ??
     (compactsBeforeSend
       ? `Summarize ${compactTokens} tokens of history, then send`
-      : isRunning && !isEditingQueuedMessage && canSteer
-        ? `Click to ${followUpBehavior}, Ctrl/⌘-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
-        : submitLabel);
+      : bot
+        ? "Send to the current conversation"
+        : isRunning && !isEditingQueuedMessage && canSteer
+          ? `Click to ${followUpBehavior}, Ctrl/⌘-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
+          : submitLabel);
 
   const sendButton = (
     <button

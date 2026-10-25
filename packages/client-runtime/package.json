@@ -602,6 +602,10 @@
     "./review-diff-metadata": {
       "types": "./src/reviewDiffMetadata.ts",
       "default": "./src/reviewDiffMetadata.ts"
+    },
+    "./voice-call/preview": {
+      "types": "./src/voice-call/preview.ts",
+      "default": "./src/voice-call/preview.ts"
     }
   },
   "scripts": {

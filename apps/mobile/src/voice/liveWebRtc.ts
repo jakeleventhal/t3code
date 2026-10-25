@@ -1,3 +1,4 @@
+import { VoiceCallSetupError } from "@t3tools/client-runtime/voice-call";
 import { openLiveMedia, type LiveMediaInput } from "@t3tools/client-runtime/voice-call/live-media";
 import type { MediaStream, MediaStreamTrack } from "react-native-webrtc";
 
@@ -38,17 +39,27 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
     });
     return {
       async offer() {
-        const captured = await mediaDevices.getUserMedia({ audio: true, video: false });
-        if (stopped) {
-          captured.release();
-          throw new Error("The voice connection was cancelled.");
-        }
-        microphone = captured;
-        for (const track of captured.getAudioTracks()) {
-          track.addEventListener("ended", () => {
-            if (!stopped) events.fail("Microphone access ended.");
-          });
-          peer.addTrack(track, captured);
+        if (input.playbackOnly) {
+          peer.addTransceiver("audio", { direction: "recvonly" });
+        } else {
+          const captured = await mediaDevices
+            .getUserMedia({ audio: true, video: false })
+            .catch(() => {
+              throw new VoiceCallSetupError(
+                "Microphone access failed. Allow T3 Code microphone access in iPhone or Android Settings, then try the call again.",
+              );
+            });
+          if (stopped) {
+            captured.release();
+            throw new Error("The voice connection was cancelled.");
+          }
+          microphone = captured;
+          for (const track of captured.getAudioTracks()) {
+            track.addEventListener("ended", () => {
+              if (!stopped) events.fail("Microphone access ended.");
+            });
+            peer.addTrack(track, captured);
+          }
         }
         const offer = await peer.createOffer({});
         if (stopped) throw new Error("The voice connection was cancelled.");

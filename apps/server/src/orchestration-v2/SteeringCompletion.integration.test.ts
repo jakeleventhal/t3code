@@ -18,12 +18,15 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
+import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
@@ -408,6 +411,7 @@ const composerSelection = {
 const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function* (
   name: string,
   canRestart = false,
+  bufferBotMessage = false,
 ) {
   const cwd = yield* checkpointWorkspace(name);
   const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
@@ -500,15 +504,43 @@ const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function*
         };
       }),
   };
-  const layer = ProviderReplayHarness.layerWithRegistry(
-    { name },
-    ProviderAdapterRegistry.layerSingle(adapter),
-    { runEffectWorker: false },
+  const layer = Layer.merge(
+    ProviderReplayHarness.layerWithRegistry(
+      { name },
+      ProviderAdapterRegistry.layerSingle(adapter),
+      { runEffectWorker: false },
+    ),
+    ProjectStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
   );
   const startFirstTurn = Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
     const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
     const threadId = ThreadId.make(`thread:${name}`);
+    if (bufferBotMessage) {
+      const at = DateTime.formatIso(yield* DateTime.now);
+      yield* (yield* ProjectStore.ProjectStoreV2).apply({
+        sequence: 1,
+        eventId: EventId.make("bot-project"),
+        aggregateKind: "project",
+        aggregateId: ProjectId.make(`project:${name}`),
+        occurredAt: at,
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "project.created",
+        payload: {
+          projectId: ProjectId.make(`project:${name}`),
+          title: "Assistant",
+          botRole: "assistant",
+          workspaceRoot: cwd,
+          defaultModelSelection: runSelection,
+          scripts: [],
+          createdAt: at,
+          updatedAt: at,
+        },
+      });
+    }
     yield* orchestrator.dispatch({
       type: "thread.create",
       commandId: CommandId.make("create"),
@@ -543,8 +575,45 @@ const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function*
       createdBy: "user",
       creationSource: "web",
     });
+    const promoted = bufferBotMessage
+      ? yield* orchestrator.streamDomainEvents.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "turn-item.updated" &&
+              event.payload.type === "user_message" &&
+              event.payload.messageId === MessageId.make("message:startup"),
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        )
+      : undefined;
+    if (bufferBotMessage) {
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("startup"),
+        threadId,
+        messageId: MessageId.make("message:startup"),
+        text: "Change direction before the first answer.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+        deliveryIntent: "auto",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(threadId)).runs.filter(
+          (run) => run.status === "queued",
+        ).length,
+        1,
+      );
+    }
     yield* worker.drain();
     yield* Fiber.join(running);
+    if (promoted) {
+      yield* Fiber.join(promoted);
+      yield* worker.drain();
+    }
     return threadId;
   });
   return { cwd, events, started, steered, layer, startFirstTurn };
@@ -1259,6 +1328,29 @@ it.effect("stops the running turn when a goal clear ends the goal driving it", (
           started: ["first", "/goal clear"],
           stopRequested: true,
         });
+      }).pipe(Effect.provide(layer));
+    }),
+  ),
+);
+
+it.effect("steers bot input buffered during startup before the first turn completes", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { layer, startFirstTurn, started, steered } = yield* nextTurnSelectionHarness(
+        "bot-startup",
+        false,
+        true,
+      );
+      yield* Effect.gen(function* () {
+        const threadId = yield* startFirstTurn;
+        const projection = yield* (yield* Orchestrator.OrchestratorV2).getThreadProjection(
+          threadId,
+        );
+        assert.equal(started.length, 1);
+        assert.equal(steered.length, 1);
+        assert.ok(steered[0]?.endsWith("Change direction before the first answer."));
+        assert.equal(projection.runs.filter((run) => run.status === "queued").length, 0);
+        assert.equal(projection.runs[0]?.status, "running");
       }).pipe(Effect.provide(layer));
     }),
   ),

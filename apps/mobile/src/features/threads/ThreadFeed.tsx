@@ -242,6 +242,7 @@ import {
 import {
   useLiveThreadLinkLabels,
   useQuietThreadShell,
+  useProject,
   useThreadChipIcons,
 } from "../../state/entities";
 import { useThreadSelection } from "../../state/use-thread-selection";
@@ -422,6 +423,13 @@ function AssistantForkButton(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly sourceTitle: string;
 }) {
+  const thread = useQuietThreadShell({
+    environmentId: props.environmentId,
+    threadId: props.projectedItem.sourceThreadId,
+  });
+  const project = useProject(
+    thread?.projectId ? { environmentId: props.environmentId, projectId: thread.projectId } : null,
+  );
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,
@@ -436,7 +444,7 @@ function AssistantForkButton(props: {
   });
   const runId = props.projectedItem.item.runId;
 
-  if (!canFork || runId === null) return null;
+  if (project?.botRole != null || !canFork || runId === null) return null;
 
   return (
     <Pressable

@@ -167,6 +167,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.botsVoiceBegin]: "bots",
   [WS_METHODS.botsVoiceObserve]: "bots",
   [WS_METHODS.botsVoiceContext]: "bots",
+  [WS_METHODS.botsVoicePreview]: "bots",
   [WS_METHODS.botsVoiceConnect]: "bots",
   [WS_METHODS.botsVoiceWork]: "bots",
   [WS_METHODS.botsVoiceAppend]: "bots",

@@ -31,6 +31,8 @@ import {
   VoiceCallConnectInput,
   VoiceCallConnectionInfo,
   VoiceConnectionError,
+  VoicePreviewInput,
+  VoicePreviewResult,
   VoiceCallWorkInput,
   VoiceCallWorkResult,
   VoiceWorkError,
@@ -458,6 +460,7 @@ export const WS_METHODS = {
   botsCreate: "bots.create",
   botsFiles: "bots.files",
   botsSetAvatar: "bots.setAvatar",
+  botsVoicePreview: "bots.voicePreview",
   botsVoiceCatalog: "bots.voiceCatalog",
   botsVoiceTranscript: "bots.voiceTranscript",
   botsVoiceBegin: "bots.voiceBegin",
@@ -1401,6 +1404,12 @@ const WsBotsSetAvatarRpc = Rpc.make(WS_METHODS.botsSetAvatar, {
   error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
 });
 
+const WsBotsVoicePreviewRpc = Rpc.make(WS_METHODS.botsVoicePreview, {
+  payload: VoicePreviewInput,
+  success: VoicePreviewResult,
+  error: Schema.Union([VoiceConnectionError, EnvironmentAuthorizationError]),
+});
+
 const WsBotsVoiceCatalogRpc = Rpc.make(WS_METHODS.botsVoiceCatalog, {
   payload: Schema.Struct({}),
   success: VoiceCatalog,
@@ -2306,6 +2315,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsBotsCreateRpc,
   WsBotsFilesRpc,
   WsBotsSetAvatarRpc,
+  WsBotsVoicePreviewRpc,
   WsBotsVoiceCatalogRpc,
   WsBotsVoiceTranscriptRpc,
   WsBotsVoiceBeginRpc,

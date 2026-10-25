@@ -58,11 +58,11 @@ it.layer(NodeServices.layer)("bot voice configuration", (it) => {
           ["personal", "configured"],
           ["work", "configured"],
           ["empty", "missing-credentials"],
-          ["plan", "unavailable"],
+          ["plan", "configured"],
         ],
       );
       assert.isAtLeast(catalog.connections[0]!.models[0]!.voices.length, 2);
-      assert.deepEqual(catalog.connections[3]!.models, []);
+      assert.isAbove(catalog.connections[3]!.models.length, 0);
       const echoed = yield* settings.updateSettings({ voiceConnections: client.voiceConnections });
       assert.propertyVal(echoed.voiceConnections.personal, "apiKey", "test-private-openai");
       assert.propertyVal(echoed.voiceConnections.work, "apiKey", "test-private-xai");

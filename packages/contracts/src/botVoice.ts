@@ -220,6 +220,7 @@ export class VoiceConnectionError extends Schema.TaggedError<VoiceConnectionErro
       "invalid-response",
       "storage",
     ]),
+    status: Schema.optional(Schema.Int),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -234,11 +235,13 @@ export class VoiceConnectionError extends Schema.TaggedError<VoiceConnectionErro
       case "already-attempted":
         return "This voice connection was already attempted. Start a new call to try again.";
       case "credentials-refused":
-        return "The voice provider did not accept these credentials.";
+        return "The voice account refused the call. Sign in to that account again or update its key in Settings → Voice.";
       case "rate-limited":
-        return "The voice provider's usage limit was reached.";
+        return "The voice account has reached its usage limit. Check its billing or usage, or choose another account in Settings → Voice.";
       case "request-failed":
-        return "Could not connect to the voice provider.";
+        return this.status === undefined
+          ? "The host could not reach the voice provider. Check the host’s internet connection, then try again."
+          : `The voice provider refused the connection (HTTP ${this.status}). Check that the selected account supports voice in Settings → Voice, then try again.`;
       case "invalid-response":
         return "The voice provider returned an invalid connection response.";
       case "storage":
@@ -295,3 +298,23 @@ export class VoiceCallError extends Schema.TaggedError<VoiceCallError>()("VoiceC
     }
   }
 }
+
+export const VOICE_PREVIEW_TEXT = "Hey, this is what my voice sounds like.";
+export const VoicePreviewInput = Schema.Struct({
+  selection: VoiceSelection,
+  sdp: Schema.optional(Schema.NonEmptyString.check(Schema.isMaxLength(131_072))),
+});
+export type VoicePreviewInput = typeof VoicePreviewInput.Type;
+export const VoicePreviewResult = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("audio"),
+    dataUri: Schema.String.check(Schema.isMaxLength(2_000_000)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("webrtc"),
+    sessionId: Schema.String,
+    sdp: Schema.String,
+    protocol: Schema.optional(Schema.Literal("codex")),
+  }),
+]);
+export type VoicePreviewResult = typeof VoicePreviewResult.Type;

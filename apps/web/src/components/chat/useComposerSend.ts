@@ -866,7 +866,7 @@ export function useComposerSend(input: ComposerSendInput) {
       resumeCompactionTokens,
       keepFullHistory,
       phase,
-      dispatchMode,
+      dispatchMode: isBotChat ? "auto" : dispatchMode,
     });
     if (missingWorktreeBaseBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");

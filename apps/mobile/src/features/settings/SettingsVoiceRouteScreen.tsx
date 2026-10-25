@@ -1,4 +1,6 @@
 import { openSettings } from "./settings-navigation";
+import { useVoicePreview } from "../../voice/useVoicePreview";
+import { IconButton } from "../../components/ui/IconButton";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   AuthProvidersManageScope,
@@ -287,11 +289,13 @@ function VoiceEnvironmentOverview(props: {
 
 /** Connection, then model when there is a choice, then voice. Labels come from the catalog only. */
 function VoicePicker(props: {
+  readonly environmentId: EnvironmentId;
   readonly connections: readonly VoiceCatalogConnection[];
   readonly selection: VoiceSelection | null;
   readonly disabled: boolean;
   readonly onSelect: (selection: VoiceSelection) => void;
 }) {
+  const preview = useVoicePreview(props.environmentId);
   const connection = props.connections.find((entry) => entry.id === props.selection?.connectionId);
   const model = connection?.models.find((entry) => entry.id === props.selection?.model);
   // A saved pick on an unusable account stays visible, but offers no alternatives on it.
@@ -342,18 +346,32 @@ function VoicePicker(props: {
       ) : null}
       {connection && model ? (
         <SettingsSection title="Voice">
-          {model.voices.map((entry, index) => (
-            <SettingsChoiceRow
-              key={entry.id}
-              label={entry.label}
-              selected={entry.id === props.selection?.voice}
-              separated={index > 0}
-              disabled={locked}
-              onPress={() =>
-                props.onSelect({ connectionId: connection.id, model: model.id, voice: entry.id })
-              }
-            />
-          ))}
+          {preview.error ? (
+            <Text className="px-4 py-2 text-danger-foreground">{preview.error}</Text>
+          ) : null}
+          {model.voices.map((entry, index) => {
+            const selection = { connectionId: connection.id, model: model.id, voice: entry.id };
+            const playing = preview.playing === JSON.stringify(selection);
+            return (
+              <View key={entry.id} className="flex-row items-center">
+                <View className="flex-1">
+                  <SettingsChoiceRow
+                    label={entry.label}
+                    selected={entry.id === props.selection?.voice}
+                    separated={index > 0}
+                    disabled={locked}
+                    onPress={() => props.onSelect(selection)}
+                  />
+                </View>
+                <IconButton
+                  icon={playing ? "stop.fill" : "play"}
+                  accessibilityLabel={`${playing ? "Stop" : "Preview"} ${entry.label}`}
+                  disabled={!isVoiceConnectionUsable(connection)}
+                  onPress={() => void preview.play(selection, connection.kind)}
+                />
+              </View>
+            );
+          })}
         </SettingsSection>
       ) : null}
     </>
@@ -373,6 +391,7 @@ export function SettingsVoiceDefaultRouteScreen({
     <VoiceScreen title="Default voice">
       <VoiceEnvironmentGate voice={voice}>
         <VoicePicker
+          environmentId={environmentId}
           connections={voice.catalog.data?.connections ?? []}
           selection={selection}
           disabled={disabled}
@@ -468,6 +487,7 @@ export function SettingsVoiceBotRouteScreen({
         </SettingsSection>
         {source.kind === "own" ? (
           <VoicePicker
+            environmentId={environmentId}
             connections={catalog?.connections ?? []}
             selection={source.selection}
             disabled={disabled}

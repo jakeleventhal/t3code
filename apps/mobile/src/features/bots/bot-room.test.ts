@@ -222,7 +222,7 @@ describe("bots inbox", () => {
     botMainThreadId: ThreadId.make("work-assistant-main"),
   });
 
-  it("leads with one Assistant and lists Assistants made elsewhere with their host", () => {
+  it("shows one pinned Assistant without legacy Assistants in the inbox", () => {
     const inbox = buildBotInbox({
       environments: [online(HOME, "Home"), online(WORK, "Studio")],
       projects: [assistant, workAssistant, fitness],
@@ -234,12 +234,12 @@ describe("bots inbox", () => {
     expect(inbox.hero?.bot.project?.id).toBe(assistant.id);
     expect(inbox.hero?.hostLabel).toBeNull();
     const rows = inbox.rows.map((row) => [row.bot.title, row.hostLabel]);
-    expect(rows).toContainEqual(["Assistant", "Studio"]);
+    expect(rows).not.toContainEqual(["Assistant", "Studio"]);
     expect(rows).toContainEqual(["Fitness", null]);
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(1);
   });
 
-  it("keeps a second Assistant on the hero's environment as a row, not a second hero", () => {
+  it("keeps a second Assistant out of the inbox without deleting it", () => {
     const duplicate = project({
       environmentId: HOME,
       id: ProjectId.make("assistant-duplicate"),
@@ -261,9 +261,8 @@ describe("bots inbox", () => {
     // The older one is the hero, as the server opens it.
     expect(inbox.hero?.bot.project?.id).toBe(assistant.id);
     const row = inbox.rows.find((entry) => entry.bot.project?.id === duplicate.id);
-    expect(row?.hostLabel).toBe("Home");
-    expect(row?.bot.topics.map((topic) => topic.id)).toEqual(["dup-topic"]);
-    expect(inbox.rows).toHaveLength(2);
+    expect(row).toBeUndefined();
+    expect(inbox.rows).toHaveLength(1);
   });
 
   it("offers a not-yet-created Assistant as the hero but never as a row", () => {
@@ -368,11 +367,23 @@ describe("bots inbox", () => {
 
     const waiting = entry([main({}), side]);
     expect(waiting.status).toBe("needs-you");
+    expect(waiting.needsAttention).toBe(true);
+    expect(entry([main({}), side], false).needsAttention).toBe(true);
     expect(waiting.needsThread?.title).toBe("Squat form");
 
     const mainWaiting = entry([main({ hasPendingUserInput: true }), side]);
     expect(mainWaiting.status).toBe("needs-you");
     expect(mainWaiting.needsThread).toBeNull();
+    const unreadSide = {
+      ...side,
+      hasPendingApprovals: false,
+      latestRun: run("completed", "2026-10-02T00:00:00.000Z"),
+      lastVisitedAt: "2026-10-01T00:00:00.000Z",
+    };
+    const unread = entry([main({}), unreadSide]);
+    expect(unread.unread).toBe(true);
+    expect(unread.needsAttention).toBe(false);
+    expect(unread.preview).toBe("↳ Squat form · New reply");
   });
 
   it("previews what the shell knows, never inventing a message", () => {

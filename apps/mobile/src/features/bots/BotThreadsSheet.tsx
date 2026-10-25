@@ -62,6 +62,16 @@ function ThreadRow(props: {
   readonly onMenuAction?: (action: ThreadMenuAction) => void;
   readonly onPress: () => void;
 }) {
+  const actions =
+    props.menu?.map((item) => ({
+      id: item.id,
+      title: item.title,
+      attributes: { disabled: item.disabled },
+    })) ?? [];
+  const onAction = (id: string) => {
+    const action = props.menu?.find((item) => item.id === id);
+    if (action && !action.disabled) props.onMenuAction?.(action.id);
+  };
   const row = (
     <RowPressable
       accessibilityRole="button"
@@ -88,6 +98,11 @@ function ThreadRow(props: {
             {props.subtitle}
           </Text>
         </View>
+        {props.menu ? (
+          <Menu actions={actions} onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}>
+            <IconButton icon="ellipsis" accessibilityLabel={`Actions for ${props.title}`} />
+          </Menu>
+        ) : null}
         {props.current ? (
           <SymbolView name="checkmark" size={14} tintColorClassName="accent-icon-muted" />
         ) : null}

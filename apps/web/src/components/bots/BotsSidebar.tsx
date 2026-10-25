@@ -2,7 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { MessageSquareIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, MessageSquareIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { isElectron } from "../../env";
@@ -17,7 +17,11 @@ import {
 import { useEnvironmentConnectionSummaries } from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import type { SidebarThreadSummary } from "../../types";
-import { isSidebarSubagentThread, resolveThreadStatusPill } from "../Sidebar.logic";
+import {
+  hasUnseenCompletion,
+  isSidebarSubagentThread,
+  resolveThreadStatusPill,
+} from "../Sidebar.logic";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
 import { SidebarHeaderIconButton } from "../sidebar/SidebarThreadHeader";
 import { Button } from "../ui/button";
@@ -50,13 +54,34 @@ import { useDesignatedAssistantEnvironmentId, useRouteBotProject } from "./useBo
 
 type BotEntry = BotsCollectionEntry<EnvironmentProject>;
 
-function StatusDot({ thread }: { thread: SidebarThreadSummary | null }) {
-  const pill = thread ? resolveThreadStatusPill({ thread }) : null;
-  if (pill === null) return null;
+function StatusDot({
+  thread,
+  related = [],
+  offline = false,
+}: {
+  thread: SidebarThreadSummary | null;
+  related?: ReadonlyArray<SidebarThreadSummary>;
+  offline?: boolean;
+}) {
+  const pill = thread && !offline ? resolveThreadStatusPill({ thread }) : null;
+  const conversations = thread ? [thread, ...related] : related;
+  const needsAttention = conversations.some(
+    (entry) => entry.hasPendingApprovals || entry.hasPendingUserInput,
+  );
+  const unread = conversations.some(hasUnseenCompletion);
+  if (pill === null && !needsAttention && !unread) return null;
   return (
-    <span className="ml-auto flex shrink-0 items-center">
-      <span aria-hidden className={cn("size-1.5 rounded-full", pill.dotClass)} />
-      <span className="sr-only">{pill.label}</span>
+    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+      {needsAttention ? (
+        <CircleAlertIcon className="size-4 text-warning" aria-label="Needs attention" />
+      ) : null}
+      {unread ? (
+        <MessageSquareIcon className="size-3.5 text-primary" aria-label="Unread reply" />
+      ) : null}
+      {!needsAttention && !unread && pill ? (
+        <span aria-hidden className={cn("size-1.5 rounded-full", pill.dotClass)} />
+      ) : null}
+      <span className="sr-only">{pill?.label}</span>
     </span>
   );
 }
@@ -231,7 +256,7 @@ export default function BotsSidebar() {
   const renderBot = (entry: BotEntry) => {
     const bot = entry.project;
     if (bot === null) return null;
-    const { main } = conversationsFor(bot);
+    const { main, topics } = conversationsFor(bot);
     const key = entryKey(entry);
     const note = entryNote(entry);
     return (
@@ -250,7 +275,7 @@ export default function BotsSidebar() {
               {note}
             </span>
           ) : null}
-          {entry.offline ? null : <StatusDot thread={main} />}
+          <StatusDot thread={main} related={topics} offline={entry.offline} />
         </SidebarMenuButton>
         {renderOpenThread(bot)}
       </SidebarMenuItem>
@@ -365,6 +390,11 @@ export default function BotsSidebar() {
                         : `${assistant.hostLabel} · ${assistantStatus}`}
                     </span>
                   </span>
+                  <StatusDot
+                    thread={assistantMain}
+                    related={assistantProject ? conversationsFor(assistantProject).topics : []}
+                    offline={assistant.offline}
+                  />
                 </SidebarMenuButton>
                 {assistantProject ? renderOpenThread(assistantProject) : null}
               </SidebarMenuItem>

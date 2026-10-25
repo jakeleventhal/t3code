@@ -42,6 +42,7 @@ function fixture() {
     localDescription: { sdp: string } | null = null;
     createDataChannel = vi.fn(() => channel);
     addTrack = vi.fn();
+    addTransceiver = vi.fn();
     createOffer = vi.fn(async () => {
       offerMade.resolve();
       return { type: "offer", sdp: "local-sdp" };
@@ -138,13 +139,15 @@ describe("browser Live media lifecycle", () => {
   it("ends immediately while microphone permission is pending and stops a late permission grant", async () => {
     const f = fixture();
     const permission = deferred<typeof f.stream>();
+    const released = deferred<void>();
+    f.track.stop.mockImplementation(() => released.resolve());
     f.getUserMedia.mockImplementation(() => permission.promise);
     const pending = f.open();
     f.abort.abort();
-    await expect(pending).rejects.toThrow("Could not establish");
+    await expect(pending).rejects.toThrow("The voice connection was cancelled.");
     expect(f.peer.close).toHaveBeenCalledOnce();
     permission.resolve(f.stream);
-    await Promise.resolve();
+    await released.promise;
     expect(f.track.stop).toHaveBeenCalledOnce();
     expect(f.negotiate).not.toHaveBeenCalled();
   });
@@ -163,7 +166,7 @@ describe("browser Live media lifecycle", () => {
     });
     const signal = await negotiationStarted.promise;
     f.abort.abort();
-    await expect(pending).rejects.toThrow("Could not establish");
+    await expect(pending).rejects.toThrow("The voice connection was cancelled.");
     expect(signal.aborted).toBe(true);
     expect(f.track.stop).toHaveBeenCalled();
     answer.resolve({ sessionId: "late", sdp: "too-late" });
@@ -217,7 +220,7 @@ describe("browser Live media lifecycle", () => {
     vi.useFakeTimers();
     const f = fixture();
     const pending = f.open();
-    const failure = expect(pending).rejects.toThrow("Could not establish");
+    const failure = expect(pending).rejects.toThrow("The voice connection timed out.");
     await f.remoteApplied.promise;
     await vi.advanceTimersByTimeAsync(30_000);
     await failure;
@@ -281,4 +284,22 @@ describe("browser Live media lifecycle", () => {
       "The microphone change could not be confirmed.",
     );
   });
+});
+
+it("voice previews receive audio without requesting microphone access", async () => {
+  const f = fixture();
+  const pending = openLiveWebRtc({
+    signal: f.abort.signal,
+    negotiate: f.negotiate,
+    callbacks: f.callbacks,
+    playbackOnly: true,
+  });
+  await f.remoteApplied.promise;
+  f.channel.receive({ type: "session.started", session: { id: "live-1" } });
+  const media = await pending;
+  expect(f.getUserMedia).not.toHaveBeenCalled();
+  expect(f.peer.addTrack).not.toHaveBeenCalled();
+  expect(f.peer.addTransceiver).toHaveBeenCalledWith("audio", { direction: "recvonly" });
+  await f.finish(media);
+  expect(f.peer.close).toHaveBeenCalledOnce();
 });

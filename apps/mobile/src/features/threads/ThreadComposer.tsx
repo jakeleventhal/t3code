@@ -517,12 +517,15 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       states: uploadStates,
     });
   const sendPresentation = resolveComposerSendPresentation({
+    bot: props.simplified,
     editingQueuedMessage: queuedEdit !== null,
     running: props.activeThreadBusy,
     canSteer: props.canSteerActiveTurn,
-    followUpBehavior: props.followUpBehavior,
+    followUpBehavior: props.simplified ? "steer" : props.followUpBehavior,
     deliveryDeferred:
-      props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading,
+      props.connectionState !== "connected" ||
+      (!props.simplified && props.queueCount > 0) ||
+      attachmentsUploading,
   });
   const sendLabel = sendPresentation.label;
   const currentModelSelection = props.selectedThread.modelSelection;

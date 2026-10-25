@@ -154,8 +154,9 @@ export function resolveMessageDispatchIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
+  preferSteering = false,
 ): MessageDispatchMode {
-  const mode = resolveDeliveryIntent(projection, requestedMode, deliveryIntent);
+  const mode = resolveDeliveryIntent(projection, requestedMode, deliveryIntent, preferSteering);
   if (mode.type !== "steer_active") return mode;
   // Compaction and sign-out cannot accept steers; queue follow-ups.
   const target = projection.runs.find((run) => run.id === mode.targetRunId);
@@ -169,6 +170,7 @@ function resolveDeliveryIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
+  preferSteering = false,
 ): MessageDispatchMode {
   if (deliveryIntent === undefined) return requestedMode;
 
@@ -211,13 +213,15 @@ function resolveDeliveryIntent(
   if (capabilities?.supportsActiveSteering === true) {
     return { type: "steer_active", targetRunId: activeRun.id };
   }
-  if (capabilities?.supportsQueuedMessages === true) {
+  if (!preferSteering && capabilities?.supportsQueuedMessages === true) {
     return { type: "queue_after_active" };
   }
   if (capabilities?.supportsSteeringByInterruptRestart === true) {
     return { type: "restart_active", targetRunId: activeRun.id };
   }
-  return { type: "queue_after_active" };
+  return preferSteering
+    ? { type: "steer_active", targetRunId: activeRun.id }
+    : { type: "queue_after_active" };
 }
 
 interface CapabilityCheckInput {

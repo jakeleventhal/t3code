@@ -1,3 +1,4 @@
+import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   CodexSettings,
   VoiceConnectionError,
@@ -81,7 +82,7 @@ const make = Effect.gen(function* () {
   const connect = Effect.fn("CodexVoice.connect")(
     function* (input: Parameters<CodexVoice["Service"]["connect"]>[0]) {
       const current = yield* settings.getSettings;
-      const instance = current.providerInstances[input.providerInstanceId];
+      const instance = voiceProviderInstances(current)[input.providerInstanceId];
       const config = subscriptionVoiceConfig(instance);
       if (config === null || instance === undefined)
         return yield* new VoiceConnectionError({ reason: "unavailable" });
@@ -173,6 +174,7 @@ const make = Effect.gen(function* () {
       const response = yield* http.execute(request);
       if (response.status < 200 || response.status >= 300)
         return yield* new VoiceConnectionError({
+          status: response.status,
           reason:
             response.status === 401 || response.status === 403
               ? "credentials-refused"

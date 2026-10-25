@@ -32,3 +32,16 @@ describe("resolveComposerSendPresentation", () => {
     expect(presentation.offersFollowUpChoice).toBe(false);
   });
 });
+
+it("bots send into ongoing work without a queue/restart menu", () => {
+  const result = resolveComposerSendPresentation({ ...idle, bot: true, running: true });
+  expect(result).toMatchObject({
+    label: "Send",
+    action: "steer",
+    alternate: null,
+    offersFollowUpChoice: false,
+  });
+  expect(
+    resolveComposerSendPresentation({ ...idle, bot: true, running: true, deliveryDeferred: true }),
+  ).toMatchObject({ label: "Queue", action: null, offersFollowUpChoice: false });
+});

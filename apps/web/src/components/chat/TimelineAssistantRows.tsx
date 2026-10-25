@@ -82,6 +82,10 @@ function AssistantForkButton({
   readonly projectedItem: NonNullable<Extract<TimelineRow, { kind: "message" }>["projectedItem"]>;
 }) {
   const ctx = use(TimelineRowCtx);
+  const thread = useThreadShell(ctx.threadRef);
+  const project = useProject(
+    thread?.projectId ? { environmentId: thread.environmentId, projectId: thread.projectId } : null,
+  );
   const [busy, setBusy] = useState(false);
   const support = useV2ItemSupport({
     environmentId: ctx.activeThreadEnvironmentId,
@@ -94,7 +98,13 @@ function AssistantForkButton({
   });
 
   const onForkFromRun = ctx.onForkFromRun;
-  if (!canFork || onForkFromRun === undefined || projectedItem.item.runId === null) return null;
+  if (
+    project?.botRole != null ||
+    !canFork ||
+    onForkFromRun === undefined ||
+    projectedItem.item.runId === null
+  )
+    return null;
   const runId = projectedItem.item.runId;
 
   return (
