@@ -39,6 +39,7 @@ import { randomUUID } from "~/lib/utils";
 import { readPreparedConnection } from "~/state/session";
 import { resolveAssetUrl } from "~/assets/assetUrls";
 import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
+import { botMentionsUpdateNotice } from "@t3tools/client-runtime/botMentionItems";
 import { toastManager } from "../ui/toast";
 import {
   type ComposerDraftContextRecords,
@@ -77,6 +78,11 @@ export function useComposerContextImport(input: {
   readonly composerFilesRef: ChatComposerProps["composerFilesRef"];
   readonly pendingThreadImportsRef: RefObject<Map<string, number>>;
   readonly addComposerFilesToDraft: (files: ComposerFileAttachment[]) => string[];
+  /**
+   * Set in a bot chat. A bot whose server reads mentions keeps pasted projects, bots, bot files,
+   * and other machines' threads; an older one keeps only its own threads and says why.
+   */
+  readonly botChat: { readonly serverReadsMentions: boolean } | null;
 }) {
   const {
     environmentId,
@@ -93,6 +99,7 @@ export function useComposerContextImport(input: {
     composerFilesRef,
     pendingThreadImportsRef,
     addComposerFilesToDraft,
+    botChat,
   } = input;
   const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -252,6 +259,7 @@ export function useComposerContextImport(input: {
     threadDraftTarget = attachmentDraftTarget,
   ): ReadonlyMap<string, string> => {
     const rewritten = new Map<string, string>();
+    const needsNewerBotServer: string[] = [];
     const dependentAttachmentLocalIds = new Map<string, string>();
     const skippedDependentAttachmentIds = new Set<string>();
     // Resolve annotations before their dependent screenshot records even if a foreign
@@ -299,7 +307,9 @@ export function useComposerContextImport(input: {
                     ? existing.record.id
                     : undefined,
                 })
-              : existing?.kind === "thread"
+              : existing?.kind === "thread" ||
+                  existing?.kind === "project" ||
+                  existing?.kind === "bot-file"
                 ? existing.record
                 : existing
                   ? (uploadedContextRecordFromDraft(existing) ?? undefined)
@@ -307,7 +317,8 @@ export function useComposerContextImport(input: {
       if (
         existingRecord &&
         isSameComposerContextPayload(existingRecord, record) &&
-        (record.kind !== "thread" || threadDraftTarget === attachmentDraftTarget)
+        ((record.kind !== "thread" && record.kind !== "project" && record.kind !== "bot-file") ||
+          threadDraftTarget === attachmentDraftTarget)
       ) {
         if (record.kind === "preview-annotation" && record.screenshotContextId) {
           skippedDependentAttachmentIds.add(record.screenshotContextId);
@@ -352,9 +363,19 @@ export function useComposerContextImport(input: {
           rewritten.set(record.contextId, previewAnnotationContextId(annotation.id));
           break;
         }
-        case "thread": {
-          // The agent can only read threads on its own server; a pasted foreign one is dropped.
-          if (record.environmentId !== environmentId) break;
+        case "thread":
+        case "project":
+        case "bot-file": {
+          // A Code agent reads only threads on its own server; a pasted foreign one is dropped.
+          // A bot also reads the rest once its server understands them.
+          const readable =
+            record.kind === "thread" && record.environmentId === environmentId
+              ? true
+              : botChat?.serverReadsMentions === true;
+          if (!readable) {
+            if (botChat !== null) needsNewerBotServer.push(record.label);
+            break;
+          }
           addComposerDraftThreadContexts(threadDraftTarget, [record], {
             appendReference: false,
           });
@@ -377,6 +398,16 @@ export function useComposerContextImport(input: {
         default:
           break;
       }
+    }
+    if (needsNewerBotServer.length > 0) {
+      toastManager.add({
+        type: "warning",
+        title:
+          needsNewerBotServer.length === 1
+            ? `"${needsNewerBotServer[0]}" wasn't added`
+            : `${needsNewerBotServer.length} references weren't added`,
+        description: botMentionsUpdateNotice(null),
+      });
     }
     return rewritten;
   };

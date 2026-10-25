@@ -580,6 +580,18 @@ it.effect(
             {},
             yield* PreviewAutomationBroker.PreviewAutomationBroker,
             yield* ServerBrowser.ServerBrowser,
+            PeerEnvironmentBroker.PeerEnvironmentBroker.of({
+              connect: () => Effect.die("unused"),
+              respond: () => Effect.die("unused"),
+              invoke: () => Effect.die("unused"),
+              list: Effect.die("unused"),
+            }),
+            {
+              enqueue: () => Effect.die("unused"),
+              list: () => Effect.die("unused"),
+              cancel: () => Effect.die("unused"),
+              flush: () => Effect.die("unused"),
+            },
           ).pipe(Layer.provide(configRpcServices)),
         ),
       );

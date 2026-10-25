@@ -100,6 +100,9 @@ describe("command permissions", () => {
         registry.set(sessions(env), AsyncResult.success(grant(true)));
         registry.set(sessions(other), AsyncResult.success(grant(false)));
         for (const method of [
+          WS_METHODS.peerEnvironmentsSendToThread,
+          WS_METHODS.peerMessagesCancel,
+          WS_METHODS.peerMessagesFlush,
           WS_METHODS.botsOpen,
           WS_METHODS.botsCreate,
           WS_METHODS.botsSetAvatar,

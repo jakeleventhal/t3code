@@ -4,7 +4,7 @@ import {
   type EnvironmentId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type PreviewAnnotationPayload,
-  type ThreadContextRecord,
+  type ReferenceContextRecord,
 } from "@t3tools/contracts";
 import {
   type ComposerFileAttachment,
@@ -82,7 +82,7 @@ export function useComposerStash(input: {
   readonly isComposerCollapsedMobile: boolean;
   readonly composerPreviewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly composerReviewComments: ReadonlyArray<ReviewCommentContext>;
-  readonly composerThreadContexts: ReadonlyArray<ThreadContextRecord>;
+  readonly composerThreadContexts: ReadonlyArray<ReferenceContextRecord>;
   readonly attachmentTargetKey: string;
   readonly isComposerDraftTargetOpen: (targetKey: string) => boolean;
   readonly composerEditorRef: RefObject<ComposerPromptEditorHandle | null>;

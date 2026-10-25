@@ -269,6 +269,7 @@ export function layerWithRegistry<Error>(
       SqlClient.SqlClient,
       MigrationError | PlatformError.PlatformError | SqlError
     >;
+    readonly settingsLayer?: ReturnType<typeof ServerSettings.layerTest>;
     readonly mcpAppModelContextLayer?: Layer.Layer<McpAppModelContext.McpAppModelContext>;
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
@@ -300,12 +301,15 @@ export function layerWithRegistry<Error>(
   const layerProvidedRegistry = registryLayer.pipe(
     Layer.provide(Layer.merge(layerContinuationRequests, McpProviderSessions.layer)),
   );
-  const layerServerSettings = ServerSettings.layerTest({
-    responseStreamingMode: "turn",
-    ...(options.continueThreadsAfterServerUpdate === undefined
-      ? {}
-      : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
-  }).pipe(Layer.orDie);
+  const layerServerSettings = (
+    options.settingsLayer ??
+    ServerSettings.layerTest({
+      responseStreamingMode: "turn",
+      ...(options.continueThreadsAfterServerUpdate === undefined
+        ? {}
+        : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
+    })
+  ).pipe(Layer.orDie);
   const layerStores = Layer.mergeAll(
     EventStore.layer,
     ProjectionStore.layer,
@@ -393,6 +397,7 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerBotContext = BotContext.layer.pipe(
+    Layer.provide(layerServerConfig),
     Layer.provide(BotWorkspace.layer),
     Layer.provide(Layer.merge(layerStores, layerDatabase)),
   );

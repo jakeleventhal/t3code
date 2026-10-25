@@ -3,6 +3,7 @@ import {
   COMPOSER_CONTEXT_MAX_RECORDS,
   ComposerContextId,
   EnvironmentId,
+  ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -313,5 +314,68 @@ describe("mobile context clipboard imports", () => {
     expect(
       collectComposerContextReferences(result!.text).map((reference) => reference.contextId),
     ).toEqual(result!.context.records.map((record) => record.contextId));
+  });
+
+  it("keeps a bot's pasted projects, files, and other machines' threads only if its server reads them", async () => {
+    const project = {
+      version: 1 as const,
+      kind: "project" as const,
+      contextId: ComposerContextId.make("project_source-t3code"),
+      label: "t3code",
+      environmentId: EnvironmentId.make("source"),
+      projectId: ProjectId.make("t3code"),
+      title: "t3code",
+      botRole: null,
+    };
+    const botFile = {
+      version: 1 as const,
+      kind: "bot-file" as const,
+      contextId: ComposerContextId.make("bot-file_item-turn-1"),
+      label: "Pricing report",
+      environmentId: EnvironmentId.make("destination"),
+      projectId: ProjectId.make("bot-researcher"),
+      fileId: "item:turn-1",
+      fileKind: "html" as const,
+      title: "Pricing report",
+      attachmentId: "render-1",
+      mimeType: "text/html",
+      sourceThreadId: ThreadId.make("local-thread"),
+    };
+    const records = [foreignThread, localThread, project, botFile];
+    const botClipboard = {
+      text: records.map(formatComposerContextReference).join(" "),
+      fragment: encodeComposerContextFragment({
+        version: 1,
+        source: { environmentId: EnvironmentId.make("source") },
+        records,
+      })!,
+      html: "",
+    };
+    const paste = (serverReadsMentions: boolean) =>
+      importComposerContextClipboard(
+        botClipboard,
+        0,
+        new AbortController().signal,
+        0,
+        EnvironmentId.make("destination"),
+        { serverReadsMentions },
+      );
+
+    const current = await paste(true);
+    expect(current!.context.records.map((record) => record.kind)).toEqual([
+      "thread",
+      "thread",
+      "project",
+      "bot-file",
+    ]);
+    expect(current!.skippedThreads).toEqual([]);
+    expect(current!.needsNewerBotServer).toEqual([]);
+    // A bot file is a reference to a stored file, never an attachment to upload again.
+    expect(current!.attachments).toEqual([]);
+    expect(mocks.download).not.toHaveBeenCalled();
+
+    const older = await paste(false);
+    expect(older!.context.records).toEqual([{ ...localThread, contextId: expect.any(String) }]);
+    expect(older!.needsNewerBotServer).toEqual([foreignThread.label, project.label, botFile.label]);
   });
 });

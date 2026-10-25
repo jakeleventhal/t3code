@@ -33,6 +33,13 @@ export const BotCreateInput = Schema.Struct({
 });
 export type BotCreateInput = typeof BotCreateInput.Type;
 
+export const BotThreadCreateInput = Schema.Struct({
+  commandId: CommandId,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+});
+export type BotThreadCreateInput = typeof BotThreadCreateInput.Type;
+
 export const BotConversationResult = Schema.Struct({
   projectId: ProjectId,
   threadId: ThreadId,
@@ -47,6 +54,7 @@ export type BotFileCursor = typeof BotFileCursor.Type;
 
 export const BotFilesInput = Schema.Struct({
   projectId: ProjectId,
+  query: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
   cursor: Schema.optional(BotFileCursor),
   limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 64 }))),
 });

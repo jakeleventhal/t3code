@@ -27,6 +27,8 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { IconButton } from "../../components/ui/IconButton";
+import { ListActionRow } from "../../components/ui/ListActionRow";
+import { ListRow } from "../../components/ui/ListRow";
 import { ListSection } from "../../components/ui/ListSection";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
@@ -58,6 +60,7 @@ import {
 import { botRole } from "./bot-room";
 import { BotAvatar } from "./BotAvatar";
 import { useShowConversationInBots } from "./use-assistant";
+import { useBotTurnSettings } from "./use-bot-turn-settings";
 
 const FILES_PAGE_SIZE = 24;
 const AVATAR_EMOJIS = ["🧭", "🌿", "📈", "☕", "🛰️", "🐙", "✈️", "🏠", "🦊", "🎧", "📚", "⚡"];
@@ -90,6 +93,7 @@ function useProfileEnvironment(environmentId: EnvironmentId) {
     connected: environment?.connectionState === "connected",
     label: environment?.environmentLabel ?? "this environment",
     profilesSupported: config?.environment.capabilities.botProfiles === true,
+    voiceConfigurable: config?.environment.capabilities.botVoiceConfiguration === true,
   };
 }
 
@@ -135,6 +139,24 @@ export function BotProfileSheet(
         ) : (
           <>
             <BotIdentity project={project} connected={environment.connected} />
+            {environment.voiceConfigurable ? (
+              <View className="items-center">
+                <Button
+                  label="Voice settings"
+                  icon="headphones"
+                  onPress={() =>
+                    navigation.navigate("SettingsSheet", {
+                      screen: "SettingsContent",
+                      params: {
+                        screen: "SettingsVoiceBot",
+                        params: { environmentId, projectId },
+                      },
+                    })
+                  }
+                />
+              </View>
+            ) : null}
+            <BotTurnSettingsSection project={project} />
             <View className="items-center">
               <SegmentedControl
                 role="tab"
@@ -165,6 +187,67 @@ export function BotProfileSheet(
         )}
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * The model and permissions this bot replies with. Picking happens in its settings page; returning
+ * to the default is one tap here. Changes apply from the bot's next message.
+ */
+function BotTurnSettingsSection(props: { readonly project: EnvironmentProject }) {
+  const { project } = props;
+  const navigation = useNavigation();
+  const turn = useBotTurnSettings(project.environmentId, project.id);
+  if (!turn.supported) return null;
+  const disabled = !turn.editable || !turn.canWrite || turn.pending;
+  const open = () =>
+    navigation.navigate("SettingsSheet", {
+      screen: "SettingsContent",
+      params: {
+        screen: "SettingsBotTurn",
+        params: { environmentId: project.environmentId, projectId: project.id },
+      },
+    });
+  return (
+    <ListSection
+      title="Model & permissions"
+      footer={
+        turn.updateMessage ??
+        (turn.setupNeeded
+          ? `Setup needed · ${turn.setupNeeded} ${
+              turn.sources.model.own === null
+                ? "Choose a model for this bot or fix the bot defaults."
+                : "Choose another model or use the default."
+            }`
+          : "Changes apply from the next message.")
+      }
+    >
+      <ListRow icon="sparkles" label="Model" description={turn.modelLabel} onPress={open} />
+      {turn.sources.model.own !== null ? (
+        <ListActionRow
+          icon="arrow.uturn.backward"
+          label="Use default model"
+          description={turn.followedModelLabel}
+          disabled={disabled}
+          onPress={() => void turn.save({ modelSelection: null })}
+        />
+      ) : null}
+      <ListRow
+        icon="exclamationmark.shield"
+        label="Permissions"
+        description={turn.runtimeModeLabel}
+        onPress={open}
+      />
+      {turn.sources.runtimeMode.own !== null ? (
+        <ListActionRow
+          icon="arrow.uturn.backward"
+          label="Use default permissions"
+          description={turn.followedRuntimeModeLabel}
+          disabled={disabled}
+          onPress={() => void turn.save({ runtimeMode: null })}
+        />
+      ) : null}
+    </ListSection>
   );
 }
 

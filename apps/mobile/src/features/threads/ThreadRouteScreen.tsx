@@ -96,6 +96,7 @@ import { ThreadHeader } from "./ThreadHeader";
 import { AssistantOrb } from "../bots/AssistantOrb";
 import { botRole } from "../bots/bot-room";
 import { ActiveBotCallBar } from "../bots/ActiveBotCall";
+import { PeerRequestRows } from "../bots/PeerRequestRows";
 import { useBotConversationCall } from "../bots/use-bot-call";
 import {
   useAndroidWorkspaceBack,
@@ -506,8 +507,11 @@ function ThreadRouteContent(
   ]
     .filter(Boolean)
     .join(" · ");
+  // Bot chats show no git surface, so they skip the status poll entirely.
   const gitStatus = useEnvironmentQuery(
-    selectedThread !== null && selectedThreadCwd !== null
+    selectedThread !== null &&
+      selectedThreadCwd !== null &&
+      (selectedThreadProject === null || botRole(selectedThreadProject) === null)
       ? vcsEnvironment.status({
           environmentId: selectedThread.environmentId,
           input: { cwd: selectedThreadCwd },
@@ -981,7 +985,7 @@ function ThreadRouteContent(
       serverOwned: false,
     };
   })();
-  // A bot chat keeps its voice settings one tap from the header, beside Call.
+  // A call that needs a voice set up first sends the user to the bot's voice settings.
   const voiceSettingsProject =
     selectedThreadProject &&
     botRole(selectedThreadProject) !== null &&
@@ -1011,6 +1015,14 @@ function ThreadRouteContent(
             projectId: String(botProfileProject.id),
           }),
       }
+    : undefined;
+  const handleOpenBotThreads = botProfileProject
+    ? () =>
+        navigation.navigate("BotThreads", {
+          environmentId: String(botProfileProject.environmentId),
+          projectId: String(botProfileProject.id),
+          ...(selectedThread ? { threadId: String(selectedThread.id) } : {}),
+        })
     : undefined;
   const callThread = selectedThread
     ? { environmentId: selectedThread.environmentId, threadId: selectedThread.id }
@@ -1069,12 +1081,32 @@ function ThreadRouteContent(
                 onOpenGitInspector={handleOpenGitInspector}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
-                onOpenVoiceSettings={handleOpenVoiceSettings}
                 onCall={handleCall}
                 botIdentity={botIdentity}
+                onOpenThreads={handleOpenBotThreads}
               />
             )
           }
+          simplifiedComposer={botProfileProject !== null}
+          botSetup={
+            botProfileProject && composer.botSetupNeeded && routeConnectionState === "connected"
+              ? {
+                  reason: composer.botSetupNeeded,
+                  onOpenSettings: () =>
+                    navigation.navigate("SettingsSheet", {
+                      screen: "SettingsContent",
+                      params: {
+                        screen: "SettingsBotTurn",
+                        params: {
+                          environmentId: botProfileProject.environmentId,
+                          projectId: botProfileProject.id,
+                        },
+                      },
+                    }),
+                }
+              : null
+          }
+          composerPlaceholder={botProfileProject ? `Message ${botProfileProject.title}` : undefined}
           canOperateThread={canOperateThread}
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           selectedThreadDetailRef={selectedThreadDetailRef}
@@ -1175,13 +1207,23 @@ function ThreadRouteContent(
           floatingAccessory={
             // Code work keeps the Assistant one tap away; bot chats are already a conversation.
             selectedThreadProject && botRole(selectedThreadProject) === null ? (
-              <AssistantOrb
-                environmentId={selectedThread.environmentId}
-                style={{ right: 0, top: 0 }}
-              />
+              <AssistantOrb style={{ right: 0, top: 0 }} />
             ) : null
           }
-          callBar={<ActiveBotCallBar thread={callThread} className="px-4 pb-2" />}
+          callBar={
+            <>
+              <ActiveBotCallBar thread={callThread} className="px-4 pb-2" />
+              {selectedThreadProject && botRole(selectedThreadProject) !== null ? (
+                <PeerRequestRows
+                  key={`${selectedThread.environmentId}:${selectedThread.id}`}
+                  thread={{
+                    environmentId: selectedThread.environmentId,
+                    threadId: selectedThread.id,
+                  }}
+                />
+              ) : null}
+            </>
+          }
         />
       </>
     </>

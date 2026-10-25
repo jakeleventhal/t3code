@@ -1,7 +1,12 @@
+import * as BotContext from "./BotContext.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
+  ComposerContextId,
+  EnvironmentId,
+  type BotFileContextRecord,
   EventId,
   MessageId,
   TurnItemId,
@@ -41,7 +46,11 @@ const options: BotOpenInput = {
   creationSource: "web",
 };
 
-const dependencies = Layer.mergeAll(RuntimeLayer.layerProjectService, ProjectionStore.layer).pipe(
+const dependencies = Layer.mergeAll(
+  RuntimeLayer.layerProjectService,
+  ProjectionStore.layer,
+  ProjectStore.layer,
+).pipe(
   Layer.provideMerge(ProjectEnrichment.layer),
   Layer.provideMerge(
     Layer.mergeAll(
@@ -132,7 +141,7 @@ const fixture = Effect.gen(function* () {
     } else return yield* Effect.die(`Unexpected command ${command.type}`);
     return { sequence: 1, storedEvents: [] };
   });
-  const serviceLayer = BotService.layer.pipe(
+  const serviceLayer = Layer.mergeAll(BotService.layer, BotContext.layer).pipe(
     Layer.provide(
       Layer.mergeAll(
         BotWorkspace.layer,
@@ -365,11 +374,82 @@ it.effect(
             },
           },
         });
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const context = yield* BotContext.BotContext;
+        const environmentId = EnvironmentId.make(
+          (yield* fs.readFileString(config.environmentIdPath)).trim(),
+        );
+        yield* fs.makeDirectory(config.attachmentsDir, { recursive: true });
+        const attachmentPath = path.join(config.attachmentsDir, "first.bin");
+        yield* fs.writeFileString(attachmentPath, "published data");
+        const htmlPath = path.join(config.attachmentsDir, "report-html.bin");
+        yield* fs.writeFileString(htmlPath, "<p>Published report</p>");
+        const reference: BotFileContextRecord = {
+          kind: "bot-file",
+          version: 1,
+          contextId: ComposerContextId.make("sharedfile"),
+          label: "File",
+          title: "File",
+          environmentId,
+          projectId: assistant.projectId,
+          fileId: "message:main:0",
+          fileKind: "attachment",
+          attachmentId: "first",
+          sourceThreadId: assistant.threadId,
+          sourceMessageId: MessageId.make("main"),
+        };
+        const htmlReference: BotFileContextRecord = {
+          ...reference,
+          contextId: ComposerContextId.make("htmlfile"),
+          fileId: "item:report",
+          fileKind: "html",
+          attachmentId: "report-html",
+          sourceTurnItemId: TurnItemId.make("report"),
+        };
+        const remote = {
+          ...reference,
+          contextId: ComposerContextId.make("remote"),
+          environmentId: EnvironmentId.make("remote"),
+        };
+        const forged = {
+          ...reference,
+          contextId: ComposerContextId.make("forged"),
+          projectId: other.projectId,
+        };
+        const resolver = yield* context.resolveFileReferences(assistant.threadId, [
+          reference,
+          htmlReference,
+          remote,
+          forged,
+        ]);
+        assert.equal(resolver(reference.attachmentId, reference), attachmentPath);
+        assert.equal(resolver(htmlReference.attachmentId, htmlReference), htmlPath);
+        assert.isNull(resolver(remote.attachmentId, remote));
+        assert.isNull(resolver(forged.attachmentId, forged));
         const first = yield* bots.files({ projectId: assistant.projectId, limit: 1 });
         assert.equal(first.items.length, 1);
         assert.equal(first.items[0]?.title, "second.csv");
         assert.equal(first.items[0]?.sourceMessageId, "main");
         assert.isNotNull(first.nextCursor);
+        const searched = yield* bots.files({
+          projectId: assistant.projectId,
+          limit: 1,
+          query: "FIRST",
+        });
+        assert.equal(searched.items[0]?.title, "first.csv");
+        assert.isNull(searched.nextCursor);
+        assert.equal(
+          (yield* bots.files({ projectId: assistant.projectId, query: "Weekly report" })).items[0]
+            ?.kind,
+          "html",
+        );
+        assert.equal(
+          (yield* bots.files({ projectId: assistant.projectId, query: "private" })).items.length,
+          0,
+        );
+
         const second = yield* bots.files({
           projectId: assistant.projectId,
           limit: 1,
@@ -456,4 +536,106 @@ it.effect(
         if (Option.isSome(current)) assert.equal(current.value.faviconPath, next.faviconPath);
       }).pipe(Effect.provide(serviceLayer));
     }).pipe(Effect.scoped, Effect.provide(dependencies)),
+);
+
+it.effect(
+  "bot parallel threads inherit settings, retry without duplicates, and preserve main",
+  () =>
+    Effect.gen(function* () {
+      const { serviceLayer, creates } = yield* fixture;
+      yield* Effect.gen(function* () {
+        const bots = yield* BotService.BotService;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const settings = yield* ServerSettings.ServerSettingsService;
+        const main = yield* bots.open(options);
+        const modelSelection = { ...options.modelSelection, model: "chosen-bot-model" };
+        yield* settings.updateSettings({
+          botDefaults: {
+            defaultModelSelection: modelSelection,
+            defaultRuntimeMode: "approval-required",
+          },
+        });
+        const input = {
+          commandId: CommandId.make("parallel-workout"),
+          projectId: main.projectId,
+          title: "New workout plan",
+        };
+        const results = yield* Effect.all(
+          Array.from({ length: 4 }, () =>
+            bots.createThread(input, { createdBy: "agent", creationSource: "mcp" }),
+          ),
+          { concurrency: "unbounded" },
+        );
+        assert.equal(new Set(results.map((result) => result.threadId)).size, 1);
+        const secondary = results[0]!;
+        assert.notEqual(secondary.threadId, main.threadId);
+        assert.equal(yield* Ref.get(creates), 2);
+        const thread = yield* projections.getThread(secondary.threadId);
+        assert.equal(thread.title, input.title);
+        assert.deepEqual(thread.modelSelection, modelSelection);
+        assert.equal(thread.runtimeMode, "approval-required");
+        assert.equal(thread.createdBy, "agent");
+        assert.equal(thread.creationSource, "mcp");
+        assert.equal(yield* projections.getMessageCount(thread.id), 0);
+        const original = yield* projections.getThread(main.threadId);
+        assert.deepEqual(original.modelSelection, options.modelSelection);
+        const projects = yield* ProjectService.ProjectService;
+        assert.equal(
+          Option.getOrThrow(yield* projects.getById(main.projectId)).botMainThreadId,
+          main.threadId,
+        );
+        const invalid = yield* bots
+          .createThread({ ...input, projectId: ProjectId.make("missing") })
+          .pipe(Effect.result);
+        assert.equal(invalid._tag, "Failure");
+      }).pipe(Effect.provide(serviceLayer));
+    }).pipe(Effect.provide(dependencies)),
+);
+
+it.effect("bot inbox previews are bounded and skip internal messages in snapshot and updates", () =>
+  Effect.gen(function* () {
+    const { serviceLayer } = yield* fixture;
+    yield* Effect.gen(function* () {
+      const bots = yield* BotService.BotService;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const main = yield* bots.open(options);
+      const at = DateTime.makeUnsafe("2026-10-24T12:00:00Z");
+      for (const [id, role, text, createdBy, workflowScript] of [
+        ["a", "user", "My question", "user", false],
+        ["b", "assistant", "Useful response ".repeat(1000), "agent", false],
+        ["c", "user", "Internal task request", "agent", false],
+        ["d", "user", "Internal workflow", "user", true],
+      ] as const) {
+        yield* projections.apply({
+          id: EventId.make(`preview-${id}`),
+          type: "message.updated",
+          threadId: main.threadId,
+          occurredAt: at,
+          payload: {
+            id: MessageId.make(id),
+            threadId: main.threadId,
+            runId: null,
+            nodeId: null,
+            role,
+            text,
+            createdBy,
+            workflowScript,
+            attachments: [],
+            streaming: false,
+            creationSource: "mcp",
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+      }
+      const snapshot = yield* projections.getShellSnapshot();
+      const preview = snapshot.threads.find(
+        (thread) => thread.id === main.threadId,
+      )?.latestVisibleMessage;
+      assert.equal(preview?.id, MessageId.make("b"));
+      assert.equal(preview?.text, "Useful response ".repeat(1000).slice(0, 240));
+      const updated = yield* projections.getThreadShell(main.threadId);
+      assert.deepEqual(updated?.latestVisibleMessage, preview);
+    }).pipe(Effect.provide(serviceLayer));
+  }).pipe(Effect.provide(dependencies)),
 );

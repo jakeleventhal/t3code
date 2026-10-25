@@ -1955,6 +1955,21 @@ function UserMessageContent(props: UserMessageContentProps) {
       });
       return;
     }
+    // A bot opens its main conversation and a bot file the conversation it came from. A Code
+    // project has no screen of its own, so it falls through to the details sheet.
+    const referencedThreadId =
+      record?.kind === "project" && "mainThreadId" in record
+        ? record.mainThreadId
+        : record?.kind === "bot-file" && "sourceThreadId" in record
+          ? record.sourceThreadId
+          : undefined;
+    if (record && "environmentId" in record && referencedThreadId) {
+      openLinkedThread({
+        environmentId: String(record.environmentId),
+        threadId: String(referencedThreadId),
+      });
+      return;
+    }
     const document = composerDocumentAttachmentRecord(record);
     if (document) {
       navigation.navigate("ThreadAttachment", {

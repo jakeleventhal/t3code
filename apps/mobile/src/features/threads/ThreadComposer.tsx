@@ -1,6 +1,10 @@
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
+import {
+  botMentionsUpdateNotice,
+  referencesBotServerCannotRead,
+} from "@t3tools/client-runtime/botMentionItems";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -237,6 +241,10 @@ export interface ThreadComposerProps {
   readonly placeholder: string;
   readonly contentMaxWidth?: number;
   readonly draftControls?: ReactNode;
+  /** Bot chats: only the message, attachments, and send. A bot's harness lives in its settings. */
+  readonly simplified?: boolean;
+  /** A bot chat whose chosen model can't run here: sending waits, and this says where to fix it. */
+  readonly botSetup?: { readonly reason: string; readonly onOpenSettings: () => void } | null;
   readonly bottomInset?: number;
   readonly connectionState: RemoteClientConnectionState;
   readonly environmentLabel: string | null;
@@ -568,12 +576,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     return report !== null;
   };
 
+  const isBotChat = project?.botRole != null;
+  const botServerReadsMentions = props.serverConfig?.environment.capabilities.botMentions === true;
   const composerMenu = useComposerCommandMenu({
     draftMessage: draftMessage,
     ownerKey: composerDraftKey,
     environmentId: props.environmentId,
     threadShells: useThreadShells(),
     currentThreadId: props.selectedThread.id,
+    bot:
+      project?.botRole != null
+        ? { environmentId: project.environmentId, projectId: project.id }
+        : null,
     projectCwd: props.projectCwd,
     pullRequestProjectId: props.serverConfig?.environment.capabilities.pullRequests
       ? (project?.id ?? null)
@@ -585,7 +599,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onUpdateInteractionMode:
-      selectedProviderStatus?.showInteractionModeToggle === false
+      props.simplified || selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
@@ -631,14 +645,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { setComposerEditing } = useAdaptiveWorkspaceLayout();
   const hasSidebarTabBar = useSidebarWorkspaceTabs() === "picker";
-  const voiceModeButton = offersVoiceConversation ? (
-    <ComposerVoiceModeButton
-      size={hasSidebarTabBar ? "large" : "regular"}
-      phase={voicePhase}
-      disabled={!canToggleVoiceConversation}
-      onPress={toggleVoiceConversation}
-    />
-  ) : null;
+  // A bot's voice conversation starts from Call in its header.
+  const voiceModeButton =
+    offersVoiceConversation && !props.simplified ? (
+      <ComposerVoiceModeButton
+        size={hasSidebarTabBar ? "large" : "regular"}
+        phase={voicePhase}
+        disabled={!canToggleVoiceConversation}
+        onPress={toggleVoiceConversation}
+      />
+    ) : null;
   const [compactRowWidth, setCompactRowWidth] = useState(0);
   const compactAttachmentLimit = compactRowWidth >= 500 ? 3 : 1;
   const compactEditor = useCompactComposerEditor(bodyText, draftMessage);
@@ -658,6 +674,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const sendBlockedReason =
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
+    (props.botSetup ? "Setup needed" : null) ??
     (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
     attachmentBlockReason;
   const canSend =
@@ -721,6 +738,22 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     if (usageLimitsOffered && isUsageLimitsCommand(draftMessage) && draftAttachments.length === 0) {
       if (openUsageLimits()) onChangeDraftMessage("");
       return;
+    }
+    if (isBotChat) {
+      const draft = getComposerDraftSnapshot(composerDraftKey);
+      const unreadable = referencesBotServerCannotRead({
+        text: draft.text,
+        records: draft.context?.records ?? [],
+        environmentId: props.environmentId,
+        serverReadsMentions: botServerReadsMentions,
+      })[0];
+      if (unreadable) {
+        Dialog.alert(
+          `${props.environmentLabel ?? "This bot's machine"} can't read "${unreadable.label}"`,
+          `${botMentionsUpdateNotice(props.environmentLabel)} Or remove the reference to send.`,
+        );
+        return;
+      }
     }
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
@@ -887,7 +920,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     </>
   ) : null;
 
-  const modelControl = (
+  const modelControl = props.simplified ? null : (
     <View className="min-w-0 shrink">
       <ComposerModelControl
         size={hasSidebarTabBar ? "large" : "regular"}
@@ -930,13 +963,17 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         {props.draftControls}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
-        (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
+        (composerMenu.items.length > 0 ||
+          composerMenu.trigger.kind === "pull-request" ||
+          (composerMenu.botMentions && composerMenu.trigger.kind === "path")) ? (
           <ComposerPopoverAnchor>
             <ComposerCommandPopover
               items={composerMenu.items}
               triggerKind={composerMenu.trigger.kind}
               isLoading={composerMenu.isLoading}
               error={composerMenu.error}
+              botMentions={composerMenu.botMentions}
+              notice={composerMenu.botMentionsNotice}
               onSelect={composerMenu.onSelect}
             />
           </ComposerPopoverAnchor>
@@ -966,12 +1003,24 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
         {voiceConversationLive ? <ComposerVoiceStrip /> : null}
 
-        {modelUnavailable ? (
+        {props.botSetup ? (
           <Button
-            label="Model unavailable. Open model settings."
+            label={`Setup needed · ${props.botSetup.reason} Open bot settings.`}
             tone="text"
-            onPress={openSettings}
+            onPress={props.botSetup.onOpenSettings}
           />
+        ) : modelUnavailable ? (
+          props.simplified ? (
+            <Text className="px-3 py-2 text-xs text-foreground-muted">
+              This bot’s model isn’t set up on its host. Choose one in the bot’s settings.
+            </Text>
+          ) : (
+            <Button
+              label="Model unavailable. Open model settings."
+              tone="text"
+              onPress={openSettings}
+            />
+          )
         ) : null}
 
         <ComposerSurface
@@ -1049,14 +1098,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               >
                 {modelControl}
                 {voiceModeButton}
-                <ComposerDictationStartAction
-                  size={hasSidebarTabBar ? "large" : "regular"}
-                  state={voiceInput.state}
-                  isAvailable={voiceInput.isAvailable}
-                  disabled={isSubmissionLocked || voiceConversationLive}
-                  onStart={voiceInput.start}
-                  onCancel={voiceInput.cancel}
-                />
+                {props.simplified ? null : (
+                  <ComposerDictationStartAction
+                    size={hasSidebarTabBar ? "large" : "regular"}
+                    state={voiceInput.state}
+                    isAvailable={voiceInput.isAvailable}
+                    disabled={isSubmissionLocked || voiceConversationLive}
+                    onStart={voiceInput.start}
+                    onCancel={voiceInput.cancel}
+                  />
+                )}
                 {showStopAction ? (
                   <ComposerActionButton
                     size={hasSidebarTabBar ? "large" : "regular"}
@@ -1095,6 +1146,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 hidden={props.hidden}
                 draftKey={composerDraftKey}
                 environmentId={props.environmentId}
+                botChat={isBotChat ? { serverReadsMentions: botServerReadsMentions } : null}
                 onOpenMention={(path) => {
                   Keyboard.dismiss();
                   if (props.isDraft) {

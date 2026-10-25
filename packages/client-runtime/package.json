@@ -19,6 +19,10 @@
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"
     },
+    "./botMentionItems": {
+      "types": "./src/botMentionItems.ts",
+      "default": "./src/botMentionItems.ts"
+    },
     "./image-attachment-size": {
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
@@ -54,6 +58,14 @@
     "./user-message": {
       "types": "./src/userMessage.ts",
       "default": "./src/userMessage.ts"
+    },
+    "./assistant-environment": {
+      "types": "./src/assistantEnvironment.ts",
+      "default": "./src/assistantEnvironment.ts"
+    },
+    "./bot-turn-settings": {
+      "types": "./src/botTurnSettings.ts",
+      "default": "./src/botTurnSettings.ts"
     },
     "./prompt-links": {
       "types": "./src/promptLinks.ts",
@@ -234,6 +246,10 @@
     "./state/bots": {
       "types": "./src/state/bots.ts",
       "default": "./src/state/bots.ts"
+    },
+    "./state/peer-requests": {
+      "types": "./src/state/peerRequests.ts",
+      "default": "./src/state/peerRequests.ts"
     },
     "./voice-call": {
       "types": "./src/voice-call/controller.ts",

@@ -10,6 +10,9 @@ import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspace
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { BotHeaderTitle, type BotChatIdentity } from "../bots/BotHeaderTitle";
+import { botThreadsAccessibilityLabel } from "../bots/bot-room";
+import { useBotThreadBadge } from "../bots/use-bot-thread-badge";
+import { useControlTheme } from "../../components/ui/useControlTheme";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -26,12 +29,15 @@ export function useThreadHeaderOptions(props: {
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
   readonly draft?: boolean;
-  /** Bot chats only: opens this bot's voice settings. */
-  readonly onOpenVoiceSettings?: () => void;
   /** Bot chats only, and not on the conversation already on the call. */
   readonly onCall?: () => void;
-  /** Bot chats only: the header shows the bot, and tapping it opens the bot's profile. */
+  /**
+   * Bot chats only: the header shows the bot, and tapping it opens the bot's profile. A bot chat
+   * has no workspace, so the Code controls give way to its threads, Call, and Profile.
+   */
   readonly botIdentity?: BotChatIdentity;
+  /** Bot chats only: opens the bot's other threads. */
+  readonly onOpenThreads?: () => void;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const deviceType = useDeviceType();
@@ -41,50 +47,79 @@ export function useThreadHeaderOptions(props: {
   const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
   const gitCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
   const gitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
-  const { onOpenVoiceSettings, onCall, botIdentity } = props;
+  const { onCall, botIdentity, onOpenThreads } = props;
+  const onOpenBotProfile = botIdentity?.onPress;
+  const { open: openThreads, needsYou: threadNeedsYou } = useBotThreadBadge(
+    botIdentity?.project ?? null,
+  );
+  const { colors } = useControlTheme();
   const { width } = useWindowDimensions();
   const renderBotTitle = useCallback(
     () =>
       botIdentity ? <BotHeaderTitle {...botIdentity} maxWidth={Math.max(0, width - 200)} /> : null,
     [botIdentity, width],
   );
-  const voiceHeaderItems = useMemo<NativeHeaderItems>(
+  const botHeaderItems = useMemo<NativeHeaderItems>(
     () => [
+      ...(onOpenThreads
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: botThreadsAccessibilityLabel({
+                open: openThreads,
+                needsYou: threadNeedsYou,
+              }),
+              icon: { name: "bubble.left.and.bubble.right", type: "sfSymbol" as const },
+              identifier: "thread-right-bot-threads",
+              label: "Threads",
+              onPress: onOpenThreads,
+              type: "button" as const,
+              // Quiet until the bot has threads besides its main conversation.
+              ...(openThreads > 0
+                ? {
+                    badge: {
+                      value: String(openThreads),
+                      style: {
+                        color: colors["--color-screen"],
+                        backgroundColor: threadNeedsYou
+                          ? colors["--color-warning-foreground"]
+                          : colors["--color-foreground"],
+                      },
+                    },
+                  }
+                : {}),
+            }),
+          ]
+        : []),
       ...(onCall
         ? [
             withNativeGlassHeaderItem({
               accessibilityLabel: "Call",
-              icon: { name: "phone", type: "sfSymbol" as const },
+              icon: { name: "phone.fill", type: "sfSymbol" as const },
               identifier: "thread-right-call",
               label: "Call",
               onPress: onCall,
               type: "button" as const,
+              variant: "prominent" as const,
             }),
           ]
         : []),
-      ...(onOpenVoiceSettings
+      ...(onOpenBotProfile
         ? [
+            // Text, not a glyph, so the profile reads as a primary action beside Call.
             withNativeGlassHeaderItem({
-              accessibilityLabel: "Voice settings",
-              icon: { name: "headphones", type: "sfSymbol" as const },
-              identifier: "thread-right-voice-settings",
-              label: "Voice settings",
-              onPress: onOpenVoiceSettings,
+              accessibilityLabel: "Profile",
+              identifier: "thread-right-bot-profile",
+              label: "Profile",
+              onPress: onOpenBotProfile,
               type: "button" as const,
             }),
           ]
         : []),
     ],
-    [onOpenVoiceSettings, onCall],
+    [onOpenThreads, onCall, onOpenBotProfile, openThreads, threadNeedsYou, colors],
   );
-  const threadCenterHeaderItems = useMemo(
-    () => [...voiceHeaderItems, ...gitCenterHeaderItems],
-    [voiceHeaderItems, gitCenterHeaderItems],
-  );
-  const compactRightHeaderItems = useMemo(
-    () => [...voiceHeaderItems, ...gitRightHeaderItems],
-    [voiceHeaderItems, gitRightHeaderItems],
-  );
+  const threadCenterHeaderItems = botIdentity ? botHeaderItems : gitCenterHeaderItems;
+  const compactRightHeaderItems = botIdentity ? botHeaderItems : gitRightHeaderItems;
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       ...(!usesDuoHeader
@@ -175,9 +210,10 @@ export function useThreadHeaderOptions(props: {
       botIdentity?.topic,
       width,
     ],
+    threadsBadge: { open: openThreads, needsYou: threadNeedsYou },
     sidebar: false,
     fallback:
-      !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
+      !botIdentity && !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
         <ThreadGitControls {...props.gitControls} showActionControls />
       ) : null,
   };

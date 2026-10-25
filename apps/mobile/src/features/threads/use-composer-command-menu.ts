@@ -1,5 +1,6 @@
 import * as Dialog from "../../components/ui/Dialog";
 import type {
+  ComposerContextRecord,
   EnvironmentId,
   ProjectId,
   ProviderInteractionMode,
@@ -54,6 +55,7 @@ import {
 } from "../../state/queries";
 import type { ComposerCommandItem } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
+import { useBotMentionItems } from "./use-bot-mention-items";
 
 const providerWorkspaceSnapshotRefresh = createProviderWorkspaceSnapshotRefreshAtomFamily({
   providers: serverEnvironment.providersValueAtom,
@@ -75,6 +77,8 @@ export function buildComposerSlashCommandItems(input: {
   readonly hasCompactableConversation?: boolean;
   readonly offersUsageLimits?: boolean;
   readonly allowInteractionMode: boolean;
+  /** Bot chats keep their model and modes in the bot's settings, not in the conversation. */
+  readonly offersRuntimeCommands?: boolean;
   readonly selectedProviderStatus: Pick<
     ServerProvider,
     "driver" | "slashCommands" | "showInteractionModeToggle"
@@ -106,9 +110,13 @@ export function buildComposerSlashCommandItems(input: {
       description: "Switch to default mode",
     },
   ] satisfies ComposerCommandItem[];
-  const items: ComposerCommandItem[] = builtIn.filter(
-    (item) => item.command.includes(query) && (item.command === "model" || allowInteractionMode),
-  );
+  const items: ComposerCommandItem[] =
+    input.offersRuntimeCommands === false
+      ? []
+      : builtIn.filter(
+          (item) =>
+            item.command.includes(query) && (item.command === "model" || allowInteractionMode),
+        );
 
   // Providers expand commands only at the start of a message. T3 commands
   // change local state and do not have this restriction.
@@ -181,6 +189,7 @@ export function useComposerCommandMenu({
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
   currentThreadId = null,
+  bot = null,
   projectCwd,
   pullRequestProjectId = null,
   pullRequestRepository = null,
@@ -199,6 +208,8 @@ export function useComposerCommandMenu({
   readonly environmentId: EnvironmentId | null;
   readonly threadShells?: ReadonlyArray<EnvironmentThreadShell>;
   readonly currentThreadId?: ThreadId | null;
+  /** Set in a bot chat: @ offers the bot's curated context instead of workspace files. */
+  readonly bot?: { readonly environmentId: EnvironmentId; readonly projectId: ProjectId } | null;
   readonly projectCwd: string | null;
   readonly pullRequestProjectId?: ProjectId | null;
   readonly pullRequestRepository?: string | null;
@@ -275,8 +286,15 @@ export function useComposerCommandMenu({
   })();
   const pathSearch = useComposerPathSearch({
     environmentId,
-    cwd: trigger?.kind === "path" ? projectCwd : null,
+    cwd: trigger?.kind === "path" && bot === null ? projectCwd : null,
+    query: trigger?.kind === "path" && bot === null ? trigger.query : null,
+  });
+  const botMentions = useBotMentionItems({
+    bot,
     query: trigger?.kind === "path" ? trigger.query : null,
+    now,
+    activeThreadId: currentThreadId,
+    shells: threadShells,
   });
   // Mounts older settled threads matching the mention, which shells may leave out.
   useThreadSearch(
@@ -327,6 +345,7 @@ export function useComposerCommandMenu({
         hasCompactableConversation,
         offersUsageLimits,
         allowInteractionMode: onUpdateInteractionMode !== undefined,
+        offersRuntimeCommands: bot === null,
         selectedProviderStatus: selectedProviderStatus
           ? {
               ...selectedProviderStatus,
@@ -434,6 +453,8 @@ export function useComposerCommandMenu({
       }));
     }
 
+    if (trigger.kind === "path" && bot !== null) return [...botMentions.items];
+
     if (trigger.kind === "path") {
       const threadItems = environmentId
         ? matchComposerThreadItems({
@@ -463,6 +484,34 @@ export function useComposerCommandMenu({
     return [];
   })();
 
+  const attachReference = (
+    ownerKey: string,
+    trigger: ComposerTrigger,
+    record: ComposerContextRecord,
+  ) => {
+    const existing = getComposerDraftSnapshot(ownerKey).context?.records ?? [];
+    const alreadyAttached = existing.some((entry) => entry.contextId === record.contextId);
+    if (!alreadyAttached && existing.length >= COMPOSER_CONTEXT_MAX_RECORDS) {
+      Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    const result = replaceTextRange(
+      draftMessage,
+      trigger.rangeStart,
+      trigger.rangeEnd,
+      `${formatComposerContextReference(record)} `,
+    );
+    onChangeDraftMessage(result.text);
+    if (!alreadyAttached) {
+      const draft = getComposerDraftSnapshot(ownerKey);
+      setComposerDraftContext(ownerKey, {
+        version: 1,
+        records: [...(draft.context?.records ?? []), record],
+      });
+    }
+    setSelection({ start: result.cursor, end: result.cursor });
+  };
+
   const onSelect = (item: ComposerCommandItem) => {
     if (!trigger) return;
     if (item.type === "thread") {
@@ -473,28 +522,12 @@ export function useComposerCommandMenu({
           candidate.id === item.thread.threadId,
       );
       if (!shell) return;
-      const record = threadComposerContext(item.thread, shell.title);
-      const existing = getComposerDraftSnapshot(ownerKey).context?.records ?? [];
-      const alreadyAttached = existing.some((entry) => entry.contextId === record.contextId);
-      if (!alreadyAttached && existing.length >= COMPOSER_CONTEXT_MAX_RECORDS) {
-        Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      const result = replaceTextRange(
-        draftMessage,
-        trigger.rangeStart,
-        trigger.rangeEnd,
-        `${formatComposerContextReference(record)} `,
-      );
-      onChangeDraftMessage(result.text);
-      if (!alreadyAttached) {
-        const draft = getComposerDraftSnapshot(ownerKey);
-        setComposerDraftContext(ownerKey, {
-          version: 1,
-          records: [...(draft.context?.records ?? []), record],
-        });
-      }
-      setSelection({ start: result.cursor, end: result.cursor });
+      attachReference(ownerKey, trigger, threadComposerContext(item.thread, shell.title));
+      return;
+    }
+    if (item.type === "reference") {
+      if (!ownerKey || trigger.kind !== "path") return;
+      attachReference(ownerKey, trigger, item.reference);
       return;
     }
     if (item.type === "pull-request") {
@@ -561,8 +594,14 @@ export function useComposerCommandMenu({
     trigger,
     items,
     skills,
+    botMentions: bot !== null,
+    botMentionsNotice: bot !== null && trigger?.kind === "path" ? botMentions.notice : null,
     isLoading:
-      trigger?.kind === "pull-request" ? pullRequestSearch.isPending : pathSearch.isPending,
+      trigger?.kind === "pull-request"
+        ? pullRequestSearch.isPending
+        : bot !== null
+          ? botMentions.isLoading
+          : pathSearch.isPending,
     error:
       trigger?.kind === "pull-request"
         ? pullRequestProjectId === null || pullRequestRepository === null

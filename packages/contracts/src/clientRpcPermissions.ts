@@ -14,6 +14,9 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [WS_METHODS.peerMessagesCancel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.peerMessagesFlush]: AuthOrchestrationOperateScope,
+  [WS_METHODS.peerEnvironmentsSendToThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsSetAvatar]: AuthOrchestrationOperateScope,

@@ -13,7 +13,7 @@ import {
   type PreviewAnnotationPayload,
   type RunId,
   type ScopedThreadRef,
-  type ThreadContextRecord,
+  type ReferenceContextRecord,
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -75,7 +75,7 @@ export interface QueuedRunEditContent {
   readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
-  readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
+  readonly threadContexts: ReadonlyArray<ReferenceContextRecord>;
 }
 
 function queuedEditDraftTarget(routeThreadRef: ScopedThreadRef, runId: RunId) {
@@ -120,8 +120,11 @@ async function submitQueuedRunEdit(input: {
       readImage: readFileAsDataUrl,
       uploadFiles,
     });
+    // Kept records for removed attachments would point at nothing. A bot file names a stored
+    // attachment from another message, so it is kept like any other reference.
     const keptRecords = (editing.context?.records ?? []).filter(
       (record) =>
+        (record.kind !== "image" && record.kind !== "file") ||
         !("attachmentId" in record) ||
         editing.existingAttachments.some((attachment) => attachment.id === record.attachmentId),
     );

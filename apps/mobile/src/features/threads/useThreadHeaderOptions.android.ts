@@ -1,6 +1,6 @@
+import { useBotThreadBadge } from "../bots/use-bot-thread-badge";
 import type { useThreadHeaderOptions as useIosThreadHeaderOptions } from "./useThreadHeaderOptions";
 
-// oxlint-disable-next-line t3code/no-hookless-use-function -- Android stub of a hook; the iOS file calls hooks.
 export function useThreadHeaderOptions(
   props: Parameters<typeof useIosThreadHeaderOptions>[0],
 ): ReturnType<typeof useIosThreadHeaderOptions> {
@@ -8,6 +8,7 @@ export function useThreadHeaderOptions(
     options: { contentStyle: { backgroundColor: props.headerColor } },
     // Android renders header actions as children, not native item factories.
     optionsVersion: [],
+    threadsBadge: useBotThreadBadge(props.botIdentity?.project ?? null),
     sidebar: true,
     fallback: null,
   };

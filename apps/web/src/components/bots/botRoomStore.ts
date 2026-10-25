@@ -4,7 +4,7 @@ import { create } from "zustand";
 import type { ThreadRouteTarget } from "../../threadRoutes";
 import type { AppRoom } from "./botRoom.logic";
 
-export type BotProfileTab = "routines" | "files";
+export type BotProfileTab = "routines" | "files" | "settings";
 
 export interface BotLocation {
   readonly href: string;
@@ -31,6 +31,7 @@ export const EMPTY_ASSISTANT_QUICK_STATE: AssistantQuickState = {
  */
 interface BotRoomState {
   readonly room: AppRoom;
+  /** The environment of the last bot conversation open in Bots, whose spot entering returns to. */
   readonly environmentId: EnvironmentId | null;
   readonly codeHref: string | null;
   readonly botLocationByEnvironment: Readonly<Record<string, BotLocation>>;
@@ -47,7 +48,6 @@ interface BotRoomState {
   /** The bot profile beside the chat stays open across that bot's conversations and others'. */
   readonly profileOpen: boolean;
   readonly profileTab: BotProfileTab;
-  readonly setEnvironmentId: (environmentId: EnvironmentId | null) => void;
   readonly recordLocation: (
     input:
       | { readonly room: "code"; readonly href: string }
@@ -109,7 +109,6 @@ export const useBotRoomStore = create<BotRoomState>()((set, get) => {
     callTranscriptOpenFor: null,
     profileOpen: false,
     profileTab: "routines",
-    setEnvironmentId: (environmentId) => set({ environmentId }),
     recordLocation: (input) =>
       set((state) => {
         if (input.room === "code") {

@@ -13,19 +13,16 @@ import { isSettingsPath, partitionEnvironmentBots } from "./botRoom.logic";
 import { useBotRoomStore } from "./botRoomStore";
 import { useHasVoiceCall } from "../../voice/useVoiceCall";
 import { useBotActions } from "./useBotActions";
-import { useAppRoom, useAssistantEnvironmentId, useBotsEnvironmentId } from "./useBotRoom";
+import { useAppRoom, useDesignatedAssistantEnvironmentId } from "./useBotRoom";
 
 /**
- * In Code, Assistant answers in the quick panel on the environment being worked in. In Bots it
- * opens as the full chat, as it does from Settings and during a call, when the quick panel isn't
- * shown.
+ * The one Assistant answers in Code's quick panel, or opens as the full chat in Bots, from
+ * Settings and during a call, when the quick panel isn't shown.
  */
 export function useAssistantCommands() {
   const room = useAppRoom();
   const onSettings = useLocation({ select: (location) => isSettingsPath(location.pathname) });
-  const botsEnvironmentId = useBotsEnvironmentId();
-  const codeEnvironmentId = useAssistantEnvironmentId();
-  const environmentId = room === "bots" ? botsEnvironmentId : codeEnvironmentId;
+  const environmentId = useDesignatedAssistantEnvironmentId();
   const onCall = useHasVoiceCall();
   const quickPanel = room === "code" && !onSettings && !onCall;
   const { openMainConversation } = useBotActions();

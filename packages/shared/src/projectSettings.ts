@@ -1,5 +1,6 @@
 import {
   type ModelSelection,
+  type RuntimeMode,
   PROJECT_FILE_BACKED_SETTINGS,
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
   type ProjectFileBackedSettingKey,
@@ -242,5 +243,24 @@ export function resolveWorktreeCleanup(
     worktreeOnMerge,
     worktreeOnDelete,
     worktreeUnchanged,
+  };
+}
+
+/** Resolve at turn admission; retaining the returned value keeps running work on its configuration. */
+export function resolveBotTurnSettings(
+  settings: Pick<ServerSettings, "botDefaults" | "projectSettingsOverrides">,
+  projectId: ProjectId,
+  fallback: { readonly modelSelection: ModelSelection; readonly runtimeMode: RuntimeMode },
+) {
+  const overrides = settings.projectSettingsOverrides[projectId];
+  return {
+    modelSelection:
+      overrides?.defaultModelSelection ??
+      settings.botDefaults.defaultModelSelection ??
+      fallback.modelSelection,
+    runtimeMode:
+      overrides?.defaultRuntimeMode ??
+      settings.botDefaults.defaultRuntimeMode ??
+      fallback.runtimeMode,
   };
 }

@@ -44,6 +44,8 @@ import { BotReturnToCode } from "../bots/BotReturnToCode";
 import { BotCallControl } from "../bots/BotCallControl";
 import { BotHeaderIdentity, BotProfileButton } from "../bots/BotHeaderIdentity";
 import { isBotProject } from "../bots/botRoom.logic";
+import { BotThreadsMenu } from "../bots/BotThreadsMenu";
+import { useBotThreadActions } from "../bots/useBotThreadActions";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -83,6 +85,10 @@ export const ChatHeader = memo(function ChatHeader({
   onOpenProjectSettings,
 }: ChatHeaderProps) {
   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
+  const botProject = activeProject && isBotProject(activeProject) ? activeProject : null;
+  // A bot's main conversation is the bot itself, so its header names only the bot.
+  const isBotMainConversation =
+    botProject !== null && botProject.botMainThreadId === activeThreadId;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
@@ -169,7 +175,34 @@ export const ChatHeader = memo(function ChatHeader({
       title: activeThreadTitle,
     });
   };
+  const botThreadActions = useBotThreadActions(botProject);
+  // A bot thread's editor stays open with the typed title until the save lands, as its
+  // sidebar and Threads menu editors do; Code's header keeps closing first.
+  const botRenameSavingRef = useRef(false);
+  const commitBotRename = (title: string) => {
+    if (botRenameSavingRef.current) return;
+    botRenameSavingRef.current = true;
+    const target = { ref: activeThreadRef, title: activeThreadTitle, archived: false };
+    void botThreadActions.rename(target, title).then((saved) => {
+      botRenameSavingRef.current = false;
+      if (saved) {
+        setRenaming((current) =>
+          current?.threadId === target.ref.threadId &&
+          current.environmentId === target.ref.environmentId
+            ? null
+            : current,
+        );
+        return;
+      }
+      // Enter marked the edit committed; a failed save reopens it to Enter and blur.
+      renameCommittedRef.current = false;
+    });
+  };
   const commitRename = (title: string) => {
+    if (botProject !== null) {
+      commitBotRename(title);
+      return;
+    }
     setRenaming(null);
     if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
     const resolution = resolveRenameCommit({ title, originalTitle: activeThreadTitle });
@@ -192,12 +225,24 @@ export const ChatHeader = memo(function ChatHeader({
       }
     });
   };
-  const { openMenu, closeMenu } = useThreadActionMenu({
+  const { openMenu: openCodeMenu, closeMenu } = useThreadActionMenu({
     threadRef: isServerThread ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
     onStartRename: startRename,
     canShareWithGuest,
   });
+  // Bot threads offer only what a conversation needs, not Code's branch and workspace actions.
+  const openMenu = (position: { x: number; y: number }) => {
+    if (botProject === null) {
+      openCodeMenu(position);
+      return;
+    }
+    void botThreadActions.openMenu(
+      { ref: activeThreadRef, title: activeThreadTitle, archived: false },
+      position,
+      startRename,
+    );
+  };
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleMenuTimerRef = useRef<number | null>(null);
   const cancelPendingTitleMenu = () => {
@@ -311,9 +356,11 @@ export const ChatHeader = memo(function ChatHeader({
                 </Tooltip>
               )}
             </WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbSeparator>
-              <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
-            </WorkspaceBreadcrumbSeparator>
+            {isBotMainConversation ? null : (
+              <WorkspaceBreadcrumbSeparator>
+                <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
+              </WorkspaceBreadcrumbSeparator>
+            )}
           </>
         ) : null}
         {parentThreadLink ? (
@@ -350,7 +397,15 @@ export const ChatHeader = memo(function ChatHeader({
             </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
-        <WorkspaceBreadcrumbItem current className="min-w-10 flex-1">
+        {isBotMainConversation ? (
+          <WorkspaceBreadcrumbItem current className="sr-only">
+            <h2>{activeThreadTitle}</h2>
+          </WorkspaceBreadcrumbItem>
+        ) : null}
+        <WorkspaceBreadcrumbItem
+          current
+          className={cn("min-w-10 flex-1", isBotMainConversation && "hidden")}
+        >
           {renamingTitle !== null ? (
             <input
               autoFocus
@@ -418,6 +473,9 @@ export const ChatHeader = memo(function ChatHeader({
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
+      {botProject && isServerThread ? (
+        <BotThreadsMenu project={botProject} activeThreadId={activeThreadId} />
+      ) : null}
       {activeProject ? (
         <BotCallControl
           project={activeProject}

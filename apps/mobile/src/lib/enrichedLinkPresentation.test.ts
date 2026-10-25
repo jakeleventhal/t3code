@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  ComposerContextId,
+  ComposerContextRecord,
+  EnvironmentId,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
+import { formatComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import {
+  enrichedContextLinkPresentation,
   enrichedLinkVariantPattern,
   enrichedSkillLinkRegex,
   enrichedThreadLinkPresentation,
@@ -9,6 +17,54 @@ import {
 } from "./enrichedLinkPresentation";
 
 describe("Enriched link presentation", () => {
+  it("shows a bot chat's references by what they name", () => {
+    const environmentId = "env-home" as EnvironmentId;
+    const projectId = "t3code" as ProjectId;
+    const base = { version: 1, environmentId, projectId } as const;
+    const records: ComposerContextRecord[] = [
+      {
+        ...base,
+        kind: "project",
+        contextId: "project_code" as ComposerContextId,
+        label: "t3code",
+        title: "t3code",
+        botRole: null,
+      },
+      {
+        ...base,
+        kind: "project",
+        contextId: "project_bot" as ComposerContextId,
+        label: "Researcher",
+        title: "Researcher",
+        botRole: "specialist",
+      },
+      ...(["image/png", "application/pdf"] as const).map((mimeType, index) => ({
+        ...base,
+        kind: "bot-file" as const,
+        contextId: `bot-file_${index}` as ComposerContextId,
+        label: "Q3 report",
+        fileId: `file-${index}`,
+        fileKind: "attachment" as const,
+        title: "Q3 report",
+        attachmentId: `attachment-${index}`,
+        mimeType,
+        sourceThreadId: "thread-1" as ThreadId,
+      })),
+    ];
+    const icon = (record: ComposerContextRecord) =>
+      enrichedContextLinkPresentation(
+        formatComposerContextHref(record.kind, record.contextId),
+        records,
+      )?.icon;
+
+    expect(records.map(icon)).toEqual([
+      { kind: "chip", name: "folder" },
+      { kind: "chip", name: "bot" },
+      { kind: "chip", name: "image" },
+      { kind: "file", name: expect.any(String) },
+    ]);
+  });
+
   it("recognizes file-shaped code without turning commands or URLs into links", () => {
     for (const path of [
       "src/app.tsx",

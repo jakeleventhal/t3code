@@ -47,6 +47,8 @@ import type {
 import {
   IDLE_COMPACTION_TEXT,
   idleCompactionOf,
+  OrchestrationV2LatestVisibleMessageSummaryJson,
+  RuntimeMode,
   OrchestrationV2AppThreadJson as OrchestrationV2AppThreadJsonSchema,
   OrchestrationV2CheckpointJson as OrchestrationV2CheckpointJsonSchema,
   OrchestrationV2CheckpointScopeJson as OrchestrationV2CheckpointScopeJsonSchema,
@@ -1109,6 +1111,7 @@ type ShellThreadRow = {
   readonly thread_id: string;
   readonly payload_json: string;
   readonly forked_from_run_source_thread_id: string | null;
+  readonly bot_message_preview_json: string | null;
   readonly latest_run_id: string | null;
   readonly latest_run_status: string | null;
   readonly latest_run_requested_at: string | null;
@@ -1117,6 +1120,7 @@ type ShellThreadRow = {
   readonly latest_run_stop_requested: number;
   readonly active_run_id: string | null;
   readonly active_run_status: string | null;
+  readonly active_run_runtime_mode: string | null;
   readonly activity_run_status: string | null;
   readonly activity_run_started_at: string | null;
   readonly last_error: string | null;
@@ -1638,7 +1642,7 @@ export function threadShellFromProjection(
     title: projection.thread.title,
     providerInstanceId: projection.thread.providerInstanceId,
     modelSelection: projection.thread.modelSelection,
-    runtimeMode: projection.thread.runtimeMode,
+    runtimeMode: activeRun?.runtimeMode ?? projection.thread.runtimeMode,
     interactionMode: projection.thread.interactionMode,
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
@@ -1776,7 +1780,15 @@ function isActivityRunForShell(
   return isInterruptibleRunForShell(run) || run.status === "waiting";
 }
 
+const decodeActiveRuntimeMode = Schema.decodeUnknownEffect(Schema.NullOr(RuntimeMode));
+
+const decodeBotMessagePreview = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationV2LatestVisibleMessageSummaryJson),
+);
+
 type ShellThreadState = {
+  readonly activeRuntimeMode: RuntimeMode | null;
+  readonly botMessagePreview: OrchestrationV2ThreadShell["latestVisibleMessage"];
   readonly thread: OrchestrationV2ThreadProjection["thread"];
   readonly latestRunId: RunId | null;
   readonly latestRunStatus: OrchestrationV2ShellThreadStatus;
@@ -1914,7 +1926,7 @@ function shellFromState(input: {
     title: input.state.thread.title,
     providerInstanceId: input.state.thread.providerInstanceId,
     modelSelection: input.state.thread.modelSelection,
-    runtimeMode: input.state.thread.runtimeMode,
+    runtimeMode: input.state.activeRuntimeMode ?? input.state.thread.runtimeMode,
     interactionMode: input.state.thread.interactionMode,
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
@@ -1950,7 +1962,7 @@ function shellFromState(input: {
     usageLimitResetAt: input.state.usageLimitResetAt,
     pendingRuntimeRequest: input.state.pendingRuntimeRequest,
     pendingGuestMessageCount: pendingGuestMessageCount(input.state.thread.guestShare),
-    latestVisibleMessage: null,
+    latestVisibleMessage: input.state.botMessagePreview,
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
     hasActionableProposedPlan: input.state.hasActionableProposedPlan,
@@ -5800,6 +5812,27 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             SELECT
               t.thread_id,
               t.payload_json,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM projection_projects p
+                WHERE p.project_id = t.project_id AND p.bot_role IS NOT NULL AND p.deleted_at IS NULL
+              ) THEN (
+                -- Only Bots need inbox excerpts; never hydrate message bodies into Code shells.
+                SELECT json_object('id', m.message_id, 'role', m.role,
+                  'text', substr(json_extract(m.payload_json, '$.text'), 1, 240),
+                  'updatedAt', m.updated_at)
+                FROM orchestration_v2_projection_messages m
+                WHERE m.thread_id = t.thread_id
+                  AND (m.role = 'assistant' OR (m.role = 'user' AND json_extract(m.payload_json, '$.createdBy') = 'user'))
+                  AND json_extract(m.payload_json, '$.notification') IS NULL
+                  AND json_extract(m.payload_json, '$.workflowScript') IS NOT 1
+                  AND json_extract(m.payload_json, '$.delegatedCompletion') IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM orchestration_v2_projection_runs r
+                    WHERE r.run_id = m.run_id AND r.status = 'rolled_back'
+                  )
+                ORDER BY m.updated_at DESC, m.message_id DESC
+                LIMIT 1
+              ) ELSE NULL END AS bot_message_preview_json,
               CASE
                 WHEN json_extract(t.payload_json, '$.forkedFrom.type') = 'run'
                   THEN json_extract(t.payload_json, '$.forkedFrom.threadId')
@@ -5817,6 +5850,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ) AS latest_run_stop_requested,
               active.run_id AS active_run_id,
               active.status AS active_run_status,
+              json_extract(active.payload_json, '$.runtimeMode') AS active_run_runtime_mode,
               (
                 SELECT r.status
                 FROM orchestration_v2_projection_runs r
@@ -6418,6 +6452,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         ];
         return {
           thread,
+          botMessagePreview:
+            row.bot_message_preview_json === null
+              ? null
+              : yield* decodeBotMessagePreview(row.bot_message_preview_json),
           latestRunId,
           latestRunStatus,
           latestRunRequestedAt,
@@ -6425,6 +6463,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           latestRunCompletedAt,
           latestRunStopRequested,
           activeRunId: row.active_run_id === null ? null : RunId.make(row.active_run_id),
+          activeRuntimeMode: yield* decodeActiveRuntimeMode(row.active_run_runtime_mode),
           blockedOnThreadWait: deriveBlockedOnThreadWait({
             activeRun:
               row.active_run_id === null || row.active_run_status !== "running"

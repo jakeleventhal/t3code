@@ -106,6 +106,7 @@ import {
   useSelectedThreadVisibleTurnItems,
 } from "../state/use-thread-detail";
 import { useThreadSelection } from "../state/use-thread-selection";
+import { botChatTurn } from "../features/bots/bot-turn-settings";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
@@ -176,6 +177,7 @@ export function useThreadComposerState() {
     selectedThread: selectedThreadShell,
     selectedThreadCreation,
     selectedThreadDetailRef,
+    selectedThreadProject,
     selectedEnvironmentRuntime,
   } = useThreadSelection();
   const selectedThreadProjection = useSelectedThreadProjection();
@@ -300,8 +302,23 @@ export function useThreadComposerState() {
   const selectedDraft = useComposerDraftSettings(selectedThreadKey);
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadShell;
-  const modelSelection = selectedDraft.modelSelection ?? selectedThread?.modelSelection ?? null;
   const serverConfig = selectedEnvironmentRuntime?.serverConfig;
+  // A bot chat runs on the model and permissions chosen in its bot's settings, when there are any.
+  const botTurn = selectedThread
+    ? botChatTurn({
+        config: serverConfig,
+        project: selectedThreadProject,
+        fallback: {
+          modelSelection: selectedDraft.modelSelection ?? selectedThread.modelSelection,
+          runtimeMode: selectedDraft.runtimeMode ?? selectedThread.runtimeMode,
+        },
+      })
+    : null;
+  const modelSelection =
+    botTurn?.modelSelection ??
+    selectedDraft.modelSelection ??
+    selectedThread?.modelSelection ??
+    null;
   const pendingHandoff = resolvePendingHandoff(
     selectedThreadProjection?.projection,
     isModelSelectionUnavailable(serverConfig, modelSelection, selectedThread?.projectId ?? null)
@@ -309,7 +326,8 @@ export function useThreadComposerState() {
       : modelSelection,
     serverConfig?.providers ?? [],
   );
-  const runtimeMode = selectedDraft.runtimeMode ?? selectedThread?.runtimeMode ?? null;
+  const runtimeMode =
+    botTurn?.runtimeMode ?? selectedDraft.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,
   );
@@ -581,8 +599,26 @@ export function useThreadComposerState() {
       return null;
     }
 
-    const modelSelection = draft.modelSelection ?? thread.modelSelection;
     const serverConfig = selectedEnvironmentRuntime?.serverConfig;
+    // Read at send time so the message carries the bot's settings as they are now. A chosen model
+    // that can't run blocks the send rather than quietly using the chat's own.
+    const sendBotTurn = botChatTurn({
+      config: serverConfig,
+      project: selectedThreadProject,
+      fallback: {
+        modelSelection: draft.modelSelection ?? thread.modelSelection,
+        runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
+      },
+    });
+    if (
+      sendBotTurn?.kind === "setup-needed" &&
+      selectedEnvironmentRuntime?.connectionState === "connected"
+    ) {
+      Dialog.alert("Setup needed", `${sendBotTurn.reason} Choose a model in the bot’s settings.`);
+      return null;
+    }
+    const modelSelection =
+      sendBotTurn?.modelSelection ?? draft.modelSelection ?? thread.modelSelection;
     if (
       selectedEnvironmentRuntime?.connectionState === "connected" &&
       isModelSelectionUnavailable(serverConfig, modelSelection, thread.projectId)
@@ -696,7 +732,7 @@ export function useThreadComposerState() {
       attachments,
       context: draft.context,
       modelSelection,
-      runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
+      runtimeMode: sendBotTurn?.runtimeMode ?? draft.runtimeMode ?? thread.runtimeMode,
       interactionMode: resolveProviderInteractionMode(
         provider,
         draft.interactionMode ?? thread.interactionMode,
@@ -894,6 +930,8 @@ export function useThreadComposerState() {
     cancelQueuedRunEdit,
     onRemoveQueuedEditAttachment,
     modelSelection,
+    /** Set when a bot chat's chosen model can't run here; sending waits for it to be fixed. */
+    botSetupNeeded: botTurn?.kind === "setup-needed" ? botTurn.reason : null,
     pendingHandoff,
     canSwitchThreadProvider,
     runtimeMode,

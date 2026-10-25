@@ -8,7 +8,7 @@ import type {
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 
-import { uploadedComposerContext } from "../lib/composerContext";
+import { isAttachmentContextRecord, uploadedComposerContext } from "../lib/composerContext";
 import { appAtomRegistry } from "./atom-registry";
 import { abortComposerDraftOperations } from "./composerDraftOperations";
 import { queuedEditDraftKey } from "./queued-edit-draft-key";
@@ -113,7 +113,7 @@ export function resolveQueuedEditPayload(input: {
     ),
   );
   const records = rebound.records.filter(
-    (record) => !("attachmentId" in record) || liveIds.has(record.attachmentId),
+    (record) => !isAttachmentContextRecord(record) || liveIds.has(record.attachmentId),
   );
   return {
     attachments,

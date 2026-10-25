@@ -353,7 +353,12 @@ export const layer: Layer.Layer<
             input.threadId,
             loaded.providerTurn.startedAt,
           );
+          const resolveAttachmentPath = yield* botContext.resolveFileReferences(
+            input.threadId,
+            message.context?.records ?? [],
+          );
           const userText = projectComposerContextForProvider({
+            resolveAttachmentPath,
             text: message.text,
             records: message.context?.records ?? [],
             currentView: message.context?.currentView,

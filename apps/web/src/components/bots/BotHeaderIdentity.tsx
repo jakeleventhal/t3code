@@ -35,8 +35,8 @@ export function BotProfileButton({ project }: { project: EnvironmentProject }) {
       <TooltipTrigger
         render={
           <Button
-            size="icon-xs"
-            variant="ghost-muted"
+            size="sm"
+            variant="outline"
             aria-label={`${project.title} profile`}
             aria-pressed={profileOpen}
             data-pressed={profileOpen || undefined}
@@ -45,6 +45,7 @@ export function BotProfileButton({ project }: { project: EnvironmentProject }) {
         }
       >
         <CircleUserRoundIcon />
+        Profile
       </TooltipTrigger>
       <TooltipPopup side="bottom">Profile</TooltipPopup>
     </Tooltip>

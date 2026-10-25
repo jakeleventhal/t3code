@@ -1,3 +1,7 @@
+import {
+  chooseAssistantEnvironment,
+  environmentAssistant,
+} from "@t3tools/client-runtime/assistant-environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, MessageId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { useCallback, useMemo } from "react";
@@ -6,17 +10,17 @@ import { useProjects, useServerConfigs } from "../../state/entities";
 import { uuidv4 } from "../../lib/uuid";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useWorkspaceEnvironments } from "../../state/workspace";
-import { useHomeListOptions } from "../home/home-list-options";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import { chooseAssistantEnvironment } from "./assistant-environment";
+import { botHostCandidates } from "./bot-turn-settings";
 
-export function useAssistantEnvironmentId(): EnvironmentId | null {
+/** Workspace environments plus saved connections: the environments this device knows. */
+export function useKnownBotEnvironments() {
   const workspaceEnvironments = useWorkspaceEnvironments();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const serverConfigs = useServerConfigs();
-  // The same environments the Code list can be filtered to. Only servers that advertise bots
-  // can become the fallback; a filtered older one still owns the Assistant and says why.
-  const environments = useMemo(() => {
+  // Only servers that advertise bots can get the first Assistant; an older server that already
+  // has one keeps it and says why it can't open.
+  return useMemo(() => {
     const known = new Set(workspaceEnvironments.map((environment) => environment.environmentId));
     const savedOnly = Object.values(savedConnectionsById)
       .filter((connection) => !known.has(connection.environmentId))
@@ -36,16 +40,24 @@ export function useAssistantEnvironmentId(): EnvironmentId | null {
         true,
     }));
   }, [workspaceEnvironments, savedConnectionsById, serverConfigs]);
+}
+
+export function useBotHostCandidates() {
+  const environments = useKnownBotEnvironments();
+  return useMemo(() => botHostCandidates(environments), [environments]);
+}
+
+/**
+ * The user's one Assistant, the same on every entry point: the Bots hero, the orb and the quick
+ * sheet. Neither the Code list's filter nor the thread on screen picks it; what's on screen
+ * travels with each quick message as context.
+ */
+export function useAssistantEnvironmentId(): EnvironmentId | null {
+  const environments = useKnownBotEnvironments();
   const projects = useProjects();
-  const environmentIds = useMemo(
-    () => new Set(environments.map((environment) => environment.environmentId)),
-    [environments],
-  );
-  // Only reads the Code list's filter; resolving it here never changes the list's selection.
-  const selectedEnvironmentId = useHomeListOptions(environmentIds).options.selectedEnvironmentId;
   return useMemo(
-    () => chooseAssistantEnvironment({ environments, selectedEnvironmentId, projects }),
-    [environments, selectedEnvironmentId, projects],
+    () => chooseAssistantEnvironment({ environments, projects }),
+    [environments, projects],
   );
 }
 
@@ -53,15 +65,7 @@ export function useAssistantProject(
   environmentId: EnvironmentId | null,
 ): EnvironmentProject | null {
   const projects = useProjects();
-  return useMemo(
-    () =>
-      projects
-        .filter(
-          (project) => project.environmentId === environmentId && project.botRole === "assistant",
-        )
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0] ?? null,
-    [projects, environmentId],
-  );
+  return useMemo(() => environmentAssistant(projects, environmentId), [projects, environmentId]);
 }
 
 /**

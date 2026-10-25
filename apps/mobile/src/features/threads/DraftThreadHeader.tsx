@@ -15,6 +15,7 @@ import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { vcsActionManager, vcsEnvironment } from "../../state/vcs";
 import { useVcsActionState } from "../../state/use-vcs-action-state";
+import { botRole } from "../bots/bot-room";
 import { ThreadHeader } from "./ThreadHeader";
 
 export function DraftThreadHeader(props: {
@@ -44,6 +45,18 @@ export function DraftThreadHeader(props: {
       projectName: props.project.title,
     });
   };
+  const botIdentity =
+    botRole(props.project) === null
+      ? undefined
+      : {
+          project: props.project,
+          topic: "New thread",
+          onPress: () =>
+            navigation.navigate("BotProfile", {
+              environmentId: String(props.project.environmentId),
+              projectId: String(props.project.id),
+            }),
+        };
   const requiresThread = () =>
     Dialog.alert("Available after the first message", "This action needs a saved thread.");
   return (
@@ -51,6 +64,7 @@ export function DraftThreadHeader(props: {
       draft
       title="New thread"
       subtitle=""
+      botIdentity={botIdentity}
       headerColor={themeVariables["--color-header"]}
       usesNativeHeaderGlass={NATIVE_LIQUID_GLASS_SUPPORTED}
       hasThreadCwd={props.cwd !== null}

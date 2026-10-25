@@ -76,6 +76,7 @@ import Migration0070 from "./Migrations/070_ProjectionProjectBotRole.ts";
 import Migration0071 from "./Migrations/071_ProjectionProjectBotMainThread.ts";
 import Migration0072 from "./Migrations/072_VoiceCallIndexes.ts";
 import Migration0073 from "./Migrations/073_VoiceTranscriptUpdatedIndex.ts";
+import Migration0075 from "./Migrations/075_PeerMessageOutbox.ts";
 import Migration0074 from "./Migrations/074_BotChatFiles.ts";
 
 const migrationEntries = [
@@ -154,6 +155,7 @@ const migrationEntries = [
   [72, "VoiceCallIndexes", Migration0072],
   [73, "VoiceTranscriptUpdatedIndex", Migration0073],
   [74, "BotChatFiles", Migration0074],
+  [75, "PeerMessageOutbox", Migration0075],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -1,3 +1,7 @@
+import {
+  BOT_MENTION_GROUP_LABELS,
+  type BotMentionItem,
+} from "@t3tools/client-runtime/botMentionItems";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import {
@@ -14,7 +18,10 @@ import {
 } from "@t3tools/contracts";
 import {
   BlocksIcon,
+  BotIcon,
+  FileTextIcon,
   FolderIcon,
+  ImageIcon,
   MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
@@ -26,7 +33,7 @@ import { memo, useLayoutEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
-import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { Command, CommandGroup, CommandGroupLabel, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
@@ -77,7 +84,8 @@ export type ComposerCommandItem =
       thread: ScopedThreadRef;
       label: string;
       description: string;
-    };
+    }
+  | BotMentionItem;
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   listId: string;
@@ -86,6 +94,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
   emptyStateText?: string;
+  loadingText?: string | undefined;
+  /** A standing explanation above the results, such as why some kinds are missing. */
+  notice?: string | null | undefined;
   activeItemId: string | null;
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
@@ -115,36 +126,44 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         className="flex min-h-0 w-full flex-col overflow-hidden pb-(--chat-composer-attachment-overlap) **:data-[slot=command-item]:rounded-lg **:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4"
         data-composer-command-drawer="true"
       >
+        {props.notice ? (
+          <p className="px-5 pt-3 pb-1 text-secondary-label text-xs">{props.notice}</p>
+        ) : null}
         {props.items.length > 0 ? (
           <CommandList
             id={props.listId}
             aria-label={props.triggerKind ? LISTBOX_LABEL_BY_TRIGGER[props.triggerKind] : undefined}
             className="max-h-72 min-h-0 scroll-pb-6"
           >
-            <CommandGroup>
-              {props.items.map((item) => (
-                <ComposerCommandMenuItem
-                  key={item.id}
-                  optionId={composerSuggestionOptionId(props.listId, item.id)}
-                  item={item}
-                  triggerKind={props.triggerKind}
-                  resolvedTheme={props.resolvedTheme}
-                  isActive={props.activeItemId === item.id}
-                  onHighlight={props.onHighlightedItemChange}
-                  onSelect={props.onSelect}
-                />
-              ))}
-            </CommandGroup>
+            {groupComposerItems(props.items).map((group) => (
+              <CommandGroup key={group.key}>
+                {group.label ? <CommandGroupLabel>{group.label}</CommandGroupLabel> : null}
+                {group.items.map((item) => (
+                  <ComposerCommandMenuItem
+                    key={item.id}
+                    optionId={composerSuggestionOptionId(props.listId, item.id)}
+                    item={item}
+                    triggerKind={props.triggerKind}
+                    resolvedTheme={props.resolvedTheme}
+                    isActive={props.activeItemId === item.id}
+                    onHighlight={props.onHighlightedItemChange}
+                    onSelect={props.onSelect}
+                  />
+                ))}
+              </CommandGroup>
+            ))}
           </CommandList>
         ) : (
           <div className="px-5 pt-3.5 pb-7">
             <p className="text-secondary-label text-xs">
               {props.isLoading
-                ? props.triggerKind === "skill"
-                  ? "Searching workspace skills..."
-                  : props.triggerKind === "pull-request"
-                    ? "Finding pull request..."
-                    : "Searching workspace files..."
+                ? props.loadingText
+                  ? props.loadingText
+                  : props.triggerKind === "skill"
+                    ? "Searching workspace skills..."
+                    : props.triggerKind === "pull-request"
+                      ? "Finding pull request..."
+                      : "Searching workspace files..."
                 : (props.emptyStateText ??
                   (props.triggerKind === "skill"
                     ? "No skills found. Try / to browse provider commands."
@@ -202,6 +221,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
+      {props.item.type === "reference" ? <ReferenceItemIcon item={props.item} /> : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
           role="img"
@@ -233,6 +253,39 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
     </CommandItem>
   );
 });
+
+/** Bot mention items arrive ordered by group; everything else is one unlabeled group. */
+function groupComposerItems(items: ReadonlyArray<ComposerCommandItem>) {
+  const groups: Array<{ key: string; label: string | null; items: ComposerCommandItem[] }> = [];
+  for (const item of items) {
+    const key = item.type === "reference" ? item.group : "items";
+    const last = groups.at(-1);
+    if (last?.key === key) last.items.push(item);
+    else {
+      groups.push({
+        key,
+        label: item.type === "reference" ? BOT_MENTION_GROUP_LABELS[item.group] : null,
+        items: [item],
+      });
+    }
+  }
+  return groups;
+}
+
+function ReferenceItemIcon(props: { item: BotMentionItem }) {
+  const { reference } = props.item;
+  const Icon =
+    reference.kind === "thread"
+      ? MessagesSquareIcon
+      : reference.kind === "project"
+        ? reference.botRole === null
+          ? FolderIcon
+          : BotIcon
+        : reference.mimeType?.startsWith("image/")
+          ? ImageIcon
+          : FileTextIcon;
+  return <Icon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />;
+}
 
 export function composerSuggestionOptionId(listId: string, itemId: string): string {
   // JSON escapes lone UTF-16 surrogates before URI encoding without losing identity.

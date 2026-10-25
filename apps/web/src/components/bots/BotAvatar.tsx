@@ -27,10 +27,11 @@ function specialistColor(seed: string) {
 const SIZE_CLASS = {
   sm: "size-5 text-3xs",
   md: "size-6 text-2xs",
+  lg: "size-8 text-xs",
   xl: "size-20 text-2xl",
 } as const;
-const EMOJI_CLASS = { sm: "text-xs", md: "text-sm", xl: "text-4xl" } as const;
-const ICON_CLASS = { sm: "size-3", md: "size-3.5", xl: "size-9" } as const;
+const EMOJI_CLASS = { sm: "text-xs", md: "text-sm", lg: "text-base", xl: "text-4xl" } as const;
+const ICON_CLASS = { sm: "size-3", md: "size-3.5", lg: "size-4", xl: "size-9" } as const;
 
 export type BotAvatarSize = keyof typeof SIZE_CLASS;
 

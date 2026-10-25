@@ -20,6 +20,7 @@ export function BotCallStartButton({
   availability,
   onStart,
   onOpenActive,
+  prominent = false,
 }: {
   environmentId: EnvironmentId;
   bot: VoiceCallTarget["bot"];
@@ -29,6 +30,7 @@ export function BotCallStartButton({
   availability: BotCallAvailability;
   onStart: (input: { readonly replacingCallId: string | null }) => void;
   onOpenActive: () => void;
+  prominent?: boolean;
 }) {
   const decision = resolveBotCallStart({
     active,
@@ -68,8 +70,8 @@ export function BotCallStartButton({
       {/* A span keeps the reason reachable on hover while the button itself is disabled. */}
       <TooltipTrigger render={<span className="inline-flex" />}>
         <Button
-          size="icon-xs"
-          variant="ghost-muted"
+          size={prominent ? "sm" : "icon-xs"}
+          variant={prominent ? "outline" : "ghost-muted"}
           aria-label={label}
           aria-pressed={onCall}
           data-pressed={onCall ? "" : undefined}
@@ -77,6 +79,7 @@ export function BotCallStartButton({
           onClick={() => void press()}
         >
           <PhoneIcon />
+          {prominent ? (onCall ? "In call" : "Call") : null}
         </Button>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>

@@ -1,12 +1,11 @@
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { MessageSquareIcon, PinIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { MessageSquareIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { isElectron } from "../../env";
-import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { useThreadRouteRef } from "../../hooks/useThreadRouteTarget";
 import { cn } from "../../lib/utils";
 import { botEnvironment } from "../../state/bots";
@@ -15,14 +14,13 @@ import {
   useProjects,
   useThreadShells,
 } from "../../state/entities";
-import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../../state/environments";
+import { useEnvironmentConnectionSummaries } from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import type { SidebarThreadSummary } from "../../types";
 import { isSidebarSubagentThread, resolveThreadStatusPill } from "../Sidebar.logic";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
 import { SidebarHeaderIconButton } from "../sidebar/SidebarThreadHeader";
 import { Button } from "../ui/button";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Separator } from "../ui/separator";
 import {
   SidebarContent,
@@ -37,11 +35,20 @@ import {
   useSidebar,
 } from "../ui/sidebar";
 import { BotAvatar } from "./BotAvatar";
-import { orderBotConversations, partitionEnvironmentBots } from "./botRoom.logic";
-import { NewBotDialog } from "./NewBotDialog";
-import { SidebarRoomSwitch, useEnterBotsRoom } from "./SidebarRoomSwitch";
+import {
+  botProjectKeys,
+  buildBotsCollection,
+  orderBotConversations,
+  type BotsCollectionEntry,
+} from "./botRoom.logic";
+import { BotThreadRenameInput } from "./BotThreadsMenu";
+import { NewBotDialog, useNewBotHost } from "./NewBotDialog";
+import { SidebarRoomSwitch } from "./SidebarRoomSwitch";
 import { useBotActions } from "./useBotActions";
-import { useBotsEnvironmentId, useRouteBotProject } from "./useBotRoom";
+import { useBotThreadActions } from "./useBotThreadActions";
+import { useDesignatedAssistantEnvironmentId, useRouteBotProject } from "./useBotRoom";
+
+type BotEntry = BotsCollectionEntry<EnvironmentProject>;
 
 function StatusDot({ thread }: { thread: SidebarThreadSummary | null }) {
   const pill = thread ? resolveThreadStatusPill({ thread }) : null;
@@ -54,144 +61,233 @@ function StatusDot({ thread }: { thread: SidebarThreadSummary | null }) {
   );
 }
 
-function EnvironmentPicker({ environmentId }: { environmentId: EnvironmentId | null }) {
-  const connectedEnvironmentIds = useConnectedEnvironmentIds();
-  const identities = useEnvironmentIdentities();
-  const enterBotsRoom = useEnterBotsRoom();
-  if (connectedEnvironmentIds.length < 2) return null;
-  const items = connectedEnvironmentIds.map((id) => ({
-    value: id,
-    label: identities.find((identity) => identity.environmentId === id)?.label ?? id,
-  }));
+/** Host and availability, only when they tell this bot apart or explain why it can't answer. */
+function entryNote(entry: BotEntry): string | null {
+  const parts = [entry.hostLabel, entry.offline ? "Offline" : null].filter(
+    (part): part is string => part !== null,
+  );
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+function entryKey(entry: BotEntry): string {
+  return `${entry.environmentId}:${entry.project?.id ?? "assistant"}`;
+}
+
+/** New bots go to the default host set on the designated Assistant's environment. */
+function NewBotButton({
+  sourceEnvironmentId,
+  onCreated,
+}: {
+  sourceEnvironmentId: EnvironmentId;
+  onCreated: () => void;
+}) {
+  const host = useNewBotHost(sourceEnvironmentId);
+  const canCreate = useAtomValue(botEnvironment.create.permissionAtom(host.environmentId));
+  const [open, setOpen] = useState(false);
+  // An unavailable host keeps the button so the dialog can say why; a connection that simply
+  // can't create bots there has nothing to offer.
+  if (host.kind === "ready" && !canCreate) return null;
   return (
-    <Select
-      value={environmentId}
-      items={items}
-      onValueChange={(value) => {
-        const next = connectedEnvironmentIds.find((id) => id === value);
-        if (next !== undefined && next !== environmentId) enterBotsRoom(next);
+    <>
+      <SidebarHeaderIconButton label="New bot" onClick={() => setOpen(true)}>
+        <PlusIcon />
+      </SidebarHeaderIconButton>
+      <NewBotDialog
+        key={sourceEnvironmentId}
+        environmentId={sourceEnvironmentId}
+        open={open}
+        onOpenChange={setOpen}
+        onCreated={onCreated}
+      />
+    </>
+  );
+}
+
+function OpenBotThreadRow({
+  bot,
+  thread,
+  onOpen,
+}: {
+  bot: EnvironmentProject;
+  thread: SidebarThreadSummary;
+  onOpen: () => void;
+}) {
+  const actions = useBotThreadActions(bot);
+  const canOperate = useEnvironmentScope(bot.environmentId, AuthOrchestrationOperateScope);
+  const [renaming, setRenaming] = useState(false);
+  const target = {
+    ref: scopeThreadRef(thread.environmentId, thread.id),
+    title: thread.title,
+    archived: false,
+  };
+  if (renaming) {
+    return (
+      <SidebarMenuSubItem>
+        <BotThreadRenameInput target={target} actions={actions} onDone={() => setRenaming(false)} />
+      </SidebarMenuSubItem>
+    );
+  }
+  return (
+    <SidebarMenuSubItem
+      onContextMenu={(event) => {
+        if (!canOperate) return;
+        event.preventDefault();
+        void actions.openMenu(target, { x: event.clientX, y: event.clientY }, () =>
+          setRenaming(true),
+        );
       }}
     >
-      <SelectTrigger size="sm" aria-label="Bots environment">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
+      <SidebarMenuSubButton
+        render={<button type="button" />}
+        isActive
+        aria-current="page"
+        onClick={onOpen}
+      >
+        <MessageSquareIcon />
+        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+        <StatusDot thread={thread} />
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
   );
 }
 
 export default function BotsSidebar() {
-  const environmentId = useBotsEnvironmentId();
+  const assistantEnvironmentId = useDesignatedAssistantEnvironmentId();
+  const environments = useEnvironmentConnectionSummaries();
   const projects = useProjects();
   const threads = useThreadShells();
   const routeThreadRef = useThreadRouteRef();
   const routeBot = useRouteBotProject();
   const { isMobile, setOpenMobile } = useSidebar();
   const { openMainConversation, openThread } = useBotActions();
-  const handleNewThread = useNewThreadHandler();
-  const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
-  const supported = useEnvironmentSupportsBotConversations(environmentId);
-  const canCreate = useAtomValue(botEnvironment.create.permissionAtom(environmentId)) && supported;
+  const canOperate = useEnvironmentScope(assistantEnvironmentId, AuthOrchestrationOperateScope);
+  const supported = useEnvironmentSupportsBotConversations(assistantEnvironmentId);
   const [query, setQuery] = useState("");
   const [openingKey, setOpeningKey] = useState<string | null>(null);
-  const [newBotOpen, setNewBotOpen] = useState(false);
 
-  const { assistant, specialists } = partitionEnvironmentBots(projects, environmentId);
-  const normalizedQuery = query.trim().toLowerCase();
-  const matches = (bot: EnvironmentProject | null, fallbackTitle: string) =>
-    normalizedQuery.length === 0 ||
-    (bot?.title ?? fallbackTitle).toLowerCase().includes(normalizedQuery);
+  const { assistant, specialists, otherAssistants } = buildBotsCollection({
+    projects,
+    environments: environments
+      .filter((environment) => environment.isEnabled)
+      .map((environment) => ({
+        environmentId: environment.environmentId,
+        label: environment.environmentLabel,
+        connected: environment.connectionState === "connected",
+      })),
+    assistantEnvironmentId,
+    query,
+  });
+  const botKeys = botProjectKeys(projects);
+  const threadsByBot = new Map<string, (typeof threads)[number][]>();
+  for (const thread of threads) {
+    const key = `${thread.environmentId}:${thread.projectId}`;
+    if (!(botKeys?.has(key) ?? false) || isSidebarSubagentThread(thread)) continue;
+    const owned = threadsByBot.get(key);
+    if (owned) owned.push(thread);
+    else threadsByBot.set(key, [thread]);
+  }
   const conversationsFor = (bot: EnvironmentProject) =>
     orderBotConversations(
-      threads.filter(
-        (thread) =>
-          thread.environmentId === bot.environmentId &&
-          thread.projectId === bot.id &&
-          !isSidebarSubagentThread(thread),
-      ),
+      threadsByBot.get(`${bot.environmentId}:${bot.id}`) ?? [],
       bot.botMainThreadId,
     );
 
   const closeMobileSheet = () => {
     if (isMobile) setOpenMobile(false);
   };
-  const openBot = async (bot: EnvironmentProject | null) => {
-    if (environmentId === null || openingKey !== null) return;
-    const key = bot?.botRole === "assistant" || bot === null ? "assistant" : bot.id;
+  // Each bot opens on its own environment, with that environment's permissions.
+  const openBot = async (entry: BotEntry) => {
+    if (openingKey !== null) return;
+    const key = entryKey(entry);
     setOpeningKey(key);
-    const opened = await openMainConversation(environmentId, bot);
+    const opened = await openMainConversation(entry.environmentId, entry.project);
     setOpeningKey((current) => (current === key ? null : current));
     if (opened) closeMobileSheet();
   };
-  const openTopic = (thread: SidebarThreadSummary) => {
+  const openBotThread = (thread: SidebarThreadSummary) => {
     closeMobileSheet();
     void openThread(scopeThreadRef(thread.environmentId, thread.id));
   };
-  const startTopic = (bot: EnvironmentProject) => {
-    closeMobileSheet();
-    void handleNewThread(scopeProjectRef(bot.environmentId, bot.id));
-  };
 
-  const renderConversations = (bot: EnvironmentProject) => {
+  // A bot row is its main conversation. Its other threads stay in the chat header's Threads menu;
+  // only the one on screen shows here, nested under its bot so the parent reads as context.
+  const renderOpenThread = (bot: EnvironmentProject) => {
     if (routeBot?.id !== bot.id || routeBot.environmentId !== bot.environmentId) return null;
-    const { main, topics } = conversationsFor(bot);
+    const open = conversationsFor(bot).topics.find(
+      (thread) => thread.id === routeThreadRef?.threadId,
+    );
+    if (open === undefined) return null;
     return (
       <SidebarMenuSub>
-        {main ? (
-          <SidebarMenuSubItem>
-            <SidebarMenuSubButton
-              render={<button type="button" />}
-              isActive={routeThreadRef?.threadId === main.id}
-              aria-disabled={openingKey !== null || undefined}
-              onClick={() => void openBot(bot)}
-            >
-              <PinIcon />
-              <span>Main conversation</span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        ) : null}
-        {topics.map((thread) => (
-          <SidebarMenuSubItem key={thread.id}>
-            <SidebarMenuSubButton
-              render={<button type="button" />}
-              isActive={routeThreadRef?.threadId === thread.id}
-              onClick={() => openTopic(thread)}
-            >
-              <MessageSquareIcon />
-              <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-              <StatusDot thread={thread} />
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        ))}
-        {canOperate ? (
-          <SidebarMenuSubItem>
-            <SidebarMenuSubButton
-              render={<button type="button" />}
-              size="sm"
-              onClick={() => startTopic(bot)}
-            >
-              <PlusIcon />
-              <span>New topic</span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        ) : null}
+        <OpenBotThreadRow bot={bot} thread={open} onOpen={() => openBotThread(open)} />
       </SidebarMenuSub>
     );
   };
+  const isOnMain = (entry: BotEntry, main: SidebarThreadSummary | null) =>
+    main !== null &&
+    routeThreadRef?.environmentId === entry.environmentId &&
+    routeThreadRef.threadId === main.id;
 
-  const assistantMain = assistant ? conversationsFor(assistant).main : null;
-  const assistantPill = assistantMain ? resolveThreadStatusPill({ thread: assistantMain }) : null;
+  const renderBot = (entry: BotEntry) => {
+    const bot = entry.project;
+    if (bot === null) return null;
+    const { main } = conversationsFor(bot);
+    const key = entryKey(entry);
+    const note = entryNote(entry);
+    return (
+      <SidebarMenuItem key={key}>
+        <SidebarMenuButton
+          isActive={isOnMain(entry, main)}
+          // Offline, a bot opens only to a conversation this client still has.
+          disabled={openingKey === key || (entry.offline && main === null)}
+          aria-current={isOnMain(entry, main) ? "page" : undefined}
+          onClick={() => void openBot(entry)}
+        >
+          <BotAvatar bot={bot} />
+          <span className="min-w-0 flex-1 truncate">{bot.title}</span>
+          {note !== null ? (
+            <span className="max-w-24 shrink-0 truncate text-xs text-sidebar-muted-foreground">
+              {note}
+            </span>
+          ) : null}
+          {entry.offline ? null : <StatusDot thread={main} />}
+        </SidebarMenuButton>
+        {renderOpenThread(bot)}
+      </SidebarMenuItem>
+    );
+  };
+
+  const assistantProject = assistant?.project ?? null;
+  const assistantMain = assistantProject ? conversationsFor(assistantProject).main : null;
+  const assistantPill =
+    assistantMain && !assistant?.offline
+      ? resolveThreadStatusPill({ thread: assistantMain })
+      : null;
+  const assistantKey = assistant ? entryKey(assistant) : null;
   // Before Assistant exists, opening it creates it, which needs a writable connection to a server
   // that supports bots.
   const canProvision = canOperate && supported;
-  const assistantUnavailable = environmentId === null || (assistant === null && !canProvision);
-  const visibleSpecialists = specialists.filter((bot) => matches(bot, bot.title));
+  const assistantStatus =
+    assistant === null
+      ? null
+      : openingKey === assistantKey
+        ? "Opening…"
+        : assistant.offline
+          ? "Offline"
+          : (assistantPill?.label ??
+            (assistantProject === null
+              ? canProvision
+                ? "Start a conversation"
+                : supported
+                  ? "This connection can’t start it"
+                  : "Needs a newer server"
+              : "Ongoing conversation"));
+  const assistantUnavailable =
+    assistant === null ||
+    (assistantProject === null && (!canProvision || assistant.offline)) ||
+    (assistant.offline && assistantMain === null);
+  const nothingListed =
+    assistant === null && specialists.length === 0 && otherAssistants.length === 0;
 
   return (
     <>
@@ -202,7 +298,6 @@ export default function BotsSidebar() {
           <SidebarGroup className="z-[1]">
             <div className="flex flex-col gap-2">
               <SidebarRoomSwitch room="bots" />
-              <EnvironmentPicker environmentId={environmentId} />
               <div className="flex items-center gap-1">
                 <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
                   <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
@@ -228,10 +323,11 @@ export default function BotsSidebar() {
                     </Button>
                   ) : null}
                 </div>
-                {canCreate ? (
-                  <SidebarHeaderIconButton label="New bot" onClick={() => setNewBotOpen(true)}>
-                    <PlusIcon />
-                  </SidebarHeaderIconButton>
+                {assistantEnvironmentId !== null ? (
+                  <NewBotButton
+                    sourceEnvironmentId={assistantEnvironmentId}
+                    onCreated={closeMobileSheet}
+                  />
                 ) : null}
               </div>
             </div>
@@ -240,67 +336,54 @@ export default function BotsSidebar() {
       >
         <SidebarGroup>
           <SidebarMenu aria-label="Bots">
-            {matches(assistant, "Assistant") ? (
+            {assistant !== null ? (
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="lg"
-                  isActive={assistantMain !== null && routeThreadRef?.threadId === assistantMain.id}
-                  disabled={assistantUnavailable || openingKey === "assistant"}
-                  aria-current={
-                    routeBot !== null && routeBot.id === assistant?.id ? "page" : undefined
-                  }
+                  isActive={isOnMain(assistant, assistantMain)}
+                  disabled={assistantUnavailable || openingKey === assistantKey}
+                  aria-current={isOnMain(assistant, assistantMain) ? "page" : undefined}
                   onClick={() => void openBot(assistant)}
                 >
                   <BotAvatar
-                    bot={assistant ?? { id: "assistant", title: "Assistant", botRole: "assistant" }}
+                    bot={
+                      assistantProject ?? {
+                        id: "assistant",
+                        title: "Assistant",
+                        botRole: "assistant",
+                      }
+                    }
                     size="md"
                   />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-semibold text-sidebar-foreground">
-                      {assistant?.title ?? "Assistant"}
+                      {assistantProject?.title ?? "Assistant"}
                     </span>
                     <span className="truncate text-xs font-normal text-sidebar-muted-foreground">
-                      {openingKey === "assistant"
-                        ? "Opening…"
-                        : (assistantPill?.label ??
-                          (assistant === null
-                            ? canProvision
-                              ? "Start a conversation"
-                              : supported
-                                ? "Not set up on this environment"
-                                : "Needs a newer server"
-                            : "Ongoing conversation"))}
+                      {assistant.hostLabel === null
+                        ? assistantStatus
+                        : `${assistant.hostLabel} · ${assistantStatus}`}
                     </span>
                   </span>
                 </SidebarMenuButton>
-                {assistant ? renderConversations(assistant) : null}
+                {assistantProject ? renderOpenThread(assistantProject) : null}
               </SidebarMenuItem>
             ) : null}
           </SidebarMenu>
-          {visibleSpecialists.length > 0 ? <Separator className="my-1.5" /> : null}
-          <SidebarMenu aria-label="Specialists">
-            {visibleSpecialists.map((bot) => {
-              const { main } = conversationsFor(bot);
-              return (
-                <SidebarMenuItem key={bot.id}>
-                  <SidebarMenuButton
-                    isActive={main !== null && routeThreadRef?.threadId === main.id}
-                    disabled={openingKey === bot.id}
-                    aria-current={routeBot?.id === bot.id ? "page" : undefined}
-                    onClick={() => void openBot(bot)}
-                  >
-                    <BotAvatar bot={bot} />
-                    <span className="min-w-0 flex-1 truncate">{bot.title}</span>
-                    <StatusDot thread={main} />
-                  </SidebarMenuButton>
-                  {renderConversations(bot)}
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-          {normalizedQuery.length > 0 &&
-          visibleSpecialists.length === 0 &&
-          !matches(assistant, "Assistant") ? (
+          {specialists.length > 0 ? <Separator className="my-1.5" /> : null}
+          <SidebarMenu aria-label="Specialists">{specialists.map(renderBot)}</SidebarMenu>
+          {otherAssistants.length > 0 ? (
+            <>
+              <Separator className="my-1.5" />
+              <p className="px-2 pt-1 pb-0.5 text-2xs font-medium text-sidebar-muted-foreground">
+                Other Assistants
+              </p>
+              <SidebarMenu aria-label="Other Assistants">
+                {otherAssistants.map(renderBot)}
+              </SidebarMenu>
+            </>
+          ) : null}
+          {query.trim().length > 0 && nothingListed ? (
             <p
               role="status"
               className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
@@ -308,7 +391,7 @@ export default function BotsSidebar() {
               No bots found
             </p>
           ) : null}
-          {environmentId === null ? (
+          {query.trim().length === 0 && nothingListed ? (
             <p className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
               Connect an environment to use bots.
             </p>
@@ -316,15 +399,6 @@ export default function BotsSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarChromeFooter />
-      {environmentId !== null ? (
-        <NewBotDialog
-          key={environmentId}
-          environmentId={environmentId}
-          open={newBotOpen}
-          onOpenChange={setNewBotOpen}
-          onCreated={closeMobileSheet}
-        />
-      ) : null}
     </>
   );
 }

@@ -1,3 +1,5 @@
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import * as PeerEnvironmentService from "./PeerEnvironmentService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
@@ -195,6 +197,7 @@ describe("orchestrator MCP toolkit", () => {
         const layerOrchestration = Layer.merge(
           layerOrchestrator,
           ThreadManagementService.layer.pipe(
+            Layer.provide(ProjectStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory))),
             Layer.provide(layerOrchestrator),
             Layer.provide(ServerSettings.layerTest()),
             Layer.provide(

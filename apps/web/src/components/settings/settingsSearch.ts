@@ -24,6 +24,7 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/snap-shot"
   | "/settings/providers"
+  | "/settings/bots"
   | "/settings/voice"
   | "/settings/integrations"
   | "/settings/scheduled-tasks"
@@ -84,6 +85,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
+  "/settings/bots": "Bots",
   "/settings/voice": "Voice",
   "/settings/integrations": "Integrations",
   "/settings/scheduled-tasks": "Scheduled tasks",
@@ -1050,6 +1052,30 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "bot-defaults-model",
+    title: "Default bot model",
+    to: "/settings/bots",
+    searchTerms: ["bots assistant provider model reasoning effort harness"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "bot-defaults-permissions",
+    title: "Default bot permissions",
+    to: "/settings/bots",
+    searchTerms: ["bots assistant runtime mode access approval supervised"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "bot-default-host",
+    title: "Default host for new bots",
+    to: "/settings/bots",
+    searchTerms: ["bots advanced environment machine server where new bots"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "voice-accounts",
     title: "Voice accounts",
     to: "/settings/voice",
@@ -1084,6 +1110,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
+  "/settings/bots": "project-defaults",
   "/settings/voice": "project-defaults",
   "/settings/integrations": null,
   "/settings/source-control": "environment-defaults",

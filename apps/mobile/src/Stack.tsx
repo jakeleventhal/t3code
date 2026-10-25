@@ -78,6 +78,7 @@ import { ActiveCallScreenSlot } from "./features/bots/ActiveBotCall";
 import { AssistantQuickSheet } from "./features/bots/AssistantQuickSheet";
 import { NewBotSheet } from "./features/bots/NewBotSheet";
 import { BotProfileSheet } from "./features/bots/BotProfileSheet";
+import { BotThreadsSheet } from "./features/bots/BotThreadsSheet";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -102,6 +103,12 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
+import {
+  SettingsBotDefaultHostRouteScreen,
+  SettingsBotsRouteScreen,
+  SettingsBotTurnModelRouteScreen,
+  SettingsBotTurnRouteScreen,
+} from "./features/settings/SettingsBotsRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
@@ -273,6 +280,31 @@ const THREAD_SETTINGS_SHEET_OPTIONS = {
 const SETTINGS_PAGE_OPTIONS = SHEET_GLASS_HEADER_OPTIONS;
 
 const SETTINGS_SCREENS = {
+  SettingsBots: createNativeStackScreen({
+    screen: SettingsBotsRouteScreen,
+    linking: "bots",
+    options: { title: "Bots" },
+  }),
+  SettingsBotTurn: createNativeStackScreen({
+    screen: SettingsBotTurnRouteScreen,
+    options: { title: "Bot model" },
+  }),
+  SettingsBotTurnModel: createNativeStackScreen({
+    screen: SettingsBotTurnModelRouteScreen,
+    options: {
+      headerShown: false,
+      ...(Platform.OS === "android"
+        ? { presentation: "card" as const }
+        : {
+            ...THREAD_SETTINGS_SHEET_OPTIONS,
+          }),
+    },
+  }),
+  SettingsBotDefaultHost: createNativeStackScreen({
+    screen: SettingsBotDefaultHostRouteScreen,
+    options: { title: "Default host" },
+  }),
+
   SettingsVoice: createNativeStackScreen({
     screen: SettingsVoiceRouteScreen,
     linking: "voice",
@@ -966,6 +998,20 @@ const RootStackConfig = createWorkspaceStackNavigator({
           : {
               ...HORIZONTAL_FORM_SHEET_OPTIONS,
               sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+            }),
+      },
+    }),
+    BotThreads: createNativeStackScreen({
+      screen: BotThreadsSheet,
+      options: {
+        gestureEnabled: true,
+        headerShown: false,
+        ...(Platform.OS === "android"
+          ? { presentation: "card" as const }
+          : {
+              ...HORIZONTAL_FORM_SHEET_OPTIONS,
+              sheetAllowedDetents: formSheetDetents(0.6, 1),
               sheetGrabberVisible: true,
             }),
       },

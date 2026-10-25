@@ -1,4 +1,4 @@
-import type { StaticScreenProps } from "@react-navigation/native";
+import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
 import { View } from "react-native";
@@ -12,13 +12,27 @@ import { useBotAvailability, useCreateBot } from "./use-bot-conversation";
 
 const MAX_NAME_LENGTH = 200;
 
-/** Name a specialist. Its model starts at the environment default and is changed from its chat. */
+/**
+ * Name a specialist. It is created on the default host for new bots, and its model follows that
+ * host's bot defaults until it gets its own in its settings. `environmentId` is the Assistant's.
+ */
 export function NewBotSheet(props: StaticScreenProps<{ readonly environmentId: string }>) {
-  const environmentId = EnvironmentId.make(props.route.params.environmentId);
+  const sourceEnvironmentId = EnvironmentId.make(props.route.params.environmentId);
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const showInBots = useShowConversationInBots();
-  const { canStart: canCreate, reason } = useBotAvailability(environmentId);
-  const { create, ready } = useCreateBot(environmentId);
+  const {
+    create,
+    host,
+    environmentId,
+    ready: hasModel,
+    setupNeeded,
+  } = useCreateBot(sourceEnvironmentId);
+  const availability = useBotAvailability(environmentId);
+  const hostReason = host?.kind === "unavailable" ? host.reason : null;
+  const canCreate = hostReason === null && availability.canStart;
+  const reason = hostReason ?? availability.reason;
+  const ready = hasModel && setupNeeded === null;
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const trimmed = name.trim();
@@ -44,6 +58,11 @@ export function NewBotSheet(props: StaticScreenProps<{ readonly environmentId: s
               A specialist has its own conversations, kept apart from your Assistant and your other
               bots by default.
             </Text>
+            {host?.kind === "ready" && host.environmentId !== sourceEnvironmentId ? (
+              <Text textRole="footnote" className="text-foreground-muted">
+                {`Hosted on ${host.label}`}
+              </Text>
+            ) : null}
           </View>
           <TextInput
             autoFocus
@@ -56,7 +75,23 @@ export function NewBotSheet(props: StaticScreenProps<{ readonly environmentId: s
             onSubmitEditing={submit}
             editable={canCreate && ready}
           />
-          {!canCreate || !ready ? (
+          {canCreate && setupNeeded !== null && environmentId !== null ? (
+            <View className="items-start gap-1">
+              <Text textRole="footnote" className="text-foreground-muted">
+                {`Setup needed · ${setupNeeded}`}
+              </Text>
+              <Button
+                tone="text"
+                label="Bot defaults"
+                onPress={() =>
+                  navigation.navigate("SettingsSheet", {
+                    screen: "SettingsContent",
+                    params: { screen: "SettingsBotTurn", params: { environmentId } },
+                  })
+                }
+              />
+            </View>
+          ) : !canCreate || !ready ? (
             <Text textRole="footnote" className="text-foreground-muted">
               {reason ?? "No model is available on this environment. Set up a provider first."}
             </Text>

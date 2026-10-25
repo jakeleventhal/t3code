@@ -2,10 +2,11 @@ import { Button } from "./ui/Button";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import * as Dialog from "./ui/Dialog";
-import type { ComposerContextRecord, EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Pressable, View } from "react-native";
 import { Image } from "expo-image";
 import { useEffect, useId, useState } from "react";
+import type { AttachmentContextRecord } from "../lib/composerContext";
 import type { DraftComposerAttachment } from "../lib/composerImages";
 import { composerAttachmentInlineUri, isFileBackedComposerAttachment } from "../lib/composerImages";
 import { loadLocalAttachmentPreview } from "../lib/localAttachmentPreview";
@@ -17,7 +18,7 @@ import { FilePreviewModal } from "./FilePreviewModal";
 import { PresentationSource } from "./ui/NativePresentation";
 
 export function ComposerContextAttachment(props: {
-  record: Extract<ComposerContextRecord, { attachmentId: string }>;
+  record: AttachmentContextRecord;
   environmentId?: EnvironmentId;
   attachment?: DraftComposerAttachment;
 }) {

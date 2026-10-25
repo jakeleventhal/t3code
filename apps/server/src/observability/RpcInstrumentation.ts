@@ -12,6 +12,13 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 // Trace queries and dashboards depend on these labels, including deviations from method prefixes.
 const RPC_AGGREGATES = {
   [WS_METHODS.providerVoiceSession]: "provider",
+  [WS_METHODS.peerMessagesList]: "peerEnvironments",
+  [WS_METHODS.peerMessagesCancel]: "peerEnvironments",
+  [WS_METHODS.peerMessagesFlush]: "peerEnvironments",
+  [WS_METHODS.peerEnvironmentsSendToThread]: "peerEnvironments",
+  [WS_METHODS.peerEnvironmentsWaitForThread]: "peerEnvironments",
+  [WS_METHODS.peerEnvironmentsConnect]: "peerEnvironments",
+  [WS_METHODS.peerEnvironmentsRespond]: "peerEnvironments",
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: "orchestrationV2",
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: "orchestration",
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: "orchestration",

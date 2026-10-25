@@ -19,7 +19,7 @@ import {
   PastedTextAttachmentSource,
   type PreviewAnnotationPayload,
   RuntimeMode,
-  ThreadContextRecord,
+  ReferenceContextRecord,
   type ServerProvider,
   type ScopedProjectRef,
   type ScopedThreadRef,
@@ -97,7 +97,7 @@ import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewC
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
-const isThreadContextRecord = Schema.is(ThreadContextRecord);
+const isReferenceContextRecord = Schema.is(ReferenceContextRecord);
 const isSnapShotSource = Schema.is(SnapShotSource);
 const isPreviewAnnotationPayload = Schema.is(PreviewAnnotationPayloadSchema);
 
@@ -237,7 +237,11 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
-  threadContexts: Schema.optionalKey(Schema.Array(ThreadContextRecord)),
+  threadContexts: Schema.optionalKey(Schema.Array(ReferenceContextRecord)),
+  // The record's value schema is NOT wrapped in `Schema.optionalKey`: that
+  // helper is only meaningful on property signatures with a known key set, and
+  // `Schema.Record(<branded string>, …)` produces an index signature at runtime
+  // (Schema rejects the combination).
   modelSelectionByProvider: Schema.optionalKey(Schema.Record(ProviderInstanceId, ModelSelection)),
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
   modelSelectionExplicit: Schema.optionalKey(Schema.Boolean),
@@ -360,7 +364,8 @@ export interface ComposerThreadDraftState {
   terminalContexts: TerminalContextDraft[];
   previewAnnotations: PreviewAnnotationPayload[];
   reviewComments: ReviewCommentContext[];
-  threadContexts: ThreadContextRecord[];
+  /** Referenced threads, plus the projects, bots and bot files a bot chat can name. */
+  threadContexts: ReferenceContextRecord[];
   modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>>;
   activeProvider: ProviderInstanceId | null;
   modelSelectionExplicit?: boolean;
@@ -594,12 +599,12 @@ interface ComposerDraftStoreState {
   removeReviewComment: (threadRef: ComposerThreadTarget, commentId: string) => void;
   addThreadContexts: (
     threadRef: ComposerThreadTarget,
-    records: ReadonlyArray<ThreadContextRecord>,
+    records: ReadonlyArray<ReferenceContextRecord>,
     options?: ComposerContextAddOptions,
   ) => void;
   setThreadContexts: (
     threadRef: ComposerThreadTarget,
-    records: ReadonlyArray<ThreadContextRecord>,
+    records: ReadonlyArray<ReferenceContextRecord>,
   ) => void;
   clearPersistedAttachments: (threadRef: ComposerThreadTarget) => void;
   syncPersistedAttachments: (
@@ -715,7 +720,7 @@ const EMPTY_PERSISTED_ATTACHMENTS: PersistedComposerImageAttachment[] = [];
 const EMPTY_TERMINAL_CONTEXTS: TerminalContextDraft[] = [];
 const EMPTY_PREVIEW_ANNOTATIONS: PreviewAnnotationPayload[] = [];
 const EMPTY_REVIEW_COMMENTS: ReviewCommentContext[] = [];
-const EMPTY_THREAD_CONTEXTS: ThreadContextRecord[] = [];
+const EMPTY_THREAD_CONTEXTS: ReferenceContextRecord[] = [];
 Object.freeze(EMPTY_IMAGES);
 Object.freeze(EMPTY_FILES);
 Object.freeze(EMPTY_IDS);
@@ -1760,7 +1765,7 @@ function normalizePersistedDraftsByThreadId(
       ? draftCandidate.reviewComments.filter(isReviewCommentContext)
       : [];
     const threadContexts = Array.isArray(draftCandidate.threadContexts)
-      ? draftCandidate.threadContexts.filter(isThreadContextRecord)
+      ? draftCandidate.threadContexts.filter(isReferenceContextRecord)
       : [];
     const previewAnnotations = Array.isArray(draftCandidate.previewAnnotations)
       ? draftCandidate.previewAnnotations.filter(isPreviewAnnotationPayload)
@@ -3814,7 +3819,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           if (!threadKey) return;
           const threadContexts = records
-            .filter(isThreadContextRecord)
+            .filter(isReferenceContextRecord)
             .map((record) => ({ ...record }));
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();

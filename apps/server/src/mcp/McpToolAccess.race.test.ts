@@ -1,3 +1,4 @@
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -182,6 +183,7 @@ it.layer(layerOrchestrator)("writesThreads against a mode raise", (it) => {
     }).pipe(
       Effect.provide(
         ThreadManagement.layer.pipe(
+          Layer.provide(ProjectStore.layer.pipe(Layer.provide(layerDatabase))),
           Layer.provide(ServerSettings.layerTest()),
           Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(layerDatabase))),
         ),

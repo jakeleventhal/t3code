@@ -1,3 +1,5 @@
+import { resolveBotTurnSettings } from "@t3tools/shared/projectSettings";
+import { resolveProjectProviderInstanceEnabled } from "@t3tools/contracts";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -5224,7 +5226,56 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ]);
       projection = yield* getProjectionWithPendingEvents(command.threadId, events);
     }
-    const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+    const project = yield* projects
+      .get(projection.thread.projectId)
+      .pipe(mapDispatchError(command));
+    const continuationRunId =
+      command.restartContinuationOfRunId ?? command.usageLimitContinuationOfRunId;
+    const continuationRun =
+      continuationRunId === undefined
+        ? undefined
+        : projection.runs.find((run) => run.id === continuationRunId);
+    const botSettings =
+      Option.isSome(project) &&
+      project.value.botRole != null &&
+      command.dispatchMode.type !== "steer_active"
+        ? continuationRun === undefined
+          ? resolveBotTurnSettings(
+              yield* serverSettings.getSettings.pipe(mapDispatchError(command)),
+              projection.thread.projectId,
+              {
+                modelSelection: command.modelSelection ?? projection.thread.modelSelection,
+                runtimeMode: projection.thread.runtimeMode,
+              },
+            )
+          : {
+              // Recovery continues admitted work; a settings edit applies to fresh requests.
+              modelSelection: command.modelSelection ?? continuationRun.modelSelection,
+              runtimeMode: continuationRun.runtimeMode ?? projection.thread.runtimeMode,
+            }
+        : null;
+    const modelSelection =
+      botSettings?.modelSelection ?? command.modelSelection ?? projection.thread.modelSelection;
+    if (botSettings !== null) {
+      yield* refuseAboveDispatchModeLimit(command, command.threadId, {
+        runtimeMode: botSettings.runtimeMode,
+        interactionMode: projection.thread.interactionMode,
+      });
+      const settings = yield* serverSettings.getSettings.pipe(mapDispatchError(command));
+      if (
+        !resolveProjectProviderInstanceEnabled(
+          settings,
+          projection.thread.projectId,
+          modelSelection.instanceId,
+        )
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "This bot's configured provider is unavailable. Update its model settings.",
+        });
+      }
+    }
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,
@@ -5631,6 +5682,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ordinal,
         providerInstanceId: modelSelection.instanceId,
         modelSelection,
+        ...(botSettings === null ? {} : { runtimeMode: botSettings.runtimeMode }),
         providerThreadId: queuedProviderThread.id,
         userMessageId: command.messageId,
         rootNodeId,
@@ -5994,6 +6046,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ordinal,
         providerInstanceId: modelSelection.instanceId,
         modelSelection,
+        ...(botSettings === null ? {} : { runtimeMode: botSettings.runtimeMode }),
         providerThreadId,
         userMessageId: command.messageId,
         rootNodeId,
@@ -6681,6 +6734,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ordinal,
       providerInstanceId: modelSelection.instanceId,
       modelSelection,
+      ...(botSettings === null ? {} : { runtimeMode: botSettings.runtimeMode }),
       providerThreadId: providerThread.id,
       userMessageId: command.messageId,
       rootNodeId,

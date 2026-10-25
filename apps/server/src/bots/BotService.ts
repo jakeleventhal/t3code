@@ -1,3 +1,5 @@
+import { resolveBotTurnSettings } from "@t3tools/shared/projectSettings";
+import * as ServerSettings from "../serverSettings.ts";
 import {
   BotOperationError,
   BotFile,
@@ -9,6 +11,7 @@ import {
   ChatAttachment,
   type BotOpenInput,
   type BotCreateInput,
+  type BotThreadCreateInput,
   type BotConversationResult,
   CommandId,
   ProjectId,
@@ -52,6 +55,10 @@ export class BotService extends Context.Service<
       input: BotOpenInput,
       provenance?: ThreadManagement.ThreadManagementProvenance,
     ) => Effect.Effect<BotConversationResult, BotOperationError>;
+    readonly createThread: (
+      input: BotThreadCreateInput,
+      provenance?: ThreadManagement.ThreadManagementProvenance,
+    ) => Effect.Effect<BotConversationResult, BotOperationError>;
     readonly create: (
       input: BotCreateInput,
       provenance?: ThreadManagement.ThreadManagementProvenance,
@@ -62,6 +69,7 @@ export class BotService extends Context.Service<
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const projects = yield* ProjectService.ProjectService;
+  const settings = yield* ServerSettings.ServerSettingsService;
   const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
   const workspace = yield* BotWorkspace.BotWorkspace;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -136,9 +144,6 @@ const make = Effect.gen(function* () {
           commandId: CommandId.make(`bot-main-bind:${threadId}`),
           projectId: project.id,
           botMainThreadId: threadId,
-          ...(project.defaultModelSelection === null
-            ? { defaultModelSelection: input.modelSelection }
-            : {}),
         })
         .pipe(Effect.mapError(failure("open-thread", project.id)));
     }
@@ -147,6 +152,11 @@ const make = Effect.gen(function* () {
     const createCommandId = yield* crypto
       .randomUUIDv4()
       .pipe(Effect.mapError(failure("open-thread", project.id)));
+    const defaults = resolveBotTurnSettings(
+      yield* settings.getSettings.pipe(Effect.mapError(failure("open-thread", project.id))),
+      project.id,
+      input,
+    );
     yield* threads
       .dispatch({
         type: "thread.create",
@@ -154,8 +164,8 @@ const make = Effect.gen(function* () {
         threadId,
         projectId: project.id,
         title: project.title,
-        modelSelection: input.modelSelection,
-        runtimeMode: input.runtimeMode,
+        modelSelection: defaults.modelSelection,
+        runtimeMode: defaults.runtimeMode,
         interactionMode: input.interactionMode,
         branch: null,
         worktreePath: null,
@@ -231,6 +241,67 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const createThread = Effect.fn("BotService.createThread")(function* (
+    input: BotThreadCreateInput,
+    provenance?: ThreadManagement.ThreadManagementProvenance,
+  ) {
+    const digest = yield* crypto
+      .digest("SHA-256", new TextEncoder().encode(`${input.projectId}:${input.commandId}`))
+      .pipe(Effect.map(Hex.encode), Effect.mapError(failure("open-thread", input.projectId)));
+    const threadId = ThreadId.make(`bot-thread:${digest}`);
+    return yield* locks.withLock(
+      threadId,
+      Effect.gen(function* () {
+        const project = yield* readBot(input.projectId);
+        const existing = yield* projections
+          .getThread(threadId)
+          .pipe(
+            Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }),
+            Effect.mapError(failure("open-thread", project.id)),
+          );
+        if (existing !== null) {
+          if (existing.deletedAt !== null) {
+            return yield* failure("open-thread", project.id)("The thread was deleted.");
+          }
+          return { projectId: project.id, threadId };
+        }
+        if (project.botMainThreadId == null) {
+          return yield* failure(
+            "open-thread",
+            project.id,
+          )("Open the bot's main conversation first.");
+        }
+        const main = yield* projections
+          .getThread(project.botMainThreadId)
+          .pipe(Effect.mapError(failure("open-thread", project.id)));
+        if (main.projectId !== project.id || main.deletedAt !== null) {
+          return yield* failure("open-thread", project.id)("The main conversation is unavailable.");
+        }
+        const defaults = resolveBotTurnSettings(
+          yield* settings.getSettings.pipe(Effect.mapError(failure("open-thread", project.id))),
+          project.id,
+          main,
+        );
+        yield* threads
+          .dispatch({
+            type: "thread.create",
+            commandId: input.commandId,
+            threadId,
+            projectId: project.id,
+            title: input.title,
+            ...defaults,
+            interactionMode: main.interactionMode,
+            branch: null,
+            worktreePath: null,
+            createdBy: provenance?.createdBy ?? "user",
+            creationSource: provenance?.creationSource ?? "web",
+          })
+          .pipe(Effect.mapError(failure("open-thread", project.id)));
+        return { projectId: project.id, threadId };
+      }),
+    );
+  });
+
   const files = Effect.fn("BotService.files")(
     function* (input: BotFilesInput) {
       yield* readBot(input.projectId);
@@ -246,7 +317,8 @@ const make = Effect.gen(function* () {
       }>`
         WITH assets AS (
           SELECT 'message:' || m.message_id || ':' || a.key AS key,
-            m.created_at, m.thread_id, m.message_id, NULL AS item_id, a.value AS payload
+            m.created_at, m.thread_id, m.message_id, NULL AS item_id, a.value AS payload,
+            json_extract(a.value, '$.name') AS search_title
           FROM orchestration_v2_projection_threads AS t
           JOIN orchestration_v2_projection_messages AS m ON m.thread_id = t.thread_id,
             json_each(m.payload_json, '$.attachments') AS a
@@ -258,7 +330,10 @@ const make = Effect.gen(function* () {
             COALESCE(json_extract(i.payload_json, '$.startedAt'), i.updated_at) AS created_at,
             i.thread_id, NULL AS message_id, i.turn_item_id AS item_id,
             json_object('toolName', json_extract(i.payload_json, '$.toolName'),
-              'output', json_extract(i.payload_json, '$.output')) AS payload
+              'output', json_extract(i.payload_json, '$.output')) AS payload,
+            COALESCE(json_extract(i.payload_json, '$.output.htmlRender.title'),
+              json_extract(i.payload_json, '$.output.structuredContent.htmlRender.title'),
+              json_extract(i.payload_json, '$.title'), '') AS search_title
           FROM orchestration_v2_projection_threads AS t
           JOIN orchestration_v2_projection_turn_items AS i ON i.thread_id = t.thread_id
           WHERE t.project_id = ${input.projectId} AND t.deleted_at IS NULL
@@ -266,9 +341,11 @@ const make = Effect.gen(function* () {
             AND json_extract(i.payload_json, '$.toolName') LIKE '%html_render'
         )
         SELECT * FROM assets
-        WHERE ${input.cursor?.createdAt ?? null} IS NULL
+        WHERE (${input.cursor?.createdAt ?? null} IS NULL
           OR created_at < ${input.cursor?.createdAt ?? null}
-          OR (created_at = ${input.cursor?.createdAt ?? null} AND key < ${input.cursor?.key ?? null})
+          OR (created_at = ${input.cursor?.createdAt ?? null} AND key < ${input.cursor?.key ?? null}))
+          AND (${input.query?.trim() ?? ""} = ''
+            OR instr(lower(search_title), lower(${input.query?.trim() ?? ""})) > 0)
         ORDER BY created_at DESC, key DESC LIMIT ${limit + 1}
       `;
       const scanned = rows.slice(0, limit);
@@ -333,7 +410,7 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError(failure("save-avatar", project.id)));
   });
 
-  return BotService.of({ open, create, files, setAvatar });
+  return BotService.of({ open, create, createThread, files, setAvatar });
 });
 
 export const layer = Layer.effect(BotService, make);

@@ -2,7 +2,6 @@ import { isNativeReviewDiffDrawEvent } from "../diffs/nativeReviewDiffSurface";
 import { pullRequestFileChapters } from "./pullRequestFileChapters";
 import { Chip } from "../../components/ui/Chip";
 import { Toolbar } from "../../components/ui/Toolbar";
-import { EnvironmentId } from "@t3tools/contracts";
 import { AssistantOrb, useOpenAssistantQuick } from "../bots/AssistantOrb";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { readPullRequestView, rememberPullRequestView } from "./pullRequestViewMemory";
@@ -358,8 +357,7 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
   const insets = useSafeAreaInsets();
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
   const params = route.params;
-  const environmentId = EnvironmentId.make(params.environmentId);
-  const openAssistant = useOpenAssistantQuick(environmentId);
+  const openAssistant = useOpenAssistantQuick();
   usePullRequestEnvironmentFallback(params);
   const connected = usePullRequestConnected(params.environmentId);
   const viewMemoryKey = pullRequestReviewKey(params);
@@ -595,7 +593,13 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
             onPress={() => setCommentsOpen(true)}
           />
           {/* The bottom toolbar is UIKit's, so the Assistant joins the header instead of floating. */}
-          <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+          {openAssistant ? (
+            <Toolbar.Button
+              accessibilityLabel="Assistant"
+              icon="sparkles"
+              onPress={openAssistant}
+            />
+          ) : null}
           <Toolbar.Menu
             title={capitalizeTerm(terminology.singular)}
             accessibilityLabel={`${capitalizeTerm(terminology.singular)} actions`}
@@ -938,10 +942,7 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
           onHeightChange={setToolbarHeight}
         />
         {Platform.OS === "android" ? (
-          <AssistantOrb
-            environmentId={environmentId}
-            style={{ right: 16, bottom: toolbarHeight + 8 }}
-          />
+          <AssistantOrb style={{ right: 16, bottom: toolbarHeight + 8 }} />
         ) : null}
       </View>
     </PullRequestMarkdownRepository>
@@ -1003,6 +1004,7 @@ export function PullRequestDiffContent({
   const [commit, setCommit] = useState<string | null>(params.commit ?? null);
   const { commit: _requestedCommit, ...reviewParams } = params;
   const { ignoreWhitespace, setIgnoreWhitespace } = useDiffWhitespacePreference();
+  const openAssistant = useOpenAssistantQuick();
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(params)));
   const openAssistant = useOpenAssistantQuick(EnvironmentId.make(params.environmentId));
   const terminology = sourceControlClients.get(
@@ -1552,12 +1554,23 @@ export function PullRequestDiffContent({
               </View>
             </Menu>
           }
-          actions={[{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]}
+          actions={
+            openAssistant
+              ? [{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]
+              : []
+          }
         />
       ) : null}
       {!embedded ? (
         <Toolbar placement="right">
-          <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+          {/* A floating Assistant would cover code, so it joins the header. */}
+          {openAssistant ? (
+            <Toolbar.Button
+              accessibilityLabel="Assistant"
+              icon="sparkles"
+              onPress={openAssistant}
+            />
+          ) : null}
           {commits.length > 0 ? (
             <Toolbar.Button
               label={

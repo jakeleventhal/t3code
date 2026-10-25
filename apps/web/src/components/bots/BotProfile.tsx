@@ -58,6 +58,7 @@ import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { BotAvatar } from "./BotAvatar";
+import { BotTurnSettingsPanel } from "./BotRuntimeSettings";
 import {
   botFilePreviewTarget,
   botFileTitle,
@@ -155,13 +156,14 @@ function BotProfilePanel({ project, narrow }: { project: EnvironmentProject; nar
         value={[tab]}
         onValueChange={(next) => {
           const value = next[0];
-          if (value === "routines" || value === "files") {
+          if (value === "routines" || value === "files" || value === "settings") {
             useBotRoomStore.getState().setProfileTab(value);
           }
         }}
       >
         <Toggle value="routines">Routines</Toggle>
         <Toggle value="files">Files</Toggle>
+        <Toggle value="settings">Settings</Toggle>
       </ToggleGroup>
       <div className="mt-4">
         {tab === "routines" ? (
@@ -170,13 +172,15 @@ function BotProfilePanel({ project, narrow }: { project: EnvironmentProject; nar
             connected={connected}
             environmentLabel={environmentLabel}
           />
-        ) : (
+        ) : tab === "files" ? (
           <BotFiles
             project={project}
             connected={connected}
             environmentLabel={environmentLabel}
             narrow={narrow}
           />
+        ) : (
+          <BotTurnSettingsPanel project={project} connected={connected} />
         )}
       </div>
     </div>
@@ -342,9 +346,8 @@ function BotAvatarEditor({
       }
     } catch (error) {
       reportFailure("Could not use that photo", error);
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
   };
 
   return (

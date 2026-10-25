@@ -1,7 +1,13 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
-import type { PreviewAnnotationPayload, ThreadContextRecord } from "@t3tools/contracts";
+import type {
+  BotFileContextRecord,
+  PreviewAnnotationPayload,
+  ProjectContextRecord,
+  ReferenceContextRecord,
+  ThreadContextRecord,
+} from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
@@ -32,6 +38,7 @@ import {
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
+import { BotFileReferenceChip, ProjectReferenceChip } from "./ReferenceContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
 import {
   createContextPresentationRegistry,
@@ -59,10 +66,14 @@ export type ComposerDraftContextRecord =
     }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
-  | { kind: "thread"; record: ThreadContextRecord };
+  | { kind: "thread"; record: ThreadContextRecord }
+  | { kind: "project"; record: ProjectContextRecord }
+  | { kind: "bot-file"; record: BotFileContextRecord };
 
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
+  /** Bot chats read threads on other connected machines; Code agents read only their own. */
+  readsOtherEnvironments?: boolean;
   cwd?: string | undefined;
   expandImage: (imageId: string) => void;
   expandVideo: (fileId: string) => void;
@@ -97,7 +108,7 @@ export function composerContextRecordsFromDraft(input: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
-  threadContexts?: ReadonlyArray<ThreadContextRecord>;
+  threadContexts?: ReadonlyArray<ReferenceContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -132,7 +143,14 @@ export function composerContextRecordsFromDraft(input: {
     });
   }
   for (const record of input.threadContexts ?? []) {
-    records.set(record.contextId, { kind: "thread", record });
+    records.set(
+      record.contextId,
+      record.kind === "thread"
+        ? { kind: "thread", record }
+        : record.kind === "project"
+          ? { kind: "project", record }
+          : { kind: "bot-file", record },
+    );
   }
   return records;
 }
@@ -334,11 +352,15 @@ function ComposerPreviewAnnotationDetails({
 }
 
 function ComposerThreadContextChip(props: { record: ThreadContextRecord }) {
-  const { environmentId } = use(ComposerContextActionsContext);
+  const { environmentId, readsOtherEnvironments } = use(ComposerContextActionsContext);
   return (
     <ThreadContextChip
       record={props.record}
-      unreadable={environmentId !== null && props.record.environmentId !== environmentId}
+      unreadable={
+        !readsOtherEnvironments &&
+        environmentId !== null &&
+        props.record.environmentId !== environmentId
+      }
     />
   );
 }
@@ -453,6 +475,26 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "thread" ? (
           <ComposerThreadContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "project",
+      canRender: (entry) => entry.kind === "project",
+      render: (entry, context) =>
+        entry.kind === "project" ? (
+          <ProjectReferenceChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "bot-file",
+      canRender: (entry) => entry.kind === "bot-file",
+      render: (entry, context) =>
+        entry.kind === "bot-file" ? (
+          <BotFileReferenceChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

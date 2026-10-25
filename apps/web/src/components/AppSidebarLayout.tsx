@@ -39,6 +39,7 @@ import {
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
+import { BotOutboxDrain } from "../botOutbox/BotOutboxDrain";
 import { AssistantShortcut } from "./bots/AssistantShortcut";
 import { BotCallRoot } from "./bots/BotCallRoot";
 import BotsSidebar from "./bots/BotsSidebar";
@@ -467,6 +468,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarControl />
         <BotRoomLocationTracker />
         <AssistantShortcut />
+        <BotOutboxDrain />
         {!isOnSettings && room === "code" ? <FloatingAssistant /> : null}
         <BotCallRoot />
       </SidebarProvider>

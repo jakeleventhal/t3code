@@ -79,6 +79,7 @@ import {
   useRemoteEnvironmentRuntime,
 } from "../../state/use-remote-environment-registry";
 import { useNewTaskFlow } from "./new-task-flow-provider";
+import { botRole } from "../bots/bot-room";
 import {
   nextEnvironmentId,
   useHardwareKeyboardCommand,
@@ -884,11 +885,15 @@ export function NewTaskDraftScreen(props: {
       Dialog.alert("Too much context", contextBlockReason);
       return null;
     }
-    const strandedThread = threadContextsOutsideEnvironment({
-      text: draft.text,
-      records: draft.context?.records ?? [],
-      environmentId: selectedProject.environmentId,
-    })[0];
+    // A bot reads threads on other machines through a connected client; a Code agent can't.
+    const strandedThread =
+      botRole(selectedProject) === null
+        ? threadContextsOutsideEnvironment({
+            text: draft.text,
+            records: draft.context?.records ?? [],
+            environmentId: selectedProject.environmentId,
+          })[0]
+        : undefined;
     if (strandedThread) {
       const owner =
         flow.environments.find(
@@ -957,6 +962,8 @@ export function NewTaskDraftScreen(props: {
   // Keep the current surface until the local draft selection is ready. Publishing
   // an empty loading surface here flashes between two already-cached threads.
   if (!selectedProject) return null;
+  // A bot's new thread is a conversation with the bot, not a task in a checkout.
+  const isBotDraft = botRole(selectedProject) !== null;
 
   const setupBlockReason =
     isIncomingShareReady && !isImportingShare
@@ -994,7 +1001,13 @@ export function NewTaskDraftScreen(props: {
       onChooseEnvironment={() => openContextPicker("NewTaskEnvironment")}
     />
   );
-  const hero = flow.isScratchDraft ? (
+  const hero = isBotDraft ? (
+    <View className="items-center px-6" testID="new-task-hero">
+      <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
+        New thread with {selectedProject.title}
+      </Text>
+    </View>
+  ) : flow.isScratchDraft ? (
     <View className="items-center gap-2 px-6" testID="new-task-hero">
       <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
         What should we work on?
@@ -1189,13 +1202,15 @@ export function NewTaskDraftScreen(props: {
                   />
                 </View>
               ) : null}
-              {flow.canChooseWorkspace ? workspaceControls : null}
+              {flow.canChooseWorkspace && !isBotDraft ? workspaceControls : null}
             </View>
           ),
           editorRef: promptInputRef,
           sendBlockedReason: setupBlockReason,
           interactionLocked: isComposerInteractionLocked,
         }}
+        simplifiedComposer={isBotDraft}
+        composerPlaceholder={isBotDraft ? `Message ${selectedProject.title}` : undefined}
         canOperateThread={canOperate}
         selectedThread={thread}
         selectedThreadDetailRef={null}
