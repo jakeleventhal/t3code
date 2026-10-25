@@ -187,6 +187,7 @@ const makeTestRelay = Effect.fnUntraced(function* (
         catchUp.shellSnapshotReads += 1;
         return { schemaVersion: 2, snapshotSequence: 1, threads: [], archivedThreads: [] };
       }),
+    receivePeerMessage: unused,
     listActiveSubagentThreadIds: unused,
     listOlderSettledThreads: unused,
     readShellSnapshot: unused,

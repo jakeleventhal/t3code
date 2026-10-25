@@ -1,3 +1,4 @@
+import { chooseAssistantEnvironment } from "@t3tools/client-runtime/assistant-environment";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -7,14 +8,17 @@ import { useEffect } from "react";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useCommittedLocation } from "../../hooks/useCommittedLocation";
 import { useThreadRouteTarget } from "../../hooks/useThreadRouteTarget";
-import { useProject, useQuietThreadShell } from "../../state/entities";
-import { useConnectedEnvironmentIds, usePrimaryEnvironmentId } from "../../state/environments";
+import {
+  useProject,
+  useProjects,
+  useQuietThreadShell,
+  useServerConfigs,
+} from "../../state/entities";
+import { useEnvironmentConnectionSummaries } from "../../state/environments";
 import {
   BOTS_HOME_PATH,
   isBotProject,
   isSettingsPath,
-  resolveAssistantEnvironmentId,
-  resolveBotsEnvironmentId,
   resolveRoom,
   type AppRoom,
   type RouteProjectState,
@@ -30,11 +34,7 @@ function useRouteOwner() {
     target?.kind === "draft" ? store.getDraftSession(target.draftId) : null,
   );
   const shell = useQuietThreadShell(target?.kind === "server" ? target.threadRef : null);
-  const routeEnvironmentId =
-    target?.kind === "server"
-      ? target.threadRef.environmentId
-      : (draftSession?.environmentId ?? null);
-  return { target, owner: shell ?? draftSession, routeEnvironmentId };
+  return { target, owner: shell ?? draftSession };
 }
 
 function useRouteProjectState(): RouteProjectState<EnvironmentProject> {
@@ -59,33 +59,25 @@ export function useAppRoom(): AppRoom {
   return resolveRoom({ pathname, routeProject, previousRoom });
 }
 
-/** The environment the Bots room lists. */
-export function useBotsEnvironmentId(): EnvironmentId | null {
-  const { routeEnvironmentId } = useRouteOwner();
-  const routeBot = useRouteBotProject();
-  const selectedEnvironmentId = useBotRoomStore((state) => state.environmentId);
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const connectedEnvironmentIds = useConnectedEnvironmentIds();
-  return resolveBotsEnvironmentId({
-    routeBotEnvironmentId: routeBot?.environmentId ?? null,
-    selectedEnvironmentId,
-    routeEnvironmentId,
-    primaryEnvironmentId,
-    connectedEnvironmentIds,
-  });
-}
-
-/** The environment Code's quick Assistant and its shortcut answer on. */
-export function useAssistantEnvironmentId(): EnvironmentId | null {
-  const { routeEnvironmentId } = useRouteOwner();
-  const selectedEnvironmentId = useBotRoomStore((state) => state.environmentId);
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const connectedEnvironmentIds = useConnectedEnvironmentIds();
-  return resolveAssistantEnvironmentId({
-    routeEnvironmentId,
-    selectedEnvironmentId,
-    primaryEnvironmentId,
-    connectedEnvironmentIds,
+/**
+ * The environment of the user's one Assistant, which every entry point opens: the Bots list, its
+ * shortcut, New bot's default host and Code's corner card. It is the same rule mobile uses. Code's
+ * card never follows the thread on screen; that thread reaches the Assistant as its context.
+ */
+export function useDesignatedAssistantEnvironmentId(): EnvironmentId | null {
+  const environments = useEnvironmentConnectionSummaries();
+  const configs = useServerConfigs();
+  const projects = useProjects();
+  return chooseAssistantEnvironment({
+    environments: environments.map((environment) => ({
+      environmentId: environment.environmentId,
+      environmentLabel: environment.environmentLabel,
+      isEnabled: environment.isEnabled,
+      connectionState: environment.connectionState,
+      supportsBots:
+        configs.get(environment.environmentId)?.environment.capabilities.botConversations === true,
+    })),
+    projects,
   });
 }
 

@@ -33,6 +33,8 @@ export interface ChatShortcutsInput {
   readonly composerRef: ComposerHandleRef;
   readonly branchToolbarRef: { readonly current: BranchToolbarHandle | null };
   readonly closeThreadFind: () => void;
+  /** Bot chats show no composer controls or branch toolbar, so their chords stay unbound. */
+  readonly messageOnly?: boolean;
   readonly commands: ChatShortcutCommands;
   /** Handles commands not in `commands`, such as project scripts. */
   readonly fallback: (command: KeybindingCommand) => ChatShortcutHandler | undefined;
@@ -77,7 +79,9 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     if (!command) return;
     const run =
       input.commands[command] ??
-      composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??
+      (input.messageOnly
+        ? undefined
+        : composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command]) ??
       input.fallback(command);
     if (!run || run({ event, terminalFocusOwner }) === false) return;
     event.preventDefault();

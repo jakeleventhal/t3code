@@ -1,3 +1,4 @@
+import { isBotProject } from "../bots/botRoom.logic";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -86,7 +87,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     terminalUiState,
     activeThread,
     activeThreadId,
-    activeThreadRef,
+    activeThreadRef: requestedThreadRef,
     activeProject,
     activeRightPanelSurface,
     runningTerminalIds,
@@ -98,10 +99,11 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     setTerminalUiLaunchContext,
     setThreadError,
   } = input;
+  const activeThreadRef = isBotProject(activeProject) ? null : requestedThreadRef;
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
 
   const hasTerminalWriteAccess = () =>
-    readEnvironmentScope(environmentId, AuthTerminalOperateScope);
+    !isBotProject(activeProject) && readEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useLocalStorage(
     LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
     {},

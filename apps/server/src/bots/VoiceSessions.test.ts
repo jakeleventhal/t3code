@@ -1,3 +1,4 @@
+import * as ServerConfig from "../config.ts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -82,6 +83,11 @@ function layer(
     VoiceConfiguration.layer,
   ).pipe(
     Layer.provideMerge(storage),
+    Layer.provideMerge(
+      ServerConfig.layerTest(process.cwd(), { prefix: "t3-voice-files-" }).pipe(
+        Layer.provide(platform),
+      ),
+    ),
     Layer.provideMerge(
       ServerSettings.layerTest({
         voiceConnections: {

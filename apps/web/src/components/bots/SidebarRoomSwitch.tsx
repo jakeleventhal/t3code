@@ -1,3 +1,4 @@
+import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -12,12 +13,11 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   BOTS_HOME_PATH,
   botProjectKeys,
-  partitionEnvironmentBots,
   resolveBotsRoomEntry,
   type AppRoom,
 } from "./botRoom.logic";
 import { useBotRoomStore } from "./botRoomStore";
-import { useBotsEnvironmentId } from "./useBotRoom";
+import { useDesignatedAssistantEnvironmentId } from "./useBotRoom";
 
 function NeedsYouDot() {
   return (
@@ -29,23 +29,21 @@ function NeedsYouDot() {
 }
 
 /**
- * Opens the Bots room for an environment where it was left, or on Assistant when it exists. A
+ * Opens the Bots room where it was last left, or on the designated Assistant when it exists. A
  * saved spot that was deleted is forgotten rather than followed into the missing-thread redirect.
  */
 export function useEnterBotsRoom() {
   const navigate = useNavigate();
-  return (environmentId: EnvironmentId | null) => {
+  return (assistantEnvironmentId: EnvironmentId | null) => {
     const store = useBotRoomStore.getState();
+    const savedEnvironmentId = store.environmentId;
     const saved =
-      environmentId === null ? undefined : store.botLocationByEnvironment[environmentId];
+      savedEnvironmentId === null ? undefined : store.botLocationByEnvironment[savedEnvironmentId];
     const mainThreadId =
-      environmentId === null
-        ? null
-        : (partitionEnvironmentBots(readProjects(), environmentId).assistant?.botMainThreadId ??
-          null);
+      environmentAssistant(readProjects(), assistantEnvironmentId)?.botMainThreadId ?? null;
     const mainThreadRef =
-      environmentId !== null && mainThreadId !== null
-        ? scopeThreadRef(environmentId, mainThreadId)
+      assistantEnvironmentId !== null && mainThreadId !== null
+        ? scopeThreadRef(assistantEnvironmentId, mainThreadId)
         : null;
     const { entry, pruneSaved } = resolveBotsRoomEntry({
       saved:
@@ -59,17 +57,17 @@ export function useEnterBotsRoom() {
               }
             : { kind: "thread", thread: readThreadShell(saved.target.threadRef) },
       shellAuthoritative:
-        environmentId !== null &&
+        savedEnvironmentId !== null &&
         isThreadRouteSnapshotAuthoritative(
-          appAtomRegistry.get(environmentShell.statusAtom(environmentId)),
+          appAtomRegistry.get(environmentShell.statusAtom(savedEnvironmentId)),
         ),
       assistantMain:
         mainThreadRef === null
           ? null
           : { threadRef: mainThreadRef, thread: readThreadShell(mainThreadRef) },
     });
-    if (pruneSaved && environmentId !== null && saved !== undefined) {
-      store.forgetBotLocation(environmentId, saved.href);
+    if (pruneSaved && savedEnvironmentId !== null && saved !== undefined) {
+      store.forgetBotLocation(savedEnvironmentId, saved.href);
     }
     if (entry.kind === "saved" && saved !== undefined) {
       void navigate({ href: saved.href });
@@ -82,7 +80,6 @@ export function useEnterBotsRoom() {
       });
       return;
     }
-    if (environmentId !== null) store.setEnvironmentId(environmentId);
     void navigate({ to: BOTS_HOME_PATH });
   };
 }
@@ -91,7 +88,7 @@ export function useEnterBotsRoom() {
 export function SidebarRoomSwitch({ room }: { room: AppRoom }) {
   const navigate = useNavigate();
   const enterBotsRoom = useEnterBotsRoom();
-  const environmentId = useBotsEnvironmentId();
+  const assistantEnvironmentId = useDesignatedAssistantEnvironmentId();
   const projects = useProjects();
   const threads = useThreadShells();
   const botKeys = botProjectKeys(projects);
@@ -108,7 +105,7 @@ export function SidebarRoomSwitch({ room }: { room: AppRoom }) {
       void navigate({ href: useBotRoomStore.getState().codeHref ?? "/" });
       return;
     }
-    enterBotsRoom(environmentId);
+    enterBotsRoom(assistantEnvironmentId);
   };
 
   return (

@@ -633,6 +633,7 @@ export const OrchestrationV2Run = Schema.Struct({
   ordinal: PositiveInt,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  runtimeMode: Schema.optional(RuntimeMode),
   providerThreadId: Schema.NullOr(ProviderThreadId),
   userMessageId: MessageId,
   rootNodeId: Schema.NullOr(NodeId),

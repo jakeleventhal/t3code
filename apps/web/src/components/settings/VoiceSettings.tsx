@@ -135,8 +135,11 @@ function VoiceSettingsContent({
   scopedProject: EnvironmentProject | null | undefined;
 }) {
   const { catalog, error } = useVoiceCatalog(environment.environmentId, settings.voiceConnections);
-  const { assistant, specialists } = partitionEnvironmentBots(projects, environment.environmentId);
-  const bots = assistant ? [assistant, ...specialists] : specialists;
+  const { assistant, extraAssistants, specialists } = partitionEnvironmentBots(
+    projects,
+    environment.environmentId,
+  );
+  const bots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists];
   const defaultLabel = describeVoiceSelection(settings.voiceSelection, catalog).label;
   const callsSupported = useEnvironmentSupportsBotVoice(environment.environmentId);
 

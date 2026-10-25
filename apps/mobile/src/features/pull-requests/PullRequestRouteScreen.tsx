@@ -1,5 +1,4 @@
 import { Toolbar } from "../../components/ui/Toolbar";
-import { EnvironmentId } from "@t3tools/contracts";
 import { AssistantOrb, useOpenAssistantQuick } from "../bots/AssistantOrb";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { Chip } from "../../components/ui/Chip";
@@ -344,8 +343,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const insets = useSafeAreaInsets();
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
   const params = route.params;
-  const environmentId = EnvironmentId.make(params.environmentId);
-  const openAssistant = useOpenAssistantQuick(environmentId);
+  const openAssistant = useOpenAssistantQuick();
   usePullRequestEnvironmentFallback(params);
   const connected = usePullRequestConnected(params.environmentId);
   const [chosenSection, setSection] = useState<"overview" | "activity" | "guide">("overview");
@@ -554,7 +552,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
           />
         ) : null}
         <Toolbar placement="right">
-          <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+          {openAssistant ? (<Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />) : null}
           <Toolbar.Menu
             title={capitalizeTerm(terminology.singular)}
             accessibilityLabel={`${capitalizeTerm(terminology.singular)} actions`}
@@ -860,10 +858,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
           onHeightChange={setToolbarHeight}
         />
         {Platform.OS === "android" ? (
-          <AssistantOrb
-            environmentId={environmentId}
-            style={{ right: 16, bottom: toolbarHeight + 8 }}
-          />
+          <AssistantOrb style={{ right: 16, bottom: toolbarHeight + 8 }} />
         ) : null}
       </View>
     </PullRequestMarkdownRepository>
@@ -904,7 +899,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
   const commit = route.params.commit;
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(route.params)));
-  const openAssistant = useOpenAssistantQuick(EnvironmentId.make(route.params.environmentId));
+  const openAssistant = useOpenAssistantQuick();
   const terminology = sourceControlClients.get(
     (detail.data ?? route.params.initialSummary)?.provider,
   ).changeRequest;
@@ -1135,11 +1130,15 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
               </View>
             </Menu>
           }
-          actions={[{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]}
+          actions={
+            openAssistant
+              ? [{ accessibilityLabel: "Assistant", icon: "sparkles", onPress: openAssistant }]
+              : []
+          }
         />
       ) : null}
       <Toolbar placement="right">
-          <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+          {openAssistant ? (<Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />) : null}
         <Toolbar.Menu title="Diff options" accessibilityLabel="Diff options" icon="ellipsis">
           {permissions.verdicts.length ? (
             <Toolbar.MenuAction

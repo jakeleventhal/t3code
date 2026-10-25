@@ -43,6 +43,8 @@ const CONTEXT_CHIP_PRESENTATIONS = {
     accent: "#009c96",
     icon: "messages-square",
   },
+  project: { accent: "#009c96", icon: "folder" },
+  bot: { accent: "#009c96", icon: "bot" },
 } as const satisfies Record<string, ContextChipPresentation>;
 
 const CHIP_CONTRAST = 5;
@@ -107,25 +109,28 @@ export function contextChipPresentation(
     readonly name?: string;
     readonly mimeType?: string;
     readonly sectionId?: string;
+    readonly botRole?: string | null;
     readonly pullRequest?: {
       readonly state?: string;
       readonly isDraft?: boolean;
     };
   },
 ): ContextChipPresentation {
+  // A bot's Files are stored attachments, so they read like any other file or image.
+  const isFile = kind === "file" || kind === "bot-file";
+  const file = { name: record?.name ?? "", mimeType: record?.mimeType ?? "" };
   const presentationKind =
-    kind === "file" &&
-    videoMimeType({
-      name: record?.name ?? "",
-      mimeType: record?.mimeType ?? "",
-    })
-      ? "video"
-      : kind === "file" &&
-          imageMimeType({ name: record?.name ?? "", mimeType: record?.mimeType ?? "" }) !== null
-        ? "image"
-        : kind === "review-comment" && record?.sectionId?.startsWith("pull-request:")
-          ? "pull-request"
-          : kind;
+    kind === "project" && record?.botRole != null
+      ? "bot"
+      : isFile && videoMimeType(file)
+        ? "video"
+        : isFile && imageMimeType(file) !== null
+          ? "image"
+          : isFile
+            ? "file"
+            : kind === "review-comment" && record?.sectionId?.startsWith("pull-request:")
+              ? "pull-request"
+              : kind;
   if (presentationKind === "pull-request") {
     const pullRequest = record?.pullRequest;
     const state =
@@ -157,5 +162,8 @@ export function contextChipIcon(
 export function contextRecordFileName(record?: object): string {
   if (record && "path" in record && typeof record.path === "string") return record.path;
   if (record && "name" in record && typeof record.name === "string") return record.name;
+  if (record && "fileKind" in record && "title" in record && typeof record.title === "string") {
+    return record.title;
+  }
   return "";
 }

@@ -1,7 +1,9 @@
 import { McpAttachmentInput } from "../attachment/input.ts";
 import {
+  EnvironmentId,
   BotOpenInput,
   BotCreateInput,
+  BotThreadCreateInput,
   BotConversationResult,
   BotFilesInput,
   BotFilesPage,
@@ -40,6 +42,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 
 const shared = {
   success: Project,
@@ -110,13 +113,14 @@ const ProjectCloneTool = Tool.make("t3_project_clone", {
 const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   ...shared,
   description:
-    "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. No retry key: after an error or lost reply, check `t3_thread_list` before retrying. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`.",
+    "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. No retry key: after an error or lost reply, check `t3_thread_list` before retrying. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
   parameters: Schema.Struct({
+    environmentId: Schema.optional(EnvironmentId),
     projectId: Schema.optional(ProjectId),
     scratch: Schema.optional(
       Schema.Boolean.annotate({
         description:
-          "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`.",
+          "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
       }),
     ),
     title: TrimmedNonEmptyString,
@@ -126,7 +130,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     workspaceStrategy: Schema.optional(
       OrchestrationV2ThreadLaunchWorkspaceStrategy.annotate({
         description:
-          "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied.",
+          "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
       }),
     ),
     message: Schema.optional(
@@ -145,6 +149,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     status: Schema.NullOr(OrchestrationV2RunStatus),
   }),
   dependencies: [
+    PeerEnvironmentService.PeerEnvironmentService,
     ...shared.dependencies,
     ThreadLaunchService.ThreadLaunchService,
     ManagedProjectFolders.ManagedProjectFolders,
@@ -161,7 +166,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
 const BotOpenTool = Tool.make("t3_bot_open", {
   ...shared,
   description:
-    "Open a bot's durable main conversation. Omit projectId for this environment's Assistant. Creates the conversation only when absent; does not send a message or change an existing conversation's model or modes.",
+    "Open a bot's durable main conversation. Omit projectId for this environment's Assistant. Creates the conversation only when absent; does not send a message or change an existing conversation's model or modes. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
   parameters: BotOpenInput.mapFields(Struct.omit(["creationSource"])),
   success: BotConversationResult,
   dependencies: [...shared.dependencies, BotService.BotService],
@@ -177,6 +182,14 @@ const BotCreateTool = Tool.make("t3_bot_create", {
 }).annotate(Tool.Destructive, false);
 
 export const ProjectToolkit = Toolkit.make(
+  Tool.make("t3_bot_thread_create", {
+    ...shared,
+    description:
+      "Create a named secondary thread for substantial parallel work in an existing bot. Uses that bot's model and permissions; leaves its main conversation unchanged. Reuse commandId when retrying. Does not send a message or start work: send the task to the returned thread with t3_thread_send. Prefer the main conversation for ordinary requests and reuse existing threads for ongoing work.",
+    parameters: BotThreadCreateInput,
+    success: BotConversationResult,
+    dependencies: [...shared.dependencies, BotService.BotService],
+  }).annotate(Tool.Destructive, false),
   Tool.make("t3_bot_files", {
     description:
       "List files shared in this bot's conversations and published reports, newest first. Pass nextCursor as cursor to continue. This lists chat assets with source conversation references, not the bot's working directory.",

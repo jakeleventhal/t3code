@@ -113,6 +113,29 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     threadId: "thread-1",
     title: "Fix login flow",
   },
+  project: {
+    ...base,
+    kind: "project",
+    label: "Researcher",
+    environmentId: "environment-1",
+    projectId: "project-1",
+    title: "Researcher",
+    botRole: "specialist",
+    mainThreadId: "thread-main",
+  },
+  "bot-file": {
+    ...base,
+    kind: "bot-file",
+    label: "Quarterly report",
+    environmentId: "environment-1",
+    projectId: "project-1",
+    fileId: "item:turn-item-1",
+    fileKind: "html",
+    title: "Quarterly report",
+    attachmentId: "attachment-1",
+    sourceThreadId: "thread-main",
+    sourceTurnItemId: "turn-item-1",
+  },
 };
 
 describe("ComposerContextRecord", () => {
@@ -130,6 +153,17 @@ describe("ComposerContextRecord", () => {
       label: "Future",
       payload: { anything: [1, 2, 3] },
     });
+  });
+
+  it("decodes every known kind as itself", () => {
+    for (const [kind, record] of Object.entries(knownRecords)) {
+      expect(Option.getOrThrow(decodeRecord(record)).kind).toBe(kind);
+    }
+  });
+
+  it("rejects a bot file reference without its stored attachment", () => {
+    const { attachmentId: _attachmentId, ...withoutAttachment } = knownRecords["bot-file"];
+    expect(Option.isNone(decodeRecord(withoutAttachment))).toBe(true);
   });
 
   it("does not let a malformed known kind slide through as unknown", () => {

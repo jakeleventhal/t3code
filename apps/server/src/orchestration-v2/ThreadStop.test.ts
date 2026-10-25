@@ -1,3 +1,4 @@
+import * as ProjectStore from "./ProjectStore.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -53,6 +54,7 @@ const adapter = {
 } as ProviderAdapter.ProviderAdapterV2["Service"];
 const layerDatabase = SqlitePersistence.layerMemory;
 const layerTest = ThreadManagementService.layer.pipe(
+  Layer.provide(ProjectStore.layer.pipe(Layer.provide(layerDatabase))),
   Layer.provideMerge(
     Layer.mergeAll(
       layerDatabase,

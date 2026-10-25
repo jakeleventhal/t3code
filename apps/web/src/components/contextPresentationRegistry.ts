@@ -48,6 +48,14 @@ const DEFINITIONS = [
     kind: "thread",
     capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "project",
+    capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
+    kind: "bot-file",
+    capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(

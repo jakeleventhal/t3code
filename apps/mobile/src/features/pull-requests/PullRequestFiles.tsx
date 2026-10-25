@@ -2,7 +2,7 @@ import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { EnvironmentId, type PullRequestChangeBreakdown } from "@t3tools/contracts";
+import type { PullRequestChangeBreakdown } from "@t3tools/contracts";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -405,7 +405,7 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
   const { diff, filter, viewed, parsed, loading } = files;
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [animationsReady, setAnimationsReady] = useState(false);
-  const openAssistant = useOpenAssistantQuick(EnvironmentId.make(params.environmentId));
+  const openAssistant = useOpenAssistantQuick();
   const toggleDirectory = (directory: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -423,7 +423,13 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
         trailing={
           Platform.OS === "android" ? (
             <View className="flex-row items-center gap-1">
-              <IconButton icon="sparkles" accessibilityLabel="Assistant" onPress={openAssistant} />
+              {openAssistant ? (
+                <IconButton
+                  icon="sparkles"
+                  accessibilityLabel="Assistant"
+                  onPress={openAssistant}
+                />
+              ) : null}
               <FileFilterMenu filter={filter} />
             </View>
           ) : undefined
@@ -443,7 +449,9 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
             <Toolbar.Label>Hide test files</Toolbar.Label>
           </Toolbar.MenuAction>
         </Toolbar.Menu>
-        <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+        {openAssistant ? (
+          <Toolbar.Button accessibilityLabel="Assistant" icon="sparkles" onPress={openAssistant} />
+        ) : null}
       </Toolbar>
       <ScreenContent>
         <AnimatedLegendList

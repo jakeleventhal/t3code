@@ -187,6 +187,7 @@ import {
   COMPOSER_COLLAPSED_CHROME,
   THREAD_COMPOSER_BOTTOM_GUTTER,
   ThreadComposer,
+  type ThreadComposerProps,
 } from "./ThreadComposer";
 import { ComposerPopoverHost } from "./ComposerPopoverHost";
 import { ThreadFeed, type ThreadFeedHandle, type ThreadFeedHistoryControls } from "./ThreadFeed";
@@ -202,6 +203,10 @@ import { useGlobalVoiceInput } from "../voice-input/VoiceInputProvider";
 
 export interface ThreadDetailScreenProps {
   readonly header?: React.ReactNode;
+  /** Bot chats: the composer offers only the message, attachments, and send. */
+  readonly simplifiedComposer?: boolean;
+  readonly botSetup?: ThreadComposerProps["botSetup"];
+  readonly composerPlaceholder?: string;
   readonly draftMode?: {
     readonly content: (
       headerInset: number,
@@ -1612,10 +1617,12 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                             ? props.activePendingApproval.supportsFeedback
                               ? "Send feedback to decline this request"
                               : "Send a message to decline and redirect the agent"
-                            : "Ask anything"
+                            : (props.composerPlaceholder ?? "Ask anything")
                         }
                         contentMaxWidth={contentMaxWidth}
                         draftControls={props.draftMode?.controls}
+                        simplified={props.simplifiedComposer}
+                        botSetup={props.botSetup}
                         connectionState={props.connectionStateLabel}
                         environmentLabel={props.environmentLabel}
                         selectedThread={props.selectedThread}

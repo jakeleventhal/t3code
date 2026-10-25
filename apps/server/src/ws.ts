@@ -188,6 +188,8 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
+import * as PeerEnvironmentBroker from "./mcp/PeerEnvironmentBroker.ts";
+import * as PeerMessageOutbox from "./mcp/PeerMessageOutbox.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -1245,6 +1247,8 @@ export const layerWsRpc = (
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
+  peerEnvironmentBroker: PeerEnvironmentBroker.PeerEnvironmentBroker["Service"],
+  peerMessageOutbox: PeerMessageOutbox.PeerMessageOutbox["Service"],
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -3117,6 +3121,32 @@ export const layerWsRpc = (
         [WS_METHODS.deviceConfigure]: (input) => deviceService.configure(input),
         [WS_METHODS.deviceTestHost]: (input) => deviceService.testHost(input),
         [WS_METHODS.deviceEasAccount]: (input) => deviceService.easAccount(input),
+        [WS_METHODS.peerMessagesList]: (input) => peerMessageOutbox.list(input),
+        [WS_METHODS.peerMessagesCancel]: (input) => peerMessageOutbox.cancel(input.requestId),
+        [WS_METHODS.peerMessagesFlush]: (input) => peerMessageOutbox.flush(input.environmentId),
+        [WS_METHODS.peerEnvironmentsSendToThread]: (input) =>
+          threadManagement.receivePeerMessage(input),
+        [WS_METHODS.peerEnvironmentsWaitForThread]: (input) =>
+          threadManagement
+            .waitForThread({
+              projectId: input.projectId,
+              threadId: input.threadId,
+              ...(input.runId === undefined ? {} : { runId: input.runId }),
+              timeoutMs: Math.min(300_000, Math.max(1, input.timeoutMs)),
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationV2GetThreadProjectionError({
+                    threadId: input.threadId,
+                    message: "Could not wait for thread",
+                    cause,
+                  }),
+              ),
+            ),
+        [WS_METHODS.peerEnvironmentsConnect]: (input) =>
+          Stream.unwrap(peerEnvironmentBroker.connect(input)),
+        [WS_METHODS.peerEnvironmentsRespond]: (input) => peerEnvironmentBroker.respond(input),
         [WS_METHODS.deviceList]: (input) =>
           input.inspectOnly && !input.updateTool
             ? deviceService.inspect
@@ -3377,6 +3407,8 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
+    const peerEnvironmentBroker = yield* PeerEnvironmentBroker.PeerEnvironmentBroker;
+    const peerMessageOutbox = yield* PeerMessageOutbox.PeerMessageOutbox;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
@@ -3450,6 +3482,8 @@ export const layer = Layer.unwrap(
               clientAnalyticsProps,
               previewAutomationBroker,
               serverBrowser,
+              peerEnvironmentBroker,
+              peerMessageOutbox,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.

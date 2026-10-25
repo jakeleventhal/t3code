@@ -17,6 +17,7 @@ import {
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import {
   AuthOrchestrationOperateScope,
+  CommandId,
   DEFAULT_MODEL,
   type EnvironmentId,
   type ModelSelection,
@@ -59,7 +60,7 @@ import {
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { newMessageId, newThreadId } from "~/lib/utils";
+import { newMessageId, newThreadId, randomUUID } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -105,12 +106,22 @@ import {
 } from "../../lib/attachmentUploadQueue";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { fileAttachmentCapabilityBlockReason } from "./composerAttachmentFiles";
-import { readEnvironmentScope } from "../../state/session";
+import { readEnvironmentScope, readLastKnownEnvironmentScope } from "../../state/session";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import {
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
   threadContextsOutsideEnvironment,
 } from "@t3tools/shared/composerContextReferences";
+import {
+  botMentionsUpdateNotice,
+  referencesBotServerCannotRead,
+} from "@t3tools/client-runtime/botMentionItems";
+import { botOutbox, botOutboxHoldsThread } from "../../botOutbox/botOutbox";
+import { classifyBotOutboxFailure } from "../../botOutbox/botOutbox.logic";
+import {
+  composerBotOutboxItem,
+  composerDraftUnchangedSinceQueue,
+} from "../../botOutbox/composerBotOutbox";
 import {
   draftSendState,
   type MultipleModelTarget,
@@ -426,14 +437,25 @@ export function useComposerSend(input: ComposerSendInput) {
         }),
       );
     };
+    // A bot conversation offline keeps the message on this device until its host reconnects, and
+    // a send behind such messages joins them so they arrive in the order written.
+    const queuesInBotOutbox =
+      activeProject?.botRole != null &&
+      isServerThread &&
+      activeThread !== undefined &&
+      (activeEnvironmentUnavailable || botOutboxHoldsThread(environmentId, activeThread.id));
+    // Queueing runs nothing on the host, so a session read that failed offline doesn't block it.
+    const canOperate = queuesInBotOutbox
+      ? readLastKnownEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+      : readEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
     if (
-      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      !canOperate ||
       !activeThread ||
       (isSendBusy && !sendQueuesBehindSetup) ||
       isConnecting ||
       isRevertingCheckpoint ||
       !clientSettingsHydrated ||
-      threadDetailLoading ||
+      (threadDetailLoading && !queuesInBotOutbox) ||
       readPendingEnvironmentChange() !== null ||
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
@@ -455,7 +477,7 @@ export function useComposerSend(input: ComposerSendInput) {
       });
       return;
     }
-    if (activeEnvironmentUnavailable) {
+    if (activeEnvironmentUnavailable && !queuesInBotOutbox) {
       const toastSlot = environmentUnavailableSendToastSlotRef.current;
       environmentUnavailableSendToastSlotRef.current =
         (toastSlot + 1) % ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE;
@@ -478,7 +500,8 @@ export function useComposerSend(input: ComposerSendInput) {
       onAdvanceActivePendingUserInput();
       return;
     }
-    if (!sendCtx?.providerAvailable) {
+    // Offline, the host's providers can't be checked; delivery checks the bot's model instead.
+    if (!sendCtx || (!sendCtx.providerAvailable && !queuesInBotOutbox)) {
       notifyDirectAnnotationAttached();
       return;
     }
@@ -543,11 +566,37 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
-    const strandedThread = threadContextsOutsideEnvironment({
-      text: promptForSend,
-      records: composerThreadContexts,
-      environmentId,
-    })[0];
+    // A bot reads threads on other connected machines through t3_thread_read(environmentId);
+    // a Code agent can read only its own machine's threads.
+    const isBotChat = activeProject?.botRole != null;
+    const botPresentation = isBotChat ? readEnvironmentPresentation(environmentId) : undefined;
+    const unreadableBotReference = isBotChat
+      ? referencesBotServerCannotRead({
+          text: promptForSend,
+          records: composerThreadContexts,
+          environmentId,
+          serverReadsMentions:
+            botPresentation?.serverConfig?.environment.capabilities.botMentions === true,
+        })[0]
+      : undefined;
+    if (unreadableBotReference) {
+      const host = botPresentation?.entry.target.label ?? null;
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: `${host ?? "This bot's machine"} can't read "${unreadableBotReference.label}"`,
+          description: `${botMentionsUpdateNotice(host)} Or remove the reference to send.`,
+        }),
+      );
+      return;
+    }
+    const strandedThread = isBotChat
+      ? undefined
+      : threadContextsOutsideEnvironment({
+          text: promptForSend,
+          records: composerThreadContexts,
+          environmentId,
+        })[0];
     if (strandedThread) {
       const owner =
         readEnvironmentPresentation(strandedThread.environmentId)?.entry.target.label ??
@@ -823,6 +872,57 @@ export function useComposerSend(input: ComposerSendInput) {
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
+    // A bot turn's command id is fixed before it leaves, so a send whose answer is lost waits in
+    // the outbox as this same command instead of returning to the composer to be sent again.
+    const botCommandId =
+      isBotChat && isServerThread && multipleModelSelections === null && !baseBranchForWorktree
+        ? CommandId.make(randomUUID())
+        : null;
+    if (queuesInBotOutbox) {
+      const queued = composerBotOutboxItem({
+        messageId: messageIdForSend,
+        environmentId,
+        threadId: threadIdForSend,
+        text: messageTextForSend,
+        context: outgoingMessageContext,
+        attachments: composerAttachmentsSnapshot,
+      });
+      if ("error" in queued) {
+        setThreadError(threadIdForSend, queued.error);
+        return;
+      }
+      const draftAtSend = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      sendInFlightRef.current = true;
+      const saved = await botOutbox.enqueue(queued.item).then(
+        () => true,
+        (error: unknown) => {
+          // Nothing was queued, so the draft stays as written.
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Couldn’t save the message on this device",
+              description: error instanceof Error ? error.message : undefined,
+            }),
+          );
+          return false;
+        },
+      );
+      sendInFlightRef.current = false;
+      if (!saved) return;
+      setThreadError(threadIdForSend, null);
+      // Edits made while it was saving stay in the composer.
+      if (
+        composerDraftUnchangedSinceQueue(
+          draftAtSend,
+          useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
+        )
+      ) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
+      return;
+    }
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -1266,6 +1366,7 @@ export function useComposerSend(input: ComposerSendInput) {
       const startPromise = startThreadTurn({
         environmentId,
         input: {
+          ...(botCommandId === null ? {} : { commandId: botCommandId }),
           threadId: threadIdForSend,
           message: {
             messageId: messageIdForSend,
@@ -1318,6 +1419,42 @@ export function useComposerSend(input: ComposerSendInput) {
       const startResult = await startPromise;
       if (startResult._tag === "Failure") {
         failure = startResult;
+        if (
+          botCommandId !== null &&
+          (isAtomCommandInterrupted(startResult) ||
+            classifyBotOutboxFailure(squashAtomCommandFailure(startResult)) === "retry")
+        ) {
+          // It may have reached the host. The outbox resends this exact message as the same
+          // command, and the host's receipt answers whether it already ran.
+          const queued = composerBotOutboxItem({
+            messageId: messageIdForSend,
+            environmentId,
+            threadId: threadIdForSend,
+            text: outgoingMessageText,
+            context: outgoingMessageContext,
+            attachments: composerAttachmentsSnapshot,
+            sent: { commandId: botCommandId, createdAt: messageCreatedAt },
+          });
+          const movedToOutbox =
+            "item" in queued &&
+            (await botOutbox.enqueue(queued.item).then(
+              () => true,
+              (error: unknown) => {
+                console.warn("[bot-outbox] could not keep an unanswered send", error);
+                return false;
+              },
+            ));
+          if (movedToOutbox) {
+            failure = null;
+            setOptimisticUserMessages((existing) => {
+              for (const message of existing) {
+                if (message.id === messageIdForSend) revokeUserMessagePreviewUrls(message);
+              }
+              const next = existing.filter((message) => message.id !== messageIdForSend);
+              return next.length === existing.length ? existing : next;
+            });
+          }
+        }
       } else {
         turnStartSucceeded = true;
         setKeepFullHistory(routeThreadKey, false);

@@ -3,6 +3,7 @@ import { imageMimeType } from "@t3tools/shared/image";
 import type { FilePreviewItem } from "../components/FilePreviewModal.types";
 import { composerImageGallery } from "./composerImageGallery";
 import type { DraftComposerAttachment } from "./composerImages";
+import { isAttachmentContextRecord } from "./composerContext";
 
 export function contextImageGallery(
   records: readonly ComposerContextRecord[],
@@ -10,7 +11,10 @@ export function contextImageGallery(
   environmentId?: EnvironmentId,
 ): FilePreviewItem[] {
   return records.flatMap((record): FilePreviewItem[] => {
-    if (!("attachmentId" in record) || (record.kind !== "image" && imageMimeType(record) === null))
+    if (
+      !isAttachmentContextRecord(record) ||
+      (record.kind !== "image" && imageMimeType(record) === null)
+    )
       return [];
     const local = attachments.find((item) => item.id === record.attachmentId);
     if (local) return composerImageGallery([local]);

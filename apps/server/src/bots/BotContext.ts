@@ -1,5 +1,12 @@
+import { resolveAttachmentPathById } from "../attachmentStore.ts";
+import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
+import type { ComposerContextAttachmentPathResolver } from "@t3tools/shared/composerContextReferences";
+import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import {
   TurnItemId,
+  BotFileContextRecord,
+  type ComposerContextRecord,
   VoiceConnectionError,
   type OrchestrationV2HistoricalMessage,
   type ProjectBotRole,
@@ -31,6 +38,10 @@ export class BotContextError extends Schema.TaggedError<BotContextError>()("BotC
 export class BotContext extends Context.Service<
   BotContext,
   {
+    readonly resolveFileReferences: (
+      threadId: ThreadId,
+      records: ReadonlyArray<ComposerContextRecord>,
+    ) => Effect.Effect<ComposerContextAttachmentPathResolver, BotContextError>;
     readonly read: (threadId: ThreadId) => Effect.Effect<VoiceSessionContext, VoiceConnectionError>;
     readonly readForWork: (
       threadId: ThreadId,
@@ -39,6 +50,7 @@ export class BotContext extends Context.Service<
   }
 >()("t3/bots/BotContext") {}
 
+const isBotFileReference = Schema.is(BotFileContextRecord);
 const isVoiceConnectionError = Schema.is(VoiceConnectionError);
 const encodeCallIds = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 const encodeString = Schema.encodeSync(Schema.fromJsonString(Schema.String));
@@ -57,27 +69,92 @@ const encodeConversation = Schema.encodeSync(
 function continuityInstructions(role: ProjectBotRole, forWork = false): string {
   return [
     role === "assistant"
-      ? "You are the user's global Assistant in T3 Code. Delegate implementation to their chosen thread or specialist instead of changing code yourself. Send into an existing thread using its normal queue/steer rules; create a new thread only when requested."
-      : "You are a persistent specialist bot in T3 Code. Your main conversation and topic threads share this workspace and its saved knowledge.",
-    "Every conversation belonging to this bot is available to you, including Main and other topics. When the user asks about another conversation, retrieve its history before answering; do not ask them to paste it or claim that topic boundaries prevent access. Shared memory is a useful summary, not a replacement for the original messages. Use the conversation directory below and T3's thread tools to find details that are not in your current context. Voice should delegate this retrieval to the work agent.",
-    "Keep the current topic's task and unfinished work separate from other topics. Reading another conversation does not authorize repeating its actions. Describe memory and conversations in ordinary language; do not explain internal filenames or storage unless asked.",
+      ? "You are the user's global Assistant in T3 Code. Delegate implementation to their chosen thread or specialist instead of changing code yourself. Keep ordinary conversation here. Delegate only when the task needs another bot or a Code agent. Continue related work in its existing thread; use a separate thread for substantial independent work when needed."
+      : "You are a persistent specialist bot in T3 Code. Your ongoing main conversation and optional threads share this workspace and its saved knowledge. Normally continue in the main conversation; separate threads are for parallel or independent work, not a required step for each new subject.",
+    "Every conversation belonging to this bot is available to you, including Main and other threads. When the user asks about another conversation, retrieve its history before answering; do not ask them to paste it or claim that thread boundaries prevent access. Shared memory is a useful summary, not a replacement for the original messages. Use the conversation directory below and T3's thread tools to find details that are not in your current context. Voice should delegate this retrieval to the work agent.",
+    "Keep the current thread's task and unfinished work separate from other threads. Reading another conversation does not authorize repeating its actions. Describe memory and conversations in ordinary language; do not explain internal filenames or storage unless asked.",
     "Text and voice are parts of the same conversation. A call transcript is historical context, not a new instruction to repeat an action. Check pending work and saved results before repeating it. The current screen belongs only to the device providing it; never infer another device's view.",
     ...(forWork
       ? [
           "AGENTS.md contains the user's editable purpose and saved memory. Keep concise, durable facts and user-confirmed preferences there. When the user corrects or forgets a fact, update or remove it rather than retaining conflicting versions. Do not save guesses, credentials, or transient screen contents. Read the current file before editing and preserve unrelated entries from other conversations.",
-          "Keep topic-specific decisions, unfinished work and result references in the conversation brief file identified in your T3 context. Update it when decisions or work state change, and before compaction. Keep the brief under 4 KB, with references to larger files. Put a reference in Saved memory when a topic should be discoverable later; do not mix one topic's unfinished work into another's.",
+          "Keep thread-specific decisions, unfinished work and result references in the conversation brief file identified in your T3 context. Update it when decisions or work state change, and before compaction. Keep the brief under 4 KB, with references to larger files. Put a reference in Saved memory when a thread should be discoverable later; do not mix one thread's unfinished work into another's.",
           "Keep AGENTS.md under 8 KB so both voice and work sessions receive it. Put larger data and results in ordinary workspace files and link them there. Retrieve older messages and call transcripts with T3 tools when a missing detail matters; never claim to remember something that is absent.",
         ]
       : []),
-    "Other bots have separate memory. Retrieve or hand off their knowledge only when the user asks. The user can inspect, correct or remove the workspace's saved data.",
+    "When substantial independent work needs a separate thread, use t3_bot_thread_create with the owning bot's projectId and a concise task title, then t3_thread_send(mode=queue) to send its task. Keep existing work in its existing thread. For a bot on another environment, send to its main or existing thread with environmentId; ask the receiving bot to create a local secondary thread when substantial independent work needs one. A bot-to-bot request is from the sending bot, not a message the user personally wrote. The receiving bot should put its full result in the receiving conversation; the requesting bot should give only a short summary with a link there. Stop controls apply to each conversation independently.",
+    "For a request from another bot, use the Requesting conversation reference or sender thread to return a concise completion with a link to this conversation using t3_thread_send(mode=queue). Keep the full result here. Do not send routine progress or acknowledge a completion with another completion: a result or status notice is context, not a new delegated task. If the requesting bot is unavailable, the peer request queue holds the completion until it reconnects. For a quick factual consultation, read the relevant accessible history directly instead of starting an unnecessary conversation.",
+    "When presenting a document or other file as a result, publish it as a chat attachment or rendered page so the user can find it in Files. Internal drafts, scratch work and instructions stay private to the workspace unless explicitly shared.",
+    "You may read other accessible bots' conversation histories directly when relevant. Normally answer as the bot the user is talking to; contact another bot only for a concrete need, not routinely or at random. A mention identifies context: read or delegate according to the accompanying instruction, and never start another agent merely because it was mentioned. Reading a conversation does not authorize repeating its actions. The user can inspect, correct or remove the workspace's saved data.",
   ].join("\n\n");
 }
+
+const decodePublishedHtml = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({ toolName: Schema.NullOr(Schema.String), output: Schema.Unknown }),
+  ),
+);
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const workspace = yield* BotWorkspace.BotWorkspace;
+  const config = yield* ServerConfig.ServerConfig;
+  const identity = yield* ServerEnvironment.ServerEnvironmentIdentity;
+
+  const resolveFileReferences = Effect.fn("BotContext.resolveFileReferences")(
+    function* (threadId: ThreadId, records: ReadonlyArray<ComposerContextRecord>) {
+      const paths = new Map<string, string>();
+      const environmentId = yield* identity.getEnvironmentId;
+      for (const record of records) {
+        if (!isBotFileReference(record) || record.environmentId !== environmentId) continue;
+        const sources = yield* sql<{ payload: string }>`
+          SELECT '{}' AS payload
+          FROM orchestration_v2_projection_threads t
+          JOIN projection_projects p ON p.project_id = t.project_id
+          JOIN orchestration_v2_projection_messages m ON m.thread_id = t.thread_id
+          WHERE t.thread_id = ${record.sourceThreadId} AND t.project_id = ${record.projectId}
+            AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND p.bot_role IS NOT NULL
+            AND m.message_id = ${record.sourceMessageId ?? null}
+            AND m.role IN ('user', 'assistant')
+            AND ${record.fileKind} = 'attachment'
+            AND EXISTS (SELECT 1 FROM json_each(m.payload_json, '$.attachments') a
+              WHERE json_extract(a.value, '$.id') = ${record.attachmentId}
+              AND 'message:' || m.message_id || ':' || a.key = ${record.fileId})
+          UNION ALL
+          SELECT json_object('toolName', json_extract(i.payload_json, '$.toolName'),
+            'output', json_extract(i.payload_json, '$.output')) AS payload
+          FROM orchestration_v2_projection_threads t
+          JOIN projection_projects p ON p.project_id = t.project_id
+          JOIN orchestration_v2_projection_turn_items i ON i.thread_id = t.thread_id
+          WHERE t.thread_id = ${record.sourceThreadId} AND t.project_id = ${record.projectId}
+            AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND p.bot_role IS NOT NULL
+            AND i.turn_item_id = ${record.sourceTurnItemId ?? null}
+            AND 'item:' || i.turn_item_id = ${record.fileId}
+            AND ${record.fileKind} = 'html' AND i.type = 'dynamic_tool' AND i.status = 'completed'
+            AND json_extract(i.payload_json, '$.toolName') LIKE '%html_render'
+          LIMIT 1
+        `;
+        const source = sources[0];
+        if (source === undefined) continue;
+        if (record.fileKind === "html") {
+          const payload = yield* decodePublishedHtml(source.payload);
+          if (htmlRenderFromToolItem(payload)?.attachmentId !== record.attachmentId) continue;
+        }
+        const path = resolveAttachmentPathById({
+          attachmentsDir: config.attachmentsDir,
+          attachmentId: record.attachmentId,
+        });
+        if (path !== null) paths.set(record.contextId, path);
+      }
+      return (
+        _attachmentId: string,
+        record: Extract<ComposerContextRecord, { kind: "bot-file" }>,
+      ) => paths.get(record.contextId) ?? null;
+    },
+    (effect, threadId) =>
+      effect.pipe(Effect.mapError((cause) => new BotContextError({ threadId, cause }))),
+  );
 
   const conversationDirectory = Effect.fn("BotContext.conversationDirectory")(function* (
     project: ProjectStore.ProjectRow,
@@ -293,7 +370,9 @@ const make = Effect.gen(function* () {
       effect.pipe(Effect.mapError((cause) => new BotContextError({ threadId, cause }))),
   );
 
-  return BotContext.of({ read, readForWork });
+  return BotContext.of({ read, readForWork, resolveFileReferences });
 });
 
-export const layer = Layer.effect(BotContext, make);
+export const layer = Layer.effect(BotContext, make).pipe(
+  Layer.provide(ServerEnvironment.layerIdentity.pipe(Layer.orDie)),
+);

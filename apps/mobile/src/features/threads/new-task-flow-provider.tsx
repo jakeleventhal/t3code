@@ -18,6 +18,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
+import { referencesBotServerCannotRead } from "@t3tools/client-runtime/botMentionItems";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 
@@ -773,13 +774,21 @@ export function NewTaskFlowProvider(
     if ((text.length === 0 && draft.attachments.length === 0) || !draftModelSelection) {
       return null;
     }
-    if (
-      threadContextsOutsideEnvironment({
-        text: draft.text,
-        records: draft.context?.records ?? [],
-        environmentId: selectedProject.environmentId,
-      }).length > 0
-    ) {
+    const unreadableReferences =
+      selectedProject.botRole == null
+        ? threadContextsOutsideEnvironment({
+            text: draft.text,
+            records: draft.context?.records ?? [],
+            environmentId: selectedProject.environmentId,
+          })
+        : referencesBotServerCannotRead({
+            text: draft.text,
+            records: draft.context?.records ?? [],
+            environmentId: selectedProject.environmentId,
+            serverReadsMentions:
+              selectedEnvironmentServerConfig?.environment.capabilities.botMentions === true,
+          });
+    if (unreadableReferences.length > 0) {
       return null;
     }
     const workspaceSelection = resolveWorkspaceSelection(draft.workspaceSelection);

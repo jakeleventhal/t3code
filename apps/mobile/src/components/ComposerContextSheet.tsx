@@ -22,6 +22,7 @@ import {
   isFileBackedComposerAttachment,
   type DraftComposerAttachment,
 } from "../lib/composerImages";
+import { isAttachmentContextRecord } from "../lib/composerContext";
 import { contextImageGallery } from "../lib/contextImageGallery";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { VideoPreviewModal } from "./VideoPreviewModal";
@@ -172,11 +173,12 @@ export function ComposerContextSheet(props: {
     }
   }
   const attachmentRecord =
-    record && "attachmentId" in record
+    record && isAttachmentContextRecord(record)
       ? record
       : record?.kind === "preview-annotation" && "screenshotContextId" in record
         ? props.records?.find(
-            (entry) => entry.contextId === record.screenshotContextId && "attachmentId" in entry,
+            (entry) =>
+              entry.contextId === record.screenshotContextId && isAttachmentContextRecord(entry),
           )
         : undefined;
   const pullRequestUrl =
@@ -324,6 +326,55 @@ export function ComposerContextSheet(props: {
                 ) : null}
               </View>
             ) : null}
+            {record.kind === "project" ? (
+              <View className="gap-3">
+                <ContextField
+                  label={
+                    record.botRole === "assistant"
+                      ? "Assistant"
+                      : record.botRole
+                        ? "Bot"
+                        : "Project"
+                  }
+                  value={record.title}
+                />
+                {record.mainThreadId && props.onOpenThread ? (
+                  <Button
+                    label="Open conversation"
+                    tone="secondary"
+                    onPress={() =>
+                      record.mainThreadId &&
+                      props.onOpenThread?.({
+                        environmentId: record.environmentId,
+                        threadId: record.mainThreadId,
+                      })
+                    }
+                    fullWidth
+                  />
+                ) : null}
+              </View>
+            ) : null}
+            {record.kind === "bot-file" ? (
+              <View className="gap-3">
+                <ContextField
+                  label={record.fileKind === "html" ? "Published page" : "File"}
+                  value={record.title}
+                />
+                {props.onOpenThread ? (
+                  <Button
+                    label="Show in chat"
+                    tone="secondary"
+                    onPress={() =>
+                      props.onOpenThread?.({
+                        environmentId: record.environmentId,
+                        threadId: record.sourceThreadId,
+                      })
+                    }
+                    fullWidth
+                  />
+                ) : null}
+              </View>
+            ) : null}
             {record.kind === "skill" ? (
               <View className="gap-3">
                 <ContextField label="Skill" value={record.name} />
@@ -343,7 +394,7 @@ export function ComposerContextSheet(props: {
             ) : null}
           </>
         )}
-        {attachmentRecord && "attachmentId" in attachmentRecord ? (
+        {attachmentRecord && isAttachmentContextRecord(attachmentRecord) ? (
           <ComposerContextAttachment
             key={JSON.stringify([
               props.environmentId,

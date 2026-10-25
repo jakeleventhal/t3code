@@ -2,7 +2,9 @@ import {
   type ComposerContextId,
   type ComposerContextRecord,
   EnvironmentId,
+  ProjectId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -179,6 +181,63 @@ describe("provider projection", () => {
     expect(projected).toContain('<context kind="terminal" id="ctx_t">');
     expect(projected).toContain("Viewing PR 42");
     expect(projected.match(/<t3_context /g)).toHaveLength(1);
+  });
+
+  it("tells the agent how to read a bot and that naming it is not an assignment", () => {
+    const projected = projectComposerContextForProvider({
+      text: "Ask what [Researcher](t3-context://v1/project/ctx_bot) found",
+      records: [
+        {
+          version: 1,
+          contextId: ctx("ctx_bot"),
+          kind: "project",
+          label: "Researcher",
+          environmentId: EnvironmentId.make("environment-remote"),
+          projectId: ProjectId.make("project-bot"),
+          title: "Researcher",
+          botRole: "specialist",
+          mainThreadId: ThreadId.make("thread-main"),
+        },
+      ],
+    });
+    expect(projected).toContain("[Project: Researcher; ref=ctx_bot]");
+    expect(projected).toContain("environmentId: environment-remote");
+    expect(projected).toContain("mainThreadId: thread-main");
+    expect(projected).toContain("t3_thread_read(threadId, environmentId)");
+    expect(projected).toContain("not a request to contact it or assign it work");
+  });
+
+  it("names a bot file by its stored attachment and source, with a path only from the host", () => {
+    const record = {
+      version: 1 as const,
+      contextId: ctx("ctx_file"),
+      kind: "bot-file" as const,
+      label: "Q3 report",
+      environmentId: EnvironmentId.make("environment-1"),
+      projectId: ProjectId.make("project-bot"),
+      fileId: "item:turn-item-1",
+      fileKind: "html" as const,
+      title: "Q3 report",
+      attachmentId: "thread-main-attachment-1",
+      sourceThreadId: ThreadId.make("thread-main"),
+      sourceTurnItemId: TurnItemId.make("turn-item-1"),
+    };
+    const input = {
+      text: "Summarize [Q3 report](t3-context://v1/bot-file/ctx_file)",
+      records: [record],
+    };
+    const unresolved = projectComposerContextForProvider(input);
+    expect(unresolved).toContain("attachmentId: thread-main-attachment-1");
+    expect(unresolved).toContain("sourceThreadId: thread-main");
+    expect(unresolved).not.toContain("path:");
+
+    const resolved = projectComposerContextForProvider({
+      ...input,
+      resolveAttachmentPath: (attachmentId) =>
+        attachmentId === record.attachmentId ? "/data/attachments/report.html" : null,
+    });
+    expect(resolved).toContain("path: /data/attachments/report.html");
+    expect(resolved).toContain("read it from path");
   });
 
   it("uses the payload kind when a reference disagrees with its record", () => {

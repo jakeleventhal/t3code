@@ -22,6 +22,7 @@ import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import type { WorkspaceTab } from "./workspace-tabs-state";
 import { ActiveBotCallBar } from "../bots/ActiveBotCall";
 import { AssistantOrb } from "../bots/AssistantOrb";
+import { BotsAndroidHeader } from "../bots/BotsAndroidHeader";
 import { BotsScreen } from "../bots/BotsScreen";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { useBotCallSummary } from "../bots/use-bot-call";
@@ -29,13 +30,11 @@ import { useBotCallSummary } from "../bots/use-bot-call";
 const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
 // Clears the list behind the call bar, which sits beside New thread in Code.
 const CALL_BAR_CLEARANCE = 66;
-// Clears the list behind the Assistant button where no New thread sits below it.
-const ASSISTANT_ORB_CLEARANCE = 56;
 
 function BotsPane() {
   return (
     <>
-      <AndroidScreenHeader title="Bots" />
+      <BotsAndroidHeader />
       <ScreenContent>
         <BotsScreen />
       </ScreenContent>
@@ -102,7 +101,7 @@ export function WorkspaceRootScreen() {
                 <View className="flex-1 items-center justify-center px-10">
                   <EmptyState
                     title="Select a conversation"
-                    detail="Choose a bot or one of its conversations from the sidebar."
+                    detail="Choose a bot from the sidebar."
                     variant="plain"
                   />
                 </View>

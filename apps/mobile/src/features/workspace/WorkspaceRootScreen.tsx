@@ -48,19 +48,21 @@ import {
 import { openSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 import { ActiveBotCallBar } from "../bots/ActiveBotCall";
-import { AssistantOrb, useOpenAssistantQuick } from "../bots/AssistantOrb";
+import {
+  AssistantOrb,
+  PROMINENT_ASSISTANT_ORB_SIZE,
+  useOpenAssistantQuick,
+} from "../bots/AssistantOrb";
 import { BotsScreen } from "../bots/BotsScreen";
 import { BotsToolbar } from "../bots/BotsToolbar";
-import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { useBotCallSummary } from "../bots/use-bot-call";
 
 const TAB_TITLES = WORKSPACE_TAB_LABELS;
 
 // Clears the list behind the Assistant button, which floats above the tab bar.
-const ASSISTANT_ORB_CLEARANCE = 56;
+const ASSISTANT_ORB_CLEARANCE = PROMINENT_ASSISTANT_ORB_SIZE + 12;
 // The call bar shares the orb's row, so the list clears whichever is taller.
 const CALL_BAR_CLEARANCE = 66;
-const ASSISTANT_ORB_SIZE = 44;
 
 function WorkspaceRootTitle(props: {
   readonly maxWidth: number;
@@ -113,10 +115,8 @@ function WorkspaceRootContent() {
   // A tab keeps showing its own room while an aligned page leads the state by a frame.
   const room = use(WorkspaceRoomContext) ?? state.room;
   const selectedTab = workspaceRoomTab(state, room);
-  const assistantEnvironmentId = useAssistantEnvironmentId();
-  const assistantOrb =
-    (systemTabBar || compactTabs) && room === "code" && assistantEnvironmentId !== null;
-  const openAssistant = useOpenAssistantQuick(assistantEnvironmentId);
+  const openAssistant = useOpenAssistantQuick();
+  const assistantOrb = (systemTabBar || compactTabs) && room === "code" && openAssistant !== null;
   // Beside a split layout's open page, that page carries the call instead.
   const focused = useIsFocused();
   const callBar = useBotCallSummary() !== null && (!layout.usesSplitView || focused);
@@ -155,6 +155,8 @@ function WorkspaceRootContent() {
     Math.max(assistantOrb ? ASSISTANT_ORB_CLEARANCE : 0, callBar ? CALL_BAR_CLEARANCE : 0);
   // The orb and call bar sit 12 points above the controls the list already clears.
   const floatingBottom = controlsClearance - 4;
+  // On the compact bar the orb lines up over the compose circle that trails the tabs.
+  const orbRight = compactTabs ? 12 : 16;
   const context = useMemo(() => ({ ...workspace, bottomClearance }), [workspace, bottomClearance]);
 
   return (
@@ -254,18 +256,13 @@ function WorkspaceRootContent() {
           <WorkspaceToolbar
             sidebar={sidebarNavigation}
             onNewTask={startNewTask}
-            onOpenAssistant={
-              assistantEnvironmentId === null || assistantOrb ? undefined : openAssistant
-            }
+            onOpenAssistant={assistantOrb ? undefined : (openAssistant ?? undefined)}
           />
         ) : (
           <WorkspaceSectionToolbar onNewTask={startNewTask} showCompose={false} />
         )}
-        {assistantOrb && assistantEnvironmentId !== null ? (
-          <AssistantOrb
-            environmentId={assistantEnvironmentId}
-            style={{ right: 16, bottom: floatingBottom }}
-          />
+        {assistantOrb ? (
+          <AssistantOrb prominent style={{ right: orbRight, bottom: floatingBottom }} />
         ) : null}
         {callBar ? (
           <ActiveBotCallBar
@@ -273,7 +270,7 @@ function WorkspaceRootContent() {
             className="absolute"
             style={{
               left: 16,
-              right: assistantOrb ? 16 + ASSISTANT_ORB_SIZE + 10 : 16,
+              right: assistantOrb ? orbRight + PROMINENT_ASSISTANT_ORB_SIZE + 10 : 16,
               bottom: floatingBottom,
             }}
           />

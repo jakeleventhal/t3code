@@ -32,7 +32,11 @@ import type {
 import { draftModelPickMatchesThread } from "@t3tools/shared/model";
 
 import { writeFileAtomically } from "../lib/atomic-file";
-import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
+import {
+  createComposerContextHistory,
+  isAttachmentContextRecord,
+  referencedComposerContext,
+} from "../lib/composerContext";
 import { isQueuedEditDraftKey } from "./queued-edit-draft-key";
 import {
   collectComposerContextReferences,
@@ -1399,7 +1403,9 @@ export function replaceComposerDraftAttachments(
     const existing = normalizeDraft(current[draftKey]);
     const droppedContextIds = new Set(
       existing.context?.records
-        .filter((record) => "attachmentId" in record && !retainedIds.has(record.attachmentId))
+        .filter(
+          (record) => isAttachmentContextRecord(record) && !retainedIds.has(record.attachmentId),
+        )
         .map((record) => record.contextId),
     );
     const text = replaceComposerContextReferences(existing.text, (ref) =>

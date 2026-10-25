@@ -55,6 +55,21 @@ export function composerMentionPath(source: string, context?: OrchestrationMessa
   return token?.type === "mention" && token.source === source ? token.value : null;
 }
 
+export type AttachmentContextRecord = Extract<
+  ComposerContextRecord,
+  { readonly attachmentId: string; readonly name: string }
+>;
+
+/**
+ * Context that brings its own attachment, uploaded with the draft. A bot file only names one the
+ * bot already stores, so it must never be uploaded, re-imported, or dropped with draft files.
+ */
+export function isAttachmentContextRecord<R extends { readonly kind: string }>(
+  record: R,
+): record is Extract<R, { readonly attachmentId: string; readonly name: string }> {
+  return "attachmentId" in record && record.kind !== "bot-file";
+}
+
 export interface ComposerDocumentAttachment {
   readonly attachmentId: string;
   readonly name: string;
@@ -215,7 +230,7 @@ export function uploadedComposerContext(
   return {
     ...context,
     records: context.records.map((record) =>
-      "attachmentId" in record
+      isAttachmentContextRecord(record)
         ? { ...record, attachmentId: ids.get(record.attachmentId) ?? record.attachmentId }
         : record,
     ),

@@ -38,6 +38,7 @@ import {
   useBotCallAvailability,
   useBotCallSummary,
 } from "./use-bot-call";
+import { botChatTurn } from "./bot-turn-settings";
 import { useOpenBotConversation } from "./use-bot-conversation";
 
 const ASSISTANT_BOT = { id: "assistant", title: "Assistant", botRole: "assistant" } as const;
@@ -89,10 +90,9 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const showInBots = useShowConversationInBots();
   const environments = useWorkspaceEnvironments();
   const environment = environments.find((entry) => entry.environmentId === environmentId);
-  const environmentLabel =
-    environments.filter((entry) => entry.isEnabled).length > 1
-      ? (environment?.environmentLabel ?? null)
-      : null;
+  // Over Code, the work on screen may be on another environment, so the host is named only
+  // when it explains why the Assistant can't answer.
+  const host = environment?.environmentLabel ?? "Your Assistant’s environment";
   const connected = environment?.isEnabled === true && environment.connectionState === "connected";
   const project = useAssistantProject(environmentId);
   const assistantName = project?.title ?? "Assistant";
@@ -117,10 +117,10 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
     threadId !== null
       ? null
       : !connected
-        ? "This environment isn’t connected. Reconnect it to talk to its Assistant."
+        ? `${host} isn’t connected. Reconnect it to talk to your Assistant.`
         : !opener.canStart || opener.defaults === null
           ? (opener.reason ??
-            "No model is available on this environment. Set up a provider to talk to your Assistant.")
+            `No model is available on ${host}. Set up a provider there to talk to your Assistant.`)
           : null;
 
   // Opening this sheet is the user's request, so it may create or reopen the Assistant. A failed
@@ -152,11 +152,27 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const { messages, loading, error } = useRecentMessages(environmentId, threadId);
   // Kept per environment outside the sheet, so closing it mid-thought or mid-send loses nothing.
   const quick = useAssistantQuickState(environmentId);
-  const sendDisabled = !canSend || threadId === null || quick.draft.trim().length === 0;
+  const serverConfig = useEnvironmentServerConfig(environmentId);
+  // A model chosen in the Assistant's settings or the bot defaults rides on each message; one
+  // that can't run here holds the send instead of quietly using the conversation's own.
+  const botTurn =
+    mainThread !== null && mainThread.id === threadId
+      ? botChatTurn({
+          config: serverConfig,
+          project,
+          fallback: {
+            modelSelection: mainThread.modelSelection,
+            runtimeMode: mainThread.runtimeMode,
+          },
+        })
+      : null;
+  const setupNeeded = connected && botTurn?.kind === "setup-needed" ? botTurn.reason : null;
+  const sendDisabled =
+    !canSend || threadId === null || setupNeeded !== null || quick.draft.trim().length === 0;
   const readView = useCurrentViewReader();
 
   const send = async () => {
-    if (threadId === null || !canSend) return;
+    if (threadId === null || !canSend || setupNeeded !== null) return;
     const submitted = assistantQuickStore.beginSend(environmentId);
     if (submitted === null) return;
     // Read before the outbox stores the message, so a retry resends the screen it was written about.
@@ -171,6 +187,9 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
       text: submitted.trim(),
       ...(currentView ? { context: { version: 1, records: [], currentView } } : {}),
       attachments: [],
+      ...(botTurn
+        ? { modelSelection: botTurn.modelSelection, runtimeMode: botTurn.runtimeMode }
+        : {}),
       dispatchMode: "queue",
       createdAt: metadata.createdAt,
     }).then(
@@ -189,8 +208,7 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
     showInBots({ environmentId, threadId });
   };
 
-  const callsSupported =
-    useEnvironmentServerConfig(environmentId)?.environment.capabilities.botVoice === true;
+  const callsSupported = serverConfig?.environment.capabilities.botVoice === true;
   const voiceAvailability = useBotCallAvailability({
     environmentId,
     projectId: project?.id ?? null,
@@ -235,11 +253,6 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
           <Text textRole="headline" className="font-t3-bold text-foreground" numberOfLines={1}>
             {assistantName}
           </Text>
-          {environmentLabel ? (
-            <Text textRole="caption" className="text-foreground-muted" numberOfLines={1}>
-              {environmentLabel}
-            </Text>
-          ) : null}
         </View>
         {callsSupported && !onThisCall ? (
           <BotCallStartButton
@@ -312,6 +325,26 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
       </View>
 
       <ActiveBotCallBar thread={callThread} />
+      {setupNeeded !== null ? (
+        <View className="items-start gap-1">
+          <Text textRole="footnote" className="text-foreground-muted">
+            {`Setup needed · ${setupNeeded}`}
+          </Text>
+          <Button
+            tone="text"
+            label="Bot settings"
+            onPress={() =>
+              navigation.navigate("SettingsSheet", {
+                screen: "SettingsContent",
+                params: {
+                  screen: "SettingsBotTurn",
+                  params: { environmentId, ...(project ? { projectId: project.id } : {}) },
+                },
+              })
+            }
+          />
+        </View>
+      ) : null}
       {quick.error !== null ? (
         <Text
           textRole="footnote"

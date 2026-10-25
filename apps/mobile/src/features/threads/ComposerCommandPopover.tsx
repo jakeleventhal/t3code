@@ -1,4 +1,8 @@
 import {
+  BOT_MENTION_GROUP_LABELS,
+  type BotMentionItem,
+} from "@t3tools/client-runtime/botMentionItems";
+import {
   resolveProviderSkillSourceKind,
   type ProviderSkillSourceKind,
 } from "@t3tools/client-runtime/providerSkills";
@@ -9,7 +13,7 @@ import type {
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
-import { memo } from "react";
+import { Fragment, memo } from "react";
 import { Pressable, ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
@@ -18,6 +22,7 @@ import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 export type ComposerCommandItem =
+  | BotMentionItem
   | {
       readonly id: string;
       readonly type: "pull-request";
@@ -67,6 +72,10 @@ interface ComposerCommandPopoverProps {
   readonly triggerKind: ComposerTriggerKind | null;
   readonly isLoading: boolean;
   readonly error?: string | null;
+  /** A bot chat's @ menu: grouped curated context rather than workspace files. */
+  readonly botMentions?: boolean;
+  /** A standing explanation above the results, such as why some kinds are missing. */
+  readonly notice?: string | null;
   readonly onSelect: (item: ComposerCommandItem) => void;
 }
 
@@ -110,6 +119,20 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
       return null;
     case "thread":
       return "text.bubble";
+    case "reference":
+      return referenceIcon(item.reference);
+  }
+}
+
+function referenceIcon(reference: BotMentionItem["reference"]): AppSymbolName {
+  switch (reference.kind) {
+    case "thread":
+      return "text.bubble";
+    case "project":
+      return reference.botRole === null ? "folder" : "person.crop.circle";
+    case "bot-file":
+      if (reference.fileKind === "html") return "globe";
+      return reference.mimeType?.startsWith("image/") ? "photo" : "doc";
   }
 }
 
@@ -128,7 +151,14 @@ function groupLabel(triggerKind: ComposerTriggerKind | null): string | null {
   }
 }
 
-function emptyText(triggerKind: ComposerTriggerKind | null, isLoading: boolean): string {
+function emptyText(
+  triggerKind: ComposerTriggerKind | null,
+  isLoading: boolean,
+  botMentions: boolean,
+): string {
+  if (botMentions && triggerKind === "path") {
+    return isLoading ? "Loading…" : "No matching files, conversations, projects, or bots.";
+  }
   if (isLoading) {
     return triggerKind === "path" ? "Searching files…" : "Loading…";
   }
@@ -194,18 +224,28 @@ const CommandRow = memo(function CommandRow(props: {
   );
 });
 
+function GroupHeader(props: { readonly label: string }) {
+  return (
+    <View className="px-3.5 pt-2.5 pb-1">
+      <Text className="text-3xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
+        {props.label}
+      </Text>
+    </View>
+  );
+}
+
 export const ComposerCommandPopover = memo(function ComposerCommandPopover(
   props: ComposerCommandPopoverProps,
 ) {
-  const label = groupLabel(props.triggerKind);
+  const grouped = props.botMentions === true && props.triggerKind === "path";
+  const label = grouped ? null : groupLabel(props.triggerKind);
 
   return (
     <PopoverSurface>
-      {label ? (
-        <View className="px-3.5 pt-2.5 pb-1">
-          <Text className="text-3xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
-            {label}
-          </Text>
+      {label ? <GroupHeader label={label} /> : null}
+      {props.notice ? (
+        <View className="px-3.5 pt-2.5">
+          <Text className="text-xs text-foreground-tertiary">{props.notice}</Text>
         </View>
       ) : null}
       {props.items.length > 0 ? (
@@ -214,20 +254,29 @@ export const ComposerCommandPopover = memo(function ComposerCommandPopover(
           keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
         >
-          {props.items.map((item, index) => (
-            <CommandRow
-              key={item.id}
-              item={item}
-              onPress={() => props.onSelect(item)}
-              isLast={index === props.items.length - 1}
-              isSlashSkill={props.triggerKind === "slash-command" && item.type === "skill"}
-            />
-          ))}
+          {props.items.map((item, index) => {
+            const group = item.type === "reference" ? item.group : null;
+            const previous = props.items[index - 1];
+            const startsGroup =
+              group !== null && (previous?.type !== "reference" || previous.group !== group);
+            return (
+              <Fragment key={item.id}>
+                {startsGroup ? <GroupHeader label={BOT_MENTION_GROUP_LABELS[group]} /> : null}
+                <CommandRow
+                  item={item}
+                  onPress={() => props.onSelect(item)}
+                  isLast={index === props.items.length - 1}
+                  isSlashSkill={props.triggerKind === "slash-command" && item.type === "skill"}
+                />
+              </Fragment>
+            );
+          })}
         </ScrollView>
       ) : (
         <View className="px-3.5 py-2.5">
           <Text className="text-xs text-foreground-tertiary">
-            {props.error ?? emptyText(props.triggerKind, props.isLoading)}
+            {props.error ??
+              emptyText(props.triggerKind, props.isLoading, props.botMentions === true)}
           </Text>
         </View>
       )}

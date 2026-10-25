@@ -487,6 +487,10 @@ export const layer: Layer.Layer<
           });
         },
       );
+      const resolveAttachmentPath = yield* botContext.resolveFileReferences(
+        projection.thread.id,
+        message.context?.records ?? [],
+      );
       if (message.attachments.length === 0 && message.text.trimStart().startsWith("/")) {
         const isEmptyCompaction =
           message.text.trim().toLowerCase() === "/compact" && !projection.hasConversation;
@@ -520,6 +524,7 @@ export const layer: Layer.Layer<
               providerAuth.tryHandlePromptCommand({
                 instanceId: authInstanceId,
                 text: projectComposerContextForProvider({
+                  resolveAttachmentPath,
                   text: message.text,
                   records: message.context?.records ?? [],
                   currentView: message.context?.currentView,
@@ -640,7 +645,10 @@ export const layer: Layer.Layer<
       const { isCurrentAttemptInStatus } = runControls;
 
       const resolvedRuntimePolicy = yield* runtimePolicy.resolve({
-        thread: projection.thread,
+        thread:
+          run.runtimeMode === undefined
+            ? projection.thread
+            : { ...projection.thread, runtimeMode: run.runtimeMode },
         modelSelection: run.modelSelection,
       });
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
@@ -1099,6 +1107,7 @@ export const layer: Layer.Layer<
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
       const authoredText = projectComposerContextForProvider({
+        resolveAttachmentPath,
         text: message.text,
         records: message.context?.records ?? [],
         currentView: message.context?.currentView,

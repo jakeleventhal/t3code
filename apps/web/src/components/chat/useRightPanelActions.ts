@@ -1,3 +1,4 @@
+import { isBotProject } from "../bots/botRoom.logic";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ThreadPreviewState } from "../../previewStateStore";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
@@ -66,7 +67,7 @@ interface RightPanelActionsInput {
 export function useRightPanelActions(input: RightPanelActionsInput) {
   const {
     closeRightPanelSurface,
-    activeThreadRef,
+    activeThreadRef: requestedThreadRef,
     activeProject,
     activeRightPanelSurface,
     activePreviewState,
@@ -90,6 +91,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     explicitDiffOpenRef,
     onDiffPanelOpen,
   } = input;
+  const activeThreadRef = isBotProject(activeProject) ? null : requestedThreadRef;
 
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const onToggleDiff = () => {

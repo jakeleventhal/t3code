@@ -1,11 +1,11 @@
-import type { EnvironmentId, ThreadContextRecord } from "@t3tools/contracts";
+import type { EnvironmentId, ReferenceContextRecord } from "@t3tools/contracts";
 import { collectInlineContextIds } from "../../lib/composerContextReferences";
 
 /** Attached threads the prompt still links to; replacing linked text leaves stale records. */
 export function referencedThreadContexts(draft: {
   readonly prompt: string;
-  readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-}): ReadonlyArray<ThreadContextRecord> {
+  readonly threadContexts: ReadonlyArray<ReferenceContextRecord>;
+}): ReadonlyArray<ReferenceContextRecord> {
   if (draft.threadContexts.length === 0) return [];
   const referenced = new Set(collectInlineContextIds(draft.prompt));
   return draft.threadContexts.filter((record) => referenced.has(record.contextId));
@@ -14,7 +14,7 @@ export function referencedThreadContexts(draft: {
 /** Why a send waits for the user to pick a machine when no machine was chosen automatically. */
 export function loadBalancingSendWarning(input: {
   readonly pending: boolean;
-  readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
+  readonly threadContexts: ReadonlyArray<ReferenceContextRecord>;
   readonly candidateEnvironmentIds: ReadonlyArray<EnvironmentId>;
 }) {
   if (input.pending) {

@@ -1,16 +1,55 @@
-import { describe, expect, it, vi } from "vite-plus/test";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { BotMentionItem } from "@t3tools/client-runtime/botMentionItems";
+import {
+  ComposerContextId,
+  EnvironmentId,
+  ProjectId,
+  ProviderDriverKind,
+  type OrchestrationMessageContext,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 
+const refreshProviders = vi.hoisted(() => vi.fn());
+const pathSearch = vi.hoisted(() => vi.fn());
+const botMentionItems = vi.hoisted(() => ({ current: [] as unknown[] }));
+const drafts = vi.hoisted(() => ({
+  context: undefined as OrchestrationMessageContext | undefined,
+}));
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+// The hook runs once outside a renderer: state keeps its initial value and effects are skipped.
+vi.mock("react", () => ({
+  useState: (initial: unknown) => [
+    typeof initial === "function" ? (initial as () => unknown)() : initial,
+    () => {},
+  ],
+  useRef: (current: unknown) => ({ current }),
+  useEffect: () => {},
+}));
 
 vi.mock("../../state/queries", () => ({
-  useComposerPathSearch: () => ({ entries: [], isPending: false }),
+  useComposerPathSearch: (input: unknown) => {
+    pathSearch(input);
+    return {
+      entries: [{ path: "src/index.ts", kind: "file" }],
+      isPending: false,
+    };
+  },
   useComposerPullRequestSearch: () => ({ entries: [], isPending: false, error: null }),
 }));
 vi.mock("../../state/use-composer-drafts", () => ({
-  getComposerDraftSnapshot: vi.fn(),
-  setComposerDraftContext: vi.fn(),
+  getComposerDraftSnapshot: () => ({ text: "", context: drafts.context }),
+  readComposerDraftSelection: () => null,
   useComposerDraftSelection: vi.fn(),
+  setComposerDraftContext: (_key: string, context: OrchestrationMessageContext) => {
+    drafts.context = context;
+  },
+}));
+vi.mock("./use-bot-mention-items", () => ({
+  useBotMentionItems: (input: { bot: unknown; query: string | null }) => ({
+    items: input.bot !== null && input.query !== null ? botMentionItems.current : [],
+    isLoading: false,
+  }),
 }));
 vi.mock("../../lib/uuid", () => ({ uuidv4: () => "context-id" }));
 vi.mock("../../state/server", () => ({
@@ -24,6 +63,7 @@ import {
   buildComposerSlashCommandItems,
   resolveComposerCommandSelection,
   resolveComposerMenuSelection,
+  useComposerCommandMenu,
 } from "./use-composer-command-menu";
 
 describe("resolveComposerMenuSelection", () => {
@@ -124,5 +164,100 @@ describe("mobile slash commands", () => {
         allowInteractionMode: false,
       }),
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
+  });
+});
+
+describe("bot chat slash commands", () => {
+  it("leaves out T3's runtime commands but keeps the provider's own", () => {
+    const items = buildComposerSlashCommandItems({
+      query: "",
+      atMessageStart: true,
+      hasThread: true,
+      hasCompactableConversation: true,
+      allowInteractionMode: true,
+      offersRuntimeCommands: false,
+      selectedProviderStatus: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        slashCommands: [
+          { name: "compact", description: "Compact the conversation" },
+          { name: "goal", description: "Set a goal" },
+        ],
+      },
+    });
+    expect(items.map((item) => item.label)).toEqual(["/compact", "/goal"]);
+  });
+});
+
+describe("composer @ menu", () => {
+  const environmentId = EnvironmentId.make("env-home");
+  const bot = { environmentId, projectId: ProjectId.make("bot-researcher") };
+  const reference = {
+    version: 1,
+    kind: "project",
+    contextId: ComposerContextId.make("project_env-home_t3code"),
+    label: "t3code",
+    environmentId,
+    projectId: ProjectId.make("t3code"),
+    title: "t3code",
+    botRole: null,
+  } as const;
+  const projectItem: BotMentionItem = {
+    id: "reference:project:env-home:t3code",
+    type: "reference",
+    group: "projects",
+    reference,
+    label: "t3code",
+    description: "Project",
+  };
+
+  const menu = (input: {
+    readonly draftMessage: string;
+    readonly bot?: typeof bot | null;
+    readonly onChangeDraftMessage?: (value: string) => void;
+  }) =>
+    useComposerCommandMenu({
+      draftMessage: input.draftMessage,
+      ownerKey: "draft",
+      environmentId,
+      bot: input.bot ?? null,
+      projectCwd: "/repo",
+      selectedProviderStatus: null as ServerProvider | null,
+      hasThread: true,
+      hasCompactableConversation: false,
+      onChangeDraftMessage: input.onChangeDraftMessage ?? (() => {}),
+    });
+
+  beforeEach(() => {
+    pathSearch.mockClear();
+    botMentionItems.current = [projectItem];
+    drafts.context = undefined;
+  });
+
+  it("offers a bot only its curated context and never searches the workspace", () => {
+    const result = menu({ draftMessage: "Look at @t3", bot });
+
+    expect(result.items).toEqual([projectItem]);
+    expect(result.botMentions).toBe(true);
+    expect(pathSearch).toHaveBeenCalledWith({ environmentId, cwd: null, query: null });
+  });
+
+  it("keeps workspace file search in Code threads", () => {
+    const result = menu({ draftMessage: "Look at @ind" });
+
+    expect(result.items.map((item) => item.type)).toEqual(["path"]);
+    expect(result.botMentions).toBe(false);
+    expect(pathSearch).toHaveBeenCalledWith({ environmentId, cwd: "/repo", query: "ind" });
+  });
+
+  it("inserts the picked reference and attaches it once", () => {
+    const onChangeDraftMessage = vi.fn();
+    const draftMessage = "Look at @t3";
+    menu({ draftMessage, bot, onChangeDraftMessage }).onSelect(projectItem);
+    menu({ draftMessage, bot, onChangeDraftMessage }).onSelect(projectItem);
+
+    expect(onChangeDraftMessage).toHaveBeenLastCalledWith(
+      `Look at ${formatComposerContextReference(reference)} `,
+    );
+    expect(drafts.context?.records).toEqual([reference]);
   });
 });

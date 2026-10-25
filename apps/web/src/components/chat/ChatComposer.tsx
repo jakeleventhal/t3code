@@ -21,7 +21,7 @@ import type {
   ProjectId,
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
-  ThreadContextRecord,
+  ReferenceContextRecord,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
@@ -275,6 +275,7 @@ import { useComposerProviderModel } from "./useComposerProviderModel";
 import { useComposerImageGroups } from "./useComposerImageGroups";
 import { useComposerStash } from "./useComposerStash";
 import { useComposerContextImport } from "./useComposerContextImport";
+import { useBotServerReadsMentions } from "./useBotMentionItems";
 import { useComposerAttachmentIntake } from "./useComposerAttachmentIntake";
 import {
   countPreparingComposerImages,
@@ -335,7 +336,7 @@ export interface ChatComposerHandle {
     terminalContexts: TerminalContextDraft[];
     previewAnnotations: PreviewAnnotationPayload[];
     reviewComments: ReviewCommentContext[];
-    threadContexts: ThreadContextRecord[];
+    threadContexts: ReferenceContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelOptionsForDispatch: unknown;
     selectedModelSelection: ModelSelection;
@@ -356,6 +357,11 @@ export interface ChatComposerProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   canOperateThread: boolean;
+  /**
+   * Send keeps the message on this device until the host reconnects, so the host's uploads and
+   * providers aren't needed now; delivery uploads the kept bytes and resolves the model.
+   */
+  queuesLocally?: boolean;
   attachmentUploadsCapabilityKnown: boolean;
   supportsAttachmentUploads: boolean;
   supportsQuestionAttachments: boolean;
@@ -449,6 +455,16 @@ export interface ChatComposerProps {
   threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   restingControlsHost: HTMLDivElement | null;
   restingControlsHaveLeadingContext: boolean;
+  /**
+   * Bot chats: text, attachments and send only. A bot's model and harness settings live in its
+   * profile, so the composer shows only a missing provider, never a picker.
+   */
+  messageOnly?: boolean;
+  messagePlaceholder?: string | undefined;
+  /** A bot's own or default model: sent exactly, never resolved to another provider. */
+  botModelSelection?: ModelSelection | undefined;
+  /** The bot whose chat this is; @ then offers its curated context instead of workspace files. */
+  botProjectId?: ProjectId | null;
   onRestingControlsVisibilityChange: (visible: boolean) => void;
   getTimelineScrollableNode: () => HTMLElement | null;
   isTimelineAtLogicalEnd: () => boolean;
@@ -522,6 +538,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerDraftTarget,
     environmentId,
     canOperateThread,
+    queuesLocally = false,
     attachmentUploadsCapabilityKnown,
     supportsAttachmentUploads,
     supportsQuestionAttachments,
@@ -584,6 +601,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     threadPullRequests,
     restingControlsHost,
     restingControlsHaveLeadingContext,
+    messageOnly = false,
+    messagePlaceholder = "Message",
+    botModelSelection,
+    botProjectId = null,
     onRestingControlsVisibilityChange,
     getTimelineScrollableNode,
     isTimelineAtLogicalEnd,
@@ -734,8 +755,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const openPrLink = useOpenPrLink(routeThreadRef);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const previewFile = composerFiles.find((file) => file.id === previewFileId);
+  const botServerReadsMentions = useBotServerReadsMentions(environmentId);
   const composerContextActions = {
     environmentId,
+    readsOtherEnvironments: botProjectId !== null && botServerReadsMentions,
     cwd: gitCwd ?? undefined,
     expandImage: (imageId: string) => {
       const preview = buildExpandedImagePreview(composerImages, imageId);
@@ -782,12 +805,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     supportsAttachmentUploads,
     maxFileAttachmentBytes,
   });
-  const fileCapabilityBlockReason = fileAttachmentCapabilityBlockReason({
-    files: composerFiles,
-    attachmentUploadsCapabilityKnown,
-    supportsAttachmentUploads,
-    maxFileAttachmentBytes,
-  });
+  const fileCapabilityBlockReason =
+    queuesLocally && !attachmentUploadsCapabilityKnown
+      ? null
+      : fileAttachmentCapabilityBlockReason({
+          files: composerFiles,
+          attachmentUploadsCapabilityKnown,
+          supportsAttachmentUploads,
+          maxFileAttachmentBytes,
+        });
   const attachmentBlockReason =
     (questionAttachmentTarget &&
     !supportsQuestionAttachments &&
@@ -800,11 +826,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? needsReattachFileCount === 1
           ? "Attach the interrupted file again or remove it"
           : "Attach the interrupted files again or remove them"
-        : attachmentUploadBlockReason({
-            imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
-            uploadsByImageId,
-            environmentId,
-          })
+        : queuesLocally
+          ? null
+          : attachmentUploadBlockReason({
+              imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
+              uploadsByImageId,
+              environmentId,
+            })
       : null);
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -846,7 +874,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
-    if (!canOperateThread) return;
+    // Queued offline, the bytes go with the message; uploads start here once the host is back.
+    if (!canOperateThread || queuesLocally) return;
     const invalidFiles =
       maxFileAttachmentBytes === null
         ? composerFiles
@@ -877,6 +906,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerImages,
     environmentId,
     maxFileAttachmentBytes,
+    queuesLocally,
     supportsAttachmentUploads,
   ]);
 
@@ -927,21 +957,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     settings,
     activeProjectId,
     threadRef: composerDraftTarget,
-    threadModelSelection: activeThreadModelSelection,
-    projectModelSelection: activeProjectDefaultModelSelection,
+    threadModelSelection: botModelSelection ?? activeThreadModelSelection,
+    projectModelSelection: botModelSelection ?? activeProjectDefaultModelSelection,
     promptInjectionState: getComposerPromptInjectionState(prompt),
-    candidateInstanceIds: [
-      composerDraft.activeProvider ?? null,
-      activeThread?.runtime?.providerInstanceId,
-      activeThreadModelSelection?.instanceId,
-      activeProjectDefaultModelSelection?.instanceId,
-    ],
-    lockedProvider,
-    lockedInstanceId:
-      activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
+    candidateInstanceIds: botModelSelection
+      ? [botModelSelection.instanceId]
+      : [
+          composerDraft.activeProvider ?? null,
+          activeThread?.runtime?.providerInstanceId,
+          activeThreadModelSelection?.instanceId,
+          activeProjectDefaultModelSelection?.instanceId,
+        ],
+    // The server hands a bot conversation over when its configured provider changes.
+    lockedProvider: botModelSelection ? null : lockedProvider,
+    lockedInstanceId: botModelSelection
+      ? undefined
+      : (activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId),
   });
   const noProviderAvailable =
-    selectedProviderEntry === undefined && multipleModelSelections === null;
+    selectedProviderEntry === undefined && multipleModelSelections === null && !queuesLocally;
   const providerCatalogPending = noProviderAvailable && !providerCatalogKnown;
   const showProviderUnavailable = noProviderAvailable && !providerCatalogPending;
   const providerSetupInstanceId = noProviderAvailable
@@ -996,11 +1030,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     provider: selectedProviderStatus,
     interactionMode: requestedInteractionMode,
   });
-  const selectedModelSelection: ModelSelection = createModelSelection(
-    selectedInstanceId,
-    selectedModel,
-    selectedModelOptionsForDispatch,
-  );
+  const selectedModelSelection: ModelSelection =
+    botModelSelection ??
+    createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByInstance = new Map<ProviderInstanceId, ReadonlyArray<AppModelOption>>();
   for (const entry of providerInstanceEntries) {
@@ -1026,7 +1058,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelOptionsByInstance,
   );
   const reserveContextWindowMeter = shouldReserveContextWindowMeter({
-    meterEnabled: settings.contextWindowMeterEnabled,
+    meterEnabled: settings.contextWindowMeterEnabled && !messageOnly,
     detailLoading: props.threadSyncPhase === "loading",
     threadStarted: threadShellHasStarted(props.activeThreadShell),
     providerReportsContextWindow: selectedProviderStatus
@@ -1171,6 +1203,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     items: composerMenuItems,
     isLoading: isComposerMenuLoading,
     emptyState: composerMenuEmptyState,
+    notice: composerMenuNotice,
   } = useComposerMenuItems({
     composerTrigger,
     environmentId,
@@ -1185,6 +1218,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSkills,
     selectedProviderSlashCommands,
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
+    botProjectId,
   });
 
   const composerMenuOpen = Boolean(composerTrigger);
@@ -1411,6 +1445,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerFilesRef,
     pendingThreadImportsRef,
     addComposerFilesToDraft,
+    botChat: botProjectId === null ? null : { serverReadsMentions: botServerReadsMentions },
   });
 
   useEffect(() => {
@@ -2001,6 +2036,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
+    if (item.type === "reference") {
+      if (
+        trigger.kind !== "path" ||
+        !composerMenuItemsRef.current.some((candidate) => candidate.id === item.id)
+      ) {
+        return;
+      }
+      const replacement = `${formatInlineContextReference(threadContextReference(item.reference))} `;
+      const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (applied) {
+        addComposerDraftThreadContexts(attachmentDraftTarget, [item.reference], {
+          appendReference: false,
+        });
+        setComposerHighlightedItemId(null);
+      }
+      return;
+    }
     if (item.type === "thread") {
       if (trigger.kind !== "path") return;
       const shell = readThreadShell(item.thread);
@@ -2081,11 +2140,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     dispatchMode?: ComposerDispatchMode,
     submissionIntent?: ComposerSubmissionIntent,
   ) => {
-    if (
-      noProviderAvailable ||
-      isSendDisabled ||
-      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
-    ) {
+    // canOperateThread also admits a bot chat queueing offline on its last known grant; the send
+    // path re-checks the live grant for everything else.
+    if (noProviderAvailable || isSendDisabled || !canOperateThread) {
       event?.preventDefault();
       return;
     }
@@ -2323,7 +2380,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
   const composerControlsCollapsed = isComposerResting || isComposerCollapsedMobile;
-  const showInlineRestingControls = composerControlsCollapsed && restingControlsHost === null;
+  const hasComposerControls = !messageOnly || showProviderUnavailable;
+  const showInlineRestingControls =
+    hasComposerControls && composerControlsCollapsed && restingControlsHost === null;
   const composerControlsVisibleInStrip =
     composerControlsCollapsed && restingControlsHost !== null && restingControlsVisible;
   const composerControlsHidden = composerControlsCollapsed && !restingControlsVisible;
@@ -2487,7 +2546,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const iconOnlyBlockCount = composerControlsCollapsed
     ? restingControlsIconOnlyBlockCount
     : expandedControlsIconOnlyBlockCount;
-  const composerControls = (
+  const composerControls = !hasComposerControls ? null : (
     <ComposerControlsBar
       environmentId={environmentId}
       routeKind={routeKind}
@@ -3182,7 +3241,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           multipleModelSelections !== null ||
           (!noProviderAvailable && providerSendBlockReason === null),
         selectedProvider,
-        selectedModel,
+        selectedModel: botModelSelection?.model ?? selectedModel,
         selectedProviderModels,
         interactionMode,
         interactionModeEnabled: planModeUiEnabled,
@@ -3593,6 +3652,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={composerMenuEmptyState}
+                    loadingText={botProjectId !== null ? "Finding context…" : undefined}
+                    notice={composerMenuNotice}
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlightedStable}
                     onSelect={onSelectComposerItemStable}
@@ -3687,7 +3748,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : DEFAULT_COMPOSER_PLACEHOLDER
+                                : messageOnly
+                                  ? messagePlaceholder
+                                  : DEFAULT_COMPOSER_PLACEHOLDER
                     }
                     disabled={
                       isConnecting ||
@@ -3776,7 +3839,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
                     activeContextWindow={
-                      settings.contextWindowMeterEnabled ? activeContextWindow : null
+                      settings.contextWindowMeterEnabled && !messageOnly
+                        ? activeContextWindow
+                        : null
                     }
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}

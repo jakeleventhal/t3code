@@ -1,5 +1,6 @@
 import {
   CommandId,
+  ComposerContextId,
   type RunId,
   isProviderAvailable,
   MessageId,
@@ -114,8 +115,10 @@ import {
 import * as Metrics from "../observability/Metrics.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 
-const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
-const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
+export const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
+export const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
+// Events that can end a delegated task wait: the parent's task record,
+// and the child's runs, nested tasks, provider background work, and questions.
 const TASK_WAKE_EVENTS = [
   { thread: "parent", eventType: "subagent.updated" },
   { thread: "child", eventType: "run.updated" },
@@ -125,9 +128,9 @@ const TASK_WAKE_EVENTS = [
 ] as const;
 const SECRET_REQUEST_POLL_INTERVAL_MS = 500;
 const DEFAULT_THREAD_LIST_LIMIT = 50;
-const DEFAULT_THREAD_READ_LIMIT = 50;
-const DEFAULT_THREAD_RUN_LIMIT = 10;
-const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
+export const DEFAULT_THREAD_READ_LIMIT = 50;
+export const DEFAULT_THREAD_RUN_LIMIT = 10;
+export const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
 
 interface ResolvedTarget {
   readonly modelSelection: ModelSelection;
@@ -390,6 +393,28 @@ function providerConstraints(
 }
 
 /** Skip checks without descriptors; reject duplicate IDs because consumers disagree on precedence. */
+export function providerCapability(
+  provider: ServerProvider,
+  supportsOrchestrationV2: boolean,
+): OrchestratorMcpCapabilitiesResult["providers"][number] {
+  const constraints = providerConstraints(provider, supportsOrchestrationV2);
+  return {
+    providerInstanceId: provider.instanceId,
+    driverKind: provider.driver,
+    displayName: provider.displayName ?? null,
+    models: provider.models.map((model) => ({
+      id: model.slug,
+      label: model.name ?? null,
+      ...(model.capabilities?.optionDescriptors === undefined
+        ? {}
+        : { options: model.capabilities.optionDescriptors.map(capabilityModelOption) }),
+    })),
+    canRunChildTask: constraints.length === 0,
+    canRunCrossProviderChildTask: constraints.length === 0,
+    constraints: [...constraints],
+  };
+}
+
 function invalidOptionSelections(
   selections: ReadonlyArray<ProviderOptionSelection>,
   descriptors: ReadonlyArray<ProviderOptionDescriptor> | undefined,
@@ -878,7 +903,7 @@ function listItemFromShell(
   };
 }
 
-function threadDetail(
+export function threadDetail(
   projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "runtimeRequests">,
   itemCount: number,
   shell: OrchestrationV2ThreadShell,
@@ -927,7 +952,7 @@ function threadDetail(
   };
 }
 
-function threadRun(run: OrchestrationV2Run): OrchestratorMcpThreadRun {
+export function threadRun(run: OrchestrationV2Run): OrchestratorMcpThreadRun {
   return {
     runId: run.id,
     ordinal: run.ordinal,
@@ -1013,7 +1038,7 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
   }
 }
 
-function timelineItem(input: {
+export function timelineItem(input: {
   readonly row: OrchestrationV2ThreadProjection["visibleTurnItems"][number];
   readonly maxChars: number;
   readonly textOffset?: number;
@@ -1161,11 +1186,15 @@ const make = Effect.gen(function* () {
         } satisfies { runtimeMode: RuntimeMode; interactionMode: ProviderInteractionMode },
       } as const;
     }
-    const parent = yield* loadProjection(scope.thread.threadId);
+    const projection = yield* loadProjection(scope.thread.threadId);
+    const runtimeMode =
+      ThreadManagementService.latestActiveRun(projection)?.runtimeMode ??
+      projection.thread.runtimeMode;
+    const parent = { ...projection, thread: { ...projection.thread, runtimeMode } };
     return {
       parent,
       limits: {
-        runtimeMode: parent.thread.runtimeMode,
+        runtimeMode,
         interactionMode: parent.thread.interactionMode,
       },
     } as const;
@@ -2837,7 +2866,25 @@ const make = Effect.gen(function* () {
             operation: "thread-send",
           }),
           threadId: input.threadId,
-          ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
+          ...(parent === undefined
+            ? {}
+            : {
+                senderThreadId: parent.thread.id,
+                context: {
+                  version: 1 as const,
+                  records: [
+                    {
+                      kind: "thread" as const,
+                      version: 1 as const,
+                      label: "Requesting conversation",
+                      contextId: ComposerContextId.make("requesting_bot"),
+                      environmentId: scope.environmentId,
+                      threadId: parent.thread.id,
+                      title: parent.thread.title.slice(0, 200),
+                    },
+                  ],
+                },
+              }),
           messageId,
           text: input.message,
           attachments: [],

@@ -1,3 +1,4 @@
+import { OrchestratorMcpThreadSendResult } from "./orchestratorMcp.ts";
 import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
@@ -329,6 +330,20 @@ import {
   DeviceShutdownInput,
 } from "./device.ts";
 import {
+  PeerEnvironmentThreadWaitInput,
+  PeerEnvironmentThreadSendInput,
+  PeerMessageOutboxItem,
+  PeerMessageOutboxListInput,
+  PeerMessageOutboxCancelInput,
+  PeerMessageOutboxFlushInput,
+  PeerMessageOutboxError,
+  PeerEnvironmentThreadSendError,
+  PeerEnvironmentThreadWaitResult,
+  PeerEnvironmentHost,
+  PeerEnvironmentResponse,
+  PeerEnvironmentStreamEvent,
+} from "./peerEnvironment.ts";
+import {
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
   OtlpEndpointCheckInput,
@@ -509,6 +524,13 @@ export const WS_METHODS = {
   previewClearProfile: "preview.clearProfile",
   previewReportProfiles: "preview.reportProfiles",
   previewReportStatus: "preview.reportStatus",
+  peerMessagesList: "peerMessages.list",
+  peerMessagesCancel: "peerMessages.cancel",
+  peerMessagesFlush: "peerMessages.flush",
+  peerEnvironmentsSendToThread: "peerEnvironments.sendToThread",
+  peerEnvironmentsWaitForThread: "peerEnvironments.waitForThread",
+  peerEnvironmentsConnect: "peerEnvironments.connect",
+  peerEnvironmentsRespond: "peerEnvironments.respond",
 
   deviceConfigure: "device.configure",
   deviceList: "device.list",
@@ -1687,6 +1709,45 @@ const WsPreviewReportStatusRpc = Rpc.make(WS_METHODS.previewReportStatus, {
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsPeerMessagesListRpc = Rpc.make(WS_METHODS.peerMessagesList, {
+  payload: PeerMessageOutboxListInput,
+  success: Schema.Array(PeerMessageOutboxItem),
+  error: Schema.Union([PeerMessageOutboxError, EnvironmentAuthorizationError]),
+});
+const WsPeerMessagesCancelRpc = Rpc.make(WS_METHODS.peerMessagesCancel, {
+  payload: PeerMessageOutboxCancelInput,
+  success: PeerMessageOutboxItem,
+  error: Schema.Union([PeerMessageOutboxError, EnvironmentAuthorizationError]),
+});
+const WsPeerMessagesFlushRpc = Rpc.make(WS_METHODS.peerMessagesFlush, {
+  payload: PeerMessageOutboxFlushInput,
+  error: Schema.Union([PeerMessageOutboxError, EnvironmentAuthorizationError]),
+});
+
+const WsPeerEnvironmentsSendToThreadRpc = Rpc.make(WS_METHODS.peerEnvironmentsSendToThread, {
+  payload: PeerEnvironmentThreadSendInput,
+  success: OrchestratorMcpThreadSendResult,
+  error: Schema.Union([PeerEnvironmentThreadSendError, EnvironmentAuthorizationError]),
+});
+
+const WsPeerEnvironmentsWaitForThreadRpc = Rpc.make(WS_METHODS.peerEnvironmentsWaitForThread, {
+  payload: PeerEnvironmentThreadWaitInput,
+  success: PeerEnvironmentThreadWaitResult,
+  error: Schema.Union([OrchestrationV2GetThreadProjectionError, EnvironmentAuthorizationError]),
+});
+
+const WsPeerEnvironmentsConnectRpc = Rpc.make(WS_METHODS.peerEnvironmentsConnect, {
+  payload: PeerEnvironmentHost,
+  success: PeerEnvironmentStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsPeerEnvironmentsRespondRpc = Rpc.make(WS_METHODS.peerEnvironmentsRespond, {
+  payload: PeerEnvironmentResponse,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewEvents, {
   payload: Schema.Struct({}),
   success: PreviewEvent,
@@ -2228,6 +2289,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewClearProfileRpc,
   WsPreviewReportProfilesRpc,
   WsPreviewReportStatusRpc,
+  WsPeerMessagesListRpc,
+  WsPeerMessagesCancelRpc,
+  WsPeerMessagesFlushRpc,
+  WsPeerEnvironmentsSendToThreadRpc,
+  WsPeerEnvironmentsWaitForThreadRpc,
+  WsPeerEnvironmentsConnectRpc,
+  WsPeerEnvironmentsRespondRpc,
   WsSubscribePreviewEventsRpc,
   WsSubscribeDiscoveredLocalServersRpc,
   WsDeviceConfigureRpc,

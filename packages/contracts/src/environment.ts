@@ -109,6 +109,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadPinning: Schema.optionalKey(Schema.Boolean),
   botConversations: Schema.optionalKey(Schema.Boolean),
   botProfiles: Schema.optionalKey(Schema.Boolean),
+  botRuntimeSettings: Schema.optionalKey(Schema.Boolean),
+  botMentions: Schema.optionalKey(Schema.Boolean),
   botVoiceConfiguration: Schema.optionalKey(Schema.Boolean),
   botVoice: Schema.optionalKey(Schema.Boolean),
   threadPinReorder: Schema.optionalKey(Schema.Boolean),
@@ -138,6 +140,12 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   commandOutputStreaming: Schema.optionalKey(Schema.Boolean),
   /** Hosts headless Chromium tabs streamed over /api/preview-stream for clients without a local runtime. */
   serverBrowser: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `peerEnvironments.connect`, so a client connected to
+      several environments can carry this one's agent requests to the others.
+      Absent on older servers, where clients must not open that stream. */
+  peerEnvironments: Schema.optionalKey(Schema.Boolean),
+  peerMessages: Schema.optionalKey(Schema.Boolean),
+  peerMessageOutbox: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

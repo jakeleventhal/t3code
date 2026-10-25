@@ -22,6 +22,7 @@ import {
 } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
+import { BotFileReferenceChip, ProjectReferenceChip } from "../ReferenceContextChip";
 import { ThreadContextChip } from "../ThreadContextChip";
 import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
 import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/contracts";
@@ -325,6 +326,26 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "thread" ? (
           <ThreadContextChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "project",
+      canRender: (record) => record.kind === "project",
+      render: (record, context) =>
+        record.kind === "project" ? (
+          <ProjectReferenceChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "bot-file",
+      canRender: (record) => record.kind === "bot-file",
+      render: (record, context) =>
+        record.kind === "bot-file" ? (
+          <BotFileReferenceChip record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

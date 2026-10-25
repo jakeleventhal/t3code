@@ -271,6 +271,7 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
 const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImporter.pipe(
   Layer.provide(
     Layer.mergeAll(
+      ProjectStore.layer,
       layerOrchestratorProvided,
       layerLegacyV1ThreadImporterProvided,
       layerCommandReceiptStoreProvided,

@@ -28,6 +28,7 @@ export type SettingsPath =
   | "/settings/threads"
   | "/settings/browser"
   | "/settings/devices"
+  | "/settings/bots"
   | "/settings/voice"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
@@ -95,6 +96,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/threads": "Threads",
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",
+  "/settings/bots": "Bots",
   "/settings/voice": "Voice",
   "/settings/scheduled-tasks": "Scheduled tasks",
   "/settings/source-control": "Source control",
@@ -1097,6 +1099,30 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "bot-defaults-model",
+    title: "Default bot model",
+    to: "/settings/bots",
+    searchTerms: ["bots assistant provider model reasoning effort harness"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "bot-defaults-permissions",
+    title: "Default bot permissions",
+    to: "/settings/bots",
+    searchTerms: ["bots assistant runtime mode access approval supervised"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "bot-default-host",
+    title: "Default host for new bots",
+    to: "/settings/bots",
+    searchTerms: ["bots advanced environment machine server where new bots"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "voice-accounts",
     title: "Voice accounts",
     to: "/settings/voice",
@@ -1136,6 +1162,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/threads": null,
   "/settings/browser": null,
   "/settings/devices": null,
+  "/settings/bots": "project-defaults",
   "/settings/voice": "project-defaults",
   "/settings/source-control": "environment-defaults",
   "/settings/worktrees": "project-defaults",

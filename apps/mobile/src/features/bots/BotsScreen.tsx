@@ -1,49 +1,37 @@
 import { openSettings } from "../settings/settings-navigation";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
-import { use, useMemo, useState, type ReactNode } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { use, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Platform, Pressable, ScrollView, View, type TextInputInstance } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollViewMarker } from "react-native-screens";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
-import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { ListSection } from "../../components/ui/ListSection";
 import { RowPressable } from "../../components/ui/RowPressable";
+import { SearchField } from "../../components/ui/SearchField";
+import { useControlTheme } from "../../components/ui/useControlTheme";
 import { cn } from "../../lib/cn";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { uuidv4 } from "../../lib/uuid";
 import { relativeTime } from "../../lib/time";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useProjects } from "../../state/entities";
 import { environmentThreadShells } from "../../state/threads";
+import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useAtomValueWhileVisible, useHomeRouteVisible } from "../home/home-route-visibility";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import {
-  botThreadStatus,
-  buildBotRoom,
-  type BotRoomBot,
-  type BotRoomEnvironment,
-} from "./bot-room";
+import { buildBotInbox, type BotInboxEntry, type BotRoomBot } from "./bot-room";
 import { BotAvatar } from "./BotAvatar";
-import { useBotAvailability, useOpenBotConversation } from "./use-bot-conversation";
+import { botsSearchQueryAtom, setBotsSearchQuery } from "./bots-header";
+import { useAssistantEnvironmentId } from "./use-assistant";
+import { useOpenBotConversation } from "./use-bot-conversation";
 
-const TOPIC_PREVIEW_LIMIT = 4;
-
-function updatedLabel(timestamp: string): string {
-  const age = relativeTime(timestamp);
-  return age === "<1m" ? "Updated just now" : `Updated ${age} ago`;
-}
-
-function statusLabel(thread: EnvironmentThreadShell | null): string | null {
-  if (thread === null) return null;
-  const status = botThreadStatus(thread);
-  return status === "needs-you" ? "Needs you" : status === "working" ? "Working…" : null;
-}
+const HERO_AVATAR_SIZE = 88;
+const ROW_AVATAR_SIZE = 52;
 
 /**
  * Navigation shells leave archived threads out, so a main conversation the project names but the
@@ -55,233 +43,293 @@ function knownMainThread(bot: BotRoomBot) {
   return id === null ? null : { id, archived: true };
 }
 
-function BotRow(props: {
-  readonly leading: ReactNode;
-  readonly title: string;
-  readonly subtitle: string;
-  readonly selected: boolean;
-  readonly attention: boolean;
-  readonly pending?: boolean;
-  readonly disabled?: boolean;
-  readonly inset?: boolean;
-  readonly onPress: () => void;
-}) {
-  return (
-    <RowPressable
-      accessibilityRole="button"
-      accessibilityLabel={`${props.title}, ${props.subtitle}`}
-      accessibilityState={{ disabled: Boolean(props.disabled), selected: props.selected }}
-      disabled={props.disabled || props.pending}
-      onPress={props.onPress}
-      className={props.selected ? "bg-thread-selected" : "bg-grouped-card"}
-    >
-      <View
-        className={cn(
-          "flex-row items-center gap-3 py-3 pr-4",
-          props.inset ? "min-h-12 pl-14" : "min-h-16 pl-4",
-          props.disabled && "opacity-45",
-        )}
-      >
-        {props.leading}
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text
-            textRole={props.inset ? "footnote" : "body"}
-            className={cn(
-              props.inset ? "text-foreground" : "font-t3-medium text-foreground",
-              props.selected && "text-thread-selected-foreground",
-            )}
-            numberOfLines={1}
-          >
-            {props.title}
-          </Text>
-          <Text
-            textRole={props.inset ? "caption" : "footnote"}
-            className={props.attention ? "text-warning-foreground" : "text-foreground-muted"}
-            numberOfLines={1}
-          >
-            {props.subtitle}
-          </Text>
-        </View>
-        {props.pending ? <AppActivityIndicator size="small" /> : null}
-      </View>
-    </RowPressable>
-  );
+function inboxTime(at: string | null): string | null {
+  if (at === null) return null;
+  const age = relativeTime(at);
+  return age === "<1m" ? "now" : age;
 }
 
-function ActionRow(props: {
-  readonly icon: AppSymbolName;
-  readonly label: string;
-  readonly inset?: boolean;
-  readonly onPress: () => void;
-}) {
-  return (
-    <RowPressable
-      accessibilityRole="button"
-      accessibilityLabel={props.label}
-      onPress={props.onPress}
-      className="bg-grouped-card"
-    >
-      <View
-        className={cn(
-          "min-h-12 flex-row items-center gap-3 py-3 pr-4",
-          props.inset ? "pl-14" : "pl-4",
-        )}
-      >
-        <SymbolView name={props.icon} size={16} tintColorClassName="accent-icon-muted" />
-        <Text textRole="footnote" className="text-foreground-muted">
-          {props.label}
-        </Text>
-      </View>
-    </RowPressable>
-  );
-}
-
-function BotGroup(props: {
-  readonly bot: BotRoomBot;
-  readonly connected: boolean;
-  readonly selectedThreadKey: string | null;
-  readonly title?: string;
-}) {
-  const { bot } = props;
-  const navigation = useNavigation();
+/** Opens the bot's main conversation, which is what every inbox entry stands for. */
+function useInboxEntryOpener(entry: BotInboxEntry) {
+  const { bot } = entry;
   const selectDetail = useSelectWorkspaceDetail();
   const opener = useOpenBotConversation(bot.environmentId);
-  const [showAllTopics, setShowAllTopics] = useState(false);
-  const mainKey = bot.mainThread ? scopedThreadKey(bot.environmentId, bot.mainThread.id) : null;
-  const status = statusLabel(bot.mainThread);
+  const known = knownMainThread(bot);
   // Nothing loaded to read, and this device or server cannot create or reopen it.
-  const unavailable = !opener.canStart && knownMainThread(bot) === null;
-  const subtitle =
-    !props.connected && bot.mainThread === null
-      ? "Offline"
-      : unavailable
-        ? "Unavailable"
-        : (status ??
-          (bot.mainThread
-            ? updatedLabel(bot.mainThread.updatedAt)
-            : bot.project?.botMainThreadId
-              ? "Reopen conversation"
-              : bot.role === "assistant"
-                ? "Start a conversation"
-                : "No messages yet"));
-  const topics = showAllTopics ? bot.topics : bot.topics.slice(0, TOPIC_PREVIEW_LIMIT);
-  const hiddenTopics = bot.topics.length - topics.length;
+  const unavailable = !opener.canStart && known === null;
+  return {
+    pending: opener.pending,
+    disabled: (!entry.connected && bot.mainThread === null) || unavailable,
+    reason: unavailable ? opener.reason : null,
+    open: async () => {
+      const target = await opener.open({
+        projectId: bot.project?.id ?? null,
+        known,
+        title: bot.title,
+      });
+      if (target)
+        selectDetail({
+          name: "Thread",
+          params: { environmentId: target.environmentId, threadId: target.threadId },
+        });
+    },
+  };
+}
+
+function useStatusColor(entry: BotInboxEntry): string | null {
+  const { colors } = useControlTheme();
+  return entry.status === "offline"
+    ? colors["--color-foreground-tertiary"]
+    : entry.status === "needs-you"
+      ? colors["--color-warning-foreground"]
+      : entry.status === "working"
+        ? colors["--color-primary-text"]
+        : null;
+}
+
+function InboxAvatar(props: { readonly entry: BotInboxEntry; readonly size: number }) {
+  const { bot } = props.entry;
+  const statusColor = useStatusColor(props.entry);
+  const dot = Math.round(props.size * 0.26);
   return (
-    <ListSection
-      title={props.title}
-      footer={unavailable ? (opener.reason ?? undefined) : undefined}
-    >
-      <BotRow
-        leading={<BotAvatar role={bot.role} title={bot.title} size={36} project={bot.project} />}
-        title={bot.title}
-        subtitle={subtitle}
-        attention={status === "Needs you"}
-        selected={mainKey !== null && mainKey === props.selectedThreadKey}
-        pending={opener.pending}
-        disabled={(!props.connected && bot.mainThread === null) || unavailable}
-        onPress={async () => {
-          const target = await opener.open({
-            projectId: bot.project?.id ?? null,
-            known: knownMainThread(bot),
-            title: bot.title,
-          });
-          if (target)
-            selectDetail({
-              name: "Thread",
-              params: { environmentId: target.environmentId, threadId: target.threadId },
-            });
-        }}
-      />
-      {topics.map((topic) => {
-        const topicStatus = statusLabel(topic);
-        return (
-          <BotRow
-            key={topic.id}
-            inset
-            leading={null}
-            title={topic.title}
-            subtitle={topicStatus ?? relativeTime(topic.updatedAt)}
-            attention={topicStatus === "Needs you"}
-            selected={scopedThreadKey(topic.environmentId, topic.id) === props.selectedThreadKey}
-            onPress={() =>
-              selectDetail({
-                name: "Thread",
-                params: { environmentId: topic.environmentId, threadId: topic.id },
-              })
-            }
-          />
-        );
-      })}
-      {hiddenTopics > 0 ? (
-        <ActionRow
-          inset
-          icon="chevron.down"
-          label={`${hiddenTopics} more`}
-          onPress={() => setShowAllTopics(true)}
+    <View style={{ width: props.size, height: props.size }}>
+      <View className={props.entry.status === "offline" ? "opacity-50" : undefined}>
+        <BotAvatar role={bot.role} title={bot.title} size={props.size} project={bot.project} />
+      </View>
+      {statusColor === null ? null : (
+        <View
+          pointerEvents="none"
+          className="absolute border-screen"
+          style={{
+            right: 0,
+            bottom: 0,
+            width: dot,
+            height: dot,
+            borderRadius: dot / 2,
+            borderWidth: Math.max(2, Math.round(dot / 5)),
+            backgroundColor: statusColor,
+          }}
         />
-      ) : null}
-      {bot.project !== null && opener.canStart ? (
-        <ActionRow
-          inset
-          icon="plus"
-          label="New conversation"
-          onPress={() =>
-            navigation.navigate("Thread", {
-              draft: {
-                requestId: uuidv4(),
-                environmentId: String(bot.environmentId),
-                projectId: String(bot.project!.id),
-                title: bot.title,
-              },
-            })
-          }
-        />
-      ) : null}
-    </ListSection>
+      )}
+    </View>
   );
 }
 
-function BotsEnvironment(props: {
-  readonly environment: BotRoomEnvironment;
-  readonly connected: boolean;
-  readonly showLabel: boolean;
-  readonly selectedThreadKey: string | null;
-}) {
-  const { environment } = props;
-  const navigation = useNavigation();
-  const canCreate = useBotAvailability(environment.environmentId).canStart;
+function UnreadDot() {
+  const { colors } = useControlTheme();
   return (
-    <View className="gap-5">
-      {props.showLabel ? (
-        <Text textRole="headline" className="px-2 font-t3-bold text-foreground">
-          {environment.label}
+    <View
+      accessible={false}
+      className="size-2.5 rounded-full"
+      style={{ backgroundColor: colors["--color-primary-text"] }}
+    />
+  );
+}
+
+/** The status word leads the second line in its own colour; the rest is the preview. */
+function InboxSummary(props: {
+  readonly entry: BotInboxEntry;
+  readonly reason: string | null;
+  readonly time?: string | null;
+  readonly centered?: boolean;
+  readonly numberOfLines: number;
+}) {
+  const { entry } = props;
+  const status =
+    entry.status === "offline"
+      ? { label: "Offline", className: "font-t3-medium text-foreground-muted" }
+      : entry.status === "needs-you"
+        ? {
+            label: entry.needsThread ? `↳ ${entry.needsThread.title} · Needs you` : "Needs you",
+            className: "font-t3-medium text-warning-foreground",
+          }
+        : entry.status === "working"
+          ? { label: "Working", className: "font-t3-medium text-primary-text" }
+          : null;
+  // A thread that needs the user says more than the main conversation's last line.
+  const preview = props.reason ?? (entry.needsThread ? null : entry.preview);
+  const parts = [unsentLabel(entry.unsent), preview, props.time ?? null].filter(
+    (part) => part !== null,
+  );
+  return (
+    <Text
+      textRole="footnote"
+      numberOfLines={props.numberOfLines}
+      className={cn("text-foreground-muted", props.centered ? "text-center" : "min-w-0 flex-1")}
+    >
+      {status ? <Text className={status.className}>{status.label}</Text> : null}
+      {status && parts.length > 0 ? " · " : ""}
+      {parts.join(" · ")}
+    </Text>
+  );
+}
+
+/** Held on this device, not by the host, so it never claims more than "not sent yet". */
+function unsentLabel(count: number): string | null {
+  return count === 0 ? null : `${count} waiting to send`;
+}
+
+function accessibilityLabel(entry: BotInboxEntry, reason: string | null) {
+  const status =
+    entry.status === "offline"
+      ? "Offline"
+      : entry.status === "needs-you"
+        ? entry.needsThread
+          ? `${entry.needsThread.title} needs you`
+          : "Needs you"
+        : entry.status === "working"
+          ? "Working"
+          : null;
+  const time = entry.activityAt === null ? null : relativeTime(entry.activityAt);
+  return [
+    entry.bot.title,
+    entry.hostLabel,
+    status,
+    unsentLabel(entry.unsent),
+    reason ?? entry.preview,
+    time === null ? null : time === "<1m" ? "just now" : `${time} ago`,
+    entry.unread ? "New reply" : null,
+  ]
+    .filter((part) => part !== null)
+    .join(", ");
+}
+
+/** The Assistant leads Bots the way its orb leads Chats: one tap into its main conversation. */
+function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected: boolean }) {
+  const { entry } = props;
+  const opener = useInboxEntryOpener(entry);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel(entry, opener.reason)}
+      accessibilityState={{ disabled: opener.disabled, selected: props.selected }}
+      disabled={opener.disabled || opener.pending}
+      onPress={opener.open}
+      className={cn(
+        "mx-4 items-center gap-2 rounded-3xl px-6 pb-5 pt-3 active:opacity-70",
+        props.selected && "bg-thread-selected",
+        opener.disabled && "opacity-45",
+      )}
+    >
+      <InboxAvatar entry={entry} size={HERO_AVATAR_SIZE} />
+      <View className="flex-row items-center gap-2">
+        <Text
+          textRole="headline"
+          numberOfLines={1}
+          className={cn(
+            "font-t3-bold text-foreground",
+            props.selected && "text-thread-selected-foreground",
+          )}
+        >
+          {entry.bot.title}
         </Text>
-      ) : null}
-      <BotGroup
-        bot={environment.assistant}
-        connected={props.connected}
-        selectedThreadKey={props.selectedThreadKey}
-      />
-      {environment.specialists.map((bot, index) => (
-        <BotGroup
-          key={bot.key}
-          bot={bot}
-          connected={props.connected}
-          selectedThreadKey={props.selectedThreadKey}
-          title={index === 0 ? "Specialists" : undefined}
+        {entry.hostLabel ? (
+          <Text textRole="footnote" className="text-foreground-tertiary">
+            {entry.hostLabel}
+          </Text>
+        ) : null}
+        {opener.pending ? (
+          <AppActivityIndicator size="small" />
+        ) : entry.unread ? (
+          <UnreadDot />
+        ) : null}
+      </View>
+      <View className="max-w-[300px]">
+        <InboxSummary
+          entry={entry}
+          reason={opener.reason}
+          time={inboxTime(entry.activityAt)}
+          centered
+          numberOfLines={2}
         />
-      ))}
-      {canCreate && props.connected ? (
-        <ListSection>
-          <ActionRow
-            icon="plus"
-            label="New bot"
-            onPress={() =>
-              navigation.navigate("NewBot", { environmentId: String(environment.environmentId) })
-            }
-          />
-        </ListSection>
-      ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function BotInboxRow(props: { readonly entry: BotInboxEntry; readonly selected: boolean }) {
+  const { entry } = props;
+  const opener = useInboxEntryOpener(entry);
+  const time = inboxTime(entry.activityAt);
+  return (
+    <RowPressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel(entry, opener.reason)}
+      accessibilityState={{ disabled: opener.disabled, selected: props.selected }}
+      disabled={opener.disabled || opener.pending}
+      onPress={opener.open}
+      className={props.selected ? "bg-thread-selected" : undefined}
+    >
+      <View
+        className={cn(
+          "min-h-[76px] flex-row items-center gap-3.5 px-5 py-3",
+          opener.disabled && "opacity-45",
+        )}
+      >
+        <InboxAvatar entry={entry} size={ROW_AVATAR_SIZE} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <View className="flex-row items-baseline gap-2">
+            <Text
+              textRole="body"
+              numberOfLines={1}
+              className={cn(
+                "min-w-0 flex-1 text-foreground",
+                entry.unread ? "font-t3-bold" : "font-t3-medium",
+                props.selected && "text-thread-selected-foreground",
+              )}
+            >
+              {entry.bot.title}
+              {entry.hostLabel ? (
+                <Text className="font-sans text-foreground-tertiary">{` · ${entry.hostLabel}`}</Text>
+              ) : null}
+            </Text>
+            {time ? (
+              <Text
+                textRole="caption"
+                className={
+                  entry.unread ? "font-t3-bold text-primary-text" : "text-foreground-tertiary"
+                }
+              >
+                {time}
+              </Text>
+            ) : null}
+          </View>
+          <View className="flex-row items-center gap-2">
+            <InboxSummary entry={entry} reason={opener.reason} numberOfLines={1} />
+            {opener.pending ? (
+              <AppActivityIndicator size="small" />
+            ) : entry.unread ? (
+              <UnreadDot />
+            ) : null}
+          </View>
+        </View>
+      </View>
+    </RowPressable>
+  );
+}
+
+function BotsSearch(props: { readonly query: string }) {
+  const inputRef = useRef<TextInputInstance>(null);
+  return (
+    <View className="flex-row items-center gap-3 px-4">
+      <SearchField
+        inputRef={inputRef}
+        accessibilityLabel="Search bots"
+        clearAccessibilityLabel="Clear search"
+        placeholder="Search bots and messages"
+        value={props.query}
+        onChangeText={setBotsSearchQuery}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close search"
+        onPress={() => setBotsSearchQuery(null)}
+        className="py-2 active:opacity-60"
+      >
+        <Text textRole="body" className="text-primary-text">
+          Cancel
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -290,14 +338,17 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
   const insets = useSafeAreaInsets();
   const primaryColumn = use(NativePrimaryColumnContext);
   const contentContainerStyle = {
-    gap: 28,
-    paddingHorizontal: 16,
+    gap: 8,
     paddingTop: Platform.OS === "ios" ? 12 : 16,
     paddingBottom: props.bottom,
   };
   if (Platform.OS !== "ios") {
     return (
-      <ScrollView className="flex-1" contentContainerStyle={contentContainerStyle}>
+      <ScrollView
+        className="flex-1"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={contentContainerStyle}
+      >
         {props.children}
       </ScrollView>
     );
@@ -307,6 +358,8 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
     <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         className={primaryColumn ? "bg-drawer" : "bg-screen"}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
         contentInset={{ top: insets.top }}
@@ -320,6 +373,16 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
   );
 }
 
+function rowSelected(entry: BotInboxEntry, selectedThreadKey: string | null) {
+  const main = entry.bot.mainThread;
+  return main !== null && scopedThreadKey(main.environmentId, main.id) === selectedThreadKey;
+}
+
+/**
+ * Bots as one conversation inbox across every connected environment: the Assistant first, then
+ * each bot by its latest activity. A row is the bot's main conversation; its other threads stay
+ * behind the Threads button in that conversation.
+ */
 export function BotsScreen() {
   const navigation = useNavigation();
   const workspace = useWorkspaceTabs();
@@ -333,6 +396,11 @@ export function BotsScreen() {
     visible,
   );
   const environments = useWorkspaceEnvironments();
+  const assistantEnvironmentId = useAssistantEnvironmentId();
+  const query = useAtomValue(botsSearchQueryAtom);
+  const unsentByThreadKey = useThreadOutboxMessages();
+  // A search left open in Bots should not greet the user the next time they come back.
+  useEffect(() => () => setBotsSearchQuery(null), []);
   const shown = useMemo(
     () =>
       environments
@@ -340,21 +408,26 @@ export function BotsScreen() {
         .sort((left, right) => left.environmentLabel.localeCompare(right.environmentLabel)),
     [environments],
   );
-  const room = useMemo(
+  const inbox = useMemo(
     () =>
-      buildBotRoom({
+      buildBotInbox({
         environments: shown.map((environment) => ({
           environmentId: environment.environmentId,
           label: environment.environmentLabel,
+          connected: environment.connectionState === "connected",
         })),
         projects,
         threads,
+        assistantEnvironmentId,
+        unsentByThreadKey,
+        query: query ?? "",
       }),
-    [shown, projects, threads],
+    [shown, projects, threads, assistantEnvironmentId, unsentByThreadKey, query],
   );
   const bottom = Math.max(insets.bottom, workspace?.bottomClearance ?? 16) + 16;
+  const selectedThreadKey = primaryColumn?.selectedThreadKey ?? null;
 
-  if (room.length === 0) {
+  if (shown.length === 0) {
     return (
       <View className="flex-1 justify-center bg-screen">
         <EmptyState
@@ -368,20 +441,42 @@ export function BotsScreen() {
     );
   }
 
+  if (query === null && inbox.hero === null && inbox.rows.length === 0) {
+    return (
+      <View className="flex-1 justify-center bg-screen">
+        <EmptyState
+          variant="plain"
+          title="No bots yet"
+          detail="Your Assistant appears here once an environment that supports bots is connected."
+        />
+      </View>
+    );
+  }
+
   return (
     <BotsScrollView bottom={bottom}>
-      {room.map((environment) => (
-        <BotsEnvironment
-          key={environment.environmentId}
-          environment={environment}
-          connected={
-            shown.find((entry) => entry.environmentId === environment.environmentId)
-              ?.connectionState === "connected"
-          }
-          showLabel={room.length > 1}
-          selectedThreadKey={primaryColumn?.selectedThreadKey ?? null}
+      {query !== null ? <BotsSearch query={query} /> : null}
+      {inbox.hero ? (
+        <AssistantHero
+          key={inbox.hero.bot.key}
+          entry={inbox.hero}
+          selected={rowSelected(inbox.hero, selectedThreadKey)}
         />
-      ))}
+      ) : null}
+      <View>
+        {inbox.rows.map((entry) => (
+          <BotInboxRow
+            key={entry.bot.key}
+            entry={entry}
+            selected={rowSelected(entry, selectedThreadKey)}
+          />
+        ))}
+      </View>
+      {query !== null && query.trim().length > 0 && inbox.rows.length === 0 ? (
+        <Text textRole="footnote" className="px-5 py-6 text-center text-foreground-muted">
+          No bots match.
+        </Text>
+      ) : null}
     </BotsScrollView>
   );
 }

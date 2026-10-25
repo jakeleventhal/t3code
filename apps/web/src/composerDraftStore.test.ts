@@ -1,3 +1,7 @@
+import {
+  botFileReferenceRecord,
+  projectReferenceRecord,
+} from "@t3tools/client-runtime/botMentionItems";
 import { PrimaryConnectionTarget } from "@t3tools/client-runtime/connection";
 import { createEnvironmentThreadShellAtoms } from "@t3tools/client-runtime/state/threads";
 import {
@@ -22,6 +26,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   EnvironmentId,
+  MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -752,6 +757,54 @@ describe("composerDraftStore thread contexts", () => {
       attached,
     ]);
     expect(hydrated.draftsByThreadKey[scopedThreadKey(threadRef)]?.prompt).toBe(draft?.prompt);
+  });
+
+  it("keeps a bot chat's project and bot file references, with their own chip kinds, across reloads", () => {
+    const bot = projectReferenceRecord({
+      environmentId: OTHER_TEST_ENVIRONMENT_ID,
+      id: ProjectId.make("bot-researcher"),
+      title: "Researcher",
+      botRole: "specialist",
+      botMainThreadId: ThreadId.make("researcher-main"),
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const file = botFileReferenceRecord(
+      { environmentId: TEST_ENVIRONMENT_ID, projectId: ProjectId.make("bot-self") },
+      {
+        id: "message:m1:0",
+        kind: "attachment",
+        title: "notes.pdf",
+        createdAt: "2026-10-01T00:00:00.000Z",
+        sourceThreadId: ThreadId.make("bot-self-main"),
+        sourceMessageId: MessageId.make("m1"),
+        sourceTurnItemId: null,
+        attachment: {
+          type: "file",
+          id: "bot-self-main-file-1",
+          name: "notes.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 10,
+        },
+      },
+    );
+    const store = useComposerDraftStore.getState();
+    store.addThreadContexts(threadRef, [bot, file]);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.prompt).toContain(`(t3-context://v1/project/${bot.contextId})`);
+    expect(draft?.prompt).toContain(`(t3-context://v1/bot-file/${file.contextId})`);
+
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const hydrated = merge(
+      JSON.parse(
+        JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+      ),
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(hydrated.draftsByThreadKey[scopedThreadKey(threadRef)]?.threadContexts).toEqual([
+      bot,
+      file,
+    ]);
   });
 });
 

@@ -12,6 +12,7 @@ export const WORKSPACE_OVERLAY_ROUTES: ReadonlySet<string> = new Set([
   "AssistantQuick",
   "NewBot",
   "BotProfile",
+  "BotThreads",
   "PullRequestReview",
   "PullRequestInlineComment",
   "ConnectOnboarding",

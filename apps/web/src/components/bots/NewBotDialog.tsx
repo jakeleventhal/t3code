@@ -1,7 +1,13 @@
+import { resolveNewBotHost, type NewBotHost } from "@t3tools/client-runtime/bot-turn-settings";
 import { CommandId, type EnvironmentId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { randomUUID } from "../../lib/utils";
+import { botEnvironment } from "../../state/bots";
+import { useServerConfigs } from "../../state/entities";
+import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../../state/environments";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -16,8 +22,32 @@ import { Input } from "../ui/input";
 import { useBotActions } from "./useBotActions";
 
 /**
- * Only a name for now: a bot starts with the environment's default model, which its main
- * conversation can change like any thread.
+ * The default host saved on the designated Assistant's environment decides, as on mobile. It only
+ * places new bots; Assistant and existing bots never move.
+ */
+export function useNewBotHost(sourceEnvironmentId: EnvironmentId): NewBotHost {
+  const defaultBotEnvironmentId = useEnvironmentSettings(
+    sourceEnvironmentId,
+    (settings) => settings.defaultBotEnvironmentId,
+  );
+  const identities = useEnvironmentIdentities();
+  const connectedEnvironmentIds = useConnectedEnvironmentIds();
+  const configs = useServerConfigs();
+  return resolveNewBotHost({
+    sourceEnvironmentId,
+    defaultBotEnvironmentId,
+    environments: identities.map((identity) => ({
+      environmentId: identity.environmentId,
+      label: identity.label,
+      connected: connectedEnvironmentIds.includes(identity.environmentId),
+      supportsBots:
+        configs.get(identity.environmentId)?.environment.capabilities.botConversations === true,
+    })),
+  });
+}
+
+/**
+ * Only a name: a bot starts with its host's bot defaults, which its profile can override.
  */
 export function NewBotDialog({
   environmentId,
@@ -31,6 +61,15 @@ export function NewBotDialog({
   onCreated: () => void;
 }) {
   const { createSpecialist } = useBotActions();
+  const host = useNewBotHost(environmentId);
+  const multipleEnvironments = useEnvironmentIdentities().length > 1;
+  const canCreateOnHost = useAtomValue(botEnvironment.create.permissionAtom(host.environmentId));
+  const unavailableReason =
+    host.kind === "unavailable"
+      ? `${host.reason} New bots go to the default host in Settings → Bots, never anywhere else.`
+      : canCreateOnHost
+        ? null
+        : `This connection can’t create bots on ${host.label}.`;
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // One id per dialog session, so retrying after a lost response cannot create a second bot.
@@ -42,9 +81,13 @@ export function NewBotDialog({
     setCommandId(CommandId.make(randomUUID()));
   };
   const submit = async () => {
-    if (trimmedName.length === 0 || submitting) return;
+    if (trimmedName.length === 0 || submitting || unavailableReason !== null) return;
     setSubmitting(true);
-    const created = await createSpecialist({ environmentId, name: trimmedName, commandId });
+    const created = await createSpecialist({
+      environmentId: host.environmentId,
+      name: trimmedName,
+      commandId,
+    });
     setSubmitting(false);
     if (!created) return;
     reset();
@@ -65,8 +108,11 @@ export function NewBotDialog({
         <DialogHeader>
           <DialogTitle>New bot</DialogTitle>
           <DialogDescription>
-            A bot keeps its own conversations on this environment, separate from Assistant’s and
-            your other bots’.
+            {host.environmentId !== environmentId
+              ? `Hosted on ${host.label}, your default host for new bots. Its conversations stay there, separate from Assistant’s and your other bots’.`
+              : multipleEnvironments
+                ? `Hosted on ${host.label}, with your Assistant. Its conversations stay there, separate from Assistant’s and your other bots’.`
+                : "A bot keeps its own conversations, separate from Assistant’s and your other bots’."}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -88,6 +134,11 @@ export function NewBotDialog({
               }}
             />
           </label>
+          {unavailableReason !== null ? (
+            <p role="status" className="mt-3 text-xs text-warning-foreground">
+              {unavailableReason}
+            </p>
+          ) : null}
         </DialogPanel>
         <DialogFooter>
           <Button
@@ -100,7 +151,10 @@ export function NewBotDialog({
           >
             Cancel
           </Button>
-          <Button disabled={trimmedName.length === 0 || submitting} onClick={() => void submit()}>
+          <Button
+            disabled={trimmedName.length === 0 || submitting || unavailableReason !== null}
+            onClick={() => void submit()}
+          >
             {submitting ? "Creating…" : "Create bot"}
           </Button>
         </DialogFooter>

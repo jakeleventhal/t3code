@@ -12,6 +12,7 @@ import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
+  EnvironmentId,
   ForwardCompatibleNullable,
   ForwardCompatibleOptional,
   OmittedWhenNull,
@@ -1102,7 +1103,28 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+export const BotDefaults = Schema.Struct({
+  defaultModelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  defaultRuntimeMode: Schema.NullOr(RuntimeMode).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+});
+export type BotDefaults = typeof BotDefaults.Type;
+
 export const ServerSettings = Schema.Struct({
+  defaultBotEnvironmentId: Schema.NullOr(EnvironmentId).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  botDefaults: BotDefaults.pipe(
+    Schema.withDecodingDefault(
+      Effect.succeed({
+        defaultModelSelection: null,
+        defaultRuntimeMode: null,
+      }),
+    ),
+  ),
   voiceConnections: Schema.Record(VoiceConnectionId, VoiceConnection).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1430,6 +1452,8 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  defaultBotEnvironmentId: Schema.optionalKey(Schema.NullOr(EnvironmentId)),
+  botDefaults: Schema.optionalKey(BotDefaults),
   voiceConnections: Schema.optionalKey(
     Schema.Record(VoiceConnectionId, Schema.NullOr(VoiceConnection)),
   ),

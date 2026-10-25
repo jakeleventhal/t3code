@@ -7,7 +7,7 @@ import {
   type ProviderDriverKind,
   ProviderInstanceId,
   resolveProjectProviderInstanceEnabled,
-  type ThreadContextRecord,
+  type ReferenceContextRecord,
 } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -32,7 +32,7 @@ interface DraftEnvironmentRoutingInput {
   readonly loadBalancingSettings: {
     readonly loadBalancingWeights: Readonly<Record<string, number>>;
   };
-  readonly referencedThreadContexts: ReadonlyArray<ThreadContextRecord>;
+  readonly referencedThreadContexts: ReadonlyArray<ReferenceContextRecord>;
   readonly activeProviderInstanceId: ProviderInstanceId | null;
   readonly selectedProvider: ProviderDriverKind;
   readonly composerHasAttachments: boolean;

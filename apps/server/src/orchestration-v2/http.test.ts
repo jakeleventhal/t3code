@@ -108,6 +108,7 @@ const serveOrchestrationHttp = (allowed: () => boolean) =>
       Layer.mergeAll(
         runtime,
         ThreadManagementService.layer.pipe(
+          Layer.provide(ProjectStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory))),
           Layer.provide(
             Layer.mergeAll(runtime, CommandReceiptStore.layer, ServerSettings.layerTest({})),
           ),

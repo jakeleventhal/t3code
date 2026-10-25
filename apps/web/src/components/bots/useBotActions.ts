@@ -1,3 +1,7 @@
+import {
+  resolveBotTurnReadiness,
+  type BotTurnReadiness,
+} from "@t3tools/client-runtime/bot-turn-settings";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -11,6 +15,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,
   type ModelSelection,
+  type ProjectId,
   type ProviderInteractionMode,
   type RuntimeMode,
   type ScopedThreadRef,
@@ -18,7 +23,10 @@ import {
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useNavigate } from "@tanstack/react-router";
 
-import { resolveDefaultProviderModelSelection } from "../../providerInstances";
+import {
+  NO_PROVIDER_MODEL_SELECTION,
+  resolveDefaultProviderModelSelection,
+} from "../../providerInstances";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { botEnvironment } from "../../state/bots";
 import {
@@ -41,11 +49,20 @@ export interface BotTurnDefaults {
   readonly interactionMode: ProviderInteractionMode;
 }
 
-// Read at call time, as new threads do: these maps change on every provider status push.
+type BotTurnDefaultsResult =
+  | { readonly kind: "ready"; readonly defaults: BotTurnDefaults }
+  | { readonly kind: "setup-needed"; readonly reason: string }
+  | { readonly kind: "no-provider" };
+
+/**
+ * Read at call time, as new threads do: these maps change on every provider status push. With no
+ * bot default or override this is the new-thread model; a configured one is used as chosen or
+ * reported, never swapped for whichever provider happens to be ready.
+ */
 function readBotTurnDefaults(
   environmentId: EnvironmentId,
   project: EnvironmentProject | null,
-): BotTurnDefaults | null {
+): BotTurnDefaultsResult {
   const settings =
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings ??
     DEFAULT_SERVER_SETTINGS;
@@ -53,17 +70,51 @@ function readBotTurnDefaults(
     appAtomRegistry.get(environmentPresentations.providersByEnvironmentAtom).get(environmentId) ??
     [];
   const resolved = resolveProjectSettings(settings, project?.id ?? null, project).settings;
-  const modelSelection = resolveDefaultProviderModelSelection(
+  const fallbackSelection = resolveDefaultProviderModelSelection(
     providers,
     resolved.defaultModelSelection,
   );
-  return modelSelection === null
-    ? null
-    : {
-        modelSelection,
-        runtimeMode: resolved.defaultRuntimeMode,
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      };
+  const readiness = resolveBotTurnReadiness({
+    settings,
+    projectId: project?.id ?? null,
+    fallback: {
+      modelSelection: fallbackSelection ?? NO_PROVIDER_MODEL_SELECTION,
+      runtimeMode: resolved.defaultRuntimeMode,
+    },
+    providers,
+  });
+  if (readiness.kind === "setup-needed") return { kind: "setup-needed", reason: readiness.reason };
+  if (readiness.source === "inherited" && fallbackSelection === null)
+    return { kind: "no-provider" };
+  return {
+    kind: "ready",
+    defaults: {
+      modelSelection: readiness.modelSelection,
+      runtimeMode: readiness.runtimeMode,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    },
+  };
+}
+
+/**
+ * A bot's next turn, read at Send: its own model and permissions, else the bot defaults, else the
+ * conversation's current ones.
+ */
+export function readBotSendSettings(
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  thread: { readonly modelSelection: ModelSelection; readonly runtimeMode: RuntimeMode },
+): BotTurnReadiness {
+  return resolveBotTurnReadiness({
+    settings:
+      appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings ??
+      DEFAULT_SERVER_SETTINGS,
+    projectId,
+    fallback: thread,
+    providers:
+      appAtomRegistry.get(environmentPresentations.providersByEnvironmentAtom).get(environmentId) ??
+      [],
+  });
 }
 
 function reportBotFailure(title: string, error: unknown) {
@@ -72,6 +123,20 @@ function reportBotFailure(title: string, error: unknown) {
       type: "error",
       title,
       description: error instanceof Error ? error.message : "An error occurred.",
+    }),
+  );
+}
+
+function reportBotSetupNeeded(title: string, reason: string, openBotSettings: () => void) {
+  toastManager.add(
+    stackedThreadToast({
+      type: "warning",
+      title,
+      description: `Setup needed: ${reason} Choose another model in Bot settings, or set up the provider.`,
+      actionProps: {
+        children: "Bot settings",
+        onClick: openBotSettings,
+      },
     }),
   );
 }
@@ -89,6 +154,10 @@ export function useBotActions() {
   const navigate = useNavigate();
   const openBot = useAtomCommand(botEnvironment.open, { reportFailure: false });
   const createBot = useAtomCommand(botEnvironment.create, { reportFailure: false });
+  const setupNeeded = (title: string, environmentId: EnvironmentId, reason: string) =>
+    reportBotSetupNeeded(title, reason, () => {
+      void navigate({ to: "/settings/bots", search: { machine: environmentId } });
+    });
 
   /** `sourceEntryId` opens the thread at that message or result instead of where it was left. */
   const openThread = async (
@@ -122,14 +191,18 @@ export function useBotActions() {
       return null;
     }
     const defaults = readBotTurnDefaults(environmentId, project);
-    if (defaults === null) {
+    if (defaults.kind === "setup-needed") {
+      setupNeeded(title, environmentId, defaults.reason);
+      return null;
+    }
+    if (defaults.kind === "no-provider") {
       reportBotFailure(title, new Error(NO_PROVIDER_MESSAGE));
       return null;
     }
     const result = await openBot({
       environmentId,
       input: {
-        ...defaults,
+        ...defaults.defaults,
         ...(project ? { projectId: project.id } : {}),
         creationSource: "web",
       },
@@ -217,14 +290,18 @@ export function useBotActions() {
         return false;
       }
       const defaults = readBotTurnDefaults(environmentId, null);
-      if (defaults === null) {
+      if (defaults.kind === "setup-needed") {
+        setupNeeded(title, environmentId, defaults.reason);
+        return false;
+      }
+      if (defaults.kind === "no-provider") {
         reportBotFailure(title, new Error(NO_PROVIDER_MESSAGE));
         return false;
       }
       const result = await createBot({
         environmentId,
         input: {
-          ...defaults,
+          ...defaults.defaults,
           commandId,
           name,
           creationSource: "web",

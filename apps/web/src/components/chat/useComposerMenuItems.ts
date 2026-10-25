@@ -35,6 +35,7 @@ import {
   rankPullRequestMatches,
 } from "../pullRequest/pullRequestList.logic";
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
+import { useBotMentionItems } from "./useBotMentionItems";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -60,6 +61,7 @@ export function useComposerMenuItems({
   selectedProviderSkills,
   selectedProviderSlashCommands,
   showSkillsInSlashMenu,
+  botProjectId = null,
 }: {
   readonly composerTrigger: ComposerTrigger | null;
   readonly environmentId: EnvironmentId;
@@ -74,6 +76,11 @@ export function useComposerMenuItems({
   readonly selectedProviderSkills: ServerProvider["skills"];
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
   readonly showSkillsInSlashMenu: boolean;
+  /**
+   * Set in a bot chat: @ offers the bot's curated context instead of workspace files, and the
+   * slash menu drops the shortcuts that change hidden model and mode settings.
+   */
+  readonly botProjectId?: ProjectId | null;
 }) {
   // Thread mentions rank by recency as of when the composer mounted.
   const [now] = useState(() => Date.now());
@@ -90,14 +97,24 @@ export function useComposerMenuItems({
   const debouncedPullRequestTextQuery = useDebouncedValue(pullRequestTextQuery, 180);
   const settledPullRequestTextQuery =
     pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
+  const isBotChat = botProjectId !== null;
   const isPathTrigger = composerTriggerKind === "path";
-  const environmentThreadShells = useThreadShells(isPathTrigger);
+  const environmentThreadShells = useThreadShells(isPathTrigger && !isBotChat);
   // Mounts older settled threads matching the mention, which shells may leave out.
-  useThreadSearch(isPathTrigger ? [environmentId] : [], pathTriggerQuery, { titlesOnly: true });
+  useThreadSearch(isPathTrigger && !isBotChat ? [environmentId] : [], pathTriggerQuery, {
+    titlesOnly: true,
+  });
   const workspaceEntries = useComposerPathSearch({
     environmentId,
-    cwd: isPathTrigger ? gitCwd : null,
-    query: isPathTrigger ? pathTriggerQuery : null,
+    cwd: isPathTrigger && !isBotChat ? gitCwd : null,
+    query: isPathTrigger && !isBotChat ? pathTriggerQuery : null,
+  });
+  const botMentions = useBotMentionItems({
+    enabled: isPathTrigger,
+    environmentId,
+    botProjectId,
+    activeThreadId,
+    query: pathTriggerQuery,
   });
 
   const pullRequestListTargets =
@@ -160,6 +177,7 @@ export function useComposerMenuItems({
 
   const items = ((): ComposerCommandItem[] => {
     if (!composerTrigger) return [];
+    if (composerTrigger.kind === "path" && isBotChat) return [...botMentions.items];
     if (composerTrigger.kind === "path") {
       return [
         ...matchComposerThreadItems({
@@ -182,14 +200,18 @@ export function useComposerMenuItems({
     }
     if (composerTrigger.kind === "slash-command") {
       const builtInSlashCommandItems = [
-        {
-          id: "slash:model",
-          type: "slash-command",
-          command: "model",
-          label: "/model",
-          description: "Switch response model for this thread",
-        },
-        ...(planModeUiEnabled
+        ...(isBotChat
+          ? []
+          : ([
+              {
+                id: "slash:model",
+                type: "slash-command",
+                command: "model",
+                label: "/model",
+                description: "Switch response model for this thread",
+              },
+            ] as const)),
+        ...(planModeUiEnabled && !isBotChat
           ? ([
               {
                 id: "slash:plan",
@@ -315,7 +337,11 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    (composerTriggerKind === "path" && isBotChat && botMentions.isLoading) ||
+    (composerTriggerKind === "path" &&
+      !isBotChat &&
+      pathTriggerQuery.length > 0 &&
+      workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
@@ -341,10 +367,15 @@ export function useComposerMenuItems({
         ? `No pull request matches ${composerTrigger.query}.`
         : "No pull requests found in this repository.";
     }
+    if (composerTriggerKind === "path" && isBotChat) {
+      return "No matching files, conversations, projects, or bots.";
+    }
     return composerTriggerKind === "path"
       ? "No matching files or folders."
       : "No matching command.";
   })();
 
-  return { items, isLoading, emptyState };
+  const notice = composerTriggerKind === "path" && isBotChat ? botMentions.notice : null;
+
+  return { items, isLoading, emptyState, notice };
 }

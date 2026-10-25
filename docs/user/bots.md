@@ -5,32 +5,48 @@ threads, and **Bots**, your ongoing conversations with Assistant and any bots
 you add. Each side reopens where you left it, including the thread, review, or
 browser you had open in Code.
 
-Bots belong to one environment. With more than one environment connected, pick
-which one at the top of the Bots list. Each bot's conversations are separate: a
+Bots lists the bots on every environment you're connected to in one list. Each
+bot lives on one environment, its host, and opens there; a bot whose host is
+offline is marked **Offline** rather than moved. The host's name appears only to
+tell two bots with the same name apart. Each bot's conversations are separate: a
 bot doesn't start with another bot's history, though any agent can still look up
 other threads through T3 Code's tools when asked to. Bots need an up-to-date
-T3 Code server on that environment.
+T3 Code server on their host.
 
 ## Assistant
 
 Assistant is the first entry in Bots: one conversation that continues across
-visits. It runs like any thread, so you choose its model, mode, and permissions
-in its composer. Opening it the first time sets it up on that environment.
+visits. It lives on the environment that already has the oldest Assistant, and
+stays there while that environment is offline. With no Assistant yet, opening it
+sets one up on a connected environment. If you have more than one Assistant from
+before, the others stay listed under **Other Assistants** with their host, and in
+**Settings → Bots** and **Settings → Voice**. Nothing is merged or deleted.
+
+Bot chats have no model controls. Choose the model, reasoning, and permissions
+every bot uses in **Settings → Bots**, and give one bot its own from its
+profile (its **Settings** tab on web and desktop); **Use default** returns it to
+the defaults.
+Changes apply from the next message, and a reply already running keeps its
+settings. Until you choose bot defaults, bots keep the model they already use.
+If the chosen model isn't available on that environment, the chat shows
+**Setup needed** and doesn't send rather than switching to another model.
+An environment whose T3 Code server predates bot settings shows them read-only
+and asks you to update it.
 
 While you work in Code on web and desktop, the small Assistant button in the
-corner opens a quick panel on the same conversation, using the Assistant of the
+corner opens a quick panel on the same conversation with your Assistant, whichever
 environment you're working in. Type a question there, or choose **Open chat** to
 continue in Bots; **Code** in the chat header takes you back. Approvals and questions from Assistant are answered in the full chat.
 Press `mod+shift+space` to open the quick panel from Code, or Assistant's chat
 from Bots and Settings.
 
-On mobile, open **Bots** from the navigation bar. Bots lists each environment's
-Assistant first, then its other bots; add one with **New bot**. In Code, the
+On mobile, open **Bots** from the navigation bar. Bots leads with Assistant,
+then your other bots and any older Assistants, labelled with their host; add one
+with **New bot**. In Code, the
 Assistant button opens a quick
-sheet on the same conversation, for the environment of the thread or pull
-request you're viewing, or the one your thread list is filtered to. If that
-environment is offline or needs an update, the sheet says so instead of using
-another one. **Open** continues in Bots. Return to the section you left to reopen
+sheet on the same conversation with your Assistant, whichever environment the
+thread or pull request you're viewing is on. If the Assistant's environment is
+offline or needs an update, the sheet says so instead of using another one. **Open** continues in Bots. Return to the section you left to reopen
 the thread, pull request, diff, or browser page you were reading.
 
 A message sent from the quick panel or sheet tells Assistant what you're viewing
@@ -38,26 +54,63 @@ on that device. If an in-app browser tab is on screen, the page's text is read
 once, when you send. What's on screen accompanies your request without being
 added to your message in the chat. Assistant doesn't see the page as an image.
 
+On web and desktop, a message you send to a bot whose host is offline waits
+above the composer as **Waiting for connection** and goes out, in the order
+written, when the host reconnects, whichever screen you're on. It's kept on
+this device, so it sends once this browser or app is open and connected again.
+Cancel a waiting message with its **×**. A message the host refuses, for
+example because of **Setup needed**, stays as **Not delivered** with the reason,
+holds the messages after it, and can be retried or cancelled. Messages for a
+machine you've since removed are listed in **Settings → Bots**, where you can
+copy or discard them; adding the machine back sends them.
+
+When a bot asks a bot on another machine for help and that machine can't be
+reached, the request waits on the asking bot's machine. It shows above the
+composer in both conversations, marked as coming from a bot, with a link to the
+other one. You can cancel it while it's **Waiting for connection**. Once it may
+have arrived it shows **Confirming delivery** and can't be cancelled, and
+**Access needed** or **Setup needed** means the receiving machine needs
+attention first. A request that had to wait shows **Delivered** in the asking
+conversation for a while after it goes out; to stop the work it started, open
+the other conversation and stop it there. You'll only see requests from
+machines this device is connected to.
+
 ## Your own bots
 
-Click **+** in the Bots list and give the bot a name. It starts with the
-environment's default model. Each bot has a main conversation; use **New topic**
-under a selected bot, or **New conversation** on mobile, for a separate thread
-with it.
+Click **+** in the Bots list and give the bot a name. It starts with the bot
+defaults, or the model for new threads if none are set. To keep new bots on
+another environment, choose it under **Settings → Bots → Advanced → Default
+host for new bots** on the environment that hosts your Assistant. Every device
+connected to that environment uses the same choice. It only affects bots you
+create from then on: Assistant and existing bots stay where they are, and if
+the default host is offline, **New bot** says so instead of creating the bot
+somewhere else. The bot uses its host's bot defaults.
+
+Each bot opens its main conversation. For parallel work, open **Threads** in the
+chat header and choose **New thread**. Threads can be renamed or archived from
+their menu. **Show archived** makes archived threads searchable; reading one
+doesn't reopen it. Use **Reopen** to continue it.
 
 A bot carries useful context from one conversation to the next, across its
-main conversation, its topics, and calls. Tell it what you want remembered, or
+main conversation, its threads, and calls. Tell it what you want remembered, or
 ask it to correct or forget something. What it carries is a short summary, but
-past conversations stay available: in a topic or a call, ask about something
-from its main conversation or another of its topics, even an archived one, and
+past conversations stay available: in a thread or a call, ask about something
+from its main conversation or another of its threads, even an archived one, and
 the bot looks it up.
 
 Bot conversations don't appear in the Code thread list, but thread search and
 links still open them.
 
+Type **@** to reference this bot's shared files, bots, conversations, or Code
+projects. Internal working files aren't offered. Archived conversations appear
+when you search, and a reference alone doesn't start work elsewhere. Tell the
+bot what you want: it can read another conversation, ask a specialist to help,
+or send work to a Code thread. Substantial work stays in the receiving
+conversation, with a short linked result returned to the requesting bot.
+
 ## Bot profile
 
-Click a bot's name in its chat header, from its main conversation or any topic,
+Click a bot's name in its chat header, from its main conversation or any thread,
 to open its profile beside the chat; on a narrow window it opens as a sheet.
 Click the name to rename the bot, or the picture to choose an emoji, colored
 initials, or a photo. Assistant can be renamed and given a picture too.

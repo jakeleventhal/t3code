@@ -1,3 +1,4 @@
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -1755,6 +1756,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             },
           });
           const layerThreads = ThreadManagementService.layer.pipe(
+            Layer.provide(ProjectStore.layer.pipe(Layer.provide(layerDatabase))),
             Layer.provideMerge(layerOrchestrator),
             Layer.provide(
               LegacyV1ThreadImporter.layer.pipe(

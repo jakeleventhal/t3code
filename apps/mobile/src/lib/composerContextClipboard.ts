@@ -14,6 +14,7 @@ import {
   encodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
 import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
+import { referencesBotServerCannotRead } from "@t3tools/client-runtime/botMentionItems";
 import { executeAtomQuery, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 import * as Option from "effect/Option";
@@ -26,7 +27,12 @@ import {
   removePersistedComposerAttachmentFile,
   type DraftComposerAttachment,
 } from "./composerImages";
-import { referencedComposerContext, reidentifyComposerContext } from "./composerContext";
+import {
+  isAttachmentContextRecord,
+  referencedComposerContext,
+  reidentifyComposerContext,
+  type AttachmentContextRecord,
+} from "./composerContext";
 import { uuidv4 } from "./uuid";
 import {
   findLocalComposerClipboardAttachment,
@@ -67,21 +73,36 @@ export async function importComposerContextClipboard(
   signal: AbortSignal,
   existingContextCount = 0,
   destinationEnvironmentId?: EnvironmentId,
+  /** Set when pasting into a bot chat; its server decides which references survive. */
+  botChat: { readonly serverReadsMentions: boolean } | null = null,
 ) {
   const fragment =
     decodeComposerContextFragment(input.fragment) ?? decodeComposerContextClipboardHtml(input.html);
   if (!fragment) return null;
   const selected = referencedComposerContext(input.text, { version: 1, records: fragment.records });
   const imported = reidentifyComposerContext(input.text, selected?.records ?? [], uuidv4);
+  // A Code agent reads only its own machine's threads. A bot reads projects, bot files, and other
+  // machines' threads too, unless its server predates that and would drop them unread.
   const skippedThreads =
-    destinationEnvironmentId === undefined
+    destinationEnvironmentId === undefined || botChat !== null
       ? []
       : threadContextsOutsideEnvironment({
           text: imported.text,
           records: imported.context.records,
           environmentId: destinationEnvironmentId,
         });
-  const skippedIds = new Set(skippedThreads.map((record) => record.contextId));
+  const needsNewerBotServer =
+    destinationEnvironmentId === undefined || botChat === null
+      ? []
+      : referencesBotServerCannotRead({
+          text: imported.text,
+          records: imported.context.records,
+          environmentId: destinationEnvironmentId,
+          serverReadsMentions: botChat.serverReadsMentions,
+        });
+  const skippedIds = new Set(
+    [...skippedThreads, ...needsNewerBotServer].map((record) => record.contextId),
+  );
   const retained = imported.context.records.filter((record) => !skippedIds.has(record.contextId));
   if (existingContextCount + retained.length > COMPOSER_CONTEXT_MAX_RECORDS)
     throw new Error("Remove some context items from the draft before pasting more.");
@@ -91,7 +112,7 @@ export async function importComposerContextClipboard(
   try {
     for (const record of retained) {
       checkAborted(signal);
-      if (!("attachmentId" in record)) {
+      if (!isAttachmentContextRecord(record)) {
         records.push(record);
         continue;
       }
@@ -114,6 +135,7 @@ export async function importComposerContextClipboard(
       attachments,
       failures,
       skippedThreads: skippedThreads.map((record) => record.title),
+      needsNewerBotServer: needsNewerBotServer.map((record) => record.label),
     };
   } catch (error) {
     await Promise.all(
@@ -128,7 +150,7 @@ export async function importComposerContextClipboard(
 }
 
 async function importAttachment(
-  record: Extract<ComposerContextRecord, { attachmentId: string }>,
+  record: AttachmentContextRecord,
   environmentId: EnvironmentId,
   signal: AbortSignal,
 ): Promise<DraftComposerAttachment> {
@@ -188,7 +210,7 @@ async function importAttachment(
 }
 
 async function persistImportedAttachment(
-  record: Extract<ComposerContextRecord, { attachmentId: string }>,
+  record: AttachmentContextRecord,
   uri: string,
   signal: AbortSignal,
 ): Promise<DraftComposerAttachment> {

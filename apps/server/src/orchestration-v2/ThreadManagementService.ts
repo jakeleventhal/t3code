@@ -1,3 +1,5 @@
+import { resolveBotTurnSettings } from "@t3tools/shared/projectSettings";
+import * as ProjectStore from "./ProjectStore.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -10,6 +12,10 @@ import type {
 } from "./ProjectionStore.ts";
 import {
   type ChatAttachment,
+  type OrchestrationMessageContext,
+  type PeerEnvironmentThreadSendInput,
+  type OrchestratorMcpThreadSendResult,
+  PeerEnvironmentThreadSendError,
   CommandId,
   MessageId,
   OrchestrationV2StopWorkflowError,
@@ -114,6 +120,8 @@ function existingThreadIdsForCommand(
   }
 }
 
+const isPeerSendError = Schema.is(PeerEnvironmentThreadSendError);
+
 export type ThreadManagementTerminalRunStatus = Extract<
   OrchestrationV2Run["status"],
   "completed" | "failed" | "cancelled" | "interrupted" | "rolled_back"
@@ -124,6 +132,7 @@ export interface ThreadManagementSendInput {
   readonly commandId: CommandId;
   readonly threadId: ThreadId;
   readonly messageId: MessageId;
+  readonly context?: OrchestrationMessageContext | undefined;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
   readonly text: string;
@@ -397,6 +406,9 @@ export interface ThreadManagementServiceShape {
     readonly includeSubagents: boolean;
     readonly location?: "active" | "archive";
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
+  readonly receivePeerMessage: (
+    input: PeerEnvironmentThreadSendInput,
+  ) => Effect.Effect<OrchestratorMcpThreadSendResult, PeerEnvironmentThreadSendError>;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
   ) => Effect.Effect<ThreadManagementSendResult, ThreadManagementFailure>;
@@ -536,6 +548,7 @@ const make = Effect.gen(function* () {
   const layerScope = yield* Effect.scope;
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const projects = yield* ProjectStore.ProjectStoreV2;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
@@ -669,11 +682,27 @@ const make = Effect.gen(function* () {
     switch (command.type) {
       case "message.dispatch":
         return orchestrator.getThreadRecords(command.threadId, []).pipe(
-          Effect.flatMap((projection) =>
-            assertProviderInstanceEnabled({
-              projectId: projection.thread.projectId,
-              commandId: command.commandId,
-              instanceId: (command.modelSelection ?? projection.thread.modelSelection).instanceId,
+          Effect.flatMap(
+            Effect.fn("ThreadManagement.assertMessageProvider")(function* (projection) {
+              const project = yield* projects.get(projection.thread.projectId).pipe(Effect.orDie);
+              const selection =
+                Option.isSome(project) &&
+                project.value.botRole != null &&
+                command.dispatchMode.type !== "steer_active"
+                  ? resolveBotTurnSettings(
+                      yield* serverSettings.getSettings.pipe(Effect.orDie),
+                      projection.thread.projectId,
+                      {
+                        modelSelection: command.modelSelection ?? projection.thread.modelSelection,
+                        runtimeMode: projection.thread.runtimeMode,
+                      },
+                    ).modelSelection
+                  : (command.modelSelection ?? projection.thread.modelSelection);
+              yield* assertProviderInstanceEnabled({
+                projectId: projection.thread.projectId,
+                commandId: command.commandId,
+                instanceId: selection.instanceId,
+              });
             }),
           ),
         );
@@ -811,6 +840,7 @@ const make = Effect.gen(function* () {
       ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       text: input.text,
+      ...(input.context === undefined ? {} : { context: input.context }),
       attachments: input.attachments,
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       dispatchMode,
@@ -1199,7 +1229,70 @@ const make = Effect.gen(function* () {
     if (failures[0] !== undefined) return yield* failures[0];
   });
 
+  const receivePeerMessage = Effect.fn("ThreadManagementService.receivePeerMessage")(
+    function* (input: PeerEnvironmentThreadSendInput) {
+      const receipt = yield* receipts.getByCommandId(input.commandId);
+      if (
+        Option.isSome(receipt) &&
+        receipt.value.status === "accepted" &&
+        receipt.value.threadId === input.threadId &&
+        receipt.value.commandType === "message.dispatch"
+      ) {
+        // A lost acknowledgement can be replayed after the conversation was archived.
+        // Recover the committed result before applying admission rules for new messages.
+        const previous = yield* orchestrator.getThreadRecords(
+          input.threadId,
+          ["messages", "runs"],
+          {
+            messageIds: [input.messageId],
+          },
+        );
+        const message = previous.messages.find((candidate) => candidate.id === input.messageId);
+        const run = previous.runs.find((candidate) => candidate.id === message?.runId);
+        if (run !== undefined)
+          return {
+            threadId: input.threadId,
+            messageId: input.messageId,
+            runId: run.id,
+            status: run.status,
+            delivery: run.status === "queued" ? ("queued" as const) : ("started" as const),
+          };
+      }
+      const target = yield* orchestrator.getThreadShell(input.threadId);
+      if (target === null || target.deletedAt !== null) {
+        return yield* new PeerEnvironmentThreadSendError({
+          threadId: input.threadId,
+          cause: "Thread unavailable",
+        });
+      }
+      const result = yield* sendToThread({
+        ...input,
+        projectId: target.projectId,
+        attachments: [],
+        mode: "queue",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      return {
+        threadId: input.threadId,
+        messageId: input.messageId,
+        runId: result.run.id,
+        status: result.run.status,
+        delivery: result.delivery,
+      };
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.mapError((cause) =>
+          isPeerSendError(cause)
+            ? cause
+            : new PeerEnvironmentThreadSendError({ threadId: input.threadId, cause }),
+        ),
+      ),
+  );
+
   return ThreadManagementService.of({
+    receivePeerMessage,
     ensureLegacyTranscript,
     searchThreadStream: (input) =>
       Stream.unwrap(
@@ -1298,6 +1391,7 @@ export const layer: Layer.Layer<
   | Orchestrator.OrchestratorV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | ServerSettings.ServerSettingsService
+  | ProjectStore.ProjectStoreV2
   | CommandReceiptStore.CommandReceiptStoreV2
 > = Layer.effect(ThreadManagementService, make).pipe(
   Layer.provide(layerLegacyV1ThreadImporterNoop),
@@ -1311,5 +1405,6 @@ export const layerWithLegacyImporter: Layer.Layer<
   | Orchestrator.OrchestratorV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | ServerSettings.ServerSettingsService
+  | ProjectStore.ProjectStoreV2
   | CommandReceiptStore.CommandReceiptStoreV2
 > = Layer.effect(ThreadManagementService, make).pipe(Layer.provide(ThreadCommandExecutor.layer));

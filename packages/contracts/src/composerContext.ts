@@ -5,10 +5,13 @@ import {
   ForwardCompatibleArray,
   GuestMessageId,
   GuestShareId,
+  MessageId,
   NonNegativeInt,
   PositiveInt,
+  ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
+  TurnItemId,
 } from "./baseSchemas.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
 
@@ -24,6 +27,8 @@ export const COMPOSER_CONTEXT_KINDS = [
   "mention",
   "skill",
   "thread",
+  "project",
+  "bot-file",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -211,6 +216,48 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
+/** A Code project or a bot, named as reference material. `mainThreadId` is a bot's main conversation. */
+export const ProjectContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("project"),
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  title: ContextLabel,
+  // Literals rather than ProjectBotRole: project.ts sits above this module.
+  botRole: Schema.NullOr(Schema.Literals(["assistant", "specialist"])),
+  mainThreadId: Schema.optionalKey(ThreadId),
+});
+export type ProjectContextRecord = typeof ProjectContextRecord.Type;
+
+/**
+ * An entry from a bot's Files: an attachment shared in one of its conversations, or a published
+ * HTML output. It points at the stored attachment and its source conversation, never a workspace
+ * path, and is not re-attached to the message that names it.
+ */
+export const BotFileContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("bot-file"),
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  fileId: TrimmedNonEmptyString.check(Schema.isMaxLength(512)),
+  fileKind: Schema.Literals(["attachment", "html"]),
+  title: ContextLabel,
+  attachmentId: ContextAttachmentId,
+  mimeType: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(100))),
+  sourceThreadId: ThreadId,
+  sourceMessageId: Schema.optionalKey(MessageId),
+  sourceTurnItemId: Schema.optionalKey(TurnItemId),
+});
+export type BotFileContextRecord = typeof BotFileContextRecord.Type;
+
+/** Records that name something the agent reads on demand instead of carrying its content. */
+export const ReferenceContextRecord = Schema.Union([
+  ThreadContextRecord,
+  ProjectContextRecord,
+  BotFileContextRecord,
+]);
+export type ReferenceContextRecord = typeof ReferenceContextRecord.Type;
+
 const isJson = Schema.is(Schema.Json);
 
 /** Excludes known discriminators so malformed known records fail their own schema. */
@@ -241,6 +288,8 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadContextRecord,
+  ProjectContextRecord,
+  BotFileContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

@@ -25,6 +25,7 @@ import {
 import { importComposerContextClipboard } from "../lib/composerContextClipboard";
 import { startComposerDraftOperation } from "../state/composerDraftOperations";
 import { appAtomRegistry } from "../state/atom-registry";
+import { botMentionsUpdateNotice } from "@t3tools/client-runtime/botMentionItems";
 import { mobilePreferencesAtom } from "../state/preferences";
 import { useOpenLinkedThread } from "../features/threads/useOpenLinkedThread";
 import { ComposerContextSheet } from "./ComposerContextSheet";
@@ -39,6 +40,8 @@ export type ComposerEditorProps = NativeComposerEditorProps & {
   readonly draftKey?: string | null;
   readonly hidden?: boolean;
   readonly environmentId?: EnvironmentId;
+  /** Set in a bot chat: what its server can read decides which pasted references are kept. */
+  readonly botChat?: { readonly serverReadsMentions: boolean } | null;
   readonly onOpenMention?: (path: string) => void;
   readonly onOpenAttachment?: (attachment: ComposerDocumentAttachment) => void;
   readonly chipsInert?: boolean;
@@ -49,6 +52,7 @@ export function ComposerEditor({
   draftKey,
   hidden,
   environmentId,
+  botChat = null,
   onOpenMention,
   onOpenAttachment,
   chipsInert,
@@ -100,6 +104,7 @@ export function ComposerEditor({
         signal,
         retained.context?.records.length ?? 0,
         environmentId,
+        botChat,
       );
       if (signal.aborted) return;
       if (!result) {
@@ -121,6 +126,10 @@ export function ComposerEditor({
       if (result.skippedThreads.length > 0)
         warnings.push(
           `${result.skippedThreads.map((title) => `"${title}"`).join(", ")} ${result.skippedThreads.length === 1 ? "is" : "are"} on another machine.`,
+        );
+      if (result.needsNewerBotServer.length > 0)
+        warnings.push(
+          `${result.needsNewerBotServer.map((title) => `"${title}"`).join(", ")}: ${botMentionsUpdateNotice(null)}`,
         );
       if (warnings.length > 0)
         Dialog.alert(

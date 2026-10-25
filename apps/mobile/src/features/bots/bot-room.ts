@@ -1,11 +1,14 @@
+import { environmentAssistants } from "@t3tools/client-runtime/assistant-environment";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
-import { scopedProjectKey } from "../../lib/scopedEntities";
+import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
+import { threadHasUnseenCompletion } from "../threads/threadListV2";
 
 export type BotRole = "assistant" | "specialist";
 
@@ -25,6 +28,8 @@ export interface BotRoomEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly assistant: BotRoomBot;
+  /** Assistants besides this environment's own, oldest first. Listed, never merged or hidden. */
+  readonly extraAssistants: ReadonlyArray<BotRoomBot>;
   readonly specialists: ReadonlyArray<BotRoomBot>;
 }
 
@@ -118,14 +123,14 @@ export function buildBotRoom(input: {
       (project) => project.environmentId === environmentId && botRole(project) !== null,
     );
     const threads = input.threads.filter((thread) => thread.environmentId === environmentId);
-    const assistant =
-      projects
-        .filter((project) => project.botRole === "assistant")
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0] ?? null;
+    const [assistant = null, ...extraAssistants] = environmentAssistants(projects, environmentId);
     return {
       environmentId,
       label,
       assistant: bot(environmentId, "assistant", assistant, threads),
+      extraAssistants: extraAssistants.map((project) =>
+        bot(environmentId, "assistant", project, threads),
+      ),
       specialists: projects
         .filter((project) => project.botRole === "specialist")
         .sort(
@@ -134,4 +139,284 @@ export function buildBotRoom(input: {
         .map((project) => bot(environmentId, "specialist", project, threads)),
     };
   });
+}
+
+export interface BotThreadList {
+  /** The bot's ongoing conversation, when it is loaded and not archived. */
+  readonly main: EnvironmentThreadShell | null;
+  /** The bot's other open threads, newest first. */
+  readonly active: ReadonlyArray<EnvironmentThreadShell>;
+  /** Archived threads, most recently archived first. The main conversation is never here. */
+  readonly archived: ReadonlyArray<EnvironmentThreadShell>;
+}
+
+function matchesTitle(thread: EnvironmentThreadShell, query: string): boolean {
+  return query.length === 0 || thread.title.toLocaleLowerCase().includes(query);
+}
+
+function newestArchivedFirst(left: EnvironmentThreadShell, right: EnvironmentThreadShell) {
+  return (
+    (toSortableTimestamp(right.archivedAt ?? right.updatedAt) ?? 0) -
+      (toSortableTimestamp(left.archivedAt ?? left.updatedAt) ?? 0) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+/**
+ * One bot's threads for its Threads sheet. `archived` comes from the archive snapshot, which
+ * refreshes after the live list, so a thread reopened a moment ago shows only as open.
+ */
+export function buildBotThreadList(input: {
+  readonly project: Pick<EnvironmentProject, "environmentId" | "id" | "botMainThreadId">;
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly archived: ReadonlyArray<EnvironmentThreadShell>;
+  readonly query: string;
+}): BotThreadList {
+  const { project } = input;
+  const query = input.query.trim().toLocaleLowerCase();
+  const mainThreadId = project.botMainThreadId ?? null;
+  const owned = (thread: EnvironmentThreadShell) =>
+    thread.environmentId === project.environmentId && thread.projectId === project.id;
+  const open = input.threads.filter((thread) => owned(thread) && thread.archivedAt === null);
+  const openIds = new Set(open.map((thread) => thread.id));
+  return {
+    main: open.find((thread) => thread.id === mainThreadId) ?? null,
+    active: open
+      .filter((thread) => thread.id !== mainThreadId && matchesTitle(thread, query))
+      .sort(newestFirst),
+    archived: input.archived
+      .filter(
+        (thread) =>
+          owned(thread) &&
+          thread.archivedAt !== null &&
+          thread.id !== mainThreadId &&
+          !openIds.has(thread.id) &&
+          matchesTitle(thread, query),
+      )
+      .sort(newestArchivedFirst),
+  };
+}
+
+export type BotInboxStatus = "needs-you" | "working" | "offline" | null;
+
+export interface BotInboxEntry {
+  readonly bot: BotRoomBot;
+  readonly connected: boolean;
+  readonly status: BotInboxStatus;
+  /** The open thread waiting on the user, when the main conversation itself is not. */
+  readonly needsThread: EnvironmentThreadShell | null;
+  /** What the main conversation last said, or a plain account of where it stands. */
+  readonly preview: string | null;
+  /** The main conversation's latest message or reply; null before it has any. */
+  readonly activityAt: string | null;
+  /** The main conversation has a reply the user has not seen. */
+  readonly unread: boolean;
+  /** Messages this device holds for the main conversation until its host takes them. */
+  readonly unsent: number;
+  /** Set only where the name alone would not say which bot this is. */
+  readonly hostLabel: string | null;
+}
+
+export interface BotInbox {
+  /** The Assistant, apart from the list. Null while searching, when it is one of the rows. */
+  readonly hero: BotInboxEntry | null;
+  readonly rows: ReadonlyArray<BotInboxEntry>;
+}
+
+function latestTimestamp(values: ReadonlyArray<string | null | undefined>): string | null {
+  let latest: string | null = null;
+  let latestMs = -Infinity;
+  for (const value of values) {
+    const ms = toSortableTimestamp(value ?? undefined);
+    if (value != null && ms !== null && ms > latestMs) {
+      latest = value;
+      latestMs = ms;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Shells carry no message bodies (thread detail owns them), so `latestVisibleMessage` is usually
+ * null and the preview falls back to what the shell does know about the last turn.
+ */
+function mainPreview(bot: BotRoomBot, unread: boolean): string | null {
+  const main = bot.mainThread;
+  if (main === null) {
+    if (bot.project === null) return "Start a conversation";
+    return bot.project.botMainThreadId ? "Reopen conversation" : "No messages yet";
+  }
+  const text = main.source.latestVisibleMessage?.text.replace(/\s+/g, " ").trim();
+  if (text) return text;
+  const run = main.latestRun;
+  if (run === null) return "No messages yet";
+  if (botThreadStatus(main) !== null) return null;
+  if (unread) return "New reply";
+  if (run.status === "completed") return "Replied";
+  if (run.status === "failed") return "Last reply failed";
+  return "Stopped";
+}
+
+function inboxEntry(
+  bot: BotRoomBot,
+  connected: boolean,
+  unsentByThreadKey: Readonly<Record<string, ReadonlyArray<unknown>>>,
+): BotInboxEntry {
+  const mainThreadId = bot.project?.botMainThreadId ?? null;
+  const main = bot.mainThread;
+  const mainStatus = main === null ? null : botThreadStatus(main);
+  const topicStatuses = bot.topics.map((topic) => ({ topic, status: botThreadStatus(topic) }));
+  const needsThread =
+    mainStatus === "needs-you"
+      ? null
+      : (topicStatuses.find((entry) => entry.status === "needs-you")?.topic ?? null);
+  const unread = main !== null && threadHasUnseenCompletion(main);
+  return {
+    bot,
+    connected,
+    // A disconnected host runs nothing this device can see, so nothing there reads as working.
+    status: !connected
+      ? "offline"
+      : mainStatus === "needs-you" || needsThread !== null
+        ? "needs-you"
+        : mainStatus === "working" || topicStatuses.some((entry) => entry.status === "working")
+          ? "working"
+          : null,
+    needsThread,
+    preview: mainPreview(bot, unread),
+    activityAt:
+      main === null
+        ? null
+        : latestTimestamp([
+            main.source.latestVisibleMessage
+              ? DateTime.formatIso(main.source.latestVisibleMessage.updatedAt)
+              : null,
+            main.latestUserMessageAt,
+            main.latestRun?.completedAt,
+            main.latestRun?.requestedAt,
+          ]),
+    unread,
+    unsent:
+      mainThreadId === null
+        ? 0
+        : (unsentByThreadKey[scopedThreadKey(bot.environmentId, mainThreadId)]?.length ?? 0),
+    hostLabel: null,
+  };
+}
+
+function nameKey(entry: BotInboxEntry): string {
+  return entry.bot.title.trim().toLocaleLowerCase();
+}
+
+function newestActivityFirst(left: BotInboxEntry, right: BotInboxEntry) {
+  return (
+    (toSortableTimestamp(right.activityAt ?? undefined) ?? 0) -
+      (toSortableTimestamp(left.activityAt ?? undefined) ?? 0) ||
+    left.bot.title.localeCompare(right.bot.title) ||
+    left.bot.key.localeCompare(right.bot.key)
+  );
+}
+
+function matchesInboxQuery(entry: BotInboxEntry, query: string): boolean {
+  return (
+    entry.bot.title.toLocaleLowerCase().includes(query) ||
+    (entry.preview?.toLocaleLowerCase().includes(query) ?? false)
+  );
+}
+
+/**
+ * Every bot on every shown environment in one inbox. There is one Assistant: the one on
+ * `assistantEnvironmentId` leads as the hero, even before it exists, since opening it creates it.
+ * Assistants created before that rule, on other environments or as a second one on the hero's,
+ * are listed as ordinary rows with their host, and placeholders for Assistants that don't exist
+ * elsewhere are never shown.
+ */
+export function buildBotInbox(input: {
+  readonly environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+    readonly connected: boolean;
+  }>;
+  readonly projects: ReadonlyArray<EnvironmentProject>;
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly assistantEnvironmentId: EnvironmentId | null;
+  /** This device's outbox, by scoped thread key. */
+  readonly unsentByThreadKey: Readonly<Record<string, ReadonlyArray<unknown>>>;
+  readonly query: string;
+}): BotInbox {
+  const room = buildBotRoom(input);
+  const connected = new Map(
+    input.environments.map((environment) => [environment.environmentId, environment.connected]),
+  );
+  const labels = new Map(
+    input.environments.map((environment) => [environment.environmentId, environment.label]),
+  );
+  const heroEnvironment =
+    room.find((environment) => environment.environmentId === input.assistantEnvironmentId) ??
+    room.find((environment) => environment.assistant.project !== null) ??
+    null;
+  const entry = (bot: BotRoomBot) =>
+    inboxEntry(bot, connected.get(bot.environmentId) === true, input.unsentByThreadKey);
+  const hero = heroEnvironment === null ? null : entry(heroEnvironment.assistant);
+  const others = room.flatMap((environment) => [
+    ...(environment === heroEnvironment || environment.assistant.project === null
+      ? []
+      : [environment.assistant]),
+    ...environment.extraAssistants,
+    ...environment.specialists,
+  ]);
+  const all = [...(hero === null ? [] : [hero]), ...others.map(entry)];
+  const labelled = all.map((candidate) => {
+    const extraAssistant = candidate !== hero && candidate.bot.role === "assistant";
+    const sharesName = all.some(
+      (other) =>
+        other !== candidate &&
+        other.bot.environmentId !== candidate.bot.environmentId &&
+        nameKey(other) === nameKey(candidate),
+    );
+    return extraAssistant || sharesName
+      ? { ...candidate, hostLabel: labels.get(candidate.bot.environmentId) ?? null }
+      : candidate;
+  });
+  const query = input.query.trim().toLocaleLowerCase();
+  if (query.length > 0) {
+    return {
+      hero: null,
+      rows: labelled.filter((candidate) => matchesInboxQuery(candidate, query)),
+    };
+  }
+  return hero === null
+    ? { hero: null, rows: labelled.sort(newestActivityFirst) }
+    : { hero: labelled[0]!, rows: labelled.slice(1).sort(newestActivityFirst) };
+}
+
+/** A bot's open threads besides its main conversation, for the count on its Threads button. */
+export function botSecondaryThreadCount(
+  project: Pick<EnvironmentProject, "environmentId" | "id" | "botMainThreadId">,
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+): { readonly open: number; readonly needsYou: boolean } {
+  let open = 0;
+  let needsYou = false;
+  for (const thread of threads) {
+    if (
+      thread.environmentId !== project.environmentId ||
+      thread.projectId !== project.id ||
+      thread.archivedAt !== null ||
+      thread.id === project.botMainThreadId
+    ) {
+      continue;
+    }
+    open += 1;
+    if (botThreadStatus(thread) === "needs-you") needsYou = true;
+  }
+  return { open, needsYou };
+}
+
+export function botThreadsAccessibilityLabel(badge: {
+  readonly open: number;
+  readonly needsYou: boolean;
+}): string {
+  if (badge.open === 0) return "Threads";
+  const count = `${badge.open} open ${badge.open === 1 ? "thread" : "threads"}`;
+  return badge.needsYou ? `Threads, ${count}, one needs you` : `Threads, ${count}`;
 }

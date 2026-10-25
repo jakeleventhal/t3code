@@ -50,6 +50,7 @@ import * as AttachmentHandlers from "./toolkits/attachment/handlers.ts";
 import { ThreadToolkit } from "./toolkits/thread/tools.ts";
 import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
 import * as ThreadMetadataMcpService from "./ThreadMetadataMcpService.ts";
+import * as PeerEnvironmentService from "./PeerEnvironmentService.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
 import * as OrchestratorHandlers from "./toolkits/orchestrator/handlers.ts";
@@ -1099,6 +1100,6 @@ export const layerTools = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-);
+).pipe(Layer.provide(PeerEnvironmentService.layer));
 
 export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));

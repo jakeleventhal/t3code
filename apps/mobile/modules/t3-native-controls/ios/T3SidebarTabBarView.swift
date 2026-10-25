@@ -48,6 +48,9 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     didSet {
       composeButton.isHidden = !showsCompose
       tabBarTrailing.constant = showsCompose ? (compact ? -64 : -76) : 0
+      // JS widens this view by the same amount the bar gives up, so the bar's frame can stay put
+      // and UIKit would skip the layout pass that places Compose, leaving it at the origin.
+      tabBar.setNeedsLayout()
       setNeedsLayout()
     }
   }

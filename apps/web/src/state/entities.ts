@@ -26,6 +26,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
+import { supportsBotRuntimeSettings } from "@t3tools/client-runtime/bot-turn-settings";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";
@@ -327,6 +328,16 @@ export function useEnvironmentSupportsBotConversations(
   return (
     environmentId !== null &&
     configs.get(environmentId)?.environment.capabilities.botConversations === true
+  );
+}
+
+export function useEnvironmentSupportsBotRuntimeSettings(
+  environmentId: EnvironmentId | null,
+): boolean {
+  const configs = useServerConfigs();
+  return (
+    environmentId !== null &&
+    supportsBotRuntimeSettings(configs.get(environmentId)?.environment.capabilities)
   );
 }
 

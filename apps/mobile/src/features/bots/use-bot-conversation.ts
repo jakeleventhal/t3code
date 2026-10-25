@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useNavigation } from "@react-navigation/native";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -11,6 +12,11 @@ import {
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
+import {
+  resolveBotTurnReadiness,
+  resolveNewBotHost,
+  type NewBotHost,
+} from "@t3tools/client-runtime/bot-turn-settings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { Atom } from "effect/reactivity";
 import { useCallback, useRef, useState } from "react";
@@ -26,27 +32,30 @@ import { botEnvironment } from "../../state/bots";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useStickyComposerModelSelection } from "../../state/use-composer-drafts";
+import { useBotHostCandidates } from "./use-assistant";
 
 const NO_ENVIRONMENT_PERMISSION = Atom.make(false).pipe(
   Atom.withLabel("mobile-bots:no-environment"),
 );
 
 /**
- * Model settings for a conversation the server has to create. They only seed new conversations;
- * an existing one keeps its own model, which is changed from the chat like any thread.
+ * Model settings for a conversation the server has to create, from the bot's own choice or the
+ * bot defaults, else the environment's defaults for new threads. A configured model that can't
+ * run here is reported, never swapped for another. `defaults` is null when nothing can run.
  */
 function useBotConversationDefaults(environmentId: EnvironmentId | null) {
   const config = useEnvironmentServerConfig(environmentId);
   const sticky = useStickyComposerModelSelection();
-  if (config === null) return null;
-  const { settings } = resolveProjectSettings(config.settings ?? DEFAULT_SERVER_SETTINGS, null);
+  if (config === null) return { defaults: null, resolve: () => null };
+  const serverSettings = config.settings ?? DEFAULT_SERVER_SETTINGS;
+  const { settings } = resolveProjectSettings(serverSettings, null);
   const projectDefaultSelection = resolveDefaultableModelSelection(
     config,
     settings.defaultModelSelection,
     null,
   );
   const stickySelection = resolveDefaultableModelSelection(config, sticky, null);
-  const modelSelection = resolveNewTaskModelSelection({
+  const environmentSelection = resolveNewTaskModelSelection({
     draftSelection: null,
     projectDefaultSelection,
     stickySelection,
@@ -57,14 +66,52 @@ function useBotConversationDefaults(environmentId: EnvironmentId | null) {
       null,
     ),
   });
-  return modelSelection === null
-    ? null
-    : {
-        modelSelection,
-        runtimeMode: settings.defaultRuntimeMode,
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        creationSource: "mobile" as const,
-      };
+  const fallbackSelection =
+    environmentSelection ?? serverSettings.botDefaults.defaultModelSelection;
+  if (fallbackSelection === null) return { defaults: null, resolve: () => null };
+  const fallback = { modelSelection: fallbackSelection, runtimeMode: settings.defaultRuntimeMode };
+  const resolve = (projectId: ProjectId | null) => {
+    const readiness = resolveBotTurnReadiness({
+      settings: serverSettings,
+      projectId,
+      fallback,
+      providers: config.providers,
+    });
+    return readiness.kind === "setup-needed"
+      ? readiness
+      : {
+          kind: "ready" as const,
+          input: {
+            modelSelection: readiness.modelSelection,
+            runtimeMode: readiness.runtimeMode,
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            creationSource: "mobile" as const,
+          },
+        };
+  };
+  return { defaults: fallback, resolve };
+}
+
+/** Says why a bot can't start and offers its model settings instead of picking another model. */
+function useReportSetupNeeded(environmentId: EnvironmentId | null) {
+  const navigation = useNavigation();
+  return (title: string, reason: string, projectId: ProjectId | null) => {
+    if (environmentId === null) return;
+    Dialog.alert(`${title} needs setup`, `${reason} Choose a model that’s set up here.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Bot settings",
+        onPress: () =>
+          navigation.navigate("SettingsSheet", {
+            screen: "SettingsContent",
+            params: {
+              screen: "SettingsBotTurn",
+              params: { environmentId, ...(projectId === null ? {} : { projectId }) },
+            },
+          }),
+      },
+    ]);
+  };
 }
 
 function reportFailure(title: string, detail: string) {
@@ -99,7 +146,8 @@ export function useBotAvailability(environmentId: EnvironmentId | null) {
  * unless this device can only read. Nothing here runs without a user action.
  */
 export function useOpenBotConversation(environmentId: EnvironmentId | null) {
-  const defaults = useBotConversationDefaults(environmentId);
+  const { defaults, resolve } = useBotConversationDefaults(environmentId);
+  const reportSetupNeeded = useReportSetupNeeded(environmentId);
   const { canStart, reason } = useBotAvailability(environmentId);
   const open = useAtomCommand(botEnvironment.open, {
     label: "bots open",
@@ -122,11 +170,16 @@ export function useOpenBotConversation(environmentId: EnvironmentId | null) {
         reportFailure(`Can’t open ${input.title}`, reason ?? READ_ONLY_REASON);
         return null;
       }
-      if (defaults === null) {
+      const settings = resolve(input.projectId);
+      if (settings === null) {
         reportFailure(
           `Can’t open ${input.title}`,
           "No model is available on this environment. Set up a provider, then try again.",
         );
+        return null;
+      }
+      if (settings.kind === "setup-needed") {
+        reportSetupNeeded(input.title, settings.reason, input.projectId);
         return null;
       }
       inFlight.current = true;
@@ -134,7 +187,7 @@ export function useOpenBotConversation(environmentId: EnvironmentId | null) {
       const result = await open({
         environmentId,
         input: {
-          ...defaults,
+          ...settings.input,
           ...(input.projectId === null ? {} : { projectId: input.projectId }),
         },
       });
@@ -146,13 +199,35 @@ export function useOpenBotConversation(environmentId: EnvironmentId | null) {
       }
       return null;
     },
-    [canStart, reason, defaults, environmentId, open],
+    [canStart, reason, resolve, reportSetupNeeded, environmentId, open],
   );
   return { open: run, pending, canStart, reason, defaults };
 }
 
-export function useCreateBot(environmentId: EnvironmentId | null) {
-  const defaults = useBotConversationDefaults(environmentId);
+/**
+ * Where a new bot goes: the default host saved on the Assistant's environment, else that
+ * environment. Null until there is an Assistant environment.
+ */
+function useNewBotHost(sourceEnvironmentId: EnvironmentId | null): NewBotHost | null {
+  const config = useEnvironmentServerConfig(sourceEnvironmentId);
+  const candidates = useBotHostCandidates();
+  if (sourceEnvironmentId === null) return null;
+  return resolveNewBotHost({
+    sourceEnvironmentId,
+    defaultBotEnvironmentId: config?.settings.defaultBotEnvironmentId ?? null,
+    environments: candidates,
+  });
+}
+
+/**
+ * Creates a specialist on the default host for new bots, with that host's own model settings.
+ * An unavailable host is reported; the bot never lands somewhere else instead.
+ */
+export function useCreateBot(sourceEnvironmentId: EnvironmentId | null) {
+  const host = useNewBotHost(sourceEnvironmentId);
+  const environmentId = host?.kind === "ready" ? host.environmentId : null;
+  const { defaults, resolve } = useBotConversationDefaults(environmentId);
+  const reportSetupNeeded = useReportSetupNeeded(environmentId);
   const create = useAtomCommand(botEnvironment.create, {
     label: "bots create",
     reportFailure: false,
@@ -162,10 +237,19 @@ export function useCreateBot(environmentId: EnvironmentId | null) {
   const commandId = useRef(CommandId.make(uuidv4()));
   const run = useCallback(
     async (name: string) => {
-      if (environmentId === null || defaults === null) return null;
+      if (host?.kind === "unavailable") {
+        reportFailure("Can’t create bot", host.reason);
+        return null;
+      }
+      const settings = resolve(null);
+      if (environmentId === null || settings === null) return null;
+      if (settings.kind === "setup-needed") {
+        reportSetupNeeded("This bot", settings.reason, null);
+        return null;
+      }
       const result = await create({
         environmentId,
-        input: { ...defaults, commandId: commandId.current, name },
+        input: { ...settings.input, commandId: commandId.current, name },
       });
       if (result._tag === "Success") {
         commandId.current = CommandId.make(uuidv4());
@@ -176,7 +260,14 @@ export function useCreateBot(environmentId: EnvironmentId | null) {
       }
       return null;
     },
-    [create, defaults, environmentId],
+    [create, host, resolve, reportSetupNeeded, environmentId],
   );
-  return { create: run, ready: defaults !== null };
+  const settings = resolve(null);
+  return {
+    create: run,
+    host,
+    environmentId,
+    ready: defaults !== null,
+    setupNeeded: settings?.kind === "setup-needed" ? settings.reason : null,
+  };
 }

@@ -50,6 +50,7 @@ import {
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
+import { forgetSessionGrant } from "../state/answeredSessionGrants";
 import { isHostedStaticApp } from "../hostedPairing";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { randomUUID } from "../lib/utils";
@@ -794,6 +795,7 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
     clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")(function (environmentId) {
       return Effect.sync(() => {
         clearComposerDraftsEnvironment(environmentId);
+        forgetSessionGrant(environmentId);
       });
     }),
   }),

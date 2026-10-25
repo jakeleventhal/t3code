@@ -17,6 +17,8 @@ import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { resolveRuntimeMode } from "../../OrchestratorMcpService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 import { ProjectToolkit } from "./tools.ts";
 
 function projectFailure(error: Project.ProjectServiceError) {
@@ -55,6 +57,16 @@ const access = Effect.gen(function* () {
   return yield* Project.ProjectService;
 });
 export const layer = McpToolAccess.toLayer(ProjectToolkit, {
+  t3_bot_thread_create: McpToolAccess.writesThreads(
+    () => [],
+    (input) =>
+      BotService.BotService.pipe(
+        Effect.flatMap((bots) =>
+          bots.createThread(input, { createdBy: "agent", creationSource: "mcp" }),
+        ),
+        Effect.mapError(unavailable),
+      ),
+  ),
   t3_bot_files: McpToolAccess.reads((input) =>
     BotService.BotService.pipe(
       Effect.flatMap((bots) => bots.files(input)),
@@ -97,6 +109,27 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
     (input) => input,
     (input, { runtimeMode, interactionMode }) =>
       Effect.gen(function* () {
+        const invocation = yield* McpInvocationContext.McpInvocationContext;
+        if (PeerEnvironmentService.isPeerSelector(invocation, input.environmentId)) {
+          if (input.workspaceStrategy?.type === "existing_worktree")
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "existing_worktree is not supported when launching on another environment.",
+            });
+          if (input.scratch === true || (input.attachments ?? []).length > 0)
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message:
+                "scratch and attachments are not supported when launching on another environment.",
+            });
+          const peers = yield* PeerEnvironmentService.PeerEnvironmentService;
+          return yield* peers.launchThread(invocation, {
+            ...input,
+            runtimeMode,
+            interactionMode,
+            environmentId: input.environmentId,
+          });
+        }
         const context = yield* readCaller();
         const { caller } = context;
         const commandId = yield* newCommandId();

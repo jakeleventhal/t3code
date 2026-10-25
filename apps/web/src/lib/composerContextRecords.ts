@@ -17,6 +17,7 @@ import type {
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
   PreviewAnnotationPayload,
+  ReferenceContextRecord,
   ReviewCommentContextRecord,
   ScopedThreadRef,
   TerminalContextRecord,
@@ -157,8 +158,8 @@ function threadContextId(threadId: ThreadId): ComposerContextId {
   return toKindScopedComposerContextId("thread", threadId);
 }
 
-export function threadContextReference(record: ThreadContextRecord): ComposerContextReference {
-  return { kind: "thread", contextId: record.contextId, label: record.label };
+export function threadContextReference(record: ReferenceContextRecord): ComposerContextReference {
+  return { kind: record.kind, contextId: record.contextId, label: record.label };
 }
 
 export function threadContextRecord(ref: ScopedThreadRef, title: string): ThreadContextRecord {
@@ -313,7 +314,7 @@ export function buildMessageContext(input: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
-  threadContexts?: ReadonlyArray<ThreadContextRecord>;
+  threadContexts?: ReadonlyArray<ReferenceContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
