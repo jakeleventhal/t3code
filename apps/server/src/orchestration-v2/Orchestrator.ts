@@ -5250,6 +5250,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection,
       command.dispatchMode,
       command.deliveryIntent,
+      Option.isSome(project) && project.value.botRole != null,
     );
     if (dispatchMode.type === "steer_active") {
       const targetRunId = dispatchMode.targetRunId;
@@ -12433,11 +12434,55 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       : threadDispatch.withLock(parentThreadId, dispatch);
   });
 
+  const steerBufferedBotMessages = Effect.fn("Orchestrator.steerBufferedBotMessages")(function* (
+    threadId: ThreadId,
+  ) {
+    const state = yield* projectionStore.getThreadRecords(threadId, ["runs"]);
+    if (!state.runs.some((run) => run.status === "queued")) return;
+    const project = yield* projects.get(state.thread.projectId);
+    if (Option.isNone(project) || project.value.botRole == null) return;
+    let projection = yield* readCommandProjection(threadId);
+    // Input accepted before the provider starts joins that turn as soon as it
+    // can steer. Held queues and automatic completion deliveries keep their semantics.
+    for (const queued of queuedRunsInDeliveryOrder(projection)) {
+      if (queued.queueHeld === true) return;
+      const message = projection.messages.find((item) => item.id === queued.userMessageId);
+      if (
+        !message ||
+        message.notification ||
+        message.delegatedCompletion ||
+        isNativeMaintenanceCommand(message) ||
+        isGoalCommand(message)
+      )
+        continue;
+      const mode = resolveMessageDispatchIntent(
+        projection,
+        { type: "start_immediately" },
+        "auto",
+        true,
+      );
+      if (mode.type !== "steer_active" && mode.type !== "restart_active") return;
+      const target = projection.runs.find((run) => run.id === mode.targetRunId);
+      if (target?.status !== "running") return;
+      yield* dispatchWithReceiptEffect({
+        type: "queued-message.promote-to-steer",
+        commandId: CommandId.make(`command:bot-buffer:${queued.id}:${target.activeAttemptId}`),
+        threadId,
+        queuedRunId: queued.id,
+        targetRunId: target.id,
+      });
+      projection = yield* readCommandProjection(threadId);
+    }
+  });
+
   const handleRunUpdate = Effect.fn("Orchestrator.handleRunUpdate")(
     function* (stored: OrchestrationV2StoredEvent) {
       if (stored.event.type !== "run.updated") return;
       const threadId = stored.event.threadId;
       const run = stored.event.payload;
+      if (run.status === "running" || run.status === "queued") {
+        yield* threadDispatch.withLock(threadId, steerBufferedBotMessages(threadId));
+      }
       // Take parent and child locks sequentially, never nested: delegation holds the parent
       // while writing child events, so nesting parent inside child would invert the order.
       // The keyed semaphores are neither reentrant nor deadlock-aware.
@@ -12493,6 +12538,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ((stored.event.payload.delegatedTaskId !== undefined &&
             (stored.event.payload.status === "queued" ||
               stored.event.payload.status === "starting")) ||
+            stored.event.payload.status === "running" ||
+            stored.event.payload.status === "queued" ||
             stored.event.payload.status === "completed" ||
             stored.event.payload.status === "interrupted" ||
             stored.event.payload.status === "failed" ||
@@ -12500,6 +12547,29 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             stored.event.payload.status === "rolled_back"),
       ),
       Stream.runForEach(handleRunUpdate),
+      Effect.forkDetach,
+    );
+
+  yield* eventSink
+    .stream({ afterSequence: terminalEventsAfterSequence, eventType: "provider-turn.updated" })
+    .pipe(
+      Stream.filter(
+        (stored) =>
+          stored.event.type === "provider-turn.updated" &&
+          stored.event.payload.status === "running",
+      ),
+      Stream.runForEach((stored) =>
+        threadDispatch
+          .withLock(stored.event.threadId, steerBufferedBotMessages(stored.event.threadId))
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to steer buffered bot input", {
+                threadId: stored.event.threadId,
+                cause,
+              }),
+            ),
+          ),
+      ),
       Effect.forkDetach,
     );
 

@@ -1,3 +1,4 @@
+import { VOICE_PREVIEW_TEXT } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,6 +31,8 @@ export class VoiceApiError extends Schema.TaggedError<VoiceApiError>()("VoiceApi
   }
 }
 
+const isVoiceApiError = Schema.is(VoiceApiError);
+
 interface LiveSessionInput {
   readonly apiKey: Redacted.Redacted<string>;
   readonly model: string;
@@ -55,6 +58,10 @@ const GrokClientSecret = Schema.Struct({
 export class VoiceApi extends Context.Service<
   VoiceApi,
   {
+    readonly previewGrok: (input: {
+      readonly apiKey: Redacted.Redacted<string>;
+      readonly voice: string;
+    }) => Effect.Effect<string, VoiceApiError>;
     readonly openLive: (
       input: LiveSessionInput,
     ) => Effect.Effect<typeof LiveConnection.Type, VoiceApiError>;
@@ -108,6 +115,43 @@ const make = Effect.gen(function* () {
       ),
     );
   }, Effect.scoped);
+
+  const previewGrok = Effect.fn("VoiceApi.previewGrok")(
+    function* (input: { readonly apiKey: Redacted.Redacted<string>; readonly voice: string }) {
+      const request = yield* HttpClientRequest.post("https://api.x.ai/v1/tts").pipe(
+        HttpClientRequest.bearerToken(input.apiKey),
+        HttpClientRequest.bodyJson({
+          text: VOICE_PREVIEW_TEXT,
+          voice_id: input.voice,
+          language: "en",
+          output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
+        }),
+      );
+      const response = yield* client.execute(request);
+      if (response.status < 200 || response.status >= 300)
+        return yield* new VoiceApiError({
+          provider: "grok",
+          reason:
+            response.status === 401 || response.status === 403
+              ? "credentials-refused"
+              : response.status === 429
+                ? "rate-limited"
+                : "request-failed",
+          status: response.status,
+        });
+      const bytes = yield* response.arrayBuffer;
+      if (bytes.byteLength > 1_000_000)
+        return yield* new VoiceApiError({ provider: "grok", reason: "invalid-response" });
+      return `data:audio/mpeg;base64,${Buffer.from(bytes).toString("base64")}`;
+    },
+    Effect.scoped,
+    Effect.timeout("20 seconds"),
+    Effect.mapError((cause) =>
+      isVoiceApiError(cause)
+        ? cause
+        : new VoiceApiError({ provider: "grok", reason: "request-failed", cause }),
+    ),
+  );
 
   const openLive = Effect.fn("VoiceApi.openLive")(function* (input: LiveSessionInput) {
     // Replaying a timed-out creation can create a second billable call, so this request never retries.
@@ -166,7 +210,7 @@ const make = Effect.gen(function* () {
     );
   });
 
-  return VoiceApi.of({ openLive, grokClientSecret });
+  return VoiceApi.of({ openLive, grokClientSecret, previewGrok });
 });
 
 export const layer = Layer.effect(VoiceApi, make);

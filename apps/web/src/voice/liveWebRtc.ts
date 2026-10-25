@@ -1,3 +1,4 @@
+import { VoiceCallSetupError } from "@t3tools/client-runtime/voice-call";
 import { openLiveMedia, type LiveMediaInput } from "@t3tools/client-runtime/voice-call/live-media";
 
 /** Browser media stays on WebRTC; the environment receives only the SDP offer. */
@@ -34,20 +35,30 @@ export function openLiveWebRtc(input: LiveMediaInput) {
     });
     return {
       async offer() {
-        const captured = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: false,
-        });
-        if (stopped) {
-          for (const track of captured.getTracks()) track.stop();
-          throw new Error("The voice connection was cancelled.");
-        }
-        microphone = captured;
-        for (const track of captured.getAudioTracks()) {
-          track.addEventListener("ended", () => {
-            if (!stopped) events.fail("Microphone access ended.");
-          });
-          peer.addTrack(track, captured);
+        if (input.playbackOnly) {
+          peer.addTransceiver("audio", { direction: "recvonly" });
+        } else {
+          const captured = await navigator.mediaDevices
+            .getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+              video: false,
+            })
+            .catch(() => {
+              throw new VoiceCallSetupError(
+                "Microphone access failed. Allow microphone access for T3 Code in your browser and system settings, then try again.",
+              );
+            });
+          if (stopped) {
+            for (const track of captured.getTracks()) track.stop();
+            throw new Error("The voice connection was cancelled.");
+          }
+          microphone = captured;
+          for (const track of captured.getAudioTracks()) {
+            track.addEventListener("ended", () => {
+              if (!stopped) events.fail("Microphone access ended.");
+            });
+            peer.addTrack(track, captured);
+          }
         }
         const offer = await peer.createOffer();
         if (stopped) throw new Error("The voice connection was cancelled.");

@@ -1,4 +1,7 @@
-import type { VoiceCatalog, VoiceSelection } from "@t3tools/contracts";
+import { PlayIcon, SquareIcon } from "lucide-react";
+import { Button } from "../ui/button";
+import { useVoicePreview } from "../../voice/useVoicePreview";
+import type { EnvironmentId, VoiceCatalog, VoiceSelection } from "@t3tools/contracts";
 
 import {
   Select,
@@ -28,6 +31,7 @@ export type VoicePickerChange =
  * account (and who bills for it) is visible right where the voice is chosen.
  */
 export function VoiceSelectionPicker({
+  environmentId,
   catalog,
   selection,
   inherit,
@@ -36,6 +40,7 @@ export function VoiceSelectionPicker({
   className,
   onChange,
 }: {
+  environmentId: EnvironmentId;
   catalog: VoiceCatalog | null;
   selection: VoiceSelection | null;
   /** Offers following the default; `active` means the value shown is inherited. */
@@ -45,6 +50,7 @@ export function VoiceSelectionPicker({
   className?: string;
   onChange: (change: VoicePickerChange) => void;
 }) {
+  const preview = useVoicePreview(environmentId);
   const groups = voiceOptionGroups(catalog);
   const value = inherit?.active
     ? INHERIT_VALUE
@@ -75,6 +81,11 @@ export function VoiceSelectionPicker({
         </SelectValue>
       </SelectTrigger>
       <SelectPopup align="end" alignItemWithTrigger={false}>
+        {preview.error ? (
+          <p role="alert" className="max-w-72 whitespace-normal p-2 text-sm text-destructive">
+            {preview.error}
+          </p>
+        ) : null}
         {inherit ? (
           <SelectItem hideIndicator value={INHERIT_VALUE}>
             {inherit.label}
@@ -86,11 +97,33 @@ export function VoiceSelectionPicker({
         {groups.map((group) => (
           <SelectGroup key={group.key}>
             <SelectGroupLabel>{group.label}</SelectGroupLabel>
-            {group.voices.map((voice) => (
-              <SelectItem key={voice.key} hideIndicator value={voice.key}>
-                {voice.label}
-              </SelectItem>
-            ))}
+            {group.voices.map((voice) => {
+              const selected = parseVoiceSelectionKey(voice.key);
+              const connection = catalog?.connections.find(
+                (entry) => entry.id === selected?.connectionId,
+              );
+              const playing = preview.playing === JSON.stringify(selected);
+              return (
+                <div key={voice.key} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <SelectItem hideIndicator value={voice.key}>
+                      {voice.label}
+                    </SelectItem>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${playing ? "Stop" : "Preview"} ${voice.label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (selected && connection) void preview.play(selected, connection.kind);
+                    }}
+                  >
+                    {playing ? <SquareIcon /> : <PlayIcon />}
+                  </Button>
+                </div>
+              );
+            })}
           </SelectGroup>
         ))}
       </SelectPopup>

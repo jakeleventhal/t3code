@@ -30,12 +30,22 @@ export function resolveComposerSendPresentation(input: {
   readonly canSteer: boolean;
   readonly followUpBehavior: FollowUpBehavior;
   readonly deliveryDeferred: boolean;
+  readonly bot?: boolean;
 }): ComposerSendPresentation {
   if (input.editingQueuedMessage) {
     return {
       label: "Update queued message",
       icon: "checkmark",
       action: null,
+      alternate: null,
+      offersFollowUpChoice: false,
+    };
+  }
+  if (input.bot) {
+    return {
+      label: input.deliveryDeferred ? "Queue" : "Send",
+      icon: input.deliveryDeferred ? "tray.and.arrow.up" : "arrow.up",
+      action: input.running && !input.deliveryDeferred ? "steer" : null,
       alternate: null,
       offersFollowUpChoice: false,
     };

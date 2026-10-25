@@ -7,6 +7,7 @@ import { Platform, Pressable, ScrollView, View, type TextInputInstance } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollViewMarker } from "react-native-screens";
 
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -115,14 +116,26 @@ function InboxAvatar(props: { readonly entry: BotInboxEntry; readonly size: numb
   );
 }
 
-function UnreadDot() {
-  const { colors } = useControlTheme();
+function InboxBadges({ entry }: { readonly entry: BotInboxEntry }) {
   return (
-    <View
-      accessible={false}
-      className="size-2.5 rounded-full"
-      style={{ backgroundColor: colors["--color-primary-text"] }}
-    />
+    <View className="flex-row items-center gap-1.5">
+      {entry.needsAttention ? (
+        <SymbolView
+          name="exclamationmark.circle"
+          size={18}
+          tintColorClassName="accent-warning-foreground"
+          accessibilityLabel="Needs attention"
+        />
+      ) : null}
+      {entry.unread ? (
+        <SymbolView
+          name="text.bubble"
+          size={16}
+          tintColorClassName="accent-primary-text"
+          accessibilityLabel="Unread reply"
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -133,6 +146,7 @@ function InboxSummary(props: {
   readonly time?: string | null;
   readonly centered?: boolean;
   readonly numberOfLines: number;
+  readonly showPreview?: boolean;
 }) {
   const { entry } = props;
   const status =
@@ -147,7 +161,8 @@ function InboxSummary(props: {
           ? { label: "Working", className: "font-t3-medium text-primary-text" }
           : null;
   // A thread that needs the user says more than the main conversation's last line.
-  const preview = props.reason ?? (entry.needsThread ? null : entry.preview);
+  const preview =
+    props.reason ?? (entry.needsThread || props.showPreview === false ? null : entry.preview);
   const parts = [unsentLabel(entry.unsent), preview, props.time ?? null].filter(
     (part) => part !== null,
   );
@@ -169,7 +184,7 @@ function unsentLabel(count: number): string | null {
   return count === 0 ? null : `${count} waiting to send`;
 }
 
-function accessibilityLabel(entry: BotInboxEntry, reason: string | null) {
+function accessibilityLabel(entry: BotInboxEntry, reason: string | null, showPreview = true) {
   const status =
     entry.status === "offline"
       ? "Offline"
@@ -186,7 +201,7 @@ function accessibilityLabel(entry: BotInboxEntry, reason: string | null) {
     entry.hostLabel,
     status,
     unsentLabel(entry.unsent),
-    reason ?? entry.preview,
+    reason ?? (showPreview ? entry.preview : null),
     time === null ? null : time === "<1m" ? "just now" : `${time} ago`,
     entry.unread ? "New reply" : null,
   ]
@@ -201,7 +216,7 @@ function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel(entry, opener.reason)}
+      accessibilityLabel={accessibilityLabel(entry, opener.reason, false)}
       accessibilityState={{ disabled: opener.disabled, selected: props.selected }}
       disabled={opener.disabled || opener.pending}
       onPress={opener.open}
@@ -228,17 +243,13 @@ function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected
             {entry.hostLabel}
           </Text>
         ) : null}
-        {opener.pending ? (
-          <AppActivityIndicator size="small" />
-        ) : entry.unread ? (
-          <UnreadDot />
-        ) : null}
+        {opener.pending ? <AppActivityIndicator size="small" /> : <InboxBadges entry={entry} />}
       </View>
       <View className="max-w-[300px]">
         <InboxSummary
           entry={entry}
           reason={opener.reason}
-          time={inboxTime(entry.activityAt)}
+          showPreview={false}
           centered
           numberOfLines={2}
         />
@@ -296,11 +307,7 @@ function BotInboxRow(props: { readonly entry: BotInboxEntry; readonly selected: 
           </View>
           <View className="flex-row items-center gap-2">
             <InboxSummary entry={entry} reason={opener.reason} numberOfLines={1} />
-            {opener.pending ? (
-              <AppActivityIndicator size="small" />
-            ) : entry.unread ? (
-              <UnreadDot />
-            ) : null}
+            {opener.pending ? <AppActivityIndicator size="small" /> : <InboxBadges entry={entry} />}
           </View>
         </View>
       </View>

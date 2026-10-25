@@ -2767,6 +2767,7 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.botsOpen]: (input) => bots.open(input),
         [WS_METHODS.botsCreate]: (input) => bots.create(input),
+        [WS_METHODS.botsVoicePreview]: (input) => voiceSessions.preview(input),
         [WS_METHODS.botsVoiceCatalog]: () => voiceConfiguration.catalog(),
         [WS_METHODS.botsVoiceTranscript]: (input) => voiceCalls.transcript(input),
         [WS_METHODS.botsVoiceActive]: () => voiceCalls.active(),

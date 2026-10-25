@@ -1,3 +1,4 @@
+import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   AuthProvidersManageScope,
   type EnvironmentId,
@@ -167,7 +168,11 @@ function VoiceSettingsContent({
       />
       {scopedProject === undefined ? (
         <>
-          <DefaultVoiceSection catalog={catalog} selection={settings.voiceSelection} />
+          <DefaultVoiceSection
+            environmentId={environment.environmentId}
+            catalog={catalog}
+            selection={settings.voiceSelection}
+          />
           <BotVoicesSection
             environment={environment}
             settings={settings}
@@ -213,6 +218,7 @@ function ScopedBotVoiceSection({
         }
         control={
           <VoiceSelectionPicker
+            environmentId={bot.environmentId}
             catalog={catalog}
             selection={selection}
             inherit={{ label: `Default · ${defaultLabel}`, active: inherited }}
@@ -231,9 +237,11 @@ function ScopedBotVoiceSection({
 }
 
 function DefaultVoiceSection({
+  environmentId,
   catalog,
   selection,
 }: {
+  environmentId: EnvironmentId;
   catalog: VoiceCatalog | null;
   selection: ServerSettings["voiceSelection"];
 }) {
@@ -248,6 +256,7 @@ function DefaultVoiceSection({
         status={<VoiceStatus description={describeVoiceSelection(selection, catalog)} />}
         control={
           <VoiceSelectionPicker
+            environmentId={environmentId}
             catalog={catalog}
             selection={selection}
             ariaLabel="Default bot voice"
@@ -316,6 +325,7 @@ function BotVoicesSection({
               }
               control={
                 <VoiceSelectionPicker
+                  environmentId={bot.environmentId}
                   catalog={catalog}
                   selection={voice.selection}
                   inherit={{ label: `Default · ${defaultLabel}`, active: !own }}
@@ -343,7 +353,7 @@ const DEFAULT_ACCOUNT_NAMES: Readonly<Record<VoiceConnectionKind, string>> = {
 // Mirrors the server's subscription voice eligibility: an enabled Codex instance using its own
 // CLI login. Connect with ChatGPT sharing accounts can't open subscription voice.
 function codexInstances(settings: ServerSettings) {
-  return Object.entries(settings.providerInstances).flatMap(([id, instance]) =>
+  return Object.entries(voiceProviderInstances(settings)).flatMap(([id, instance]) =>
     instance.driver === "codex" &&
     resolveProviderInstanceEnabled(instance) &&
     readCodexSetupMode(instance.config) === "existing"

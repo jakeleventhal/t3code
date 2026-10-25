@@ -19,6 +19,10 @@ export function createBotVoiceEnvironmentAtoms<R, E>(
       JSON.stringify([environmentId, input.callId]),
   };
   return {
+    preview: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:voice-preview",
+      tag: WS_METHODS.botsVoicePreview,
+    }),
     readBrowserPage: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:bots:read-browser-page",
       tag: WS_METHODS.previewReadPage,

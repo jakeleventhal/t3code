@@ -41,8 +41,8 @@ Press `mod+shift+space` to open the quick panel from Code, or Assistant's chat
 from Bots and Settings.
 
 On mobile, open **Bots** from the navigation bar. Bots leads with Assistant,
-then your other bots and any older Assistants, labelled with their host; add one
-with **New bot**. In Code, the
+then your other bots; add one with **New bot**. Older Assistants remain available
+through search. Unread and needs-attention badges include the bot’s secondary threads. In Code, the
 Assistant button opens a quick
 sheet on the same conversation with your Assistant, whichever environment the
 thread or pull request you're viewing is on. If the Assistant's environment is
@@ -53,6 +53,9 @@ A message sent from the quick panel or sheet tells Assistant what you're viewing
 on that device. If an in-app browser tab is on screen, the page's text is read
 once, when you send. What's on screen accompanies your request without being
 added to your message in the chat. Assistant doesn't see the page as an image.
+
+Messages sent while a bot is replying steer its current work. If its provider
+requires it, T3 Code interrupts and continues the reply with your new instruction.
 
 On web and desktop, a message you send to a bot whose host is offline waits
 above the composer as **Waiting for connection** and goes out, in the order
@@ -163,3 +166,6 @@ web and desktop) opens that bot's voice choices.
 On web and desktop you can change the bot's voice or the default there without
 leaving the conversation; on mobile it opens the bot's voice settings. A bot's
 voice never changes the provider or model it types and works with.
+
+Use the play button beside a voice to hear a short sample before choosing it.
+Previewing leaves your selected voice and conversations unchanged.

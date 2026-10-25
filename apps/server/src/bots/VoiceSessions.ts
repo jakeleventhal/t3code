@@ -1,5 +1,8 @@
 import {
   CommandId,
+  VOICE_PREVIEW_TEXT,
+  type VoicePreviewInput,
+  type VoicePreviewResult,
   MessageId,
   VoiceConnectionError,
   VoiceWorkError,
@@ -32,6 +35,9 @@ import * as BotContext from "./BotContext.ts";
 export class VoiceSessions extends Context.Service<
   VoiceSessions,
   {
+    readonly preview: (
+      input: VoicePreviewInput,
+    ) => Effect.Effect<VoicePreviewResult, VoiceConnectionError>;
     readonly observeContext: (
       input: VoiceCallContextInput & { readonly owner: string },
     ) => Stream.Stream<string, VoiceCallError | VoiceConnectionError>;
@@ -66,6 +72,55 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const attempted = new Set<string>();
+
+  const preview = Effect.fn("VoiceSessions.preview")(function* (
+    input: VoicePreviewInput,
+  ): Effect.fn.Return<VoicePreviewResult, VoiceConnectionError> {
+    const selected = yield* configuration.resolveSelection(input.selection);
+    if (selected.kind === "xai-api") {
+      const dataUri = yield* api
+        .previewGrok({ apiKey: selected.apiKey, voice: selected.selection.voice })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new VoiceConnectionError({ reason: cause.reason, status: cause.status, cause }),
+          ),
+        );
+      return { kind: "audio", dataUri };
+    }
+    if (!input.sdp) return yield* new VoiceConnectionError({ reason: "transport-mismatch" });
+    const brief = {
+      instructions: `This is a voice preview. Say exactly: "${VOICE_PREVIEW_TEXT}". Do not add anything else or request any tools.`,
+      history: [],
+    };
+    if (selected.kind === "codex-subscription") {
+      return {
+        kind: "webrtc",
+        ...(yield* codexVoice.connect({
+          providerInstanceId: selected.providerInstanceId,
+          voice: selected.selection.voice,
+          sdp: input.sdp,
+          cwd: process.cwd(),
+          ...brief,
+        })),
+      };
+    }
+    const result = yield* api
+      .openLive({
+        apiKey: selected.apiKey,
+        model: selected.selection.model,
+        voice: selected.selection.voice,
+        sdp: input.sdp,
+        ...brief,
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new VoiceConnectionError({ reason: cause.reason, status: cause.status, cause }),
+        ),
+      );
+    return { kind: "webrtc", sessionId: result.session.id, sdp: result.transport.sdp };
+  });
 
   const readContext = Effect.fn("VoiceSessions.readContext")(function* (
     input: VoiceCallContextInput & { readonly owner: string },
@@ -163,14 +218,20 @@ const make = Effect.gen(function* () {
           ...brief,
         })
         .pipe(
-          Effect.mapError((cause) => new VoiceConnectionError({ reason: cause.reason, cause })),
+          Effect.mapError(
+            (cause) =>
+              new VoiceConnectionError({ reason: cause.reason, status: cause.status, cause }),
+          ),
         );
       result = { kind: "openai-live", sessionId: answer.session.id, sdp: answer.transport.sdp };
     } else if (selected.kind === "xai-api" && input.transport.type === "websocket") {
       const secret = yield* api
         .grokClientSecret(selected.apiKey)
         .pipe(
-          Effect.mapError((cause) => new VoiceConnectionError({ reason: cause.reason, cause })),
+          Effect.mapError(
+            (cause) =>
+              new VoiceConnectionError({ reason: cause.reason, status: cause.status, cause }),
+          ),
         );
       result = {
         kind: "grok",
@@ -238,7 +299,7 @@ const make = Effect.gen(function* () {
     (effect, input) => workLocks.withLock(workKey(input), effect),
   );
 
-  return VoiceSessions.of({ observeContext, readContext, connect, startWork });
+  return VoiceSessions.of({ preview, observeContext, readContext, connect, startWork });
 });
 
 export const layer = Layer.effect(VoiceSessions, make);

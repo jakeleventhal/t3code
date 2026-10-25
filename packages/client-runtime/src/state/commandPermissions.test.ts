@@ -73,6 +73,7 @@ describe("command permissions", () => {
           WS_METHODS.botsOpen,
           WS_METHODS.botsCreate,
           WS_METHODS.botsSetAvatar,
+          WS_METHODS.botsVoicePreview,
           WS_METHODS.botsVoiceBegin,
           WS_METHODS.botsVoiceConnect,
           WS_METHODS.botsVoiceContext,

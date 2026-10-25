@@ -1086,7 +1086,7 @@ function useAssistantSend(
           runtimeMode: turn.runtimeMode,
           interactionMode: thread.interactionMode,
           // Never interrupt work Assistant is already doing; the message waits its turn.
-          ...(threadRuntimeIsActive(thread.runtime) ? { dispatchMode: "queue" as const } : {}),
+          dispatchMode: "auto",
           createdAt: new Date().toISOString(),
         },
       });

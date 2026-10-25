@@ -219,3 +219,35 @@ layer("CommandPolicyV2", (it) => {
     }),
   );
 });
+
+it("bot automatic input prefers interrupt/restart over waiting for the whole reply", () => {
+  const projection = dispatchProjection(
+    capabilities((current) => ({
+      ...current,
+      turns: {
+        ...current.turns,
+        supportsActiveSteering: false,
+        supportsQueuedMessages: true,
+        supportsSteeringByInterruptRestart: true,
+      },
+    })),
+  );
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      projection,
+      { type: "start_immediately" },
+      "auto",
+      true,
+    ),
+    { type: "restart_active", targetRunId: activeRunId },
+  );
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      dispatchProjection(baseCapabilities),
+      { type: "start_immediately" },
+      "auto",
+      true,
+    ),
+    { type: "steer_active", targetRunId: activeRunId },
+  );
+});

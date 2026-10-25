@@ -185,6 +185,13 @@ describe("subscriptionVoiceSources", () => {
         },
       }),
     );
-    expect(sources).toEqual([{ id: "personal", label: "Personal" }]);
+    expect(sources).toEqual([
+      { id: "codex", label: "Codex 1" },
+      { id: "personal", label: "Personal" },
+    ]);
   });
+});
+
+it("offers the default Codex subscription before any provider settings are saved", () => {
+  expect(subscriptionVoiceSources(settings({}))).toContainEqual({ id: "codex", label: "Codex 1" });
 });

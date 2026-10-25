@@ -198,3 +198,29 @@ it.effect("times out a stalled provider once and releases its request", () =>
     assert.equal(attempts, 1);
   }),
 );
+
+it.effect("previews the selected Grok voice with only the fixed sample phrase", () => {
+  const requests: HttpClientRequest.HttpClientRequest[] = [];
+  const http = HttpClient.make((request) => {
+    requests.push(request);
+    return Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "audio/mpeg" } }),
+      ),
+    );
+  });
+  return Effect.gen(function* () {
+    const api = yield* VoiceApi.VoiceApi;
+    const result = yield* api.previewGrok({ apiKey: Redacted.make("preview-key"), voice: "ara" });
+    assert.equal(result, "data:audio/mpeg;base64,AQID");
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]!.url, "https://api.x.ai/v1/tts");
+    assert.deepEqual(jsonBody(requests[0]!), {
+      text: "Hey, this is what my voice sounds like.",
+      voice_id: "ara",
+      language: "en",
+      output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
+    });
+  }).pipe(Effect.provide(VoiceApi.layer), Effect.provideService(HttpClient.HttpClient, http));
+});

@@ -30,6 +30,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
   let onSelectionChange = EventDispatcher()
   let onCompose = EventDispatcher()
   private let tabBar = WorkspaceTabBar()
+  private var tabContentFrame: CGRect?
   private let composeButton = UIButton(type: .system)
   private lazy var tabBarTrailing = tabBar.trailingAnchor.constraint(equalTo: trailingAnchor)
   private var itemsByTab: [String: UITabBarItem] = [:]
@@ -76,8 +77,11 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     ])
     // UIKit's floating row changes with window geometry. Follow its laid-out items
     // instead of estimating their position from a second set of safe-area updates.
-    tabBar.onContentLayout = { [weak self] frame in self?.layoutCompose(alongside: frame) }
-    composeButton.accessibilityLabel = "New chat"
+    tabBar.onContentLayout = { [weak self] frame in
+      self?.tabContentFrame = frame
+      self?.layoutCompose(alongside: frame)
+    }
+    composeButton.accessibilityLabel = "New thread"
     composeButton.addAction(UIAction { [weak self] _ in self?.onCompose() }, for: .touchUpInside)
     composeButton.isHidden = true
     addSubview(composeButton)
@@ -124,11 +128,21 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     updateSelection()
   }
 
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    // UIKit may omit accessibility identifiers from its private tab controls. The
+    // public bar frame still gives Compose a trailing slot and a real hit target.
+    guard showsCompose else { return }
+    tabBar.layoutIfNeeded()
+    let contentHeight = max(44, tabBar.bounds.height - tabBar.safeAreaInsets.bottom)
+    layoutCompose(alongside: tabContentFrame ?? CGRect(x: 0, y: 0, width: tabBar.bounds.width, height: contentHeight))
+  }
+
   private func layoutCompose(alongside frame: CGRect) {
     guard showsCompose, frame.height > 0 else { return }
     let row = convert(frame, from: tabBar)
-    let size = row.height + 8
-    composeButton.frame = CGRect(x: row.maxX + 16, y: row.midY - size / 2, width: size, height: size)
+    let size: CGFloat = compact ? 56 : 64
+    composeButton.frame = CGRect(x: bounds.width - size - 4, y: row.midY - size / 2, width: size, height: size)
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

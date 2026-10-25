@@ -1,3 +1,4 @@
+import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   VoiceConnectionError,
   type ProjectId,
@@ -138,6 +139,15 @@ export class VoiceConfiguration extends Context.Service<
       ),
       VoiceConnectionError
     >;
+    readonly resolveSelection: (
+      selection: VoiceSelection,
+    ) => Effect.Effect<
+      { readonly selection: VoiceSelection } & (
+        | { readonly kind: "openai-api" | "xai-api"; readonly apiKey: Redacted.Redacted<string> }
+        | { readonly kind: "codex-subscription"; readonly providerInstanceId: ProviderInstanceId }
+      ),
+      VoiceConnectionError
+    >;
   }
 >()("t3/bots/VoiceConfiguration") {}
 
@@ -149,8 +159,9 @@ const make = Effect.gen(function* () {
       connections: Object.entries(current.voiceConnections).map(([id, connection]) => {
         if (connection.kind === "codex-subscription") {
           const available =
-            subscriptionVoiceConfig(current.providerInstances[connection.providerInstanceId]) !==
-            null;
+            subscriptionVoiceConfig(
+              voiceProviderInstances(current)[connection.providerInstanceId],
+            ) !== null;
           return {
             id,
             kind: connection.kind,
@@ -174,16 +185,16 @@ const make = Effect.gen(function* () {
       }),
     };
   });
-  const resolve = Effect.fn("VoiceConfiguration.resolve")(function* (projectId: ProjectId) {
+  const resolveSelection = Effect.fn("VoiceConfiguration.resolveSelection")(function* (
+    selection: VoiceSelection,
+  ) {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => new VoiceConnectionError({ reason: "storage", cause })),
     );
-    const selection = resolveProjectSettings(current, projectId).settings.voiceSelection;
-    if (selection === null) return yield* new VoiceConnectionError({ reason: "not-configured" });
     const connection = current.voiceConnections[selection.connectionId];
     if (connection?.kind === "codex-subscription") {
       if (
-        subscriptionVoiceConfig(current.providerInstances[connection.providerInstanceId]) ===
+        subscriptionVoiceConfig(voiceProviderInstances(current)[connection.providerInstanceId]) ===
           null ||
         !subscriptionModels.some(
           (model) =>
@@ -213,7 +224,15 @@ const make = Effect.gen(function* () {
     }
     return { selection, kind: connection.kind, apiKey: Redacted.make(connection.apiKey) };
   });
-  return VoiceConfiguration.of({ catalog, resolve });
+  const resolve = Effect.fn("VoiceConfiguration.resolve")(function* (projectId: ProjectId) {
+    const current = yield* settings.getSettings.pipe(
+      Effect.mapError((cause) => new VoiceConnectionError({ reason: "storage", cause })),
+    );
+    const selection = resolveProjectSettings(current, projectId).settings.voiceSelection;
+    if (selection === null) return yield* new VoiceConnectionError({ reason: "not-configured" });
+    return yield* resolveSelection(selection);
+  });
+  return VoiceConfiguration.of({ catalog, resolve, resolveSelection });
 });
 
 export const layer = Layer.effect(VoiceConfiguration, make);

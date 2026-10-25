@@ -1,4 +1,5 @@
 import { openSettings } from "../settings/settings-navigation";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   AuthOrchestrationOperateScope,
@@ -8,8 +9,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { Platform, Pressable, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,7 +23,10 @@ import { cn } from "../../lib/cn";
 import { useEnvironmentServerConfig, useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
-import { useEnvironmentThread } from "../../state/threads";
+import { useEnvironmentThread, threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
+import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
 import { useCurrentViewReader } from "../../voice/current-view";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { ActiveBotCallBar } from "./ActiveBotCall";
@@ -43,7 +47,7 @@ import { useOpenBotConversation } from "./use-bot-conversation";
 
 const ASSISTANT_BOT = { id: "assistant", title: "Assistant", botRole: "assistant" } as const;
 
-const PREVIEW_MESSAGES = 3;
+const PREVIEW_MESSAGES = 24;
 
 type QuickMessage = {
   readonly id: string;
@@ -86,6 +90,10 @@ function useRecentMessages(environmentId: EnvironmentId, threadId: ThreadId | nu
 export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environmentId: string }>) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const navigation = useNavigation();
+  const { nativeTextStyle } = useMarkdownPreviewStyles();
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const pinned = useRef(true);
+  const interrupt = useAtomCommand(threadEnvironment.interruptTurn, "stop Assistant");
   const insets = useSafeAreaInsets();
   const showInBots = useShowConversationInBots();
   const environments = useWorkspaceEnvironments();
@@ -170,6 +178,18 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const sendDisabled =
     !canSend || threadId === null || setupNeeded !== null || quick.draft.trim().length === 0;
   const readView = useCurrentViewReader();
+  const working = connected && threadRuntimeIsActive(mainThread?.runtime);
+  const needsYou =
+    connected && (mainThread?.hasPendingApprovals || mainThread?.hasPendingUserInput);
+  const replyFailed = connected && mainThread?.latestRun?.status === "failed";
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!working) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [working]);
+  const startedAt = mainThread?.runtime?.activityStartedAt;
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000)) : 0;
 
   const send = async () => {
     if (threadId === null || !canSend || setupNeeded !== null) return;
@@ -190,7 +210,7 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
       ...(botTurn
         ? { modelSelection: botTurn.modelSelection, runtimeMode: botTurn.runtimeMode }
         : {}),
-      dispatchMode: "queue",
+      dispatchMode: "auto",
       createdAt: metadata.createdAt,
     }).then(
       () => ({ sent: true }) as const,
@@ -244,7 +264,7 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
 
   const content = (
     <View
-      className={cn("gap-3 px-4 pt-4", !CARD && "flex-1")}
+      className={"flex-1 gap-3 px-4 pt-4"}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View className="flex-row items-center gap-2.5">
@@ -277,7 +297,20 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
         />
       </View>
 
-      <View className={cn("justify-end gap-2", CARD ? "min-h-16" : "min-h-0 flex-1")}>
+      <ScrollView
+        ref={scroll}
+        className="min-h-0 flex-1"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", gap: 8 }}
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent: e }) => {
+          pinned.current =
+            e.contentSize.height - e.contentOffset.y - e.layoutMeasurement.height < 24;
+        }}
+        onContentSizeChange={() => {
+          if (pinned.current) scroll.current?.scrollToEnd({ animated: false });
+        }}
+      >
         {unavailable !== null ? (
           <Text textRole="footnote" className="text-center text-foreground-muted">
             {unavailable}
@@ -310,19 +343,51 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
                 message.role === "user" ? "self-end bg-user-bubble px-3 py-2" : "self-start",
               )}
             >
-              <Text
-                textRole="footnote"
-                className={
-                  message.role === "user" ? "text-user-bubble-foreground" : "text-foreground"
-                }
-                numberOfLines={4}
-              >
-                {message.text}
-              </Text>
+              {message.role === "assistant" ? (
+                <SelectableMarkdownText markdown={message.text} textStyle={nativeTextStyle} />
+              ) : (
+                <Text textRole="footnote" className="text-user-bubble-foreground" selectable>
+                  {message.text}
+                </Text>
+              )}
             </View>
           ))
         )}
-      </View>
+      </ScrollView>
+      {needsYou ? (
+        <Text
+          textRole="footnote"
+          className="text-foreground-muted"
+          accessibilityLiveRegion="polite"
+        >
+          Assistant needs your answer or approval. Open the full conversation to respond.
+        </Text>
+      ) : working ? (
+        <View className="flex-row items-center gap-2" accessibilityLiveRegion="polite">
+          <Text textRole="footnote" className="flex-1 text-foreground-muted">
+            {`${mainThread?.runtime?.status === "preparing" || mainThread?.runtime?.status === "starting" ? "Assistant is starting" : "Assistant is working"} · ${elapsed}s`}
+          </Text>
+          <Button
+            tone="secondary"
+            label="Stop"
+            onPress={() => {
+              if (threadId) void interrupt({ environmentId, input: { threadId } });
+            }}
+          />
+        </View>
+      ) : replyFailed ? (
+        <Text textRole="footnote" className="text-danger-foreground">
+          {`Assistant could not finish the reply. ${mainThread?.runtime?.lastError ?? "Open the conversation for details, then send a message to try again."}`}
+        </Text>
+      ) : quick.sending ? (
+        <Text textRole="footnote" className="text-foreground-muted">
+          Sending your message…
+        </Text>
+      ) : !connected ? (
+        <Text textRole="footnote" className="text-foreground-muted">
+          {`${host} is disconnected. Messages wait on this device and send when it reconnects.`}
+        </Text>
+      ) : null}
 
       <ActiveBotCallBar thread={callThread} />
       {setupNeeded !== null ? (
@@ -409,7 +474,7 @@ function QuickSheetFrame(props: { readonly onDismiss: () => void; readonly child
         className="absolute inset-0 bg-black/30"
       />
       <KeyboardAvoidingView behavior="padding">
-        <View className="max-h-[560px] rounded-t-[28px] bg-sheet">{props.children}</View>
+        <View className="h-[560px] max-h-full rounded-t-[28px] bg-sheet">{props.children}</View>
       </KeyboardAvoidingView>
     </View>
   );

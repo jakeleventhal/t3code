@@ -161,6 +161,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.botsVoiceBegin]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceObserve]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceContext]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsVoicePreview]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceConnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceWork]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceAppend]: AuthOrchestrationOperateScope,

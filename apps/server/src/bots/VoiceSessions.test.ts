@@ -56,7 +56,8 @@ const answer = {
 };
 
 function layer(
-  api: VoiceApi.VoiceApi["Service"],
+  api: Omit<VoiceApi.VoiceApi["Service"], "previewGrok"> &
+    Partial<Pick<VoiceApi.VoiceApi["Service"], "previewGrok">>,
   work: Effect.Effect<
     Partial<ThreadManagement.ThreadManagementService["Service"]>,
     never,
@@ -110,7 +111,12 @@ function layer(
         connect: () => Effect.die("Unexpected subscription voice connection"),
       }),
     ),
-    Layer.provide(Layer.succeed(VoiceApi.VoiceApi, api)),
+    Layer.provide(
+      Layer.succeed(VoiceApi.VoiceApi, {
+        previewGrok: () => Effect.die("Unexpected preview"),
+        ...api,
+      }),
+    ),
     Layer.provide(
       Layer.unwrap(
         work.pipe(
@@ -967,4 +973,30 @@ it.effect("shares bot memory without mixing topic briefs or voice conversations"
       layer({ openLive: () => Effect.succeed(answer), grokClientSecret: unusedSecret }),
     ),
   ),
+);
+
+it.effect(
+  "voice preview uses no conversation history and does not change saved voice settings",
+  () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettings.ServerSettingsService;
+      const before = yield* settings.getSettings;
+      const sessions = yield* VoiceSessions.VoiceSessions;
+      const result = yield* sessions.preview({ selection, sdp: "preview-offer" });
+      assert.deepEqual(result, { kind: "webrtc", sessionId: "live-session", sdp: "answer" });
+      assert.deepEqual((yield* settings.getSettings).voiceSelection, before.voiceSelection);
+    }).pipe(
+      Effect.provide(
+        layer({
+          openLive: (input) => {
+            assert.equal(input.sdp, "preview-offer");
+            assert.equal(input.voice, "marin");
+            assert.deepEqual(input.history, []);
+            assert.include(input.instructions, "Hey, this is what my voice sounds like.");
+            return Effect.succeed(answer);
+          },
+          grokClientSecret: () => Effect.die("Unexpected Grok call"),
+        }),
+      ),
+    ),
 );

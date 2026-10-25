@@ -538,6 +538,10 @@
     "./provider-clients": {
       "types": "./src/providerClients.ts",
       "default": "./src/providerClients.ts"
+    },
+    "./voice-call/preview": {
+      "types": "./src/voice-call/preview.ts",
+      "default": "./src/voice-call/preview.ts"
     }
   },
   "scripts": {
