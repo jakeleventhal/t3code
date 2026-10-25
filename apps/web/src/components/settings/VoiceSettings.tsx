@@ -1,3 +1,4 @@
+import { useLocation } from "@tanstack/react-router";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
@@ -85,6 +86,8 @@ export function VoiceSettingsPanel() {
   const { environments } = useEnvironments();
   const projects = useProjects();
   const [advanced, setAdvanced] = useState(false);
+  const hash = useLocation({ select: (location) => location.hash });
+  const searchedAdvanced = ["voice-accounts", "voice-default"].includes(hash);
   const targets = environments.filter(
     (entry) => entry.serverConfig?.environment.capabilities.botVoiceConfiguration === true,
   );
@@ -118,12 +121,14 @@ export function VoiceSettingsPanel() {
       <SettingsSection title="Bots" id="voice-bots">
         {render("bots")}
       </SettingsSection>
-      <div>
-        <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
-          {advanced ? "Hide advanced settings" : "Advanced settings"}
-        </Button>
-      </div>
-      {advanced ? render("advanced") : null}
+      {!searchedAdvanced ? (
+        <div>
+          <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
+            {advanced ? "Hide advanced settings" : "Advanced settings"}
+          </Button>
+        </div>
+      ) : null}
+      {advanced || searchedAdvanced ? render("advanced") : null}
     </SettingsPageContainer>
   );
 }

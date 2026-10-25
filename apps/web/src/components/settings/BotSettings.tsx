@@ -1,3 +1,4 @@
+import { useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
@@ -47,6 +48,12 @@ import {
 export function BotSettingsPanel() {
   const { environments } = useEnvironments();
   const [advanced, setAdvanced] = useState(false);
+  const hash = useLocation({ select: (location) => location.hash });
+  const searchedAdvanced = [
+    "bot-defaults-model",
+    "bot-defaults-permissions",
+    "bot-default-host",
+  ].includes(hash);
   const targets = environments.filter(
     (entry) => entry.serverConfig?.environment.capabilities.botConversations === true,
   );
@@ -79,12 +86,14 @@ export function BotSettingsPanel() {
       <SettingsSection id="bot-overrides" title="Bots">
         {render(false)}
       </SettingsSection>
-      <div>
-        <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
-          {advanced ? "Hide advanced settings" : "Advanced settings"}
-        </Button>
-      </div>
-      {advanced ? render(true) : null}
+      {!searchedAdvanced ? (
+        <div>
+          <Button variant="outline" size="sm" onClick={() => setAdvanced(!advanced)}>
+            {advanced ? "Hide advanced settings" : "Advanced settings"}
+          </Button>
+        </div>
+      ) : null}
+      {advanced || searchedAdvanced ? render(true) : null}
       <RemovedMachineUnsentMessages />
     </SettingsPageContainer>
   );

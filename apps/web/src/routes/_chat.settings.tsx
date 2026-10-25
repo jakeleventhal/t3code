@@ -44,6 +44,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
   const { scope, connectedEnvironments } = useSettingsScope();
   const { environments } = useEnvironments();
   const hash = useLocation({ select: (location) => location.hash });
+  if (pathname === "/settings/bots" || pathname === "/settings/voice") return children;
   const searchTarget = getSettingsSearchTargetScope(hash);
   const autoSettlementAvailability = searchTarget?.requiresThreadAutoSettlement
     ? getThreadAutoSettlementSearchAvailability(environments, scope)
@@ -83,12 +84,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
       </SettingsScopeNotice>
     );
   }
-  if (
-    SETTINGS_DEVICE_ONLY_PATHS.has(pathname) ||
-    pathname === "/settings/projects" ||
-    pathname === "/settings/bots" ||
-    pathname === "/settings/voice"
-  ) {
+  if (SETTINGS_DEVICE_ONLY_PATHS.has(pathname) || pathname === "/settings/projects") {
     return children;
   }
   if (scope.kind === "unavailable")
