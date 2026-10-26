@@ -169,12 +169,14 @@ const INHERIT = "inherit";
 export function BotPermissionsSelect({
   value,
   inheritedLabel,
+  allowInherit = true,
   ariaLabel,
   disabled,
   onChange,
 }: {
   value: RuntimeMode | null;
   inheritedLabel: string;
+  allowInherit?: boolean;
   ariaLabel: string;
   disabled: boolean;
   onChange: (value: RuntimeMode | null) => void;
@@ -201,7 +203,7 @@ export function BotPermissionsSelect({
         </SelectValue>
       </SelectTrigger>
       <SelectPopup align="end" alignItemWithTrigger={false}>
-        <SelectItem value={INHERIT}>{inheritedLabel}</SelectItem>
+        {allowInherit ? <SelectItem value={INHERIT}>{inheritedLabel}</SelectItem> : null}
         {runtimeModeOptions.map((mode) => {
           const option = runtimeModeConfig[mode];
           const Icon = option.icon;
@@ -344,7 +346,7 @@ export function BotTurnSettingsPanel({
   const defaults = settings.botDefaults;
   const inheritedModelLabel = defaults.defaultModelSelection
     ? `Default · ${botModelLabel(defaults.defaultModelSelection, providers)}`
-    : "Default · keeps its current model";
+    : "Use default · Not configured";
   const inheritedRuntime = defaults.defaultRuntimeMode ?? fallback?.runtimeMode ?? null;
   const inheritedRuntimeLabel = inheritedRuntime
     ? `Default · ${runtimeModeConfig[inheritedRuntime].label}`

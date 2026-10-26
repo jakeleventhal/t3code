@@ -154,22 +154,12 @@ function BotSettingsContent({
             title="Chat model"
             description={
               defaults.defaultModelSelection === null
-                ? "Not set: new bots start with the model for new threads, and existing bots keep theirs."
+                ? "Connect a provider to select the default chat model."
                 : "Every bot without its own model uses this, including reasoning."
             }
             status={
               readiness?.kind === "setup-needed" ? (
                 <span className="text-warning-foreground">{`Setup needed: ${readiness.reason}`}</span>
-              ) : null
-            }
-            resetAction={
-              defaults.defaultModelSelection !== null ? (
-                <SettingResetButton
-                  label="default bot model"
-                  tooltip="Let each bot keep its current model"
-                  disabled={disabled}
-                  onClick={() => void updateDefaults({ ...defaults, defaultModelSelection: null })}
-                />
               ) : null
             }
             control={
@@ -199,7 +189,8 @@ function BotSettingsContent({
             control={
               <BotPermissionsSelect
                 value={defaults.defaultRuntimeMode}
-                inheritedLabel="Not set · each bot keeps its own"
+                inheritedLabel="Choose permissions"
+                allowInherit={false}
                 ariaLabel="Default bot permissions"
                 disabled={disabled}
                 onChange={(defaultRuntimeMode) =>

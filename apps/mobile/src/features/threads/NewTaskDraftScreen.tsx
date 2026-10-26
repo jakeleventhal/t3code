@@ -726,13 +726,7 @@ export function NewTaskDraftScreen(props: {
       The shared content is no longer in the inbox. You can continue editing this task draft.
     </Text>
   ) : null;
-  const hero = isBotDraft ? (
-    <View className="items-center px-6" testID="new-task-hero">
-      <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
-        New thread with {selectedProject.title}
-      </Text>
-    </View>
-  ) : flow.isScratchDraft ? (
+  const hero = isBotDraft ? null : flow.isScratchDraft ? (
     <View className="items-center gap-2 px-6" testID="new-task-hero">
       <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
         What should we work on?

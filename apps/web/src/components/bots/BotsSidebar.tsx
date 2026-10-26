@@ -83,7 +83,11 @@ function StatusDot({
         <CircleAlertIcon className="size-4 text-warning" aria-label="Needs attention" />
       ) : null}
       {unread ? (
-        <MessageSquareIcon className="size-3.5 text-primary" aria-label="Unread reply" />
+        <span
+          className="size-2.5 shrink-0 rounded-full bg-info"
+          role="img"
+          aria-label="Unread reply"
+        />
       ) : null}
       {!needsAttention && !unread && pill ? (
         <span aria-hidden className={cn("size-1.5 rounded-full", pill.dotClass)} />

@@ -75,6 +75,36 @@ function threadDetail(route: WorkspaceRoute): MobileRouteView["detail"] {
   }
 }
 
+function settingsSection(route: WorkspaceRoute): string | undefined {
+  let selected = route;
+  while (selected.state?.routes.length) {
+    const child = selected.state.routes[selected.state.index ?? 0];
+    if (!child) break;
+    selected = child as WorkspaceRoute;
+  }
+  const labels: Record<string, string> = {
+    SettingsSheet: "",
+    SettingsContent: "",
+    Settings: "",
+    SettingsProjectGrouping: "Organization",
+    SettingsArchive: "Archived threads",
+    SettingsThreads: "Thread behavior",
+    SettingsFollowUp: "Follow-ups",
+    SettingsBotTurn: "Bots / Chat model and permissions",
+    SettingsBotTurnModel: "Bots / Model selection",
+    SettingsBotDefaultHost: "Bots / Primary machine",
+    SettingsVoiceDefault: "Bots / Default voice",
+    SettingsVoiceBot: "Bots / Bot voice",
+    SettingsVoiceConnection: "Bots / Voice connection",
+    SettingsBots: "Bots",
+  };
+  return (
+    labels[selected.name] ??
+    boundedTitle(selected.name.replace(/^Settings/, "").replace(/([a-z])([A-Z])/g, "$1 $2")) ??
+    undefined
+  );
+}
+
 function classifyRoute(
   route: WorkspaceRoute,
   workspace: { readonly room: WorkspaceRoom; readonly selectedTab: WorkspaceTab } | null,
@@ -148,7 +178,13 @@ function classifyRoute(
       return { page: { kind: "new-thread", environmentId: null }, detail: null };
     case "SettingsSheet":
     case "SettingsLegal":
-      return { page: { kind: "settings" }, detail: null };
+      return {
+        page: {
+          kind: "settings",
+          ...(settingsSection(route) ? { section: settingsSection(route) } : {}),
+        },
+        detail: null,
+      };
     default:
       return { page: { kind: "other" }, detail: null };
   }

@@ -25,7 +25,7 @@ export type CurrentViewPage =
     }
   | { readonly kind: "home"; readonly room: CurrentViewRoom | null }
   | { readonly kind: "pull-requests" }
-  | { readonly kind: "settings" }
+  | { readonly kind: "settings"; readonly section?: string }
   | { readonly kind: "other" };
 
 export type CurrentViewBrowserStatus = "blank" | "loading" | "loaded" | "failed";
@@ -178,7 +178,7 @@ function describePage(page: CurrentViewPage): string {
     case "pull-requests":
       return "the pull request list";
     case "settings":
-      return "Settings";
+      return page.section ? `Settings: ${page.section}` : "Settings";
     case "other":
       return "a page without a specific subject";
   }

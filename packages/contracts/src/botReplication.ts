@@ -5,6 +5,7 @@ import { BotContinuityFiles } from "./botContinuity.ts";
 import { BotSharedPreferences } from "./botPreferences.ts";
 import {
   OrchestrationV2AppThreadJson,
+  OrchestrationV2TurnItemJson,
   OrchestrationV2ConversationMessageJson,
 } from "./orchestrationV2.ts";
 
@@ -41,6 +42,9 @@ export const BotReplicaPage = Schema.Struct({
   manifestRevision: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
   after: Schema.NullOr(BotReplicaCursor),
   messages: Schema.Array(OrchestrationV2ConversationMessageJson).check(Schema.isMaxLength(64)),
+  calls: Schema.optional(
+    Schema.Array(OrchestrationV2TurnItemJson.members[0]).check(Schema.isMaxLength(64)),
+  ),
   cursor: Schema.NullOr(BotReplicaCursor),
   complete: Schema.Boolean,
 });

@@ -1,3 +1,4 @@
+import { BotTaskModels } from "./bots/BotTaskModels";
 import { useBotReplicaRoute } from "./bots/useBotReplicaRoute";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { queuedRunEditBlockedReason } from "@t3tools/client-runtime/queued-run-edit";
@@ -1545,14 +1546,16 @@ export default function ChatView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
-  const isDraftHeroState = resolveDraftHeroState({
-    isLocalDraftThread,
-    hasTimelineEntries: !timelineEmpty,
-    isWorking,
-    draftHeroDockRequested,
-    backgroundSubmissionPending,
-    hasWorktreeSetupCard: worktreeSetup !== null,
-  });
+  const isDraftHeroState =
+    !isBotChat &&
+    resolveDraftHeroState({
+      isLocalDraftThread,
+      hasTimelineEntries: !timelineEmpty,
+      isWorking,
+      draftHeroDockRequested,
+      backgroundSubmissionPending,
+      hasWorktreeSetupCard: worktreeSetup !== null,
+    });
   const {
     transitionGroupRef: draftHeroTransitionGroupRef,
     composerAnchorRef: draftHeroComposerAnchorRef,
@@ -3295,6 +3298,7 @@ export default function ChatView(props: ChatViewProps) {
               setThreadErrorBannerDismissTick={setThreadErrorBannerDismissTick}
             />
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+              {isBotChat ? <BotTaskModels threadRef={activeThreadRef} /> : null}
               <ThreadTimeline
                 simpleProgress={isBotChat}
                 threadDetailRef={routeThreadDetailRef}

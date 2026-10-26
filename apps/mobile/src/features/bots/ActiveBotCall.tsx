@@ -1,3 +1,5 @@
+import { useCompactWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
+import { workspaceDockBottomClearance } from "../workspace/workspace-tabs-state";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import type { VoiceCallTarget } from "@t3tools/client-runtime/voice-call";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -99,6 +101,11 @@ export function ActiveCallScreenSlot(props: {
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const insets = useSafeAreaInsets();
   const bottomClearance = useWorkspaceTabs()?.bottomClearance ?? 0;
+  const compactTabs = useCompactWorkspaceTabs();
+  const dockClearance =
+    compactTabs && props.routeName === "SettingsSheet"
+      ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight: 0 })
+      : 0;
   const footer = live && !keyboardVisible && !OWN_CALL_BAR_ROUTES.has(props.routeName);
   return (
     <>
@@ -109,7 +116,7 @@ export function ActiveCallScreenSlot(props: {
         <ActiveBotCallBar
           thread={null}
           className="w-full max-w-2xl self-center px-4 pt-2"
-          style={{ paddingBottom: Math.max(insets.bottom, bottomClearance, 8) }}
+          style={{ paddingBottom: Math.max(insets.bottom, bottomClearance, dockClearance, 8) }}
         />
       ) : null}
       {live && owner ? <CurrentViewBridge /> : null}

@@ -68,7 +68,7 @@ describe("resolveWebCurrentView", () => {
       resolveWebCurrentView(input({ pathname, target: null, panel: browserPanel })).page;
     expect(page("/")).toEqual({ kind: "home", room: "code" });
     expect(page("/bots")).toEqual({ kind: "home", room: "bots" });
-    expect(page("/settings/voice")).toEqual({ kind: "settings" });
+    expect(page("/settings/voice")).toEqual({ kind: "settings", section: "voice" });
     expect(page("/usage")).toEqual({ kind: "other" });
     expect(
       resolveWebCurrentView(

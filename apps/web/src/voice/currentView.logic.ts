@@ -58,7 +58,17 @@ function resolvePage(input: WebCurrentViewInput): CurrentViewPage {
   if (pathname === "/") return { kind: "home", room: "code" };
   if (pathname === BOTS_HOME_PATH) return { kind: "home", room: "bots" };
   if (pathname === PULL_REQUESTS_PATH) return { kind: "pull-requests" };
-  if (isSettingsPath(pathname)) return { kind: "settings" };
+  if (isSettingsPath(pathname)) {
+    const section = boundedTitle(
+      pathname
+        .replace(/^\/settings\/?/, "")
+        .split("/")
+        .filter(Boolean)
+        .join(" / ")
+        .replace(/-/g, " "),
+    );
+    return { kind: "settings", ...(section ? { section } : {}) };
+  }
   return { kind: "other" };
 }
 

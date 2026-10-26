@@ -22,7 +22,7 @@ type BotTurnSettingsSettings = Pick<ServerSettings, "botDefaults" | "projectSett
 /**
  * One bot setting as its editor shows it: the value chosen here, and what applies when nothing
  * is. For a bot, the fallback is the bot defaults. For the bot defaults themselves (`projectId`
- * null) there is none, and each chat keeps its own.
+ * null) the shared defaults have not been configured yet.
  */
 export interface BotTurnSetting<T> {
   readonly own: T | null;
@@ -71,7 +71,7 @@ export function botFollowedLabel<T>(
   setting: BotTurnSetting<T>,
   label: (value: T) => string,
 ): string {
-  return setting.inherited === null ? "Each chat’s own" : label(setting.inherited);
+  return setting.inherited === null ? "Not configured" : label(setting.inherited);
 }
 
 /** What a row shows for a setting: its own value, or what it follows, marked as such. */
@@ -81,7 +81,9 @@ export function botTurnSettingLabel<T>(
   forBot: boolean,
 ): string {
   if (setting.own !== null) return label(setting.own);
-  return `${forBot ? "Default" : "Automatic"} · ${botFollowedLabel(setting, label)}`;
+  return forBot
+    ? `Use default · ${botFollowedLabel(setting, label)}`
+    : botFollowedLabel(setting, label);
 }
 
 /**

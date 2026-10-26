@@ -6,6 +6,7 @@ const native = vi.hoisted(() => ({
   createPeer: vi.fn(),
   getUserMedia: vi.fn(),
   preferSpeaker: vi.fn(),
+  reserveWebRtcRoute: vi.fn(),
   releaseWebRtcRoute: vi.fn(),
 }));
 vi.mock("expo", () => ({ requireOptionalNativeModule: () => native }));
@@ -159,8 +160,14 @@ it("cancels a pending permission prompt and releases its late native stream", as
   });
   const pending = f.open();
   await f.captureRequested.promise;
+  expect(native.reserveWebRtcRoute).toHaveBeenCalledOnce();
+  expect(native.reserveWebRtcRoute.mock.invocationCallOrder[0]).toBeLessThan(
+    native.getUserMedia.mock.invocationCallOrder[0]!,
+  );
+  const routeId = native.reserveWebRtcRoute.mock.calls[0]![0];
   f.abort.abort();
   await expect(pending).rejects.toThrow("The voice connection was cancelled.");
+  expect(native.releaseWebRtcRoute).toHaveBeenCalledWith(routeId);
   permission.resolve(f.stream);
   await f.released.promise;
   expect(f.stream.release).toHaveBeenCalledOnce();

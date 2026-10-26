@@ -113,6 +113,13 @@ const subscriptionModels = [
     ]),
   },
 ];
+export function isSubscriptionVoiceSupported(selection: VoiceSelection) {
+  return subscriptionModels.some(
+    (model) =>
+      model.id === selection.model && model.voices.some((voice) => voice.id === selection.voice),
+  );
+}
+
 const grokModels = [
   { id: "grok-voice-3.0", label: "Grok Voice 3.0", voices: options(grokVoiceIds) },
 ];

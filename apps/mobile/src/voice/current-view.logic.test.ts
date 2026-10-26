@@ -99,6 +99,39 @@ describe("classifyMobileRoute", () => {
     ).toEqual({ kind: "file", path: "a.ts" });
   });
 
+  it("reports the active nested Settings page through the Assistant sheet", () => {
+    const state = {
+      index: 1,
+      routes: [
+        {
+          key: "settings",
+          name: "SettingsSheet",
+          state: {
+            index: 0,
+            routes: [
+              {
+                key: "content",
+                name: "SettingsContent",
+                state: {
+                  index: 1,
+                  routes: [
+                    { key: "home", name: "Settings" },
+                    { key: "voice", name: "SettingsVoiceDefault" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        { key: "assistant", name: "AssistantQuick" },
+      ],
+    };
+    expect(classifyMobileRoute(state, codeWorkspace).page).toEqual({
+      kind: "settings",
+      section: "Bots / Default voice",
+    });
+  });
+
   it("names Home by the selected room and tab", () => {
     const home = stack(["Home"]);
     expect(classifyMobileRoute(home, codeWorkspace).page).toEqual({ kind: "home", room: "code" });

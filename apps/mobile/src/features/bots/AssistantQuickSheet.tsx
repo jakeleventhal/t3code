@@ -1,4 +1,6 @@
 import { openSettings } from "../settings/settings-navigation";
+import { BotTaskModels } from "./BotTaskModels";
+import { VoiceCallCard } from "../threads/VoiceCallCard";
 import { TypingDots } from "./TypingDots";
 import { IconButton } from "../../components/ui/IconButton";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
@@ -9,6 +11,7 @@ import {
   EnvironmentId,
   MessageId,
   type ThreadId,
+  type OrchestrationV2ProjectedTurnItem,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
@@ -51,11 +54,17 @@ const ASSISTANT_BOT = { id: "assistant", title: "Assistant", botRole: "assistant
 
 const PREVIEW_MESSAGES = 24;
 
-type QuickMessage = {
-  readonly id: string;
-  readonly role: "user" | "assistant";
-  readonly text: string;
-};
+type QuickMessage =
+  | {
+      readonly id: string;
+      readonly role: "call";
+      readonly projected: OrchestrationV2ProjectedTurnItem;
+    }
+  | {
+      readonly id: string;
+      readonly role: "user" | "assistant";
+      readonly text: string;
+    };
 
 function useRecentMessages(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const state = useEnvironmentThread(environmentId, threadId);
@@ -64,7 +73,12 @@ function useRecentMessages(environmentId: EnvironmentId, threadId: ThreadId | nu
     const recent: QuickMessage[] = [];
     const items = projection?.visibleTurnItems ?? [];
     for (let index = items.length - 1; index >= 0 && recent.length < PREVIEW_MESSAGES; index--) {
-      const item = items[index]!.item;
+      const projected = items[index]!;
+      const item = projected.item;
+      if (item.type === "voice_call") {
+        recent.unshift({ id: item.id, role: "call", projected });
+        continue;
+      }
       if (
         (item.type === "user_message" || item.type === "assistant_message") &&
         item.text.trim().length > 0
@@ -95,6 +109,7 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const { nativeTextStyle } = useMarkdownPreviewStyles();
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const pinned = useRef(true);
+  const [expandedCalls, setExpandedCalls] = useState<ReadonlySet<string>>(new Set());
   const interrupt = useAtomCommand(threadEnvironment.interruptTurn, "stop Assistant");
   const insets = useSafeAreaInsets();
   const showInBots = useShowConversationInBots();
@@ -329,25 +344,46 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
             Ask anything. The full conversation lives in Bots.
           </Text>
         ) : (
-          messages.map((message) => (
-            <View
-              key={message.id}
-              className={cn(
-                "max-w-[88%] rounded-2xl",
-                message.role === "user" ? "self-end bg-user-bubble px-3 py-2" : "self-start",
-              )}
-            >
-              {message.role === "assistant" ? (
-                <SelectableMarkdownText markdown={message.text} textStyle={nativeTextStyle} />
-              ) : (
-                <Text textRole="footnote" className="text-user-bubble-foreground" selectable>
-                  {message.text}
-                </Text>
-              )}
-            </View>
-          ))
+          messages.map((message) =>
+            message.role === "call" ? (
+              <VoiceCallCard
+                key={message.id}
+                environmentId={environmentId}
+                projectedItem={message.projected}
+                expanded={expandedCalls.has(message.id)}
+                iconColor="gray"
+                onToggle={() =>
+                  setExpandedCalls((current) => {
+                    const next = new Set(current);
+                    if (next.has(message.id)) next.delete(message.id);
+                    else next.add(message.id);
+                    return next;
+                  })
+                }
+                onTranscriptPending={() => {}}
+                onTranscriptSettled={() => {}}
+              />
+            ) : (
+              <View
+                key={message.id}
+                className={cn(
+                  "max-w-[88%] rounded-2xl",
+                  message.role === "user" ? "self-end bg-user-bubble px-3 py-2" : "self-start",
+                )}
+              >
+                {message.role === "assistant" ? (
+                  <SelectableMarkdownText markdown={message.text} textStyle={nativeTextStyle} />
+                ) : (
+                  <Text textRole="footnote" className="text-user-bubble-foreground" selectable>
+                    {message.text}
+                  </Text>
+                )}
+              </View>
+            ),
+          )
         )}
       </ScrollView>
+      {threadId ? <BotTaskModels threadRef={{ environmentId, threadId }} /> : null}
       {needsYou ? (
         <Text
           textRole="footnote"

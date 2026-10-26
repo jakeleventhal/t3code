@@ -1,3 +1,4 @@
+import { BotTaskModels } from "./BotTaskModels";
 import { TypingDots } from "./TypingDots";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
@@ -439,6 +440,7 @@ function AssistantCard({
         describe={describe}
         onOpenChat={openChat}
       />
+      <BotTaskModels threadRef={mainThreadRef} />
       <AssistantStrip
         status={status}
         step={step}

@@ -33,6 +33,7 @@ function fixture() {
     messageId: MessageId.make("work"),
   };
   const backend = {
+    watchContext: vi.fn<NonNullable<LiveVoiceBackend["watchContext"]>>(() => () => {}),
     captureView: vi.fn(async () => view.read()),
     negotiate: vi.fn(async () => ({ sessionId: "session", sdp: "answer" })),
     startWork: vi.fn<LiveVoiceBackend["startWork"]>(async () => work),
@@ -102,6 +103,22 @@ async function settle() {
 }
 
 describe("Live voice and selected harness", () => {
+  it("keeps inherited work silent until the caller speaks in each new call", async () => {
+    const f = fixture();
+    for (const id of ["call-1", "call-2"]) {
+      await f.controller.start(target);
+      const update = f.backend.watchContext.mock.calls.at(-1)![1];
+      update({ kind: "context", text: "Previous task finished", speak: true });
+      await settle();
+      expect(f.sent.at(-1)?.type).toBe("session.thinking.append");
+      f.fragment(id, "What finished?", 100);
+      update({ kind: "context", text: "Here is the result", speak: true });
+      await settle();
+      expect(f.sent.at(-1)?.type).toBe("session.commentary.append");
+      await f.controller.end(id);
+    }
+  });
+
   it("reads page contents only for a request, not for navigation or connection", async () => {
     const f = fixture();
     await f.controller.start(target);
