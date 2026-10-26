@@ -8,14 +8,8 @@ export interface ResolvedDevServer {
   readonly reachable: boolean;
 }
 
-/**
- * Rewrite a dev server's loopback URL onto the environment host so this
- * device can reach it. The phone is never the machine the server scanned, so
- * `localhost:PORT` only works after substituting the address the environment
- * is connected through (LAN IP, tailnet name, …). Marked unreachable when the
- * environment is only reachable through a public host such as a tunnel, which
- * does not forward arbitrary dev ports.
- */
+/** Replace loopback with the environment host so phones can reach LAN/tailnet dev servers.
+ * Public tunnels cannot forward arbitrary dev ports and remain marked unreachable. */
 export function resolveDevServerUrl(
   httpBaseUrl: string | null,
   server: DiscoveredLocalServer,
