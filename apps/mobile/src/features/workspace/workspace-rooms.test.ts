@@ -305,3 +305,21 @@ it("switches bot threads under the sheet without replacing the native conversati
     { name: "Thread", key: "bot-page", params: { ...botThread, threadId: "parallel" } },
   ]);
 });
+
+it("does not park root settings pages as bot or code conversations", () => {
+  const plan = planRoomSwitch({
+    from: "code",
+    to: "bots",
+    parked: [],
+    routes: [
+      { name: "Home", key: "home" },
+      { name: "Thread", key: "code-page", params: codeThread },
+      { name: "Settings", key: "settings" },
+      { name: "SettingsBots", key: "bot-settings" },
+      { name: "SettingsVoiceBot", key: "voice-settings" },
+    ],
+    target: { name: "Thread", params: botThread },
+  });
+  expect(plan?.leaving).toEqual([{ name: "Thread", key: "code-page", params: codeThread }]);
+  expect(plan?.routes.map((route) => route.name)).toEqual(["Home", "Thread"]);
+});

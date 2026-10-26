@@ -142,6 +142,7 @@ export function useBotConversationCall(input: {
   });
   const active = useBotCallSummary();
   const latest = useRef({ ...input, availability, active });
+  // oxlint-disable-next-line t3code/react-effect-budget -- Call actions must read the latest committed connection state, never an abandoned render.
   useLayoutEffect(() => {
     latest.current = { ...input, availability, active };
   });

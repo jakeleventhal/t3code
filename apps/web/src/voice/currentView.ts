@@ -31,13 +31,7 @@ import {
   type CurrentViewSource,
 } from "./currentView.shared";
 
-/**
- * What this client shows, read from route, panel, and floating preview state it already holds.
- * It reads no page contents and never polls; it changes only when navigation, a panel, a
- * floating preview, or a title does.
- * Must render inside the router. A popover such as the floating Assistant leaves the route
- * alone, so the page under it stays the subject.
- */
+/** Read inside the router so floating Assistant panels retain the page underneath as context. */
 export function useCurrentView(): CurrentViewSource {
   const committed = useCommittedLocation();
   const target = useThreadRouteTarget();
@@ -103,6 +97,7 @@ export function useCurrentView(): CurrentViewSource {
   }
 
   const latest = useRef(snapshot);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Expose only committed navigation context to asynchronous voice capture.
   useEffect(() => {
     latest.current = snapshot;
   }, [snapshot]);
@@ -114,13 +109,11 @@ export function useCurrentView(): CurrentViewSource {
 
 const readView = createEnvironmentViewReader(appAtomRegistry, botVoiceEnvironment);
 
-/**
- * Reads this device's view for a typed message. Following the view is metadata only; the returned
- * read, called once per explicit send, is the only thing that reads a shown browser page.
- */
+/** Read inside the router so floating Assistant panels retain the page underneath as context. */
 export function useCurrentViewReader() {
   const { snapshot } = useCurrentView();
   const [view] = useState(createVoiceViewContext);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Publish committed navigation changes to the independent voice session.
   useEffect(() => {
     view.set(
       snapshot === null ? null : describeCurrentView(snapshot),
@@ -130,6 +123,7 @@ export function useCurrentViewReader() {
   // Closing the panel abandons a page read still in flight. The send it belongs to outlives the
   // panel and goes out without the screen rather than failing.
   const [pending] = useState(() => new Set<AbortController>());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Abort outstanding page reads when the panel unmounts.
   useEffect(
     () => () => {
       for (const controller of pending) controller.abort();

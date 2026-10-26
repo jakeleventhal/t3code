@@ -104,7 +104,7 @@ export class ManagedProjectFolders extends Context.Service<
       projectId: ProjectId,
     ) => Effect.Effect<string, NamedProjectFolderError>;
     /** Removes failed/cancelled creations' folders only while no project owns them. */
-    readonly createNamedProject: (input: { readonly name: string }) => Effect.Effect<
+    readonly createNamedProject: (input: ProjectCreateNewInput) => Effect.Effect<
       {
         readonly projectId: ProjectId;
         readonly workspaceRoot: string;
@@ -464,7 +464,7 @@ const make = Effect.gen(function* () {
             Effect.flatMap((isRepository) =>
               isRepository
                 ? Effect.fail("A bot folder cannot inherit a parent repository.")
-                : Effect.succeed(undefined),
+                : Effect.void,
             ),
             Effect.mapError(
               (cause) => new NamedProjectFolderError({ folder: workspaceRoot, cause }),

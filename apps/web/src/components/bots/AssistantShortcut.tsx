@@ -49,6 +49,7 @@ export function AssistantShortcut() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggle } = useAssistantCommands();
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Register and release browser and Electron keyboard listeners for the mounted app.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;

@@ -795,7 +795,7 @@ function MessageAttachmentList(props: {
     isImageAttachment(attachment) ? (
       <MessageAttachmentImage
         key={attachment.id}
-        environmentId={props.environmentId}
+        environmentId={attachment.originEnvironmentId ?? props.environmentId}
         attachmentId={attachment.id}
         name={attachment.name}
         mimeType={attachment.mimeType}
@@ -805,7 +805,7 @@ function MessageAttachmentList(props: {
     ) : isFileAttachment(attachment) ? (
       <MessageAttachmentFile
         key={attachment.id}
-        environmentId={props.environmentId}
+        environmentId={attachment.originEnvironmentId ?? props.environmentId}
         attachment={attachment}
         onPressPreview={props.onPressPreview}
         onPlaybackStart={props.onPlaybackStart}
@@ -2244,7 +2244,6 @@ export const ThreadFeed = memo(function ThreadFeed({
   // maintenance would pin the feed past the words the reader is about to read.
   const pendingCallTranscriptRef = useRef<string | null>(null);
   const openedCallEntryRef = useRef<string | null>(null);
-  const previousLatestTurnRef = useRef(props.latestRun);
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();

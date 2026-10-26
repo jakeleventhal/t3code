@@ -81,6 +81,7 @@ function useVoiceEnvironment(environmentId: EnvironmentId) {
     : null;
   const seenSignature = useRef(signature);
   const refreshCatalog = catalog.refresh;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Refresh the remote voice catalog after its connection configuration changes.
   useEffect(() => {
     if (seenSignature.current === signature) return;
     seenSignature.current = signature;
@@ -264,15 +265,9 @@ export function VoiceEnvironmentOverview(props: {
                 value={`${voiceConnectionKindLabel(connection.kind)} · ${voiceConnectionStatusLabel(connection)}`}
                 valuePosition="below"
                 onPress={() =>
-                  navigation.navigate("SettingsSheet", {
-                    screen: "SettingsContent",
-                    params: {
-                      screen: "SettingsVoiceConnection",
-                      params: {
-                        environmentId,
-                        connectionId: connection.id,
-                      },
-                    },
+                  navigation.navigate("SettingsVoiceConnection", {
+                    environmentId,
+                    connectionId: connection.id,
                   })
                 }
               />
@@ -281,12 +276,7 @@ export function VoiceEnvironmentOverview(props: {
               icon="plus"
               label="Add connection"
               disabled={!voice.canManageConnections}
-              onPress={() =>
-                navigation.navigate("SettingsSheet", {
-                  screen: "SettingsContent",
-                  params: { screen: "SettingsVoiceConnection", params: { environmentId } },
-                })
-              }
+              onPress={() => navigation.navigate("SettingsVoiceConnection", { environmentId })}
             />
           </SettingsSection>
         ) : null}
@@ -343,12 +333,9 @@ export function BotVoiceSettingsRow({
       value={`${source?.kind === "default" ? "Use default · " : ""}${voiceSelectionLabel(voice.catalog.data, source?.selection ?? null)}`}
       valuePosition="below"
       onPress={() =>
-        navigation.navigate("SettingsSheet", {
-          screen: "SettingsContent",
-          params: projectId
-            ? { screen: "SettingsVoiceBot", params: { environmentId, projectId } }
-            : { screen: "SettingsVoiceDefault", params: { environmentId } },
-        })
+        projectId
+          ? navigation.navigate("SettingsVoiceBot", { environmentId, projectId })
+          : navigation.navigate("SettingsVoiceDefault", { environmentId })
       }
     />
   );

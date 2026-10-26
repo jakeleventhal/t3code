@@ -92,7 +92,7 @@ const make = Effect.gen(function* () {
     `${encodeURIComponent(row.environment_id)}:${encodeURIComponent(row.thread_id)}`;
   const read = Effect.fn("PeerMessageOutbox.read")(function* (requestId: CommandId) {
     const rows = yield* sql<Row>`SELECT * FROM peer_message_outbox WHERE request_id = ${requestId}`;
-    if (!rows[0]) return yield* Effect.fail(new OutboxConflict({ reason: "missing" }));
+    if (!rows[0]) return yield* new OutboxConflict({ reason: "missing" });
     return rows[0];
   });
   const deliver = Effect.fn("PeerMessageOutbox.deliver")(function* (row: Row) {
@@ -154,7 +154,10 @@ const make = Effect.gen(function* () {
     Effect.mapError((cause) => new PeerMessageOutboxError({ operation: "deliver", cause })),
   );
   return PeerMessageOutbox.of({
-    flush: (environmentId) => flush(environmentId, undefined),
+    // The shared flush implementation owns the tracing span.
+    flush: Effect.fnUntraced(function* (environmentId) {
+      return yield* flush(environmentId, undefined);
+    }),
     enqueue: Effect.fn("PeerMessageOutbox.enqueue")(
       function* (input) {
         const at = yield* now;
@@ -168,7 +171,7 @@ const make = Effect.gen(function* () {
           row.environment_id !== input.environmentId ||
           row.input_json !== encodeInput(input.input)
         ) {
-          return yield* Effect.fail(new OutboxConflict({ reason: "reused_id" }));
+          return yield* new OutboxConflict({ reason: "reused_id" });
         }
         yield* locks.withLock(
           key(row),
@@ -204,7 +207,7 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const current = yield* read(requestId);
             if (current.uncertain !== 0 || current.status === "delivered") {
-              return yield* Effect.fail(new OutboxConflict({ reason: "delivery_uncertain" }));
+              return yield* new OutboxConflict({ reason: "delivery_uncertain" });
             }
             yield* sql`UPDATE peer_message_outbox SET status = 'cancelled', updated_at = ${yield* now}
           WHERE request_id = ${requestId}`;

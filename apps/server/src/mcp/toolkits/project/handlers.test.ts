@@ -1,3 +1,4 @@
+import * as PeerEnvironmentService from "../../PeerEnvironmentService.ts";
 import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
@@ -75,6 +76,7 @@ const clientLaunchHarness = (input: {
       capabilities: new Set(["orchestration" as const]),
     }),
     Layer.mock(ThreadManagement.ThreadManagementService)({}),
+    Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({}),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),
       launch: (launch) => {

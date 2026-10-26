@@ -14,6 +14,7 @@ export function TypingDots() {
   const [active, setActive] = useState(AppState.currentState === "active");
   const [reduced, setReduced] = useState(true);
   const phase = useAnimatedValue(0);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to native app state and accessibility settings while the indicator is mounted.
   useEffect(() => {
     const app = AppState.addEventListener("change", (state) => setActive(state === "active"));
     const motion = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
@@ -23,6 +24,7 @@ export function TypingDots() {
       motion.remove();
     };
   }, []);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Run the native animation only while focused, active, and allowed by reduced motion.
   useEffect(() => {
     phase.setValue(0);
     if (!focused || !active || reduced) return;

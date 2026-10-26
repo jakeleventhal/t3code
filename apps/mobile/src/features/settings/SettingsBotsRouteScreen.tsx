@@ -112,11 +112,7 @@ function useEnvironmentBots(environmentId: EnvironmentId) {
 
 function useOpenBotTurnSettings() {
   const navigation = useNavigation();
-  return (params: BotTurnRouteParams) =>
-    navigation.navigate("SettingsSheet", {
-      screen: "SettingsContent",
-      params: { screen: "SettingsBotTurn", params },
-    });
+  return (params: BotTurnRouteParams) => navigation.navigate("SettingsBotTurn", params);
 }
 
 export function SettingsBotsRouteScreen() {
@@ -379,12 +375,9 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
           valuePosition="below"
           disabled={disabled}
           onPress={() =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: {
-                screen: "SettingsBotTurnModel",
-                params: { environmentId, ...(projectId ? { projectId } : {}) },
-              },
+            navigation.navigate("SettingsBotTurnModel", {
+              environmentId,
+              ...(projectId ? { projectId } : {}),
             })
           }
         />
@@ -417,16 +410,10 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
               ?.model ?? (projectId ? "Use default" : "Choose a model")
           }
           onPress={() =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: {
-                screen: "SettingsBotTurnModel",
-                params: {
-                  environmentId,
-                  ...(projectId ? { projectId } : {}),
-                  modelPurpose: "complex",
-                },
-              },
+            navigation.navigate("SettingsBotTurnModel", {
+              environmentId,
+              ...(projectId ? { projectId } : {}),
+              modelPurpose: "complex",
             })
           }
         />
@@ -488,12 +475,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
           <SettingsRow
             icon="slider.horizontal.3"
             label="Bot defaults"
-            onPress={() =>
-              navigation.navigate("SettingsSheet", {
-                screen: "SettingsContent",
-                params: { screen: "SettingsBotTurn", params: { environmentId } },
-              })
-            }
+            onPress={() => navigation.navigate("SettingsBotTurn", { environmentId })}
           />
         </SettingsSection>
       ) : null}

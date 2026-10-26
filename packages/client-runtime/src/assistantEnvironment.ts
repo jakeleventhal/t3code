@@ -51,14 +51,7 @@ export function environmentAssistants<P extends AssistantRecord>(
     .sort(olderFirst);
 }
 
-/**
- * The environment whose Assistant is the user's one Assistant. Every client and entry point
- * resolves it the same way, so the Bots list, the quick chat over Code and New bot's default host
- * all agree. The work on screen never picks it: what's being viewed travels as context instead.
- *
- * The oldest Assistant defines the identity. A ready replica can serve it when its preferred
- * environment is unavailable. Unrelated older Assistants remain historical conversations.
- */
+/** The oldest Assistant defines the shared identity; ready replicas serve it during outages. */
 export function chooseAssistantEnvironment(input: {
   readonly environments: ReadonlyArray<AssistantEnvironmentCandidate>;
   readonly projects: ReadonlyArray<AssistantRecord>;

@@ -213,6 +213,7 @@ describe("orchestrator MCP toolkit", () => {
           }),
         ]);
         const layerTest = layerOrchestratorToolkit.pipe(
+          Layer.provide(Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({})),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provideMerge(layerOrchestration),
           Layer.provide(

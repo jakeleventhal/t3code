@@ -16,9 +16,11 @@ export function BotOutboxDrain() {
   const live = useAtomValue(liveShellEnvironmentIdsAtom);
   // Lets a bot chat still queue after a reload that finds its host unreachable.
   useRememberSessionGrants(connected);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Start the persisted delivery service when its app host mounts.
   useEffect(() => {
     void botOutbox.start();
   }, []);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Keep the external delivery service in sync with connected, live environments.
   useEffect(() => {
     botOutbox.setDeliverableEnvironments(new Set(connected.filter((id) => live.has(id))));
   }, [connected, live]);

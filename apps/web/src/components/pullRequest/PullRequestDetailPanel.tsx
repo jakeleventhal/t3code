@@ -1,4 +1,3 @@
-import { useReviewGuideWriter } from "./guide/useReviewGuideWriter";
 import { projectChangeRequestUrl } from "@t3tools/client-runtime/change-request-links";
 import { normalizeThreadPullRequestKey } from "@t3tools/client-runtime/thread-pull-requests";
 import { changeRequestReferenceAutolinker } from "@t3tools/client-runtime/pull-request-markdown";
@@ -726,15 +725,6 @@ export function PullRequestDetailPanel({
   const canPrepareWorktree = prepareThread.isAllowed && canOperateThread;
   const canFixFindings = attachTarget !== null || canPrepareWorktree;
   const handoffLabels = pullRequestHandoffLabels(attachTarget !== null);
-  const guideWriter = useReviewGuideWriter({
-    environmentId,
-    reference,
-    title: detail?.title ?? null,
-  });
-  const writeGuide = () => {
-    void guideWriter.write();
-    if (guideWriter.data?.guide == null) selectTab("guide");
-  };
 
   const writeTaskToComposer = (target: ScopedThreadRef | DraftId, task: ThreadTask) => {
     const store = useComposerDraftStore.getState();

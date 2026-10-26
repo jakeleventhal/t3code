@@ -30,7 +30,6 @@ import {
   recordHomeTransitionStart,
 } from "./features/home/home-route-visibility";
 import { AndroidWorkspaceTabsProvider } from "./features/workspace/AndroidWorkspaceTabsProvider";
-import { WORKSPACE_OVERLAY_ROUTES } from "./features/workspace/workspace-rooms";
 import {
   PullRequestRouteScreen,
   PullRequestFileRouteScreen,
@@ -250,8 +249,6 @@ const ASSISTANT_QUICK_OPTIONS: AppScreenOptions =
   Platform.OS === "android"
     ? { presentation: "transparentModal", animation: "slide_from_bottom", headerShown: false }
     : KEYBOARD_SHEET_OPTIONS;
-
-const NESTED_NAVIGATOR_OPTIONS = { nativeContentInsetHorizontally: false, headerShown: false };
 
 // Thread settings keep the Duo's vertical bar so cancel, search, filter and confirm sit in the
 // rail. The picker stack spans the sheet so its header reaches the rail, and insets its content.

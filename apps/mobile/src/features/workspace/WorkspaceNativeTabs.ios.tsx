@@ -17,7 +17,6 @@ import {
   NATIVE_WORKSPACE_TAB_SLOTS,
   workspaceTabForNativeSlot,
   workspaceRoomTab,
-  workspaceTabRoom,
   workspaceUsesColumns,
   type WorkspaceRoom,
   type WorkspaceTab,

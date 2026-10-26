@@ -1,3 +1,4 @@
+import * as PeerEnvironmentService from "../PeerEnvironmentService.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -56,6 +57,7 @@ import * as EnvironmentHandlers from "./environment/handlers.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(Layer.mock(PeerEnvironmentService.PeerEnvironmentService)({})),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );

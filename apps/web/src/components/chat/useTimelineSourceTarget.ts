@@ -216,6 +216,7 @@ export function useTimelineSourceTarget({
     reveal: ReturnType<typeof revealTimelineRow> | null;
   } | null>(null);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Reveal a requested source only after its remote history and virtual list are ready.
   useEffect(() => {
     if (navigationRef.current?.key !== request?.activation) {
       navigationRef.current?.reveal?.dispose();
@@ -293,11 +294,13 @@ export function useTimelineSourceTarget({
     rows,
   ]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Dispose the virtual list reveal subscription when the timeline unmounts.
   useEffect(() => () => navigationRef.current?.reveal?.dispose(), []);
 
   const positioning = request !== null && finishedKey !== request.activation;
 
   // Scrolling away while it positions leaves the user where they scrolled to.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Let native scroll and keyboard input interrupt an active source reveal.
   useEffect(() => {
     if (!positioning || !viewport) return;
     const dismiss = () => {

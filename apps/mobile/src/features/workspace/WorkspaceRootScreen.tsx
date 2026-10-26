@@ -69,7 +69,6 @@ function WorkspaceRootTitle(props: {
   readonly onOpenEnvironments: () => void;
 }) {
   const { state, settingsOpen } = useWorkspaceTabs()!;
-  const room = use(WorkspaceRoomContext) ?? state.room;
   const enabled = useEnabledNavigationTabs();
   const tabTitle = settingsOpen
     ? "Settings"

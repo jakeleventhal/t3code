@@ -41,11 +41,13 @@ export function VoiceCallCard(props: {
   const latestSettled = useRef(onTranscriptSettled);
   // Every commit, not on a status change: a page served from cache lands
   // without the status ever leaving "ready".
+  // oxlint-disable-next-line t3code/react-effect-budget -- Notify the virtual list after transcript content has committed and can be measured.
   useLayoutEffect(() => {
     latestSettled.current = onTranscriptSettled;
     if (transcriptSettled) onTranscriptSettled();
   });
   // A card scrolled out of the list can no longer report its page.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Release a waiting reveal when its transcript card is virtualized out of the list.
   useEffect(() => () => latestSettled.current(), []);
   if (call === null) return null;
   const title = `Call with ${call.botTitle}`;

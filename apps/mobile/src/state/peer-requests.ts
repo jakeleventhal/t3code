@@ -76,6 +76,7 @@ export function usePeerRequestRows(ref: ScopedThreadRef): ReadonlyArray<PeerRequ
   const signal = `${hosts.join(",")}|${activity}`;
   const targetsKey = JSON.stringify(conversation);
   const refreshedFor = useRef(signal);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Invalidate remote request snapshots when the external delivery signal changes.
   useEffect(() => {
     if (refreshedFor.current === signal) return;
     refreshedFor.current = signal;

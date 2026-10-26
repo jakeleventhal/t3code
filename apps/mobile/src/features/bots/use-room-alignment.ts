@@ -75,6 +75,7 @@ export function useRoomAlignment(detail: readonly WorkspaceRoute[], rendered?: N
     [detail, room, ownerOf],
   );
   const alignRoom = workspace?.alignRoom;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Align the native workspace with the committed route before it is painted.
   useLayoutEffect(() => {
     if (alignment !== null) alignRoom?.(alignment, rendered);
   }, [alignment, alignRoom, rendered]);

@@ -102,7 +102,7 @@ export const createNativePcmAudio: PcmAudioFactory = (input) => {
       } catch (error) {
         const message = setupFailure ?? messageOf(error, "The microphone couldn't start.");
         close();
-        throw new Error(message);
+        throw new Error(message, { cause: error });
       }
       if (isClosed()) throw new Error(setupFailure ?? CANCELLED);
       phase = "started";

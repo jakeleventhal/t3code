@@ -17,6 +17,7 @@ export function useVoicePreview(environmentId: EnvironmentId) {
   const current = useRef<AbortController | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to the call controller so a call cancels preview audio and unmount releases it.
   useEffect(() => {
     const unsubscribe = voiceCallController.subscribe(() => {
       const call = voiceCallController.getSnapshot();

@@ -1,3 +1,4 @@
+import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
@@ -145,13 +146,7 @@ export function BotProfileSheet(
                   label="Voice settings"
                   icon="headphones"
                   onPress={() =>
-                    navigation.navigate("SettingsSheet", {
-                      screen: "SettingsContent",
-                      params: {
-                        screen: "SettingsVoiceBot",
-                        params: { environmentId, projectId },
-                      },
-                    })
+                    openSettings(navigation, "SettingsVoiceBot", { environmentId, projectId })
                   }
                 />
               </View>
@@ -201,12 +196,9 @@ function BotTurnSettingsSection(props: { readonly project: EnvironmentProject })
   if (!turn.supported) return null;
   const disabled = !turn.editable || !turn.canWrite || turn.pending;
   const open = () =>
-    navigation.navigate("SettingsSheet", {
-      screen: "SettingsContent",
-      params: {
-        screen: "SettingsBotTurn",
-        params: { environmentId: project.environmentId, projectId: project.id },
-      },
+    openSettings(navigation, "SettingsBotTurn", {
+      environmentId: project.environmentId,
+      projectId: project.id,
     });
   return (
     <ListSection
