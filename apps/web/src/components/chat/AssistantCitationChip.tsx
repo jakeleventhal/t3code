@@ -59,6 +59,7 @@ export function AssistantCitationChip({
   const commentOpen = commentEditor?.open ?? false;
   const sourceAnchor = commentEditor?.sourceAnchor;
   const activeSourceAnchor = sourceAnchor === unavailableSourceAnchor ? undefined : sourceAnchor;
+  const [sourcePositionRevision, setSourcePositionRevision] = useState(0);
   useEffect(() => {
     if (!commentOpen) draftCommentRef.current = null;
   }, [commentOpen]);
@@ -87,11 +88,17 @@ export function AssistantCitationChip({
       anchor,
       citation,
       onUnavailable: onSourceUnavailable,
+      onPositionChange: () => setSourcePositionRevision((revision) => revision + 1),
     });
   }, [citation, commentOpen, sourceAnchor, unavailableSourceAnchor]);
+  // A multi-line selection's bounding box spans the full message width; anchor
+  // the bubble to the selection's last line, where the pointer released.
   const popupAnchor = activeSourceAnchor
     ? {
         contextElement: activeSourceAnchor.source,
+        // Bridge range updates keep the same source anchor; the revision makes the
+        // compiler hand the popup a new virtual anchor so it repositions.
+        positionRevision: sourcePositionRevision,
         getBoundingClientRect: () => {
           const rects = activeSourceAnchor.range.getClientRects();
           const rect =
