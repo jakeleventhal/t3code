@@ -165,6 +165,8 @@ vi.mock("../../state/shell", async () => {
       stateValueAtom: Atom.family((_id: EnvironmentId) =>
         Atom.make<EnvironmentShellState>({
           status: "empty",
+          generation: 0,
+          removedAt: new Map(),
           snapshot: Option.none(),
           error: Option.none(),
         }),
@@ -376,6 +378,8 @@ function setLiveShell(
   });
   setTestAtom(environmentShell.stateValueAtom(liveEnvironmentId), {
     status,
+    generation: 0,
+    removedAt: new Map(),
     error: Option.none(),
     snapshot: Option.some({
       projects: [project],
@@ -2121,6 +2125,8 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
       setTestAtom(environmentShell.stateValueAtom(other), {
         status: "live",
+        generation: 0,
+        removedAt: new Map(),
         error: Option.none(),
         snapshot: Option.some({
           projects: [],
@@ -2424,6 +2430,43 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       now + 60_000 + AGENT_ACTIVITY_FRESHNESS_MS,
     );
     expect(publishAgentActivityWidget).toHaveBeenCalledTimes(publications + 1);
+  });
+
+  it("does not let an old idle environment expire freshly observed work", () => {
+    const now = Date.parse("2026-10-02T12:00:00.000Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    addLiveEnvironment();
+    const other = EnvironmentId.make("idle-environment");
+    setTestAtom(
+      environmentShell.stateValueAtom(other),
+      appAtomRegistry.get(environmentShell.stateValueAtom(liveEnvironmentId)),
+    );
+    const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
+    setTestAtom(environmentCatalog.catalogValueAtom, {
+      ...catalog,
+      entries: new Map([
+        ...catalog.entries,
+        [
+          other,
+          {
+            target: new PrimaryConnectionTarget({
+              environmentId: other,
+              label: "Idle",
+              httpBaseUrl: "https://idle.example.test",
+              wsBaseUrl: "wss://idle.example.test/ws",
+            }),
+            profile: Option.none(),
+            enabled: true,
+          },
+        ],
+      ]),
+    });
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("token-a"), "user-a");
+    clock.mockReturnValue(now + AGENT_ACTIVITY_FRESHNESS_MS + 60_000);
+    setLiveShell("running");
+    expect(vi.mocked(publishAgentActivityWidget).mock.lastCall![0]).toMatchObject({
+      expiresAt: now + AGENT_ACTIVITY_FRESHNESS_MS * 2 + 60_000,
+    });
   });
 
   it("keeps the full freshness interval for a shell observed late in a minute", () => {
