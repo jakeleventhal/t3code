@@ -3,13 +3,16 @@ import { VoiceCallSetupError } from "@t3tools/client-runtime/voice-call";
 import { openLiveMedia, type LiveMediaInput } from "@t3tools/client-runtime/voice-call/live-media";
 import type { MediaStream, MediaStreamTrack } from "react-native-webrtc";
 
+let nextRouteId = 0;
+
 export async function openLiveNativeWebRtc(input: LiveMediaInput) {
   // Loading WebRTC installs native event listeners; ordinary text use should not pay that cost.
   const { RTCPeerConnection, mediaDevices } = await import("react-native-webrtc");
   const route = requireOptionalNativeModule<{
-    preferSpeaker?: () => void;
-    releaseWebRtcRoute?: () => void;
+    preferSpeaker?: (routeId: string) => void;
+    releaseWebRtcRoute?: (routeId: string) => void;
   }>("T3VoiceAudio");
+  const routeId = `webrtc-${Date.now()}-${++nextRouteId}`;
   return openLiveMedia(input, (events) => {
     const peer = new RTCPeerConnection();
     const channel = peer.createDataChannel("oai-events", { ordered: true });
@@ -24,7 +27,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
       microphone = null;
       for (const track of remoteTracks) track.enabled = false;
       remoteTracks.clear();
-      route?.releaseWebRtcRoute?.();
+      route?.releaseWebRtcRoute?.(routeId);
     };
     channel.addEventListener("message", (event) => {
       if (typeof event.data === "string") events.receive(event.data);
@@ -67,7 +70,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
             peer.addTrack(track, captured);
           }
         }
-        route?.preferSpeaker?.();
+        route?.preferSpeaker?.(routeId);
         const offer = await peer.createOffer({});
         if (stopped) throw new Error("The voice connection was cancelled.");
         await peer.setLocalDescription(offer);
@@ -77,7 +80,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
       },
       answer: async (sdp) => {
         await peer.setRemoteDescription({ type: "answer", sdp });
-        if (!stopped) route?.preferSpeaker?.();
+        if (!stopped) route?.preferSpeaker?.(routeId);
       },
       send: (packet) => {
         if (channel.readyState !== "open") throw new Error("The voice data channel is closed.");

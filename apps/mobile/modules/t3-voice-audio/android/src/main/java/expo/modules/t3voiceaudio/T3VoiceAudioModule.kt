@@ -15,6 +15,8 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.net.Uri
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
@@ -44,6 +46,9 @@ class T3VoiceAudioModule : Module() {
   private val lock = Any()
   private var reservedId: String? = null
   private var session: VoiceAudioSession? = null
+  private var webRtcId: String? = null
+  private val cueHandler = Handler(Looper.getMainLooper())
+  private var cuePlayer: MediaPlayer? = null
 
   // Opening audio hardware blocks; it never runs on the JS thread.
   private val setup: ExecutorService =
@@ -54,7 +59,8 @@ class T3VoiceAudioModule : Module() {
 
     Events("onAudio", "onPlaybackIdle", "onError")
 
-    Function("preferSpeaker") {
+    Function("preferSpeaker") { routeId: String ->
+      synchronized(lock) { webRtcId = routeId }
       val context = appContext.reactContext ?: return@Function
       val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
       manager.mode = AudioManager.MODE_IN_COMMUNICATION
@@ -74,13 +80,48 @@ class T3VoiceAudioModule : Module() {
       }
     }
 
-    Function("releaseWebRtcRoute") {
+    Function("releaseWebRtcRoute") { routeId: String ->
+      synchronized(lock) {
+        if (webRtcId != routeId) return@Function
+        webRtcId = null
+      }
       val context = appContext.reactContext ?: return@Function
       val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) manager.clearCommunicationDevice()
       manager.mode = AudioManager.MODE_NORMAL
     }
 
+
+    Function("playCue") { uri: String, ended: Boolean ->
+      val context = appContext.reactContext ?: return@Function
+      cueHandler.post {
+        cuePlayer?.release()
+        cuePlayer = null
+        val player = MediaPlayer()
+        try {
+          player.setAudioAttributes(AudioAttributes.Builder()
+            .setUsage(if (ended) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+          player.setDataSource(context, Uri.parse(uri))
+          player.setVolume(0.35f, 0.35f)
+          player.setOnCompletionListener {
+            if (cuePlayer === it) cuePlayer = null
+            it.release()
+          }
+          player.setOnErrorListener { failed, _, _ ->
+            if (cuePlayer === failed) cuePlayer = null
+            failed.release()
+            true
+          }
+          player.prepare()
+          cuePlayer = player
+          player.start()
+        } catch (_: Exception) {
+          if (cuePlayer === player) cuePlayer = null
+          player.release()
+        }
+      }
+    }
 
     // Synchronous so a close issued right after cannot overtake it on the way to native.
     Function("begin") { sessionId: String -> reserve(sessionId) }
@@ -103,6 +144,7 @@ class T3VoiceAudioModule : Module() {
     Function("stop") { sessionId: String -> stop(sessionId) }
 
     OnDestroy {
+      cueHandler.post { cuePlayer?.release(); cuePlayer = null }
       val closing = synchronized(lock) {
         reservedId = null
         session.also { session = null }
