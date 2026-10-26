@@ -109,6 +109,10 @@ function classifyRoute(
   route: WorkspaceRoute,
   workspace: { readonly room: WorkspaceRoom; readonly selectedTab: WorkspaceTab } | null,
 ): MobileRouteView {
+  if (route.name.startsWith("Settings")) {
+    const section = settingsSection(route);
+    return { page: { kind: "settings", ...(section ? { section } : {}) }, detail: null };
+  }
   const environmentId = stringParam(route, "environmentId");
   const threadId = stringParam(route, "threadId");
   if (environmentId !== null && threadId !== null) {
@@ -176,15 +180,6 @@ function classifyRoute(
     case "NewTaskEnvironment":
     case "NewTaskBranch":
       return { page: { kind: "new-thread", environmentId: null }, detail: null };
-    case "SettingsSheet":
-    case "SettingsLegal":
-      return {
-        page: {
-          kind: "settings",
-          ...(settingsSection(route) ? { section: settingsSection(route) } : {}),
-        },
-        detail: null,
-      };
     default:
       return { page: { kind: "other" }, detail: null };
   }

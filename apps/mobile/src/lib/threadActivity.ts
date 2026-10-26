@@ -1,3 +1,4 @@
+import { isVoiceWorkMessage } from "@t3tools/client-runtime/user-message";
 import type {
   ThreadPendingApproval,
   ThreadPendingUserInput,
@@ -2191,6 +2192,7 @@ export function buildThreadFeed(
     if (turnItemIsWorkspacePreparation(item)) continue;
     if (item.type === "todo_list" || item.type === "checkpoint") continue;
     if (item.type === "user_message" && foldedAnswerMessageIds.has(item.messageId)) continue;
+    if (item.type === "user_message" && isVoiceWorkMessage(item.messageId)) continue;
     if (item.type === "run_interrupt_request") {
       continue;
     }

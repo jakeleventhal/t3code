@@ -8,6 +8,7 @@ export function openLiveWebRtc(input: LiveMediaInput) {
     const channel = peer.createDataChannel("oai-events", { ordered: true });
     const playback = new Audio();
     playback.autoplay = true;
+    playback.muted = input.playbackOnly !== true;
     let microphone: MediaStream | null = null;
     let stopped = false;
     let disposed = false;
@@ -71,6 +72,9 @@ export function openLiveWebRtc(input: LiveMediaInput) {
       send: (packet) => {
         if (channel.readyState !== "open") throw new Error("The voice data channel is closed.");
         channel.send(packet);
+      },
+      setPlaybackEnabled: (enabled) => {
+        playback.muted = !enabled;
       },
       setMicrophoneEnabled: (enabled) => {
         for (const track of microphone?.getAudioTracks() ?? []) track.enabled = enabled;

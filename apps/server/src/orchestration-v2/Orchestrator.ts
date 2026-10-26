@@ -5252,6 +5252,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const botSettings =
       Option.isSome(project) &&
       project.value.botRole != null &&
+      projection.thread.lineage.relationshipToParent !== "subagent" &&
       command.dispatchMode.type !== "steer_active"
         ? continuationRun === undefined
           ? resolveBotTurnSettings(

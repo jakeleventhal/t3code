@@ -1,3 +1,4 @@
+import { isVoiceWorkMessage } from "@t3tools/client-runtime/user-message";
 import { openSettings } from "../settings/settings-navigation";
 import { BotTaskModels } from "./BotTaskModels";
 import { VoiceCallCard } from "../threads/VoiceCallCard";
@@ -75,6 +76,7 @@ function useRecentMessages(environmentId: EnvironmentId, threadId: ThreadId | nu
     for (let index = items.length - 1; index >= 0 && recent.length < PREVIEW_MESSAGES; index--) {
       const projected = items[index]!;
       const item = projected.item;
+      if (item.type === "user_message" && isVoiceWorkMessage(item.messageId)) continue;
       if (item.type === "voice_call") {
         recent.unshift({ id: item.id, role: "call", projected });
         continue;

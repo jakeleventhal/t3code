@@ -20,6 +20,12 @@ export const BotSharedPreferences = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   defaultRuntimeMode: Schema.NullOr(RuntimeMode),
   complexTaskModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  automaticModelSelections: Schema.optionalKey(
+    Schema.Struct({
+      chat: Schema.optionalKey(ModelSelection),
+      complex: Schema.optionalKey(ModelSelection),
+    }),
+  ),
   complexTaskModelOverrides: Schema.optionalKey(Schema.Record(ProjectId, ModelSelection)),
   defaultVoice: Schema.optionalKey(Schema.NullOr(SharedVoice)),
   runtimeOverrides: Schema.optionalKey(Schema.Record(ProjectId, BotRuntimeOverride)),

@@ -351,6 +351,7 @@ export function createLiveVoiceConnector(input: {
           throw new Error("The typed message is too long or empty.");
         if (typedAttempt?.text !== text) typedAttempt = { id: `t3-typed-${++typedOrdinal}`, text };
         callerHasSpoken = true;
+        media.allowReply();
         const attempt = typedAttempt;
         const entry = transcript.appendTyped(attempt.id, text);
         if (entry !== null) call.onEvent({ type: "transcript", entry });

@@ -206,3 +206,39 @@ it("keeps capture muted until the provider accepts unmute", async () => {
   f.channel.receive({ type: "session.closed", reason: "close_requested" });
   await closed;
 });
+
+it("keeps each new call silent until fresh user speech and never starts work from unsolicited output", async () => {
+  for (const ordinal of [1, 2]) {
+    const f = fixture();
+    const connection = await f.start();
+    const remote = new Track();
+    f.peer.receiveTrack(remote);
+    expect(remote.enabled).toBe(false);
+    f.channel.receive({
+      type: "session.output_transcript.delta",
+      event_id: "old",
+      delta: "Continuing the old reply",
+      start_ms: 0,
+      end_ms: 20,
+    });
+    f.channel.receive({
+      type: "session.delegation.created",
+      offset_ms: 0,
+      delegation: { id: "old-work", target: "client" },
+    });
+    expect(f.callbacks.onTranscript).not.toHaveBeenCalled();
+    expect(f.callbacks.onDelegation).not.toHaveBeenCalled();
+    f.channel.receive({
+      type: "session.input_transcript.delta",
+      event_id: `fresh-${ordinal}`,
+      delta: "Hello",
+      start_ms: 100,
+      end_ms: 150,
+    });
+    expect(remote.enabled).toBe(true);
+    const closed = connection.close();
+    f.channel.receive({ type: "session.closed", reason: "close_requested" });
+    await closed;
+    expect(remote.enabled).toBe(false);
+  }
+});

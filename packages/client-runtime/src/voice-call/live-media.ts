@@ -6,6 +6,7 @@ export interface LiveMediaTransport {
   readonly offer: () => Promise<string>;
   readonly answer: (sdp: string) => Promise<void>;
   readonly send: (packet: string) => void;
+  readonly setPlaybackEnabled: (enabled: boolean) => void;
   readonly setMicrophoneEnabled: (enabled: boolean) => void;
   readonly stopAudio: () => void;
   readonly dispose: () => void;
@@ -37,6 +38,11 @@ export async function openLiveMedia(
   let media: LiveMediaTransport | undefined;
   let disposed = false;
   let ready = false;
+  let callerHasSpoken = input.playbackOnly === true;
+  const allowReply = () => {
+    callerHasSpoken = true;
+    if (!disposed) media?.setPlaybackEnabled(true);
+  };
   let closing: Promise<void> | null = null;
   const setupAbort = new AbortController();
   let rejectSetup!: (reason: Error) => void;
@@ -60,6 +66,18 @@ export async function openLiveMedia(
     },
     callbacks: {
       ...input.callbacks,
+      onTranscript: (fragment) => {
+        if (fragment.speaker === "user" && fragment.text.trim()) allowReply();
+        if (callerHasSpoken || fragment.speaker === "user") input.callbacks.onTranscript(fragment);
+      },
+      onUntimedTranscript: (entry) => {
+        if (entry.speaker === "user" && entry.text.trim()) allowReply();
+        if (callerHasSpoken || entry.speaker === "user")
+          input.callbacks.onUntimedTranscript?.(entry);
+      },
+      onDelegation: (request) => {
+        if (callerHasSpoken) input.callbacks.onDelegation(request);
+      },
       onClosed: (reason) => {
         if (!ready)
           rejectSetup(
@@ -97,6 +115,7 @@ export async function openLiveMedia(
       },
     });
     const transport = media;
+    transport.setPlaybackEnabled(callerHasSpoken);
     const setup = async () => {
       const sdp = await transport.offer();
       if (disposed) throw new Error("The voice connection was cancelled.");
@@ -115,6 +134,7 @@ export async function openLiveMedia(
     return {
       session,
       close,
+      allowReply,
       setMuted: async (muted: boolean) => {
         if (disposed || input.signal.aborted) throw new Error("The voice call has ended.");
         if (muted) transport.setMicrophoneEnabled(false);

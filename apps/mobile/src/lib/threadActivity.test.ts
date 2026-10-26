@@ -710,8 +710,22 @@ describe("buildThreadFeed", () => {
         },
         2,
       ),
-      projected(assistantMessage(), 3),
+      projected(
+        {
+          ...userMessage(),
+          id: TurnItemId.make("handoff"),
+          messageId: MessageId.make("voice-work:call-1:request-1"),
+          text: "Internal handoff and full history",
+        },
+        3,
+      ),
+      projected(assistantMessage(), 4),
     ]);
+    expect(
+      feed.some(
+        (entry) => entry.type === "message" && entry.message.text.includes("Internal handoff"),
+      ),
+    ).toBe(false);
 
     const collapsed = deriveThreadFeedPresentation(
       feed,

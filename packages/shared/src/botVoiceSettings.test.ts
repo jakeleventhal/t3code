@@ -1,3 +1,4 @@
+import { botVoiceSelection } from "./botPreferences.ts";
 import {
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
@@ -97,5 +98,21 @@ describe("voice settings", () => {
 
   it("rejects incomplete voice selections instead of retaining fields from another account", () => {
     expect(decodePatch({ voiceSelection: { connectionId: "work" } })._tag).toBe("None");
+  });
+});
+
+it("uses the shared default when unified overrides are empty despite a stale local voice", () => {
+  const settings = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+    voiceConnections: { personal: { kind: "openai-api", name: "Personal", apiKey: "test" } },
+    projectSettingsOverrides: { [bot]: { voiceSelection: { ...selection, voice: "arbor" } } },
+    botSharedPreferences: {
+      ...DEFAULT_SERVER_SETTINGS.botSharedPreferences,
+      defaultVoice: { ...selection, voice: "sol", connectionKind: "openai-api" },
+      voiceOverrides: {},
+    },
+  });
+  expect(botVoiceSelection(settings, bot)).toEqual({
+    kind: "default",
+    selection: { ...selection, voice: "sol" },
   });
 });

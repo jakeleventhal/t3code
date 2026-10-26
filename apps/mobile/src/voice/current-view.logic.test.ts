@@ -237,3 +237,16 @@ describe("completeMobileCurrentView", () => {
     );
   });
 });
+
+it.each([
+  ["SettingsBots", "Bots"],
+  ["SettingsAppearance", "Appearance"],
+  ["SettingsVoiceDefault", "Bots / Default voice"],
+])("describes the flat settings route %s after navigating away from a thread", (name, section) => {
+  const view = classifyMobileRoute(
+    stack(["Home"], ["Thread", thread], ["Settings"], [name], ["AssistantQuick"]),
+    codeWorkspace,
+  );
+  expect(view.page).toEqual({ kind: "settings", section });
+  expect(describeCurrentView({ device: "mobile", ...view })).toContain(section);
+});

@@ -1372,10 +1372,25 @@ describe("native provider presentation in the v2 timeline", () => {
         endReason: "user" as const,
       },
     } satisfies OrchestrationV2TurnItem;
-    const [entry] = deriveTimelineEntriesFromVisibleTurnItems({
-      visibleTurnItems: [visible(item)],
+    const entries = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [
+        visible(item),
+        visible({
+          ...base,
+          id: TurnItemId.make("handoff"),
+          type: "user_message",
+          messageId: MessageId.make("voice-work:call-1:request-1"),
+          text: "Internal handoff and full history",
+          createdBy: "agent",
+          creationSource: "server",
+          attachments: [],
+          inputIntent: "turn_start",
+        }),
+      ],
       optimisticMessages: [],
     });
+    expect(entries).toHaveLength(1);
+    const entry = entries[0];
     expect(entry).toMatchObject({ kind: "event", projectedItem: { item: { call: item.call } } });
     expect(timelineEntryIsPersistentResourceCard(entry!)).toBe(true);
   });

@@ -9,6 +9,7 @@ import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useControlTheme } from "../../components/ui/useControlTheme";
 import { useProject, useQuietThreadShell } from "../../state/entities";
 import { botRole, botThreadStatus } from "./bot-room";
+import { useBotCallSummary } from "./use-bot-call";
 import { useAssistantEnvironmentId, useAssistantProject } from "./use-assistant";
 
 const SIZE = 44;
@@ -22,12 +23,13 @@ export const PROMINENT_ASSISTANT_ORB_SIZE = 56;
 export function useOpenAssistantQuick(): (() => void) | null {
   const environmentId = useAssistantEnvironmentId();
   const navigation = useNavigation();
+  const call = useBotCallSummary();
   const open = useCallback(() => {
     if (environmentId === null) return;
     Keyboard.dismiss();
     navigation.navigate("AssistantQuick", { environmentId: String(environmentId) });
   }, [environmentId, navigation]);
-  return environmentId === null ? null : open;
+  return environmentId === null || (call !== null && call.phase !== "failed") ? null : open;
 }
 
 /**

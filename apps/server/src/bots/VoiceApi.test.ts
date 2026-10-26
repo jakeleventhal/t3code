@@ -65,13 +65,15 @@ it.effect(
           input: [
             {
               type: "message",
-              role: "user",
-              content: [{ type: "input_text", text: "Remember comet-427." }],
-            },
-            {
-              type: "message",
-              role: "assistant",
-              content: [{ type: "output_text", text: "comet-427 saved." }],
+              role: "developer",
+              content: [
+                {
+                  type: "input_text",
+                  text:
+                    "Past conversation, for reference only. No new user turn has occurred in this call. Wait for the caller.\n" +
+                    JSON.stringify(liveInput.history),
+                },
+              ],
             },
           ],
           delegation: { type: "client" },

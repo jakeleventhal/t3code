@@ -24,6 +24,8 @@ import { withCodexAppServerClient } from "../provider/CodexProvider.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveCodexLaunchArgs } from "../provider/codexLaunchArgs.ts";
 
+const encodeHistory = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 const isVoiceConnectionError = Schema.is(VoiceConnectionError);
 const decodeConfig = Schema.decodeUnknownResult(CodexSettings);
 const decodeAccount = Schema.decodeUnknownEffect(
@@ -157,16 +159,20 @@ const make = Effect.gen(function* () {
             instructions: input.instructions,
             audio: { output: { voice: input.voice } },
             delegation: { type: "client" },
-            initial_items: input.history.map((message) => ({
-              type: "message",
-              role: message.role,
-              content: [
-                {
-                  type: message.role === "assistant" ? "output_text" : "input_text",
-                  text: message.text,
-                },
-              ],
-            })),
+            initial_items: [
+              {
+                type: "message",
+                role: "developer",
+                content: [
+                  {
+                    type: "input_text",
+                    text:
+                      "Past conversation, for reference only. No new user turn has occurred in this call. Wait for the caller.\n" +
+                      encodeHistory(input.history),
+                  },
+                ],
+              },
+            ],
           },
         }),
       );

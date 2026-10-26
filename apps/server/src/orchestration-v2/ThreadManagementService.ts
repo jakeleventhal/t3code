@@ -688,6 +688,7 @@ const make = Effect.gen(function* () {
               const selection =
                 Option.isSome(project) &&
                 project.value.botRole != null &&
+                projection.thread.lineage.relationshipToParent !== "subagent" &&
                 command.dispatchMode.type !== "steer_active"
                   ? resolveBotTurnSettings(
                       yield* serverSettings.getSettings.pipe(Effect.orDie),
