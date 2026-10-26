@@ -56,6 +56,7 @@ export function useComposerMenuItems({
   threadPullRequests,
   planModeUiEnabled,
   compactSlashCommandAvailable,
+  voiceSlashCommand,
   selectedProvider,
   selectedProviderSkills,
   selectedProviderSlashCommands,
@@ -70,6 +71,8 @@ export function useComposerMenuItems({
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly planModeUiEnabled: boolean;
   readonly compactSlashCommandAvailable: boolean;
+  /** Whether /voice starts or stops a conversation; null hides it. */
+  readonly voiceSlashCommand: "start" | "stop" | null;
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedProviderSkills: ServerProvider["skills"];
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
@@ -204,6 +207,20 @@ export function useComposerMenuItems({
                 command: "default",
                 label: "/default",
                 description: "Switch this thread back to normal build mode",
+              },
+            ] as const)
+          : []),
+        ...(voiceSlashCommand !== null
+          ? ([
+              {
+                id: "slash:voice",
+                type: "slash-command",
+                command: "voice",
+                label: "/voice",
+                description:
+                  voiceSlashCommand === "stop"
+                    ? "Stop the voice conversation"
+                    : "Start a voice conversation",
               },
             ] as const)
           : []),
