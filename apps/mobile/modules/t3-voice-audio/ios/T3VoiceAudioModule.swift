@@ -13,19 +13,61 @@ public final class T3VoiceAudioModule: Module {
   private let queue = DispatchQueue(label: "t3.voice-audio")
   private var reservedId: String?
   private var session: VoiceAudioSession?
+  private var webRtcId: String?
+  private var cuePlayer: VoiceCuePlayer?
 
   public func definition() -> ModuleDefinition {
     Name("T3VoiceAudio")
 
     Events("onAudio", "onPlaybackIdle", "onError")
 
-    Function("preferSpeaker") {
-      let audio = AVAudioSession.sharedInstance()
-      // Default to speaker while preserving a connected headset and the voice processing mode.
-      try audio.setCategory(.playAndRecord, mode: .voiceChat,
-        options: audio.categoryOptions.union([.defaultToSpeaker, .allowBluetoothHFP]))
+    Function("preferSpeaker") { (routeId: String) in
+      try self.queue.sync {
+        self.webRtcId = routeId
+        let audio = AVAudioSession.sharedInstance()
+        try audio.setCategory(.playAndRecord, mode: .voiceChat,
+          options: audio.categoryOptions.union([.defaultToSpeaker, .allowBluetoothHFP]))
+        if audio.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
+          try audio.overrideOutputAudioPort(.speaker)
+        }
+      }
     }
 
+    Function("releaseWebRtcRoute") { (routeId: String) in
+      self.queue.sync {
+        if self.webRtcId == routeId { self.webRtcId = nil }
+      }
+    }
+
+    Function("playCue") { (uri: String, ended: Bool) in
+      try self.queue.sync {
+        guard let url = URL(string: uri), url.isFileURL else { return }
+        let audio = AVAudioSession.sharedInstance()
+        let idle = self.webRtcId == nil && self.session == nil
+        if !ended && idle { return }
+        self.cuePlayer?.stop()
+        if !ended && audio.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
+          try audio.overrideOutputAudioPort(.speaker)
+        }
+        if ended && idle {
+          // The call has released capture. Playback routes to speaker or the user's headset,
+          // never the phone receiver, and does not reopen the microphone.
+          try audio.setCategory(.playback, mode: .default)
+          try audio.setActive(true)
+        }
+        let cue = try VoiceCuePlayer(url: url) { [weak self] completed in
+          self?.queue.async {
+            guard let self, self.cuePlayer === completed else { return }
+            self.cuePlayer = nil
+            if ended && self.webRtcId == nil && self.session == nil {
+              try? audio.setActive(false, options: .notifyOthersOnDeactivation)
+            }
+          }
+        }
+        self.cuePlayer = cue
+        cue.play()
+      }
+    }
 
     // Synchronous so a close issued right after cannot overtake it on the way to native.
     Function("begin") { (sessionId: String) in
@@ -115,6 +157,9 @@ public final class T3VoiceAudioModule: Module {
 
     OnDestroy {
       self.queue.sync {
+        self.cuePlayer?.stop()
+        self.cuePlayer = nil
+        self.webRtcId = nil
         self.reservedId = nil
         self.session?.close()
         self.session = nil
@@ -494,4 +539,23 @@ private final class VoiceAudioSession {
     }
     if scheduled.isEmpty { emit("onPlaybackIdle", ["sessionId": id]) }
   }
+}
+
+// AVAudioPlayer does not own the shared session: finishing a connection tone must not stop capture.
+private final class VoiceCuePlayer: NSObject, AVAudioPlayerDelegate {
+  private let player: AVAudioPlayer
+  private let finished: (VoiceCuePlayer) -> Void
+
+  init(url: URL, finished: @escaping (VoiceCuePlayer) -> Void) throws {
+    self.player = try AVAudioPlayer(contentsOf: url)
+    self.finished = finished
+    super.init()
+    player.delegate = self
+    player.volume = 0.35
+  }
+
+  func play() { if !player.play() { finished(self) } }
+  func stop() { player.stop() }
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { finished(self) }
+  func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) { finished(self) }
 }
