@@ -131,10 +131,9 @@ function InboxBadges({ entry }: { readonly entry: BotInboxEntry }) {
         />
       ) : null}
       {entry.unread ? (
-        <SymbolView
-          name="text.bubble"
-          size={16}
-          tintColorClassName="accent-primary-text"
+        <View
+          className="size-2.5 shrink-0 rounded-full bg-blue-500"
+          accessible
           accessibilityLabel="Unread reply"
         />
       ) : null}

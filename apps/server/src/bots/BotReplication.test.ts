@@ -23,6 +23,7 @@ import {
   ProviderInstanceId,
   ProviderThreadId,
   ThreadId,
+  TurnItemId,
   type OrchestrationV2AppThread,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -569,4 +570,188 @@ it.effect(
         (yield* aSettings.getSettings).projectSettingsOverrides[projectId]?.defaultRuntimeMode,
       );
     }).pipe(Effect.scoped),
+);
+
+it.effect("replicates collapsed calls and repairs transcript identities from older copies", () =>
+  Effect.gen(function* () {
+    const a = yield* Layer.build(fixture("voice-origin"));
+    const b = yield* Layer.build(fixture("voice-copy"));
+    const first = Context.get(a, Replication.BotReplication);
+    const second = Context.get(b, Replication.BotReplication);
+    const fs = Context.get(a, FileSystem.FileSystem);
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "replica-call-" });
+    yield* Context.get(a, Projects.ProjectService).create({
+      commandId: CommandId.make("voice-project"),
+      projectId,
+      title: "Fitness",
+      workspaceRoot: root,
+      botRole: "specialist",
+    });
+    const sink = Context.get(a, Sink.EventSinkV2);
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make("voice-thread"),
+          type: "thread.created",
+          threadId,
+          occurredAt: now,
+          payload: sourceThread,
+        },
+      ],
+    });
+    const message = {
+      id: MessageId.make("voice-message"),
+      threadId,
+      runId: null,
+      nodeId: null,
+      createdBy: "user" as const,
+      creationSource: "server" as const,
+      role: "user" as const,
+      text: "We discussed capuchin monkeys.",
+      attachments: [],
+      streaming: false,
+      voiceCall: { callId: "call", entryId: "speech", ordinal: 0, revision: 0, final: true },
+      createdAt: now,
+      updatedAt: now,
+    };
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make("voice-message"),
+          type: "message.updated",
+          threadId,
+          occurredAt: now,
+          payload: message,
+        },
+      ],
+    });
+    const page = yield* first.read({ projectId, includeManifest: true });
+    // Simulate a previously installed receiver that discarded voice metadata.
+    yield* second.receive({
+      ...page,
+      messages: page.messages.map(({ voiceCall: _call, ...rest }) => rest),
+    });
+    yield* second.receive(page);
+    const call = {
+      id: TurnItemId.make("voice-call:call"),
+      type: "voice_call" as const,
+      threadId,
+      runId: null,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: "completed" as const,
+      title: "Fitness",
+      startedAt: now,
+      completedAt: now,
+      updatedAt: now,
+      voiceOwner: "private-client",
+      voiceWriters: [{ owner: "private-client", ordinalOffset: 0 }],
+      call: {
+        callId: "call",
+        botTitle: "Fitness",
+        startedAt: DateTime.formatIso(now),
+        endedAt: DateTime.formatIso(now),
+        endReason: "user" as const,
+      },
+    };
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make("voice-ended"),
+          type: "turn-item.updated",
+          threadId,
+          occurredAt: now,
+          payload: call,
+        },
+      ],
+    });
+    const next = yield* first.read({ projectId, includeManifest: false, after: page.cursor! });
+    assert.lengthOf(next.calls!, 1);
+    assert.notProperty(next.calls![0], "voiceOwner");
+    assert.notProperty(next.calls![0], "voiceWriters");
+    yield* second.receive(next);
+    yield* second.receive(next);
+    const records = yield* Context.get(b, Projection.ProjectionStoreV2).getThreadRecords(threadId, [
+      "messages",
+      "turnItems",
+    ]);
+    assert.deepEqual(records.messages[0]!.voiceCall, message.voiceCall);
+    assert.equal(records.messages[0]!.text, message.text);
+    assert.lengthOf(
+      records.turnItems.filter((item) => item.type === "voice_call"),
+      1,
+    );
+    const projection = yield* Context.get(b, Projection.ProjectionStoreV2).getThreadProjection(
+      threadId,
+    );
+    assert.deepEqual(
+      projection.visibleTurnItems.map((row) => row.item.type),
+      ["voice_call"],
+    );
+    assert.equal(records.turnItems.find((item) => item.type === "voice_call")!.ordinal, 1);
+    const backward = yield* second.read({ projectId, includeManifest: true });
+    yield* first.receive(backward);
+    const unchanged = yield* first.read({ projectId, includeManifest: false, after: next.cursor! });
+    assert.lengthOf(unchanged.messages, 0);
+    assert.lengthOf(unchanged.calls!, 0);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("initializes shared defaults once, including Sol, and preserves explicit choices", () =>
+  Effect.gen(function* () {
+    const context = yield* Layer.build(fixture("default-host"));
+    const settings = Context.get(context, Settings.ServerSettingsService);
+    const replication = Context.get(context, Replication.BotReplication);
+    const providers = [
+      {
+        instanceId: ProviderInstanceId.make("codex"),
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready" as const,
+        auth: { status: "authenticated" as const },
+        checkedAt: "2026-10-26T12:00:00Z",
+        models: ["gpt-6.1-sol", "gpt-6-astra"].map((slug) => ({
+          slug,
+          name: slug,
+          isCustom: false,
+          capabilities: null,
+        })),
+        slashCommands: [],
+        skills: [],
+      },
+    ];
+    yield* settings.updateSettings({
+      voiceConnections: {
+        chatgpt: {
+          kind: "codex-subscription",
+          name: "ChatGPT",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        },
+      },
+    });
+    yield* replication.initializeDefaults(providers);
+    const initialized = (yield* settings.getSettings).botSharedPreferences;
+    assert.equal(initialized.defaultVoice?.voice, "sol");
+    assert.equal(initialized.defaultModelSelection?.model, "gpt-6.1-sol");
+    yield* replication.initializeDefaults(providers);
+    assert.equal((yield* settings.getSettings).botSharedPreferences.revision, initialized.revision);
+    yield* replication.configure({
+      defaultVoiceSelection: null,
+      defaultModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "custom",
+        options: [{ id: "reasoningEffort", value: "max" }],
+      },
+    });
+    yield* replication.initializeDefaults(providers);
+    const manual = (yield* settings.getSettings).botSharedPreferences;
+    assert.isNull(manual.defaultVoice);
+    assert.equal(manual.defaultModelSelection?.model, "custom");
+  }).pipe(Effect.scoped),
 );

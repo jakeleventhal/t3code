@@ -234,6 +234,7 @@ export function createLiveVoiceConnector(input: {
       const seenRequests = new Set<string>();
       let media: Awaited<ReturnType<typeof openLiveMedia>> | null = null;
       let closed = false;
+      let callerHasSpoken = false;
       let detachView: (() => void) | null = null;
       let detachContext: (() => void) | null = null;
       let contextTail = Promise.resolve();
@@ -256,7 +257,7 @@ export function createLiveVoiceConnector(input: {
           await media.session.appendContext({
             text: boundLiveContext(text),
             ...(delegationId === undefined ? {} : { delegationId }),
-            speak,
+            speak: speak && callerHasSpoken,
           });
         } catch {
           if (!closed) {
@@ -349,6 +350,7 @@ export function createLiveVoiceConnector(input: {
         if (!text.trim() || text.length > 16_384)
           throw new Error("The typed message is too long or empty.");
         if (typedAttempt?.text !== text) typedAttempt = { id: `t3-typed-${++typedOrdinal}`, text };
+        callerHasSpoken = true;
         const attempt = typedAttempt;
         const entry = transcript.appendTyped(attempt.id, text);
         if (entry !== null) call.onEvent({ type: "transcript", entry });
@@ -389,10 +391,12 @@ export function createLiveVoiceConnector(input: {
           negotiate: (sdp, signal) => input.backend.negotiate(call, sdp, signal),
           callbacks: {
             onUntimedTranscript: (part) => {
+              if (part.speaker === "user" && part.text.trim()) callerHasSpoken = true;
               const entry = transcript.appendUntimed(part);
               if (entry !== null) call.onEvent({ type: "transcript", entry });
             },
             onTranscript: (fragment) => {
+              if (fragment.speaker === "user" && fragment.text.trim()) callerHasSpoken = true;
               // Continue persisting the final text while the media port drains after hang-up.
               const entry = transcript.append(fragment);
               if (entry === null) return;
@@ -436,7 +440,8 @@ export function createLiveVoiceConnector(input: {
                     } else {
                       await media.session.appendContext({
                         text,
-                        speak: update.speak === true && index === chunks.length - 1,
+                        speak:
+                          callerHasSpoken && update.speak === true && index === chunks.length - 1,
                       });
                     }
                   }

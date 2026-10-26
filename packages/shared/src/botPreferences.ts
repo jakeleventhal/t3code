@@ -1,3 +1,5 @@
+import { formatModelSlugName } from "./model.ts";
+import type { OrchestrationV2Subagent } from "@t3tools/contracts";
 import type {
   BotSharedPreferences,
   ProjectId,
@@ -54,4 +56,23 @@ export function botVoiceSelection(settings: ServerSettings, projectId: ProjectId
   if (shared !== "inherit" && legacy !== undefined)
     return { kind: "own" as const, selection: legacy };
   return { kind: "default" as const, selection: botDefaultVoice(settings) };
+}
+
+export function activeBotTaskModels(agents: readonly OrchestrationV2Subagent[]): string[] {
+  return [
+    ...new Set(
+      agents
+        .filter((agent) => ["pending", "running", "waiting"].includes(agent.status))
+        .flatMap((agent) => {
+          const model = agent.modelSelection?.model ?? agent.model;
+          if (!model) return [];
+          const effort = agent.modelSelection?.options?.find((option) =>
+            ["effort", "reasoningEffort", "reasoning_effort"].includes(option.id),
+          )?.value;
+          return [
+            `${formatModelSlugName(model)}${typeof effort === "string" ? ` · ${effort[0]?.toUpperCase()}${effort.slice(1)}` : ""}`,
+          ];
+        }),
+    ),
+  ];
 }

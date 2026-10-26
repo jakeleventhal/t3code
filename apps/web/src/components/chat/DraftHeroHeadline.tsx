@@ -40,6 +40,7 @@ import {
 } from "../ui/combobox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InlineButton } from "../ui/button";
+import { withoutBotProjects } from "../bots/botRoom.logic";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -87,7 +88,7 @@ export function DraftHeroHeadline({
   );
   const projectGroups = sortLogicalProjectsForSidebar(
     buildSidebarProjectSnapshots({
-      projects,
+      projects: withoutBotProjects(projects),
       settings: projectGroupingSettings,
       primaryEnvironmentId,
       resolveEnvironmentLabel: (environmentId) => environmentLabelById.get(environmentId) ?? null,

@@ -402,7 +402,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DocumentText.DocumentText)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
-  Layer.mock(BotReplication.BotReplication)({}),
+  Layer.mock(BotReplication.BotReplication)({ initializeDefaults: () => Effect.void }),
   Layer.mock(BotService.BotService)({}),
   Layer.mock(VoiceConfiguration.VoiceConfiguration)({}),
   Layer.mock(VoiceCalls.VoiceCalls)({}),

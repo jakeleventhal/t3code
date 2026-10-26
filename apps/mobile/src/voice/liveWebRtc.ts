@@ -9,6 +9,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
   // Loading WebRTC installs native event listeners; ordinary text use should not pay that cost.
   const { RTCPeerConnection, mediaDevices } = await import("react-native-webrtc");
   const route = requireOptionalNativeModule<{
+    reserveWebRtcRoute?: (routeId: string) => void;
     preferSpeaker?: (routeId: string) => void;
     releaseWebRtcRoute?: (routeId: string) => void;
   }>("T3VoiceAudio");
@@ -48,6 +49,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
     });
     return {
       async offer() {
+        route?.reserveWebRtcRoute?.(routeId);
         if (input.playbackOnly) {
           peer.addTransceiver("audio", { direction: "recvonly" });
         } else {

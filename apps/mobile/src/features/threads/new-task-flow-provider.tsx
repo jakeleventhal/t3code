@@ -257,7 +257,7 @@ export function NewTaskFlowProvider(
 
   const projectScopes = sortHomeProjectScopes({
     scopes: buildHomeProjectScopes({
-      projects,
+      projects: projects.filter((project) => project.botRole == null),
       environmentId: null,
       projectGroupingMode: groupingSettings.sidebarProjectGroupingMode,
     }),

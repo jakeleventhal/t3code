@@ -1,3 +1,4 @@
+import { ServerSettingsError } from "@t3tools/contracts";
 import * as BotReplication from "./bots/BotReplication.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -1749,6 +1750,16 @@ export const layerWsRpc = (
       }) {
         const keybindingsConfig = yield* keybindings.loadConfigState;
         const currentProviders = yield* providerRegistry.getProviders;
+        yield* botReplication.initializeDefaults(currentProviders).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath: "bot defaults",
+                operation: "normalize",
+                cause,
+              }),
+          ),
+        );
         const commandProviders = options.usageLimitsCommand
           ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
           : currentProviders;

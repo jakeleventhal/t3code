@@ -1,3 +1,5 @@
+import { isSubscriptionVoiceSupported } from "./VoiceConfiguration.ts";
+import { initialBotDefaults } from "./botDefaultSelections.ts";
 import * as Crypto from "effect/Crypto";
 import * as Hex from "effect/encoding/Hex";
 import {
@@ -7,6 +9,7 @@ import {
   BotReplicaCursor,
   BotSharedPreferences,
   type BotPreferencesChange,
+  type ServerProvider,
   type BotReplicaReadInput,
   type BotReplicaPage,
   type BotReplicationStatus,
@@ -16,6 +19,7 @@ import {
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
   OrchestrationV2AppThreadJson,
+  OrchestrationV2TurnItemJson,
   OrchestrationV2ConversationMessageJson,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2TurnItem,
@@ -40,6 +44,7 @@ import * as Files from "./BotContinuityFiles.ts";
 const readMessage = Schema.decodeSync(
   Schema.fromJsonString(OrchestrationV2ConversationMessageJson),
 );
+const readCall = Schema.decodeSync(Schema.fromJsonString(OrchestrationV2TurnItemJson.members[0]));
 const readThread = Schema.decodeSync(Schema.fromJsonString(OrchestrationV2AppThreadJson));
 const readCursor = Schema.decodeSync(Schema.fromJsonString(BotReplicaCursor));
 const writeCursor = Schema.encodeSync(Schema.fromJsonString(BotReplicaCursor));
@@ -48,6 +53,9 @@ const writeManifest = Schema.encodeEffect(Schema.fromJsonString(BotReplicaManife
 export class BotReplication extends Context.Service<
   BotReplication,
   {
+    readonly initializeDefaults: (
+      providers: readonly ServerProvider[],
+    ) => Effect.Effect<void, BotReplicationError>;
     readonly status: Effect.Effect<BotReplicationStatus, BotReplicationError>;
     readonly read: (
       input: BotReplicaReadInput,
@@ -106,12 +114,14 @@ const make = Effect.gen(function* () {
       const environmentId = yield* identity.getEnvironmentId;
       const project = Option.getOrNull(yield* projects.getById(input.projectId));
       if (project?.botRole == null) return yield* fail("read")("Not a bot project");
-      const rows = yield* sql<{ payload_json: string; sequence: number }>`
-      SELECT m.payload_json, c.sequence
+      const rows = yield* sql<{ payload_json: string; sequence: number; kind: "message" | "call" }>`
+      SELECT COALESCE(m.payload_json, i.payload_json) AS payload_json, c.sequence,
+        CASE WHEN c.message_id IS NULL THEN 'call' ELSE 'message' END AS kind
       FROM bot_replica_changes c
-      JOIN orchestration_v2_projection_messages m ON m.message_id = c.message_id
-      JOIN orchestration_v2_projection_threads t ON t.thread_id = m.thread_id
-      WHERE t.project_id = ${project.id} AND m.streaming = 0
+      LEFT JOIN orchestration_v2_projection_messages m ON m.message_id = c.message_id
+      LEFT JOIN orchestration_v2_projection_turn_items i ON i.turn_item_id = c.turn_item_id
+      JOIN orchestration_v2_projection_threads t ON t.thread_id = COALESCE(m.thread_id, i.thread_id)
+      WHERE t.project_id = ${project.id} AND (m.streaming = 0 OR i.type = 'voice_call')
         AND c.sequence > ${input.after?.sequence ?? 0}
       ORDER BY c.sequence LIMIT 65
     `;
@@ -173,16 +183,28 @@ const make = Effect.gen(function* () {
         manifestRevision: versions[0]?.revision ?? null,
         manifest: manifestDigest === input.knownManifestDigest ? null : manifest,
         manifestDigest,
-        messages: selected.map((row) => {
-          const message = readMessage(row.payload_json);
-          return {
-            ...message,
-            attachments: message.attachments.map((attachment) => ({
-              ...attachment,
-              originEnvironmentId: attachment.originEnvironmentId ?? environmentId,
-            })),
-          };
-        }),
+        calls: selected
+          .filter((row) => row.kind === "call")
+          .map((row) => {
+            const {
+              voiceOwner: _owner,
+              voiceWriters: _writers,
+              ...call
+            } = readCall(row.payload_json);
+            return call;
+          }),
+        messages: selected
+          .filter((row) => row.kind === "message")
+          .map((row) => {
+            const message = readMessage(row.payload_json);
+            return {
+              ...message,
+              attachments: message.attachments.map((attachment) => ({
+                ...attachment,
+                originEnvironmentId: attachment.originEnvironmentId ?? environmentId,
+              })),
+            };
+          }),
         cursor: last ? { sequence: last.sequence } : (input.after ?? null),
         complete: rows.length === selected.length,
       } satisfies BotReplicaPage;
@@ -363,8 +385,11 @@ const make = Effect.gen(function* () {
                 yield* sql`SELECT 1 FROM bot_replica_messages WHERE message_id = ${source.id}`;
               if (
                 imported.length === 0 ||
-                DateTime.toEpochMillis(source.updatedAt) <=
-                  DateTime.toEpochMillis(previous.updatedAt)
+                DateTime.toEpochMillis(source.updatedAt) <
+                  DateTime.toEpochMillis(previous.updatedAt) ||
+                (DateTime.toEpochMillis(source.updatedAt) ===
+                  DateTime.toEpochMillis(previous.updatedAt) &&
+                  !(source.voiceCall && !previous.voiceCall))
               )
                 continue;
             }
@@ -380,6 +405,7 @@ const make = Effect.gen(function* () {
               attachments: source.attachments,
               streaming: false,
               ...(source.context ? { context: source.context } : {}),
+              ...(source.voiceCall ? { voiceCall: source.voiceCall } : {}),
               createdAt: source.createdAt,
               updatedAt: source.updatedAt,
             };
@@ -426,7 +452,7 @@ const make = Effect.gen(function* () {
             const events: OrchestrationV2DomainEvent[] = [
               {
                 id: EventId.make(
-                  `bot-replica:message:${source.id}:${DateTime.formatIso(source.updatedAt)}`,
+                  `bot-replica:message:${source.id}:${DateTime.formatIso(source.updatedAt)}${source.voiceCall ? ":voice" : ""}`,
                 ),
                 type: "message.updated",
                 threadId: source.threadId,
@@ -445,9 +471,61 @@ const make = Effect.gen(function* () {
             ];
             yield* sql`INSERT INTO orchestration_v2_turn_item_positions(thread_id, turn_item_id, ordinal)
           VALUES (${source.threadId}, ${itemId}, ${base.ordinal}) ON CONFLICT DO NOTHING`;
-            yield* sink.write({ events: source.role === "system" ? events.slice(0, 1) : events });
+            yield* sink.write({
+              events: source.role === "system" || source.voiceCall ? events.slice(0, 1) : events,
+            });
             yield* sql`INSERT INTO bot_replica_messages(message_id, source_environment_id)
           VALUES (${source.id}, ${page.environmentId}) ON CONFLICT DO NOTHING`;
+          }
+          for (const source of page.calls ?? []) {
+            const thread = yield* projections.getThread(source.threadId);
+            if (
+              thread.projectId !== page.projectId ||
+              source.status === "running" ||
+              source.call.endedAt === null
+            )
+              return yield* fail("receive")("Invalid replicated call");
+            const found = yield* sql<{
+              payload_json: string;
+            }>`SELECT payload_json FROM orchestration_v2_projection_turn_items WHERE turn_item_id = ${source.id}`;
+            if (found.length > 0) {
+              const previous = readCall(found[0]!.payload_json);
+              if (previous.threadId !== source.threadId)
+                return yield* fail("receive")("Call collision");
+              if (
+                DateTime.toEpochMillis(previous.updatedAt) >=
+                DateTime.toEpochMillis(source.updatedAt)
+              )
+                continue;
+            }
+            const position = yield* sql<{ ordinal: number }>`SELECT COALESCE(
+              (SELECT ordinal FROM orchestration_v2_turn_item_positions WHERE thread_id = ${source.threadId} AND turn_item_id = ${source.id}),
+              (SELECT MIN(p.ordinal) FROM orchestration_v2_turn_item_positions p
+                JOIN orchestration_v2_projection_messages m ON p.turn_item_id = 'bot-replica:' || m.message_id
+                WHERE p.thread_id = ${source.threadId}
+                  AND json_extract(m.payload_json, '$.voiceCall.callId') = ${source.call.callId}),
+              (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM orchestration_v2_turn_item_positions WHERE thread_id = ${source.threadId})
+            ) AS ordinal`;
+            const { voiceOwner: _owner, voiceWriters: _writers, ...rest } = source;
+            const item = { ...rest, runId: null, nodeId: null, ordinal: position[0]!.ordinal };
+            // A repaired call takes the transcript's original slot, before any later text replies.
+            yield* sql`DELETE FROM orchestration_v2_turn_item_positions
+              WHERE thread_id = ${source.threadId} AND ordinal = ${item.ordinal} AND turn_item_id != ${source.id}`;
+            yield* sql`INSERT INTO orchestration_v2_turn_item_positions(thread_id, turn_item_id, ordinal)
+              VALUES (${source.threadId}, ${source.id}, ${item.ordinal}) ON CONFLICT DO NOTHING`;
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make(
+                    `bot-replica:call:${source.id}:${DateTime.formatIso(source.updatedAt)}`,
+                  ),
+                  type: "turn-item.updated",
+                  threadId: source.threadId,
+                  occurredAt: source.updatedAt,
+                  payload: item,
+                },
+              ],
+            });
           }
           yield* sql`INSERT INTO bot_replica_sources(project_id, environment_id, cursor_json, manifest_digest, manifest_revision, ready)
         VALUES (${page.projectId}, ${page.environmentId}, ${page.cursor === null ? null : writeCursor(page.cursor)}, ${manifest === null ? null : page.manifestDigest}, ${manifest === null ? (prior?.manifest_revision ?? 0) : page.manifestRevision}, ${page.complete || (prior?.ready === 1 && (page.cursor?.sequence ?? 0) === previousSequence) ? 1 : 0})
@@ -497,7 +575,7 @@ const make = Effect.gen(function* () {
     });
   });
   const configure = Effect.fn("BotReplication.configure")(
-    function* (change: BotPreferencesChange) {
+    function* (requested: BotPreferencesChange, initialize = false) {
       const saved = yield* settings.getSettings;
       const current =
         saved.botSharedPreferences.revision === 0
@@ -507,6 +585,33 @@ const make = Effect.gen(function* () {
               primaryEnvironmentId: saved.defaultBotEnvironmentId,
             }
           : saved.botSharedPreferences;
+      const previousVoice =
+        current.defaultVoice === undefined ? saved.voiceSelection : current.defaultVoice;
+      const previousVoiceKind =
+        current.defaultVoice?.connectionKind ??
+        (previousVoice ? saved.voiceConnections[previousVoice.connectionId]?.kind : undefined);
+      const missingVoice = current.defaultVoice === undefined && saved.voiceSelection === null;
+      const retiredVoice =
+        previousVoice != null &&
+        previousVoiceKind === "codex-subscription" &&
+        !isSubscriptionVoiceSupported(previousVoice);
+      const change = initialize
+        ? {
+            ...(current.defaultModelSelection == null && requested.defaultModelSelection
+              ? { defaultModelSelection: requested.defaultModelSelection }
+              : {}),
+            ...(current.complexTaskModelSelection == null && requested.complexTaskModelSelection
+              ? { complexTaskModelSelection: requested.complexTaskModelSelection }
+              : {}),
+            ...(current.defaultRuntimeMode == null
+              ? { defaultRuntimeMode: saved.defaultRuntimeMode }
+              : {}),
+            ...((missingVoice || retiredVoice) && requested.defaultVoiceSelection
+              ? { defaultVoiceSelection: requested.defaultVoiceSelection }
+              : {}),
+          }
+        : requested;
+      if (initialize && Object.keys(change).length === 0) return current;
       const overrides = { ...current.overrides };
       if (change.override) {
         if (change.override.environmentId === null) delete overrides[change.override.projectId];
@@ -593,6 +698,20 @@ const make = Effect.gen(function* () {
     (effect) => lock.withPermits(1)(effect),
     Effect.mapError(fail("settings")),
   );
-  return BotReplication.of({ status, read, receive, configure, mergePreferences });
+  const initializeDefaults = Effect.fn("BotReplication.initializeDefaults")(
+    function* (providers: readonly ServerProvider[]) {
+      const current = yield* settings.getSettings;
+      yield* configure(initialBotDefaults(current, providers), true);
+    },
+    Effect.mapError(fail("settings")),
+  );
+  return BotReplication.of({
+    status,
+    read,
+    receive,
+    configure,
+    mergePreferences,
+    initializeDefaults,
+  });
 });
 export const layer = Layer.effect(BotReplication, make);

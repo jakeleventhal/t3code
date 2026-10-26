@@ -337,7 +337,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
   const disabled = !turn.editable || !turn.canWrite || turn.pending;
   const save = (change: BotTurnSettingsChange) => void turn.save(change);
   const { model, runtimeMode } = turn.sources;
-  const followLabel = forBot ? "Use default" : "Automatic";
+  const followLabel = "Use default";
   return (
     <BotsScreen title={title}>
       {turn.updateMessage ? <Muted>{turn.updateMessage}</Muted> : null}
@@ -357,7 +357,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
         </SettingsSection>
       ) : (
         <Muted>
-          {`Bots without their own model and permissions use these. Automatic keeps each chat's own, and new bots start on this environment's default for new threads. ${CHANGES_NOTE}`}
+          {`Bots inherit these model and permission defaults unless you override them. ${CHANGES_NOTE}`}
         </Muted>
       )}
       <SettingsSection
@@ -367,7 +367,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
             ? `Setup needed · ${turn.setupNeeded} ${
                 model.own === null
                   ? "Choose a model for this bot or fix the bot defaults."
-                  : `Choose another model, ${forBot ? "use the default" : "go back to automatic"}, or set the provider up.`
+                  : `Choose another model, ${forBot ? "use the default" : "choose a default"}, or set the provider up.`
               }`
             : undefined
         }
@@ -388,7 +388,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
             })
           }
         />
-        {model.own !== null ? (
+        {forBot && model.own !== null ? (
           <SettingsActionRow
             icon="arrow.uturn.backward"
             label={followLabel}
@@ -430,14 +430,13 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
             })
           }
         />
-        {(
-          projectId
-            ? turn.config.settings.botSharedPreferences.complexTaskModelOverrides?.[projectId]
-            : turn.config.settings.botSharedPreferences.complexTaskModelSelection
-        ) ? (
+        {projectId &&
+        (projectId
+          ? turn.config.settings.botSharedPreferences.complexTaskModelOverrides?.[projectId]
+          : turn.config.settings.botSharedPreferences.complexTaskModelSelection) ? (
           <SettingsActionRow
             icon="arrow.uturn.backward"
-            label={projectId ? "Use default" : "Turn off automatic escalation"}
+            label="Use default"
             disabled={disabled}
             onPress={() =>
               void configureBots({
@@ -459,15 +458,17 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
         </SettingsSection>
       ) : null}
       <SettingsSection title="Permissions">
-        <SettingsChoiceRow
-          label={followLabel}
-          description={turn.followedRuntimeModeLabel}
-          selected={runtimeMode.own === null}
-          disabled={disabled}
-          onPress={() => {
-            if (runtimeMode.own !== null) save({ runtimeMode: null });
-          }}
-        />
+        {forBot ? (
+          <SettingsChoiceRow
+            label={followLabel}
+            description={turn.followedRuntimeModeLabel}
+            selected={runtimeMode.own === null}
+            disabled={disabled}
+            onPress={() => {
+              if (runtimeMode.own !== null) save({ runtimeMode: null });
+            }}
+          />
+        ) : null}
         {RUNTIME_MODE_CHOICES.map((choice) => (
           <SettingsChoiceRow
             key={choice.mode}

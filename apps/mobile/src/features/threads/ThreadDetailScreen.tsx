@@ -1,4 +1,5 @@
 import { useOpenThreadInspector } from "./thread-inspector-navigation";
+import { BotTaskModels } from "../bots/BotTaskModels";
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import {
@@ -1465,6 +1466,12 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                   </Animated.View>
                 ) : null}
                 <View className="w-full self-center" style={{ maxWidth: contentMaxWidth }}>
+                  <BotTaskModels
+                    threadRef={{
+                      environmentId: props.environmentId,
+                      threadId: props.selectedThread.id,
+                    }}
+                  />
                   {props.callBar}
                   {props.queuedRunEdit !== null ? (
                     <Animated.View

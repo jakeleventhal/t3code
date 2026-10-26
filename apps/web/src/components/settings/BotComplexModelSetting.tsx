@@ -49,10 +49,10 @@ export function BotComplexModelSetting({
             : "Choose a model to enable delegation for difficult work."
       }
       resetAction={
-        own ? (
+        projectId && own ? (
           <SettingResetButton
             label="complex-task model"
-            tooltip={projectId ? "Use default" : "Turn off automatic escalation"}
+            tooltip="Use default"
             disabled={!canWrite}
             onClick={() => change(null)}
           />

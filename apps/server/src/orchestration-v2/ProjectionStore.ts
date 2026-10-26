@@ -1371,13 +1371,27 @@ function activeLocalTurnItems(
     attempts: projection.attempts,
     items: projection.turnItems,
   });
-  return projection.turnItems.filter(isVisible).map((item, position) => ({
-    position,
-    visibility: "local" as const,
-    sourceThreadId: item.threadId,
-    sourceItemId: item.id,
-    item,
-  }));
+  const voiceMessages = new Set(
+    projection.messages
+      .filter((message) => message.voiceCall !== undefined)
+      .map((message) => message.id),
+  );
+  return projection.turnItems
+    .filter(
+      (item) =>
+        isVisible(item) &&
+        !(
+          (item.type === "user_message" || item.type === "assistant_message") &&
+          voiceMessages.has(item.messageId)
+        ),
+    )
+    .map((item, position) => ({
+      position,
+      visibility: "local" as const,
+      sourceThreadId: item.threadId,
+      sourceItemId: item.id,
+      item,
+    }));
 }
 
 function localVisibleTurnItems(

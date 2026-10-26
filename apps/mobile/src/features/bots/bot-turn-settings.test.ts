@@ -61,13 +61,13 @@ describe("botTurnSettings", () => {
 describe("botTurnSettingLabel", () => {
   const label = (value: string) => value.toUpperCase();
 
-  it("marks a followed value as the default for a bot, and as automatic for the defaults", () => {
-    expect(botTurnSettingLabel({ own: null, inherited: "x" }, label, true)).toBe("Default · X");
+  it("distinguishes inherited choices from a missing global default", () => {
+    expect(botTurnSettingLabel({ own: null, inherited: "x" }, label, true)).toBe("Use default · X");
     expect(botTurnSettingLabel({ own: null, inherited: null }, label, true)).toBe(
-      "Default · Each chat’s own",
+      "Use default · Not configured",
     );
     expect(botTurnSettingLabel({ own: null, inherited: null }, label, false)).toBe(
-      "Automatic · Each chat’s own",
+      "Not configured",
     );
     expect(botTurnSettingLabel({ own: "y", inherited: "x" }, label, true)).toBe("Y");
   });

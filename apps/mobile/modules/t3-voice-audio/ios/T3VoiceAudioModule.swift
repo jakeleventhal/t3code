@@ -1,4 +1,5 @@
 import AVFoundation
+import WebRTC
 import ExpoModulesCore
 
 private final class VoiceAudioException: GenericException<String> {
@@ -15,14 +16,33 @@ public final class T3VoiceAudioModule: Module {
   private var session: VoiceAudioSession?
   private var webRtcId: String?
   private var cuePlayer: VoiceCuePlayer?
+  private var pendingEndCue: URL?
+  private lazy var rtcObserver = VoiceRtcAudioObserver { [weak self] in
+    self?.queue.async {
+      guard let self, let url = self.pendingEndCue else { return }
+      self.pendingEndCue = nil
+      guard self.webRtcId == nil && self.reservedId == nil && self.session == nil else { return }
+      try? self.playCue(url: url, ended: true)
+    }
+  }
 
   public func definition() -> ModuleDefinition {
     Name("T3VoiceAudio")
 
     Events("onAudio", "onPlaybackIdle", "onError")
 
+    OnCreate { RTCAudioSession.sharedInstance().add(self.rtcObserver) }
+
+    Function("reserveWebRtcRoute") { (routeId: String) in
+      self.queue.sync {
+        self.pendingEndCue = nil
+        self.webRtcId = routeId
+      }
+    }
+
     Function("preferSpeaker") { (routeId: String) in
       try self.queue.sync {
+        self.pendingEndCue = nil
         self.webRtcId = routeId
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.playAndRecord, mode: .voiceChat,
@@ -42,30 +62,13 @@ public final class T3VoiceAudioModule: Module {
     Function("playCue") { (uri: String, ended: Bool) in
       try self.queue.sync {
         guard let url = URL(string: uri), url.isFileURL else { return }
-        let audio = AVAudioSession.sharedInstance()
-        let idle = self.webRtcId == nil && self.reservedId == nil && self.session == nil
-        if !ended && idle { return }
-        self.cuePlayer?.stop()
-        if !ended && audio.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
-          try audio.overrideOutputAudioPort(.speaker)
+        // WebRTC releases AVAudioSession asynchronously after its tracks close. Playing
+        // now lets that later deactivation cut off the cue; wait for the actual hand-back.
+        if ended && RTCAudioSession.sharedInstance().isActive {
+          self.pendingEndCue = url
+        } else {
+          try self.playCue(url: url, ended: ended)
         }
-        if ended && idle {
-          // The call has released capture. Playback routes to speaker or the user's headset,
-          // never the phone receiver, and does not reopen the microphone.
-          try audio.setCategory(.playback, mode: .default)
-          try audio.setActive(true)
-        }
-        let cue = try VoiceCuePlayer(url: url) { [weak self] completed in
-          self?.queue.async {
-            guard let self, self.cuePlayer === completed else { return }
-            self.cuePlayer = nil
-            if ended && self.webRtcId == nil && self.reservedId == nil && self.session == nil {
-              try? audio.setActive(false, options: .notifyOthersOnDeactivation)
-            }
-          }
-        }
-        self.cuePlayer = cue
-        cue.play()
       }
     }
 
@@ -156,7 +159,9 @@ public final class T3VoiceAudioModule: Module {
     }
 
     OnDestroy {
+      RTCAudioSession.sharedInstance().remove(self.rtcObserver)
       self.queue.sync {
+        self.pendingEndCue = nil
         self.cuePlayer?.stop()
         self.cuePlayer = nil
         self.webRtcId = nil
@@ -167,7 +172,35 @@ public final class T3VoiceAudioModule: Module {
     }
   }
 
+  private func playCue(url: URL, ended: Bool) throws {
+    let audio = AVAudioSession.sharedInstance()
+    let idle = self.webRtcId == nil && self.reservedId == nil && self.session == nil
+    if !ended && idle { return }
+    self.cuePlayer?.stop()
+    if !ended && audio.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
+      try audio.overrideOutputAudioPort(.speaker)
+    }
+    if ended && idle {
+      // The call has released capture. Playback routes to speaker or the user's headset,
+      // never the phone receiver, and does not reopen the microphone.
+      try audio.setCategory(.playback, mode: .default)
+      try audio.setActive(true)
+    }
+    let cue = try VoiceCuePlayer(url: url) { [weak self] completed in
+      self?.queue.async {
+        guard let self, self.cuePlayer === completed else { return }
+        self.cuePlayer = nil
+        if ended && self.webRtcId == nil && self.reservedId == nil && self.session == nil {
+          try? audio.setActive(false, options: .notifyOthersOnDeactivation)
+        }
+      }
+    }
+    self.cuePlayer = cue
+    cue.play()
+  }
+
   private func reserve(_ sessionId: String) {
+    pendingEndCue = nil
     guard let previous = reservedId, previous != sessionId else {
       reservedId = sessionId
       return
@@ -558,4 +591,12 @@ private final class VoiceCuePlayer: NSObject, AVAudioPlayerDelegate {
   func stop() { player.stop() }
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { finished(self) }
   func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) { finished(self) }
+}
+
+private final class VoiceRtcAudioObserver: NSObject, RTCAudioSessionDelegate {
+  private let deactivated: () -> Void
+  init(deactivated: @escaping () -> Void) { self.deactivated = deactivated }
+  func audioSession(_ audioSession: RTCAudioSession, didSetActive active: Bool) {
+    if !active { deactivated() }
+  }
 }
