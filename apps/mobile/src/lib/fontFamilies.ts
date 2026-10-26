@@ -5,6 +5,7 @@ export const FONT_FAMILIES = {
   medium: "DMSans-Medium",
   bold: "DMSans-Bold",
   code: undefined,
+  emphasisFaces: { "500": "DMSans-Medium", "700": "DMSans-Bold" },
 } as const;
 
 const ABSOLUTELY_FONT_FAMILIES = {

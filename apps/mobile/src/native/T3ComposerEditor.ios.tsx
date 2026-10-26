@@ -1,3 +1,4 @@
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES } from "@t3tools/client-runtime/text-paste";
 import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
@@ -23,9 +24,8 @@ import {
   contextRecordFileName,
 } from "../lib/composerChipPresentation";
 import { contextChipIconUri } from "../lib/contextChipIconSource";
-import { useUniwindTheme, useThemeFontFamilies } from "../lib/useUniwindTheme";
+import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
-import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import {
   acknowledgeComposerNativeEvent,
   assumeComposerControlledState,
@@ -151,9 +151,9 @@ export function ComposerEditor({
     });
     setConfirmedTokens({ value: props.value, tokens });
   }
-  const bodyText = useScaledTextRole("body");
   const theme = useUniwindTheme();
-  const fontFamily = useThemeFontFamilies().regular;
+  const { fonts, composerFontSize } = useAppearancePreferences();
+  const fontFamily = fonts.composer.regular;
 
   useImperativeHandle(
     ref,
@@ -287,12 +287,12 @@ export function ComposerEditor({
       fontSize={
         typeof resolvedTextStyle.fontSize === "number"
           ? resolvedTextStyle.fontSize
-          : bodyText.fontSize
+          : composerFontSize
       }
       lineHeight={
         typeof resolvedTextStyle.lineHeight === "number"
           ? resolvedTextStyle.lineHeight
-          : bodyText.lineHeight
+          : Math.round((composerFontSize * 23) / 16)
       }
       contentInsetVertical={contentInsetVertical}
       editable={props.editable ?? true}

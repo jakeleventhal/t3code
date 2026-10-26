@@ -1,5 +1,4 @@
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { getMobileFontFamilies } from "./fontFamilies";
 import type { MobileThemeVariables } from "./mobileTheme";
 
 export function useUniwindTheme(): MobileThemeVariables {
@@ -7,5 +6,6 @@ export function useUniwindTheme(): MobileThemeVariables {
 }
 
 export function useThemeFontFamilies() {
-  return getMobileFontFamilies(useAppearancePreferences().themeId);
+  const { fonts } = useAppearancePreferences();
+  return { ...fonts.interface, code: fonts.code.regular };
 }

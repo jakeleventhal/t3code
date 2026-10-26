@@ -24,10 +24,9 @@ import {
   contextRecordFileName,
 } from "../lib/composerChipPresentation";
 import { contextChipIconUri } from "../lib/contextChipIconSource";
-import { MOBILE_TYPOGRAPHY } from "../lib/typography";
 import { useNativePaste } from "../lib/useNativePaste";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme, useThemeFontFamilies } from "../lib/useUniwindTheme";
+import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
 import {
   acknowledgeComposerNativeEvent,
@@ -269,13 +268,13 @@ export function ComposerEditor({
     },
     [nativeEventSnapshotsRef],
   );
-  const { systemColorsActive } = useAppearancePreferences();
+  const { systemColorsActive, fonts, composerFontSize } = useAppearancePreferences();
   const themeJson = JSON.stringify({
     ...createNativeComposerTheme(theme),
     selection: Platform.OS === "android" || systemColorsActive ? theme["--color-focus"] : null,
   });
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};
-  const regularFontFamily = useThemeFontFamilies().regular;
+  const regularFontFamily = fonts.composer.regular;
   return (
     <TextInputWrapper onPaste={handlePaste} style={[{ minHeight: 0 }, style]}>
       <NativeView
@@ -292,12 +291,12 @@ export function ComposerEditor({
         fontSize={
           typeof resolvedTextStyle.fontSize === "number"
             ? resolvedTextStyle.fontSize
-            : MOBILE_TYPOGRAPHY.body.fontSize
+            : composerFontSize
         }
         lineHeight={
           typeof resolvedTextStyle.lineHeight === "number"
             ? resolvedTextStyle.lineHeight
-            : MOBILE_TYPOGRAPHY.body.lineHeight
+            : Math.round((composerFontSize * 23) / 16)
         }
         contentInsetVertical={contentInsetVertical}
         singleLineCentered={props.singleLineCentered ?? false}

@@ -2,24 +2,24 @@ import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
 import { useMemo } from "react";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme, useThemeFontFamilies } from "./useUniwindTheme";
+import { useUniwindTheme } from "./useUniwindTheme";
 
 export function useMobileNavigationTheme(surface: "screen" | "sidebar" = "screen"): Theme {
-  const { themeAppearance: appearance } = useAppearancePreferences();
+  const { themeAppearance: appearance, fonts, fontSelections } = useAppearancePreferences();
   const variables = useUniwindTheme();
-  const fonts = useThemeFontFamilies();
   return useMemo(() => {
     const base = appearance === "dark" ? DarkTheme : DefaultTheme;
     return {
       ...base,
-      fonts: fonts.code
-        ? {
-            regular: { fontFamily: fonts.regular, fontWeight: "normal" },
-            medium: { fontFamily: fonts.medium, fontWeight: "normal" },
-            bold: { fontFamily: fonts.bold, fontWeight: "normal" },
-            heavy: { fontFamily: fonts.bold, fontWeight: "normal" },
-          }
-        : base.fonts,
+      fonts:
+        fontSelections.interface || fonts.code.regular === "JetBrainsMono-Regular"
+          ? {
+              regular: { fontFamily: fonts.interface.regular, fontWeight: "400" },
+              medium: { fontFamily: fonts.interface.medium, fontWeight: "500" },
+              bold: { fontFamily: fonts.interface.bold, fontWeight: "700" },
+              heavy: { fontFamily: fonts.interface.bold, fontWeight: "800" },
+            }
+          : base.fonts,
       colors: {
         ...base.colors,
         primary: variables["--color-primary-text"],
@@ -33,5 +33,12 @@ export function useMobileNavigationTheme(surface: "screen" | "sidebar" = "screen
         notification: variables["--color-danger-foreground"],
       },
     };
-  }, [appearance, surface, variables, fonts]);
+  }, [
+    appearance,
+    fonts.interface,
+    fonts.code.regular,
+    fontSelections.interface,
+    surface,
+    variables,
+  ]);
 }
