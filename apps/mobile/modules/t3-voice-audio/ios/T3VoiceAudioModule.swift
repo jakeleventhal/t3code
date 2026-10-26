@@ -43,7 +43,7 @@ public final class T3VoiceAudioModule: Module {
       try self.queue.sync {
         guard let url = URL(string: uri), url.isFileURL else { return }
         let audio = AVAudioSession.sharedInstance()
-        let idle = self.webRtcId == nil && self.session == nil
+        let idle = self.webRtcId == nil && self.reservedId == nil && self.session == nil
         if !ended && idle { return }
         self.cuePlayer?.stop()
         if !ended && audio.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
@@ -59,7 +59,7 @@ public final class T3VoiceAudioModule: Module {
           self?.queue.async {
             guard let self, self.cuePlayer === completed else { return }
             self.cuePlayer = nil
-            if ended && self.webRtcId == nil && self.session == nil {
+            if ended && self.webRtcId == nil && self.reservedId == nil && self.session == nil {
               try? audio.setActive(false, options: .notifyOthersOnDeactivation)
             }
           }
