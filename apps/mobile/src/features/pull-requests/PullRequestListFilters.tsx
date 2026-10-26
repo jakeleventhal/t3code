@@ -1,5 +1,5 @@
 import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Platform, ScrollView } from "react-native";
 import type { MenuProps } from "../../components/ui/Menu.types";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
@@ -77,6 +77,7 @@ export function PullRequestListFilters(props: {
   readonly projects: readonly { id: string; title: string; environmentId: string }[];
   /** Opens a picker that searches the host, for a label or author no loaded row carries. */
   readonly onSearch: (kind: "labels" | "authors") => void;
+  readonly savedViewsMenu: ReactNode;
 }) {
   const { value } = props;
   const projects = useProjectsInSidebarOrder(props.projects);
@@ -309,6 +310,7 @@ export function PullRequestListFilters(props: {
           : ROW_STYLE
       }
     >
+      {props.savedViewsMenu}
       {Platform.OS === "android" ? null : (
         <ListFilterMenu
           label={count ? String(count) : "Filters"}
