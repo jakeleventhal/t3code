@@ -106,6 +106,10 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
+import {
+  formatDiscoveredServerHost,
+  selectPreferredDiscoveredServer,
+} from "./preview/useDiscoveredLocalServers";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
   ORCHESTRATION_OPERATE_DENIED_MESSAGE,
@@ -442,6 +446,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
+  const preferredDiscoveredPort = selectPreferredDiscoveredServer(discoveredPorts);
   const environment = useEnvironment(thread.environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const isRemoteThread = thread.environmentId !== primaryEnvironmentId;
@@ -479,7 +484,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   });
   const isHighlighted = isActive || isSelected;
   const handleOpenDiscoveredPort = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const port = discoveredPorts[0];
+    const port = preferredDiscoveredPort;
     if (!port || !canOperatePreview) return;
     event.preventDefault();
     event.stopPropagation();
@@ -765,13 +770,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {canOperatePreview && discoveredPorts.length > 0 && (
+          {canOperatePreview && preferredDiscoveredPort && (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
                     type="button"
-                    aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
+                    aria-label={`Open ${formatDiscoveredServerHost(preferredDiscoveredPort)}`}
                     className="inline-flex cursor-pointer items-center justify-center text-success-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={handleOpenDiscoveredPort}
                   />
@@ -780,8 +785,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 <Globe2Icon className="size-3" />
               </TooltipTrigger>
               <TooltipPopup side="top">
-                Open localhost:{discoveredPorts[0]?.port}
-                {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
+                Open {formatDiscoveredServerHost(preferredDiscoveredPort)}
               </TooltipPopup>
             </Tooltip>
           )}
