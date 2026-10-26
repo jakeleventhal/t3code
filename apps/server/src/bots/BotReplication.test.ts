@@ -1,3 +1,4 @@
+import { botVoiceSelection, botComplexTaskModel } from "@t3tools/shared/botPreferences";
 import { derive } from "@t3tools/provider-core/server/IdAllocator";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
@@ -488,4 +489,84 @@ it.effect("propagates a removed memory only when the replica has not changed it"
     assert.isFalse(yield* fs.exists(`${root}/MEMORY.md`));
     assert.equal(yield* fs.readFileString(`${root}/AGENTS.md`), "New local instruction");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "replicates voice inheritance and complex models without copying account credentials",
+  () =>
+    Effect.gen(function* () {
+      const aContext = yield* Layer.build(fixture("voice-a"));
+      const bContext = yield* Layer.build(fixture("voice-b"));
+      const a = Context.get(aContext, Replication.BotReplication);
+      const b = Context.get(bContext, Replication.BotReplication);
+      const aSettings = Context.get(aContext, Settings.ServerSettingsService);
+      const bSettings = Context.get(bContext, Settings.ServerSettingsService);
+      yield* aSettings.updateSettings({
+        voiceConnections: { first: { kind: "openai-api", name: "Voice", apiKey: "secret-a" } },
+      });
+      yield* bSettings.updateSettings({
+        voiceConnections: { second: { kind: "openai-api", name: "Voice", apiKey: "secret-b" } },
+        projectSettingsOverrides: { [projectId]: { voiceSelection: null } },
+      });
+      const selection = { connectionId: "first", model: "realtime", voice: "ash" };
+      const complex = {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "complex",
+        options: [{ id: "reasoningEffort", value: "medium" }],
+      };
+      const shared = yield* a.configure({
+        defaultVoiceSelection: selection,
+        voiceOverride: { projectId, selection: "inherit" },
+        complexTaskModelSelection: complex,
+      });
+      assert.notInclude(JSON.stringify(shared), "secret-a");
+      yield* b.mergePreferences(shared);
+      const saved = yield* bSettings.getSettings;
+      assert.deepEqual(botVoiceSelection(saved, projectId), {
+        kind: "default",
+        selection: { ...selection, connectionId: "second" },
+      });
+      assert.deepEqual(botComplexTaskModel(saved.botSharedPreferences, projectId), complex);
+      const own = yield* b.configure({
+        voiceOverride: { projectId, selection: null },
+        complexTaskModelOverride: { projectId, selection: { ...complex, model: "specialist" } },
+      });
+      yield* a.mergePreferences(own);
+      assert.deepEqual(botVoiceSelection(yield* aSettings.getSettings, projectId), {
+        kind: "own",
+        selection: null,
+      });
+      const inherited = yield* b.configure({
+        voiceOverride: { projectId, selection: "inherit" },
+        complexTaskModelOverride: { projectId, selection: null },
+      });
+      yield* a.mergePreferences(inherited);
+      assert.deepEqual(botVoiceSelection(yield* aSettings.getSettings, projectId), {
+        kind: "default",
+        selection,
+      });
+      assert.deepEqual(botComplexTaskModel(inherited, projectId), complex);
+      const runtime = yield* b.configure({
+        runtimeOverride: { projectId, modelSelection: complex, runtimeMode: "approval-required" },
+      });
+      yield* a.mergePreferences(runtime);
+      assert.deepEqual(
+        (yield* aSettings.getSettings).projectSettingsOverrides[projectId]?.defaultModelSelection,
+        complex,
+      );
+      assert.equal(
+        (yield* aSettings.getSettings).projectSettingsOverrides[projectId]?.defaultRuntimeMode,
+        "approval-required",
+      );
+      const reset = yield* b.configure({
+        runtimeOverride: { projectId, modelSelection: null, runtimeMode: null },
+      });
+      yield* a.mergePreferences(reset);
+      assert.isUndefined(
+        (yield* aSettings.getSettings).projectSettingsOverrides[projectId]?.defaultModelSelection,
+      );
+      assert.isUndefined(
+        (yield* aSettings.getSettings).projectSettingsOverrides[projectId]?.defaultRuntimeMode,
+      );
+    }).pipe(Effect.scoped),
 );

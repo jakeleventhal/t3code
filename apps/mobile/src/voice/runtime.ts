@@ -1,3 +1,5 @@
+import { attachVoiceCallCues } from "@t3tools/client-runtime/voice-call/cues";
+import { playCallCue } from "./callCues";
 import { createEnvironmentVoiceRuntime } from "@t3tools/client-runtime/voice-call/environment-runtime";
 import { createVoiceViewContext } from "@t3tools/client-runtime/voice-call/live-connector";
 import { AppState } from "react-native";
@@ -26,6 +28,7 @@ export const voiceCallController = createEnvironmentVoiceRuntime({
   openPcmAudio: createNativePcmAudio,
   view: voiceViewContext,
 });
+const detachCues = attachVoiceCallCues(voiceCallController, playCallCue);
 
 let backgroundListener: ReturnType<typeof AppState.addEventListener> | null = null;
 const detachLifecycle = voiceCallController.subscribe(() => {
@@ -45,6 +48,7 @@ const detachLifecycle = voiceCallController.subscribe(() => {
 });
 
 disposeOnFoundationReplace(typeof module === "undefined" ? undefined : module.hot, async () => {
+  detachCues();
   detachLifecycle();
   backgroundListener?.remove();
   backgroundListener = null;

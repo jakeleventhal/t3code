@@ -1,11 +1,13 @@
+import { botDefaultVoice } from "@t3tools/shared/botPreferences";
+import { botEnvironment } from "../../state/bots";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useBotProjects } from "../bots/useBotRoom";
-import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
-import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import { voiceProviderInstances } from "@t3tools/shared/voiceProviderInstances";
 import {
   AuthProvidersManageScope,
+  AuthSettingsWriteScope,
   type EnvironmentId,
   type ProjectId,
   type ProviderInstanceId,
@@ -21,16 +23,10 @@ import { useState } from "react";
 
 import { randomUUID } from "../../lib/utils";
 import { readLocalApi } from "../../localApi";
-import {
-  useEnvironmentSupportsBotVoice,
-  useVoiceCatalog,
-  useWriteEnvironmentSettings,
-} from "../../state/botVoice";
+import { useVoiceCatalog } from "../../state/botVoice";
 import { serverEnvironment } from "../../state/server";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { BotAvatar } from "../bots/BotAvatar";
-import { isBotProject, partitionEnvironmentBots } from "../bots/botRoom.logic";
 import { VoiceSelectionPicker } from "../bots/VoiceSelectionPicker";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -40,20 +36,8 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import { SecretInput } from "./SecretInput";
+import { SettingsRow, SettingsSection } from "./settingsLayout";
 import {
-  SettingResetButton,
-  SettingsPageContainer,
-  SettingsRow,
-  SettingsSection,
-} from "./settingsLayout";
-import {
-  useClearScopedSettings,
-  useScopedSettings,
-  useScopedSettingSource,
-  useUpdateScopedSettings,
-} from "./useScopedSettings";
-import {
-  botVoiceOverridePatch,
   describeVoiceSelection,
   resolveBotVoice,
   VOICE_CONNECTION_KIND_LABELS,
@@ -62,8 +46,6 @@ import {
   type VoiceConnectionKind,
   type VoiceSelectionDescription,
 } from "./voiceSettings.logic";
-
-const VOICE_KEYS = ["voiceSelection"] as const satisfies readonly (keyof ServerSettings)[];
 
 export function botVoiceSettingsTargetId(projectId: ProjectId) {
   return `voice-bot-${projectId}` as const;
@@ -83,286 +65,107 @@ function VoiceStatus({ description }: { description: VoiceSelectionDescription }
   );
 }
 
-export function BotVoicesSettings() {
+export function VoiceSetupSettings() {
   const { environments } = useEnvironments();
   const projects = useBotProjects();
-  const targets = environments.filter(
-    (entry) => entry.serverConfig?.environment.capabilities.botVoiceConfiguration === true,
-  );
   return (
-    <div className="flex flex-col gap-6">
-      <SettingsSection title="Voices" id="voice-bots">
-        {targets.map((environment) => (
+    <>
+      {environments
+        .filter(
+          (entry) => entry.serverConfig?.environment.capabilities.botVoiceConfiguration === true,
+        )
+        .map((environment) => (
           <SettingsScopeProvider
             key={environment.environmentId}
             search={{ machine: environment.environmentId }}
             onChange={() => {}}
             singleEnvironment
           >
-            <VoiceSettingsContent
-              environment={{ environmentId: environment.environmentId, label: environment.label }}
+            <VoiceSetup
+              environment={environment}
               settings={environment.serverConfig!.settings}
               projects={projects}
-              scopedProject={undefined}
-              mode="bots"
             />
           </SettingsScopeProvider>
         ))}
-      </SettingsSection>
-      {targets.map((environment) => (
-        <SettingsScopeProvider
-          key={environment.environmentId}
-          search={{ machine: environment.environmentId }}
-          onChange={() => {}}
-          singleEnvironment
-        >
-          <VoiceSettingsContent
-            environment={{ environmentId: environment.environmentId, label: environment.label }}
-            settings={environment.serverConfig!.settings}
-            projects={projects}
-            scopedProject={undefined}
-            mode="advanced"
-          />
-        </SettingsScopeProvider>
-      ))}
-    </div>
+    </>
   );
 }
 
-export function VoiceSettingsPanel() {
-  return (
-    <SettingsPageContainer>
-      <BotVoicesSettings />
-    </SettingsPageContainer>
-  );
-}
-
-function VoiceSettingsContent({
+function VoiceSetup({
   environment,
   settings,
   projects,
-  scopedProject,
-  mode,
 }: {
-  mode: "bots" | "advanced";
   environment: VoiceEnvironment;
   settings: ServerSettings;
   projects: ReadonlyArray<EnvironmentProject>;
-  /** `undefined` is the environment scope; `null` is a project that hasn't loaded. */
-  scopedProject: EnvironmentProject | null | undefined;
 }) {
   const { catalog, error } = useVoiceCatalog(environment.environmentId, settings.voiceConnections);
-  const { assistant, extraAssistants, specialists } = partitionEnvironmentBots(
-    projects,
-    environment.environmentId,
+  const bots = projects.filter(
+    (bot) => bot.environmentId === environment.environmentId && bot.botRole != null,
   );
-  const designated = environmentAssistant(projects, useDesignatedAssistantEnvironmentId());
-  const allBots = [...(assistant ? [assistant] : []), ...extraAssistants, ...specialists];
-  const bots = allBots.filter(
-    (bot) =>
-      bot.botRole !== "assistant" ||
-      (bot.id === designated?.id && bot.environmentId === designated.environmentId),
-  );
-  const defaultDescription = describeVoiceSelection(settings.voiceSelection, catalog);
-  const defaultLabel = defaultDescription.issue
-    ? "Choose an available voice"
-    : defaultDescription.label;
-  const callsSupported = useEnvironmentSupportsBotVoice(environment.environmentId);
-
-  if (mode === "advanced" && bots.length === 0) return null;
+  if (bots.length === 0) return null;
   return (
-    <div className="flex flex-col gap-4">
-      {mode === "advanced" ? (
-        <>
-          <p className="px-4 text-sm font-medium">
-            Voice setup · {bots.map((bot) => bot.title).join(", ")}
-          </p>
-          <VoiceAccountsSection
-            environment={environment}
-            settings={settings}
-            catalog={catalog}
-            catalogError={error}
-            bots={allBots}
-          />
-          <DefaultVoiceSection
-            environmentId={environment.environmentId}
-            catalog={catalog}
-            selection={settings.voiceSelection}
-          />
-        </>
-      ) : scopedProject != null && isBotProject(scopedProject) ? (
-        <ScopedBotVoiceSection bot={scopedProject} catalog={catalog} defaultLabel={defaultLabel} />
-      ) : bots.length > 0 ? (
-        <BotVoicesSection
-          environment={environment}
-          settings={settings}
-          catalog={catalog}
-          bots={bots}
-          defaultLabel={defaultLabel}
-        />
-      ) : null}
-      {!callsSupported ? (
-        <p className="px-4 text-sm text-muted-foreground">Update T3 Code to enable calls.</p>
-      ) : null}
-    </div>
+    <VoiceAccountsSection
+      environment={environment}
+      settings={settings}
+      catalog={catalog}
+      catalogError={error}
+      bots={bots}
+    />
   );
 }
 
-function ScopedBotVoiceSection({
+export function BotVoiceSetting({
   bot,
-  catalog,
-  defaultLabel,
-}: {
-  bot: EnvironmentProject;
-  catalog: VoiceCatalog | null;
-  defaultLabel: string;
-}) {
-  const selection = useScopedSettings((settings) => settings.voiceSelection);
-  const source = useScopedSettingSource(VOICE_KEYS);
-  const update = useUpdateScopedSettings();
-  const clear = useClearScopedSettings();
-  const inherited = source !== "project";
-  return (
-    <SettingsSection
-      id={botVoiceSettingsTargetId(bot.id)}
-      title={bot.title}
-      icon={<BotAvatar bot={bot} />}
-    >
-      <SettingsRow
-        serverScoped
-        settingKeys={VOICE_KEYS}
-        title="Voice"
-        description="Used on calls with this bot."
-        status={
-          inherited ? null : (
-            <VoiceStatus description={describeVoiceSelection(selection, catalog)} />
-          )
-        }
-        control={
-          <VoiceSelectionPicker
-            environmentId={bot.environmentId}
-            catalog={catalog}
-            selection={selection}
-            inherit={{ label: `Default · ${defaultLabel}`, active: inherited }}
-            ariaLabel={`${bot.title} voice`}
-            className="w-full sm:w-56"
-            onChange={(change) =>
-              change.kind === "inherit"
-                ? clear(VOICE_KEYS)
-                : update({ voiceSelection: change.selection })
-            }
-          />
-        }
-      />
-    </SettingsSection>
-  );
-}
-
-function DefaultVoiceSection({
   environmentId,
-  catalog,
-  selection,
 }: {
+  bot?: EnvironmentProject;
   environmentId: EnvironmentId;
-  catalog: VoiceCatalog | null;
-  selection: ServerSettings["voiceSelection"];
 }) {
-  const update = useUpdateScopedSettings();
+  const settings = useEnvironmentSettings(environmentId);
+  const { catalog } = useVoiceCatalog(environmentId, settings.voiceConnections);
+  const configure = useAtomCommand(botEnvironment.configure);
+  const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
+  const voice = bot
+    ? resolveBotVoice(settings, bot.id)
+    : { kind: "own", selection: botDefaultVoice(settings) };
+  const own = voice.kind === "own";
+  const defaultLabel = describeVoiceSelection(botDefaultVoice(settings), catalog).label;
   return (
-    <SettingsSection id="voice-default" title="Default for bots">
-      <SettingsRow
-        serverScoped
-        settingKeys={VOICE_KEYS}
-        title="Voice"
-        description="Bots use this unless they have their own."
-        status={<VoiceStatus description={describeVoiceSelection(selection, catalog)} />}
-        control={
-          <VoiceSelectionPicker
-            environmentId={environmentId}
-            catalog={catalog}
-            selection={selection}
-            ariaLabel="Default bot voice"
-            className="w-full sm:w-56"
-            onChange={(change) => {
-              if (change.kind === "set") update({ voiceSelection: change.selection });
-            }}
-          />
-        }
-      />
-    </SettingsSection>
-  );
-}
-
-function BotVoicesSection({
-  environment,
-  settings,
-  catalog,
-  bots,
-  defaultLabel,
-}: {
-  environment: VoiceEnvironment;
-  settings: ServerSettings;
-  catalog: VoiceCatalog | null;
-  bots: ReadonlyArray<EnvironmentProject>;
-  defaultLabel: string;
-}) {
-  const write = useWriteEnvironmentSettings();
-  return (
-    <div>
-      {bots.length === 0 ? (
-        <SettingsRow
-          title={`No bots on ${environment.label}`}
-          description="Bots you create get the default voice."
-        />
-      ) : (
-        bots.map((bot) => {
-          const voice = resolveBotVoice(settings, bot.id);
-          const own = voice.kind === "own";
-          const setOverride = (selection: ServerSettings["voiceSelection"] | undefined) =>
-            void write(environment, settings, botVoiceOverridePatch(settings, bot.id, selection));
-          return (
-            <SettingsRow
-              key={bot.id}
-              id={botVoiceSettingsTargetId(bot.id)}
-              serverScoped
-              title={
-                <span className="flex min-w-0 items-center gap-2">
-                  <BotAvatar bot={bot} />
-                  <span className="truncate">{bot.title}</span>
-                </span>
-              }
-              status={
-                own ? (
-                  <VoiceStatus description={describeVoiceSelection(voice.selection, catalog)} />
-                ) : null
-              }
-              resetAction={
-                own ? (
-                  <SettingResetButton
-                    label={`${bot.title} voice`}
-                    tooltip="Use the default voice"
-                    onClick={() => setOverride(undefined)}
-                  />
-                ) : null
-              }
-              control={
-                <VoiceSelectionPicker
-                  environmentId={bot.environmentId}
-                  catalog={catalog}
-                  selection={voice.selection}
-                  inherit={{ label: `Default · ${defaultLabel}`, active: !own }}
-                  ariaLabel={`${bot.title} voice`}
-                  className="w-full sm:w-56"
-                  onChange={(change) =>
-                    setOverride(change.kind === "inherit" ? undefined : change.selection)
+    <SettingsRow
+      id={bot ? botVoiceSettingsTargetId(bot.id) : "voice-default"}
+      title={bot ? "Voice" : "Default voice"}
+      description={bot ? undefined : "Every bot uses this voice unless you choose an override."}
+      status={<VoiceStatus description={describeVoiceSelection(voice.selection, catalog)} />}
+      control={
+        <VoiceSelectionPicker
+          environmentId={environmentId}
+          catalog={catalog}
+          selection={voice.selection}
+          {...(bot ? { inherit: { label: `Use default · ${defaultLabel}`, active: !own } } : {})}
+          ariaLabel={bot ? `${bot.title} voice` : "Default bot voice"}
+          className="w-full sm:w-56"
+          disabled={!canWrite}
+          onChange={(change) =>
+            void configure({
+              environmentId,
+              input: bot
+                ? {
+                    voiceOverride: {
+                      projectId: bot.id,
+                      selection: change.kind === "inherit" ? "inherit" : change.selection,
+                    },
                   }
-                />
-              }
-            />
-          );
-        })
-      )}
-    </div>
+                : change.kind === "set"
+                  ? { defaultVoiceSelection: change.selection }
+                  : {},
+            })
+          }
+        />
+      }
+    />
   );
 }
 

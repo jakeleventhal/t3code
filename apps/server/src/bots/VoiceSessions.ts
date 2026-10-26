@@ -284,7 +284,8 @@ const make = Effect.gen(function* () {
           // Keep long work alive when another voice request arrives; normal thread queuing owns it.
           mode: "queue",
           createdBy: "agent",
-          creationSource: "provider",
+          // Native provider continuations drain existing output without submitting a prompt.
+          creationSource: "server",
         })
         .pipe(Effect.mapError((cause) => new VoiceWorkError({ cause })));
       return {

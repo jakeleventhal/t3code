@@ -7,7 +7,7 @@ import {
   type VoiceCatalog,
   type VoiceSelection,
 } from "@t3tools/contracts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { botVoiceSelection } from "@t3tools/shared/botPreferences";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -219,7 +219,7 @@ const make = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => new VoiceConnectionError({ reason: "storage", cause })),
     );
-    const selection = resolveProjectSettings(current, projectId).settings.voiceSelection;
+    const selection = botVoiceSelection(current, projectId).selection;
     if (selection === null) return yield* new VoiceConnectionError({ reason: "not-configured" });
     return yield* resolveSelection(selection);
   });

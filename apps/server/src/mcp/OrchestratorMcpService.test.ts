@@ -1,3 +1,4 @@
+import * as Option from "effect/Option";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
@@ -1081,6 +1082,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         id: parentThreadId,
         projectId,
         title: "MCP parent",
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: parentThreadId },
         createdBy: "user",
         creationSource: "web",
         modelSelection,
@@ -2464,7 +2466,14 @@ describe("OrchestratorMcpService provider resolution", () => {
           ],
         } as const;
         const override = [{ id: "reasoningEffort", value: "max" }] as const;
+        const complexModel = {
+          instanceId: codexInstanceId,
+          model: "other-model",
+          options: [{ id: "reasoningEffort", value: "medium" }],
+        } as const;
         const cases = [
+          { name: "bot complex default", target: undefined, bot: true, expected: complexModel },
+          { name: "code keeps chat model", target: undefined, bot: false, expected: inherited },
           {
             name: "partial override",
             target: { options: override },
@@ -2523,7 +2532,9 @@ describe("OrchestratorMcpService provider resolution", () => {
                   } as never;
                 }),
             }),
-            ServerSettings.layerTest(),
+            ServerSettings.layerTest({
+              botSharedPreferences: { complexTaskModelSelection: complexModel },
+            }),
             providerRegistryLayer([
               {
                 ...providerSnapshot({
@@ -2541,7 +2552,15 @@ describe("OrchestratorMcpService provider resolution", () => {
               providerSnapshot({ instanceId: peerId, driver, model: inherited.model }),
             ]),
             adapterRegistryLayer([codexInstanceId, peerId]),
-            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () =>
+                Effect.succeed(
+                  Option.some({
+                    id: projectId,
+                    botRole: "bot" in testCase && testCase.bot ? "specialist" : null,
+                  } as never),
+                ),
+            }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
           );
@@ -2551,7 +2570,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             assert.deepEqual(capabilities.inheritedOptions, inherited.options);
             yield* service.delegateTask(scope, {
               task: "Review the change.",
-              target: yield* decodeTarget(testCase.target),
+              ...(testCase.target ? { target: yield* decodeTarget(testCase.target) } : {}),
               mode: "async",
               clientRequestId: testCase.name,
             });

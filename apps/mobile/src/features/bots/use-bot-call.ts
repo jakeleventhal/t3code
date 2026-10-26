@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { VoiceCallState, VoiceCallTarget } from "@t3tools/client-runtime/voice-call";
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { botVoiceSelection } from "@t3tools/shared/botPreferences";
 import { Atom } from "effect/reactivity";
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
@@ -87,9 +87,9 @@ export function useBotCallAvailability(input: {
   );
   const settings = config?.settings ?? null;
   const selection =
-    settings === null
+    settings === null || input.projectId === null
       ? null
-      : resolveProjectSettings(settings, input.projectId).settings.voiceSelection;
+      : botVoiceSelection(settings, input.projectId).selection;
   return resolveBotCallAvailability({
     supported: config?.environment.capabilities.botVoice === true,
     connected: input.connected && settings !== null,

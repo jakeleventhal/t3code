@@ -12,7 +12,6 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import { AppText } from "../../components/ui/AppText";
 import { botEnvironment } from "../../state/bots";
 import { useEnvironments } from "../../state/environments";
-import { useProjects } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsRow } from "./components/SettingsRow";
@@ -20,9 +19,12 @@ import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 
 const cannotWrite = Atom.make(false);
 
-export function BotPrimaryMachineSettings() {
+export function BotPrimaryMachineSettings({
+  bot,
+}: {
+  bot?: { readonly id: ProjectId; readonly title: string };
+}) {
   const { environments } = useEnvironments();
-  const projects = useProjects();
   const save = useAtomCommand(botEnvironment.configure);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,18 +40,6 @@ export function BotPrimaryMachineSettings() {
     latestBotPreferences(
       eligible.map((entry) => entry.serverConfig!.settings.botSharedPreferences),
     ) ?? EMPTY_BOT_SHARED_PREFERENCES;
-  const unique = [
-    ...new Map(
-      [...projects]
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-        .filter((project) => project.botRole != null)
-        .map((project) => [project.id, project]),
-    ).values(),
-  ];
-  const assistant = unique.find((project) => project.botRole === "assistant");
-  const bots = unique.filter(
-    (project) => project.botRole !== "assistant" || project.id === assistant?.id,
-  );
   const choices = eligible.map((entry) => ({
     value: entry.environmentId,
     label: entry.label,
@@ -79,7 +69,7 @@ export function BotPrimaryMachineSettings() {
   ) => {
     const key = bot ? `bot:${bot.id}` : "global";
     const label = bot?.title ?? "Default for all bots";
-    const fallback = bot ? "Use default" : "Automatic";
+    const fallback = bot ? "Use default" : "Choose a primary machine";
     return (
       <View key={key}>
         <SettingsRow
@@ -94,7 +84,7 @@ export function BotPrimaryMachineSettings() {
           onPress={() => setEditing(editing === key ? null : key)}
         />
         {editing === key
-          ? [{ value: null, label: fallback }, ...choices].map((choice) => (
+          ? [...(bot ? [{ value: null, label: fallback }] : []), ...choices].map((choice) => (
               <SettingsChoiceRow
                 key={choice.value ?? "default"}
                 label={choice.label}
@@ -107,6 +97,13 @@ export function BotPrimaryMachineSettings() {
       </View>
     );
   };
+  if (bot)
+    return (
+      <>
+        {row(preferences.overrides[bot.id] ?? null, bot)}
+        {error ? <AppText className="px-4 py-2 text-danger-foreground">{error}</AppText> : null}
+      </>
+    );
   return (
     <SettingsSection
       title="Primary machine"
@@ -114,7 +111,6 @@ export function BotPrimaryMachineSettings() {
     >
       {row(preferences.primaryEnvironmentId)}
       {error ? <AppText className="px-4 py-2 text-danger-foreground">{error}</AppText> : null}
-      {bots.map((bot) => row(preferences.overrides[bot.id] ?? null, bot))}
     </SettingsSection>
   );
 }

@@ -1,4 +1,5 @@
 import { openSettings } from "../settings/settings-navigation";
+import { TypingDots } from "./TypingDots";
 import { IconButton } from "../../components/ui/IconButton";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -357,11 +358,12 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
         </Text>
       ) : working ? (
         <View className="flex-row items-center gap-2" accessibilityLiveRegion="polite">
+          <TypingDots />
           <Text textRole="footnote" className="flex-1 text-foreground-muted">
             {mainThread?.runtime?.status === "preparing" ||
             mainThread?.runtime?.status === "starting"
-              ? "•••  Getting ready…"
-              : "•••  Thinking…"}
+              ? "Getting ready…"
+              : "Thinking…"}
           </Text>
           <IconButton
             variant="danger"

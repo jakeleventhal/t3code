@@ -100,6 +100,12 @@ describe("voice work result delivery", () => {
     ).toMatchObject({ status: "waiting" });
   });
 
+  it("reports an empty terminal answer as a failed request rather than claiming results exist", () => {
+    expect(
+      voiceWorkUpdate({ ...projection(), runs: [{ id: runId, status: "completed" }] }, runId),
+    ).toMatchObject({ status: "failed", text: expect.stringContaining("without an answer") });
+  });
+
   it("does not turn a failed or cancelled run into a success from partial text", () => {
     const base = projection();
     const messages = [

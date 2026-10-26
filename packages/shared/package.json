@@ -507,7 +507,11 @@
       "types": "./src/cloneUrl.ts",
       "import": "./src/cloneUrl.ts"
     },
-    "./voiceProviderInstances": "./src/voiceProviderInstances.ts"
+    "./voiceProviderInstances": "./src/voiceProviderInstances.ts",
+    "./botPreferences": {
+      "types": "./src/botPreferences.ts",
+      "import": "./src/botPreferences.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

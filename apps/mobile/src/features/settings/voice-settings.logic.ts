@@ -8,7 +8,7 @@ import {
   type VoiceConnection,
   type VoiceSelection,
 } from "@t3tools/contracts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { botVoiceSelection } from "@t3tools/shared/botPreferences";
 
 export type VoiceCatalogConnection = VoiceCatalog["connections"][number];
 export type VoiceConnectionKind = VoiceConnection["kind"];
@@ -129,11 +129,7 @@ export type BotVoiceSource =
 
 /** An absent project override follows the environment default; a stored null is the bot's own "none". */
 export function botVoiceSource(settings: ServerSettings, projectId: ProjectId): BotVoiceSource {
-  const resolved = resolveProjectSettings(settings, projectId);
-  return {
-    kind: resolved.sources.voiceSelection === "project" ? "own" : "default",
-    selection: resolved.settings.voiceSelection,
-  };
+  return botVoiceSelection(settings, projectId);
 }
 
 /**

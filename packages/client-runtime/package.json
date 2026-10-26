@@ -239,6 +239,7 @@
       "types": "./src/state/peerRequests.ts",
       "default": "./src/state/peerRequests.ts"
     },
+    "./voice-call/cues": "./src/voice-call/cues.ts",
     "./voice-call": {
       "types": "./src/voice-call/controller.ts",
       "default": "./src/voice-call/controller.ts"

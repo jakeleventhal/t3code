@@ -2,7 +2,7 @@ import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import type { VoiceCallTarget } from "@t3tools/client-runtime/voice-call";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useIsFocused } from "@react-navigation/native";
-import { use, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { use, useEffect, useState, type ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,37 +14,9 @@ import { currentBrowserTarget, describeCurrentView } from "../../voice/current-v
 import { voiceCallController, voiceViewContext } from "../../voice/runtime";
 import type { BotCallControls } from "./bot-call";
 import { BotCallBar } from "./BotCallBar";
-import { BotCallComposer, BotCallTranscript } from "./BotCallTranscriptSheet";
 import { useShowConversationInBots } from "./use-assistant";
-import { sameCallThread, useActiveBotCall, useBotCallSummary } from "./use-bot-call";
+import { useActiveBotCall, useBotCallSummary } from "./use-bot-call";
 
-function LiveCallTranscript(props: { readonly callId: string }) {
-  const entries = useSyncExternalStore(voiceCallController.subscribeTranscript, () =>
-    voiceCallController.getTranscript(props.callId),
-  );
-  return <BotCallTranscript entries={entries} />;
-}
-
-function LiveCallComposer(props: { readonly callId: string }) {
-  const { callId } = props;
-  const draft = useSyncExternalStore(voiceCallController.subscribeDraft, () =>
-    voiceCallController.getDraft(callId),
-  );
-  return (
-    <BotCallComposer
-      draft={draft}
-      onDraftChange={(text) => voiceCallController.setDraft(callId, text)}
-      // A failed send lands in the draft's own error line.
-      onSendDraft={() => void voiceCallController.sendDraft(callId)}
-    />
-  );
-}
-
-/**
- * The one live call, wherever the user is. `thread` is the conversation this surface shows: on
- * the call's own conversation, Open chat just closes the transcript. Renders nothing between
- * calls, so callers can mount it unconditionally.
- */
 export function ActiveBotCallBar(props: {
   readonly thread: ScopedThreadRef | null;
   readonly className?: string;
@@ -52,25 +24,18 @@ export function ActiveBotCallBar(props: {
 }) {
   const call = useActiveBotCall();
   const showInBots = useShowConversationInBots();
-  // Keyed to the call, so the next call never opens with an earlier call's transcript showing.
-  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
-  const { thread } = props;
   if (call === null) return null;
-  const setExpanded = (expanded: boolean) => setExpandedCallId(expanded ? call.callId : null);
   const controls: BotCallControls = {
     toggleMute: (callId) =>
       void voiceCallController.toggleMute(callId).then((result) => {
         if (!result.ok) Dialog.alert("Microphone unchanged", result.error);
       }),
     end: (callId) => {
-      setExpanded(false);
       void voiceCallController.end(callId).then((result) => {
         if (!result.ok) Dialog.alert("Call ended", result.error);
       });
     },
     openChat: (target: VoiceCallTarget) => {
-      setExpanded(false);
-      if (sameCallThread(target, thread)) return;
       showInBots({
         environmentId: target.threadRef.environmentId,
         threadId: target.threadRef.threadId,
@@ -79,14 +44,7 @@ export function ActiveBotCallBar(props: {
   };
   return (
     <View pointerEvents="box-none" className={props.className} style={props.style}>
-      <BotCallBar
-        call={call}
-        controls={controls}
-        expanded={expandedCallId === call.callId}
-        onExpandedChange={setExpanded}
-        transcript={<LiveCallTranscript callId={call.callId} />}
-        composer={call.canSendText ? <LiveCallComposer callId={call.callId} /> : null}
-      />
+      <BotCallBar call={call} controls={controls} />
     </View>
   );
 }

@@ -1,4 +1,6 @@
 import { openSettings } from "./settings-navigation";
+import { botDefaultVoice } from "@t3tools/shared/botPreferences";
+import { botEnvironment } from "../../state/bots";
 import { useBotProjects } from "../bots/use-assistant";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
@@ -47,11 +49,7 @@ import { SettingsRow } from "./components/SettingsRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
-import {
-  planMobileScopedSettingsClear,
-  planMobileScopedSettingsPatch,
-  resolveMobileSettingsTargets,
-} from "./settings-scoped-server";
+import { resolveMobileSettingsTargets } from "./settings-scoped-server";
 import { useSettingsWriter } from "./useSettingsWriter";
 import {
   botVoiceSource,
@@ -91,6 +89,7 @@ function useVoiceEnvironment(environmentId: EnvironmentId) {
   const canManageConnections = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const canWriteSettings = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const writeSettings = useSettingsWriter();
+  const configure = useAtomCommand(botEnvironment.configure);
   const [pending, setPending] = useState(false);
   const write = (
     writes: readonly { environmentId: EnvironmentId; patch: ServerSettingsPatch }[],
@@ -112,6 +111,22 @@ function useVoiceEnvironment(environmentId: EnvironmentId) {
     canWriteSettings,
     pending,
     write,
+    configure: async (input: Parameters<typeof configure>[0]["input"]) => {
+      if (pending || !canWriteSettings) return;
+      setPending(true);
+      try {
+        const result = await configure({ environmentId, input });
+        if (result._tag !== "Success") {
+          const failure = squashAtomCommandFailure(result);
+          Dialog.alert(
+            "Could not save voice",
+            failure instanceof Error ? failure.message : "Please try again.",
+          );
+        }
+      } finally {
+        setPending(false);
+      }
+    },
   };
 }
 
@@ -275,17 +290,6 @@ export function VoiceEnvironmentOverview(props: {
             />
           </SettingsSection>
         ) : null}
-        {props.mode === "advanced" ? (
-          <SettingsSection title="Default voice" footer="Other bots can have their own voice.">
-            <SettingsRow
-              icon="headphones"
-              label="Voice"
-              value={voiceSelectionLabel(catalog, settings.voiceSelection)}
-              valuePosition="below"
-              onPress={() => openSettings(navigation, "SettingsVoiceDefault", { environmentId })}
-            />
-          </SettingsSection>
-        ) : null}
         {props.mode === "bots" && bots.length > 0 ? (
           <View>
             {bots.map((bot) => {
@@ -314,6 +318,39 @@ export function VoiceEnvironmentOverview(props: {
         ) : null}
       </VoiceEnvironmentGate>
     </View>
+  );
+}
+
+export function BotVoiceSettingsRow({
+  environmentId,
+  projectId,
+}: {
+  environmentId: EnvironmentId;
+  projectId?: ProjectId;
+}) {
+  const voice = useVoiceEnvironment(environmentId);
+  const navigation = useNavigation();
+  const settings = voice.environment?.serverConfig.settings;
+  const source = settings
+    ? projectId
+      ? botVoiceSource(settings, projectId)
+      : { kind: "own", selection: botDefaultVoice(settings) }
+    : null;
+  return (
+    <SettingsRow
+      icon="headphones"
+      label={projectId ? "Voice" : "Default voice"}
+      value={`${source?.kind === "default" ? "Use default · " : ""}${voiceSelectionLabel(voice.catalog.data, source?.selection ?? null)}`}
+      valuePosition="below"
+      onPress={() =>
+        navigation.navigate("SettingsSheet", {
+          screen: "SettingsContent",
+          params: projectId
+            ? { screen: "SettingsVoiceBot", params: { environmentId, projectId } }
+            : { screen: "SettingsVoiceDefault", params: { environmentId } },
+        })
+      }
+    />
   );
 }
 
@@ -435,10 +472,12 @@ export function SettingsVoiceDefaultRouteScreen({
 }: StaticScreenProps<{ readonly environmentId: EnvironmentId }>) {
   const { environmentId } = route.params;
   const voice = useVoiceEnvironment(environmentId);
-  const selection = voice.environment?.serverConfig.settings.voiceSelection ?? null;
+  const selection = voice.environment
+    ? botDefaultVoice(voice.environment.serverConfig.settings)
+    : null;
   const disabled = !voice.canWriteSettings || voice.pending;
   const save = (voiceSelection: VoiceSelection | null) =>
-    void voice.write([{ environmentId, patch: { voiceSelection } }]);
+    void voice.configure({ defaultVoiceSelection: voiceSelection });
   return (
     <VoiceScreen title="Default voice">
       <VoiceEnvironmentGate voice={voice}>
@@ -492,10 +531,9 @@ export function SettingsVoiceBotRouteScreen({
   const supportsOverrides =
     environment.serverConfig.environment.capabilities.projectSettingsOverrides === true;
   const disabled = !voice.canWriteSettings || voice.pending || !supportsOverrides;
-  const targets = resolveMobileSettingsTargets([environment], [{ environmentId, id: projectId }]);
   const catalog = voice.catalog.data;
   const choose = (voiceSelection: VoiceSelection | null) =>
-    void voice.write(planMobileScopedSettingsPatch(targets, true, { voiceSelection }));
+    void voice.configure({ voiceOverride: { projectId, selection: voiceSelection } });
   return (
     <VoiceScreen title={title}>
       <SettingsSection>
@@ -524,15 +562,15 @@ export function SettingsVoiceBotRouteScreen({
         >
           <ListToggleRow
             label="Use default voice"
-            description={voiceSelectionLabel(catalog, settings.voiceSelection)}
+            description={voiceSelectionLabel(catalog, botDefaultVoice(settings))}
             value={source.kind === "default"}
             disabled={disabled}
             onValueChange={(useDefault) => {
               if (useDefault) {
-                void voice.write(planMobileScopedSettingsClear(targets, ["voiceSelection"]));
+                void voice.configure({ voiceOverride: { projectId, selection: "inherit" } });
               } else {
                 // Starts from the default so turning this off changes nothing until a pick.
-                choose(settings.voiceSelection);
+                choose(botDefaultVoice(settings));
               }
             }}
           />

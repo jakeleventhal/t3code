@@ -19,6 +19,14 @@ public final class T3VoiceAudioModule: Module {
 
     Events("onAudio", "onPlaybackIdle", "onError")
 
+    Function("preferSpeaker") {
+      let audio = AVAudioSession.sharedInstance()
+      // Default to speaker while preserving a connected headset and the voice processing mode.
+      try audio.setCategory(.playAndRecord, mode: .voiceChat,
+        options: audio.categoryOptions.union([.defaultToSpeaker, .allowBluetoothHFP]))
+    }
+
+
     // Synchronous so a close issued right after cannot overtake it on the way to native.
     Function("begin") { (sessionId: String) in
       self.queue.sync { self.reserve(sessionId) }

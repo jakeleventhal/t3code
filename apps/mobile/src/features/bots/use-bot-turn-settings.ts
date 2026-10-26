@@ -22,7 +22,6 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
-import { useSettingsWriter } from "../settings/useSettingsWriter";
 import {
   botFollowedLabel,
   botModelLabel,
@@ -44,7 +43,6 @@ export interface BotTurnSettingsChange {
 export function useBotTurnSettings(environmentId: EnvironmentId, projectId: ProjectId | null) {
   const config = useEnvironmentServerConfig(environmentId);
   const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
-  const writeSettings = useSettingsWriter();
   const configureBots = useAtomCommand(botEnvironment.configure);
   const [pending, setPending] = useState(false);
   const settings = config?.settings ?? DEFAULT_SERVER_SETTINGS;
@@ -77,7 +75,8 @@ export function useBotTurnSettings(environmentId: EnvironmentId, projectId: Proj
     setPending(true);
     if (projectId === null && patch.botDefaults) {
       await configureBots({ environmentId, input: patch.botDefaults });
-    } else await writeSettings([], [{ environmentId, patch }]);
+    } else if (projectId)
+      await configureBots({ environmentId, input: { runtimeOverride: { projectId, ...change } } });
     setPending(false);
   };
 

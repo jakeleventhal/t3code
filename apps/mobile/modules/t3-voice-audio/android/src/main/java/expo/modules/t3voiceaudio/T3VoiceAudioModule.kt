@@ -54,6 +54,34 @@ class T3VoiceAudioModule : Module() {
 
     Events("onAudio", "onPlaybackIdle", "onError")
 
+    Function("preferSpeaker") {
+      val context = appContext.reactContext ?: return@Function
+      val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      manager.mode = AudioManager.MODE_IN_COMMUNICATION
+      val external = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+        it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+          it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+          it.type == AudioDeviceInfo.TYPE_USB_HEADSET || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+      }
+      if (!external) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          manager.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            ?.let { manager.setCommunicationDevice(it) }
+        } else {
+          @Suppress("DEPRECATION")
+          manager.isSpeakerphoneOn = true
+        }
+      }
+    }
+
+    Function("releaseWebRtcRoute") {
+      val context = appContext.reactContext ?: return@Function
+      val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) manager.clearCommunicationDevice()
+      manager.mode = AudioManager.MODE_NORMAL
+    }
+
+
     // Synchronous so a close issued right after cannot overtake it on the way to native.
     Function("begin") { sessionId: String -> reserve(sessionId) }
 

@@ -1,3 +1,5 @@
+import { botEnvironment } from "../../state/bots";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -21,7 +23,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useNavigate } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
 
-import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import {
   applyProviderInstanceSettings,
@@ -98,6 +100,7 @@ export function BotModelPicker({
   providers,
   selection,
   disabled,
+  placeholder,
   onChange,
 }: {
   environmentId: EnvironmentId;
@@ -106,6 +109,7 @@ export function BotModelPicker({
   providers: ReadonlyArray<ServerProvider>;
   selection: ModelSelection;
   disabled: boolean;
+  placeholder?: string;
   onChange: (selection: ModelSelection) => void;
 }) {
   const navigate = useNavigate();
@@ -117,6 +121,7 @@ export function BotModelPicker({
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
       <ProviderModelPicker
         environmentId={environmentId}
+        {...(placeholder ? { triggerLabel: placeholder } : {})}
         activeInstanceId={selection.instanceId}
         model={selection.model}
         lockedProvider={null}
@@ -139,7 +144,7 @@ export function BotModelPicker({
           onChange(createModelSelection(instanceId, model))
         }
       />
-      {activeEntry ? (
+      {activeEntry && !placeholder ? (
         <TraitsPicker
           provider={activeEntry.driverKind}
           models={activeEntry.models}
@@ -319,7 +324,6 @@ export function BotTurnSettingsPanel({
   const navigate = useNavigate();
   const settings = useEnvironmentSettings(environmentId);
   const providers = useEnvironmentBotProviders(environmentId);
-  const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const supported = useEnvironmentSupportsBotRuntimeSettings(environmentId);
   const environmentLabel = useEnvironment(environmentId)?.label ?? "This environment";
@@ -345,8 +349,12 @@ export function BotTurnSettingsPanel({
   const inheritedRuntimeLabel = inheritedRuntime
     ? `Default · ${runtimeModeConfig[inheritedRuntime].label}`
     : "Default";
+  const configure = useAtomCommand(botEnvironment.configure);
   const write = (change: Parameters<typeof botTurnOverridePatch>[2]) =>
-    updateSettings(botTurnOverridePatch(settings, project.id, change));
+    configure({
+      environmentId: project.environmentId,
+      input: { runtimeOverride: { projectId: project.id, ...change } },
+    });
 
   if (readiness === null) {
     return (

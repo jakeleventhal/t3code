@@ -1,3 +1,4 @@
+import { TypingDots } from "../bots/TypingDots";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
@@ -1270,6 +1271,7 @@ function renderFeedEntry(
     | "threadId"
     | "workspaceRoot"
   > & {
+    readonly simpleProgress: boolean;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly workRowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
@@ -1366,6 +1368,17 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "thinking" && props.simpleProgress) {
+    return (
+      <View
+        className="min-h-8 flex-row items-center gap-2 px-1.5 py-1"
+        accessibilityLiveRegion="polite"
+      >
+        <TypingDots />
+        <Text className="text-sm text-foreground-muted">Thinking…</Text>
+      </View>
+    );
+  }
   if (entry.type === "thinking") {
     return <ThreadThinkingRow rowSizing={props.workRowSizing} iconSubtleColor={iconSubtleColor} />;
   }
@@ -1397,6 +1410,16 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "work-toggle" && props.simpleProgress) {
+    return (
+      <View className="min-h-8 flex-row items-center gap-2 px-1.5 py-1">
+        {entry.live ? <TypingDots /> : null}
+        <Text numberOfLines={2} className="flex-1 text-sm text-foreground-muted">
+          {entry.summary}
+        </Text>
+      </View>
+    );
+  }
   if (entry.type === "work-toggle") {
     return (
       <ThreadWorkGroupToggle
@@ -1853,6 +1876,27 @@ function renderFeedEntry(
     );
   }
 
+  if (props.simpleProgress) {
+    return (
+      <View className="gap-1 px-1.5 py-1">
+        {entry.activities.map((activity) => (
+          <View key={activity.id} className="min-h-8 flex-row items-center gap-2">
+            {activity.live ? <TypingDots /> : null}
+            <Text
+              numberOfLines={2}
+              className={
+                activity.status === "failure"
+                  ? "flex-1 text-sm text-danger-foreground"
+                  : "flex-1 text-sm text-foreground-muted"
+              }
+            >
+              {activity.summary}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
   return (
     <ThreadWorkLog
       key={`${entry.id}:${props.workRowSizing.textSizeKey}`}
@@ -2155,6 +2199,8 @@ function useThreadFeedPresentation(
   );
 }
 
+const EMPTY_BOT_WORK_GROUPS: Record<string, boolean> = {};
+
 export const ThreadFeed = memo(function ThreadFeed({
   ref,
   ...props
@@ -2162,6 +2208,14 @@ export const ThreadFeed = memo(function ThreadFeed({
   const { listRef, onEndFollowEnabledChange, onHeaderMaterialVisibilityChange } = props;
   const workflowOpening = useWorkflowOpening(props.detailRef);
   const guestShare = useThreadGuestShare(props.detailRef);
+  const shell = useQuietThreadShell({
+    environmentId: props.environmentId,
+    threadId: props.threadId,
+  });
+  const project = useProject(
+    shell ? { environmentId: props.environmentId, projectId: shell.projectId } : null,
+  );
+  const simpleProgress = project?.botRole != null;
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
@@ -2795,7 +2849,11 @@ export const ThreadFeed = memo(function ThreadFeed({
   const { jumpToMessageId } = props;
   const jumpReady = !!jumpToMessageId && loadedListKey === `${feedThreadKey}:filled`;
   const presentedFeed = appendGuestPendingMessages(
-    useThreadFeedPresentation(props, expandedTurnIds, expandedWorkGroups),
+    useThreadFeedPresentation(
+      props,
+      expandedTurnIds,
+      simpleProgress ? EMPTY_BOT_WORK_GROUPS : expandedWorkGroups,
+    ),
     guestShare,
   );
   const jumpRunId =
@@ -2956,12 +3014,14 @@ export const ThreadFeed = memo(function ThreadFeed({
     onRevealSettled?.(revealTarget.key, true);
   });
 
-  const anchoredEndSpace = resolveChatListAnchoredEndSpace(
-    presentedFeed,
-    props.anchorMessageId,
-    (entry) => (entry.type === "message" ? entry.id : null),
-    { anchorOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET },
-  );
+  const anchoredEndSpace = simpleProgress
+    ? undefined
+    : resolveChatListAnchoredEndSpace(
+        presentedFeed,
+        props.anchorMessageId,
+        (entry) => (entry.type === "message" ? entry.id : null),
+        { anchorOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET },
+      );
   const failedRunIds = failedFeedRunIds(props.feed, props.latestRun);
   const terminalAssistantMessageIds = (() => {
     const terminalIdsByTurn = new Map<RunId, string>();
@@ -3233,6 +3293,7 @@ export const ThreadFeed = memo(function ThreadFeed({
       >
         <ThreadMediaVisibility>
           {renderFeedEntry(info, {
+            simpleProgress,
             environmentId: props.environmentId,
             dispatchingMessageId: props.dispatchingMessageId,
             onEditPendingMessage: props.onEditPendingMessage,

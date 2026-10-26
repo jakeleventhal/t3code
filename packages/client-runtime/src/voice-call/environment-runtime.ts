@@ -163,11 +163,15 @@ export function voiceWorkUpdate(
     ?.text.trim();
   return {
     status:
-      run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : "cancelled",
+      run.status === "completed" && text
+        ? "completed"
+        : run.status === "failed" || run.status === "completed"
+          ? "failed"
+          : "cancelled",
     text:
       text ||
       (run.status === "completed"
-        ? "The work finished without a text response. See its results in the conversation."
+        ? "The work stopped without an answer. Tell the user the check did not return a result; do not claim you are still checking or that a result is available."
         : "The work did not complete. See the conversation for details."),
   };
 }

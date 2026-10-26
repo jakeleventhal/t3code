@@ -1,3 +1,4 @@
+import IconMaximize from "@tabler/icons-react-native/IconMaximize";
 import type { Icon } from "@tabler/icons-react-native/types";
 /* Package-root imports eagerly register the entire Tabler icon set in Metro. */
 import IconAdjustmentsHorizontal from "@tabler/icons-react-native/IconAdjustmentsHorizontal";
@@ -250,6 +251,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   minus: IconMinus,
   "slash.circle": IconBan,
   "qrcode.viewfinder": IconQrcode,
+  viewfinder: IconMaximize,
   "point.3.connected.trianglepath.dotted": IconNetwork,
   "point.topleft.down.curvedto.point.bottomright.up": IconGitMerge,
   safari: IconExternalLink,

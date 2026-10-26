@@ -1,6 +1,9 @@
+import { botComplexTaskModel } from "@t3tools/shared/botPreferences";
+import { botEnvironment } from "../../state/bots";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useBotProjects } from "../bots/use-assistant";
 import { BotPrimaryMachineSettings } from "./BotPrimaryMachineSettings";
-import { VoiceEnvironmentOverview } from "./SettingsVoiceRouteScreen";
+import { BotVoiceSettingsRow, VoiceEnvironmentOverview } from "./SettingsVoiceRouteScreen";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -52,6 +55,7 @@ const CHANGES_NOTE =
 type BotTurnRouteParams = {
   readonly environmentId: EnvironmentId;
   readonly projectId?: ProjectId;
+  readonly modelPurpose?: "complex";
 };
 
 function BotsScreen(props: {
@@ -131,11 +135,6 @@ export function SettingsBotsRouteScreen() {
           <BotsEnvironmentOverview key={target.environmentId} target={target} advanced={false} />
         ))}
       </SettingsSection>
-      <SettingsSection title="Voices">
-        {availableTargets.map((target) => (
-          <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="bots" />
-        ))}
-      </SettingsSection>
       {primary ? <BotsEnvironmentOverview target={primary} advanced /> : null}
       {availableTargets.map((target) => (
         <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="advanced" />
@@ -171,9 +170,20 @@ function BotsEnvironmentOverview(props: {
             >
               <SettingsRow
                 icon="sparkles"
-                label="Model"
+                label="Chat model"
                 value={defaults.modelLabel}
                 valuePosition="below"
+                onPress={() => open({ environmentId })}
+              />
+              <SettingsRow
+                icon="sparkles"
+                label="Complex-task model"
+                value={
+                  defaults.config
+                    ? (botComplexTaskModel(defaults.config.settings.botSharedPreferences, null)
+                        ?.model ?? "Choose a model")
+                    : "Choose a model"
+                }
                 onPress={() => open({ environmentId })}
               />
               <SettingsRow
@@ -183,6 +193,7 @@ function BotsEnvironmentOverview(props: {
                 valuePosition="below"
                 onPress={() => open({ environmentId })}
               />
+              <BotVoiceSettingsRow environmentId={environmentId} />
             </SettingsSection>
           ) : null}
           {!props.advanced && bots.length > 0 ? (
@@ -300,6 +311,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
   const { environmentId, projectId } = route.params;
   const navigation = useNavigation();
   const turn = useBotTurnSettings(environmentId, projectId ?? null);
+  const configureBots = useAtomCommand(botEnvironment.configure);
   const bot = useProjects().find(
     (project) => project.environmentId === environmentId && project.id === projectId,
   );
@@ -349,7 +361,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
         </Muted>
       )}
       <SettingsSection
-        title="Model"
+        title="Chat model"
         footer={
           turn.setupNeeded
             ? `Setup needed · ${turn.setupNeeded} ${
@@ -362,7 +374,7 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
       >
         <SettingsRow
           icon="sparkles"
-          label="Model"
+          label="Chat model"
           value={turn.modelLabel}
           valuePosition="below"
           disabled={disabled}
@@ -393,6 +405,59 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
           />
         ) : null}
       </SettingsSection>
+      <SettingsSection
+        title="Complex tasks"
+        footer="Difficult work can use this model while chat stays available."
+      >
+        <SettingsRow
+          icon="sparkles"
+          label="Complex-task model"
+          value={
+            botComplexTaskModel(turn.config.settings.botSharedPreferences, projectId ?? null)
+              ?.model ?? (projectId ? "Use default" : "Choose a model")
+          }
+          onPress={() =>
+            navigation.navigate("SettingsSheet", {
+              screen: "SettingsContent",
+              params: {
+                screen: "SettingsBotTurnModel",
+                params: {
+                  environmentId,
+                  ...(projectId ? { projectId } : {}),
+                  modelPurpose: "complex",
+                },
+              },
+            })
+          }
+        />
+        {(
+          projectId
+            ? turn.config.settings.botSharedPreferences.complexTaskModelOverrides?.[projectId]
+            : turn.config.settings.botSharedPreferences.complexTaskModelSelection
+        ) ? (
+          <SettingsActionRow
+            icon="arrow.uturn.backward"
+            label={projectId ? "Use default" : "Turn off automatic escalation"}
+            disabled={disabled}
+            onPress={() =>
+              void configureBots({
+                environmentId,
+                input: projectId
+                  ? { complexTaskModelOverride: { projectId, selection: null } }
+                  : { complexTaskModelSelection: null },
+              })
+            }
+          />
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="Voice">
+        <BotVoiceSettingsRow environmentId={environmentId} {...(projectId ? { projectId } : {})} />
+      </SettingsSection>
+      {bot ? (
+        <SettingsSection title="Primary machine">
+          <BotPrimaryMachineSettings bot={bot} />
+        </SettingsSection>
+      ) : null}
       <SettingsSection title="Permissions">
         <SettingsChoiceRow
           label={followLabel}
@@ -442,13 +507,21 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
 export function SettingsBotTurnModelRouteScreen({ route }: StaticScreenProps<BotTurnRouteParams>) {
   const { environmentId, projectId } = route.params;
   const navigation = useNavigation();
+  const configure = useAtomCommand(botEnvironment.configure);
+  const complex = route.params.modelPurpose === "complex";
   const turn = useBotTurnSettings(environmentId, projectId ?? null);
   const [picked, setPicked] = useState<{
     readonly modelSelection?: ModelSelection;
     readonly runtimeMode?: RuntimeMode;
   }>({});
   const { model, runtimeMode } = turn.sources;
-  const selectedModel = picked.modelSelection ?? model.own ?? model.inherited;
+  const selectedModel =
+    picked.modelSelection ??
+    (complex && turn.config
+      ? botComplexTaskModel(turn.config.settings.botSharedPreferences, projectId ?? null)
+      : null) ??
+    model.own ??
+    model.inherited;
   // With nothing chosen yet, show what a new bot would start on.
   const selectedRuntimeMode =
     picked.runtimeMode ??
@@ -467,7 +540,14 @@ export function SettingsBotTurnModelRouteScreen({ route }: StaticScreenProps<Bot
   }) => {
     const next = { ...picked, ...change };
     setPicked(next);
-    void turn.save(next);
+    if (complex && next.modelSelection) {
+      void configure({
+        environmentId,
+        input: projectId
+          ? { complexTaskModelOverride: { projectId, selection: next.modelSelection } }
+          : { complexTaskModelSelection: next.modelSelection },
+      });
+    } else if (!complex) void turn.save(next);
   };
   return (
     <ThreadSettingsPickerScreen
@@ -485,6 +565,7 @@ export function SettingsBotTurnModelRouteScreen({ route }: StaticScreenProps<Bot
       onUpdateOptionSelections={(options) => {
         if (selectedModel) pick({ modelSelection: { ...selectedModel, options } });
       }}
+      hideRuntimeMode={complex}
       runtimeMode={selectedRuntimeMode}
       onUpdateRuntimeMode={(mode) => pick({ runtimeMode: mode })}
       onClose={() => navigation.goBack()}

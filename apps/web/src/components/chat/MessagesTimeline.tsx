@@ -847,13 +847,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
     (row) => (row.kind === "message" && row.message.role === "user" ? row.message.id : null),
     { anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET },
   );
-  const anchoredEndSpace = anchoredEndSpaceConfig
-    ? {
-        ...anchoredEndSpaceConfig,
-        onReady: handleAnchorReady,
-        onSizeChanged: handleAnchorSizeChanged,
-      }
-    : undefined;
+  const anchoredEndSpace =
+    !simpleProgress && anchoredEndSpaceConfig
+      ? {
+          ...anchoredEndSpaceConfig,
+          onReady: handleAnchorReady,
+          onSizeChanged: handleAnchorSizeChanged,
+        }
+      : undefined;
   const maintainVisibleContentPosition = {
     data: true,
     size: true,
