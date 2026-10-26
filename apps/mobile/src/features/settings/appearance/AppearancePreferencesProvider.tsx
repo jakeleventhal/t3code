@@ -283,6 +283,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     [savePreferences],
   );
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Apply committed theme preferences to the native styling runtime.
   useLayoutEffect(() => {
     selectedThemeIdsRef.current = themeIds;
     syncThemeRuntime(runtimeState);
