@@ -73,7 +73,7 @@ import {
   FullscreenThreadRouteScreen,
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
-import { ActiveCallScreenSlot } from "./features/bots/ActiveBotCall";
+import { ActiveCallScreenSlot, ActiveCallViewBridge } from "./features/bots/ActiveBotCall";
 import { AssistantQuickSheet } from "./features/bots/AssistantQuickSheet";
 import { NewBotSheet } from "./features/bots/NewBotSheet";
 import { BotProfileSheet } from "./features/bots/BotProfileSheet";
@@ -637,6 +637,7 @@ function RootStackLayout(props: {
           <ExistingThreadSettingsRouteProvider>
             <WorkspaceConnectionStatusProvider>
               <AndroidWorkspaceTabsProvider state={props.state}>
+                {Platform.OS !== "ios" ? <ActiveCallViewBridge state={props.state} /> : null}
                 <AdaptiveWorkspaceLayout
                   pathname={workspaceLocation.pathname}
                   workspaceRouteKey={workspaceLocation.routeKey}

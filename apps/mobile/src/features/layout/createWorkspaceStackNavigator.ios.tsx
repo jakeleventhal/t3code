@@ -1,3 +1,4 @@
+import { ActiveCallViewBridge } from "../bots/ActiveBotCall";
 import {
   createNavigatorFactory,
   NavigationContext,
@@ -699,6 +700,7 @@ function WorkspaceStackNavigator({
     <NativeWorkspaceModeContext value={usesNativeWorkspaceColumns}>
       <NavigationContent>
         <WorkspaceTabsProvider stack={navigation} settingsOpen={settingsOpen}>
+          <ActiveCallViewBridge state={state} />
           <WorkspaceStackView
             nativeColumns={usesNativeWorkspaceColumns}
             {...rest}

@@ -44,7 +44,10 @@ function useRootStackState(): NavigationState | undefined {
  * Must render inside a screen of the root stack or a navigator nested in one.
  */
 export function useCurrentView(): CurrentViewSource {
-  const rootState = useRootStackState();
+  return useCurrentViewFromState(useRootStackState());
+}
+
+export function useCurrentViewFromState(rootState: NavigationState | undefined): CurrentViewSource {
   const workspace = useWorkspaceTabs();
   const room = workspace?.state.room ?? null;
   const selectedTab = workspace?.state.selectedTab ?? null;
