@@ -5,9 +5,11 @@ import type {
 
 type ThreadContext = {
   readonly thread: {
-    readonly pullRequests?: ReadonlyArray<{
-      readonly snapshot: Pick<ThreadPullRequestSnapshot, "state"> | null;
-    }>;
+    readonly pullRequests?:
+      | ReadonlyArray<{
+          readonly snapshot: Pick<ThreadPullRequestSnapshot, "state"> | null;
+        }>
+      | undefined;
   };
   readonly messages: ReadonlyArray<
     Pick<

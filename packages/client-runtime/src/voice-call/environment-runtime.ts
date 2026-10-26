@@ -1,3 +1,4 @@
+import { describeCallWork } from "./activity-context.ts";
 import {
   VoiceCallError,
   VoiceConnectionError,
@@ -183,6 +184,7 @@ export function createEnvironmentVoiceRuntime<R, E>(input: {
   readonly threadState: (
     ref: ScopedThreadRef,
   ) => Atom.Atom<AsyncResult.AsyncResult<EnvironmentThreadState, unknown>>;
+  readonly activityContext?: Atom.Atom<string>;
   readonly endpointId: string;
   readonly createCallId: () => string;
   readonly openPcmAudio?: PcmAudioFactory;
@@ -253,8 +255,24 @@ export function createEnvironmentVoiceRuntime<R, E>(input: {
         },
         { immediate: true },
       );
+      const detachActivity =
+        input.activityContext === undefined
+          ? undefined
+          : registry.subscribe(
+              input.activityContext,
+              (text) => {
+                if (!disposed) onUpdate({ kind: "context", text });
+              },
+              { immediate: true },
+            );
+      let lastCallWork: string | undefined;
       const detachThread = observe(call.target.threadRef, (state) => {
         if (disposed || state.status !== "live" || Option.isNone(state.data)) return;
+        const callWork = describeCallWork(state.data.value);
+        if (callWork !== lastCallWork) {
+          lastCallWork = callWork;
+          onUpdate({ kind: "context", text: callWork });
+        }
         const changes = track(state.data.value);
         for (const text of changes.updates) onUpdate({ kind: "context", text });
         for (const result of changes.work) {
@@ -277,6 +295,7 @@ export function createEnvironmentVoiceRuntime<R, E>(input: {
       return () => {
         disposed = true;
         detachMemory();
+        detachActivity?.();
         detachThread();
         for (const detach of workObservers) detach();
         workObservers.clear();
