@@ -1,3 +1,4 @@
+import { markdownWithStandaloneMediaLinks } from "../lib/standaloneMediaLinks";
 import { decodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -5,7 +6,6 @@ import {
   formatComposerContextReference,
 } from "@t3tools/shared/composerContextReferences";
 import {
-  markdownForNativeRendering,
   markdownWithFileEmbeds,
   markdownWithHtml,
   markdownWithInlineFileLinks,
@@ -165,19 +165,16 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const { renderImage, resolveImageSource, fileEmbedLabel } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const { markdown, fileHrefs } = useMemo(() => {
-    if (!fileEmbedLabel) {
-      return {
-        markdown: markdownForNativeRendering(props.markdown, ENRICHED_INLINE_FILE_LINK_REGEX),
-        fileHrefs: new Set<string>(),
-      };
-    }
     const content = markdownWithInlineFileLinks(
-      markdownWithHtml(props.markdown),
+      // Only author-written links may embed media; generated file links stay links.
+      markdownWithStandaloneMediaLinks(markdownWithHtml(props.markdown), props.workspaceRoot),
       ENRICHED_INLINE_FILE_LINK_REGEX,
     );
-    const files = markdownWithFileEmbeds(content, fileEmbedLabel);
+    const files = fileEmbedLabel
+      ? markdownWithFileEmbeds(content, fileEmbedLabel)
+      : { markdown: content, fileHrefs: new Set<string>() };
     return { ...files, markdown: markdownWithTableBreaks(files.markdown) };
-  }, [props.markdown, fileEmbedLabel]);
+  }, [props.markdown, props.workspaceRoot, fileEmbedLabel]);
   const [parsedLinkUrls, setParsedLinkUrls] = useState<ReadonlyArray<string>>([]);
   const onLinksChange = useCallback((links: MarkdownLinkOccurrence[]) => {
     const urls = [...new Set(links.map((link) => link.url))];
