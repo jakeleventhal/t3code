@@ -43,7 +43,6 @@ export function markdownWithStandaloneMediaLinks(
       edits.push({ start, end, content: `![${alt}](<${href}>${title})` });
     }
   }
-  // oxlint-disable-next-line unicorn/no-array-reverse -- Hermes has no Array#toReversed.
   for (const edit of [...edits].reverse())
     markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
   return markdown;

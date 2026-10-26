@@ -29,19 +29,8 @@ function isLineBoundary(node: MarkdownAstNode | undefined, edge: "before" | "aft
   return (edge === "before" ? TRAILING_NEWLINE_PATTERN : LEADING_NEWLINE_PATTERN).test(node.value);
 }
 
-/**
- * A link that owns its line in a top-level paragraph and points at an image or video file
- * becomes an image node, so the renderer embeds the media instead of a file chip. Links
- * mixed into a sentence, list items, and quotes stay links. The soft breaks around an
- * embedded link become hard breaks so the media keeps the line to itself. Runs after the
- * Codex directives so a cited file is already a link, and after hard breaks so they count
- * as line edges.
- *
- * A path or `file:` target only loads through a thread's asset URL, so surfaces without one
- * pass `embedLocalPaths: false` and keep the chip, which can still open the file. The
- * target is classified against the same root the image renderer uses, so a link the
- * renderer could not load, such as a tilde path, also keeps its chip.
- */
+/** Embed standalone image/video links only in top-level paragraphs.
+ * Local targets require an asset-capable thread and the same root as the image renderer. */
 export function remarkStandaloneMediaLinks(options: {
   readonly embedLocalPaths: boolean;
   readonly workspaceRoot?: string | null | undefined;

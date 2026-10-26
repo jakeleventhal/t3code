@@ -88,5 +88,6 @@ export function markdownLinkMediaKind(target: string): "image" | "video" | null 
   ) {
     return null;
   }
-  return mediaKindFromPath(source);
+  const kind = mediaKindFromPath(source);
+  return kind === "image" || kind === "video" ? kind : null;
 }
