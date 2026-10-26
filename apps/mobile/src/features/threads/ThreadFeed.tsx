@@ -133,13 +133,13 @@ import { FilePreviewModal, type FilePreviewSource } from "../../components/FileP
 import { inlineFilePreviewKind, isPdfFile } from "../../lib/filePreview";
 import { ThreadInlineFilePreview } from "./ThreadInlineFilePreview";
 import { flattenThemeColor } from "../../lib/mobileTheme";
+import { getMobileReplyTypography, getMobileUserTypography } from "../../lib/typography";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInUp, type SharedValue } from "react-native-reanimated";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme, useThemeFontFamilies } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
-import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { downloadAndShareAttachment } from "../../lib/attachmentDownload";
@@ -943,7 +943,15 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 });
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance } = useAppearancePreferences();
+  const { appearance, themeId } = useAppearancePreferences();
+  const replyTypography = useMemo(
+    () => getMobileReplyTypography(themeId, appearance.baseFontSize),
+    [themeId, appearance.baseFontSize],
+  );
+  const userTypography = useMemo(
+    () => getMobileUserTypography(themeId, appearance.baseFontSize),
+    [themeId, appearance.baseFontSize],
+  );
   const nativeMarkdownTypography = useMemo(
     () => resolveNativeMarkdownTypography(appearance.baseFontSize),
     [appearance.baseFontSize],
@@ -967,8 +975,11 @@ function useMarkdownStyles(): MarkdownStyleSets {
   const markdownUserCodeText = theme["--color-md-user-code-text"];
   const markdownUserInlineCodeText = theme["--color-user-bubble-foreground-muted"];
   const markdownUserFenceBg = theme["--color-md-user-fence-bg"];
-  const regularFontFamily = FONT_FAMILIES.regular;
-  const boldFontFamily = FONT_FAMILIES.bold;
+  const {
+    regular: regularFontFamily,
+    bold: boldFontFamily,
+    code: codeFontFamily,
+  } = useThemeFontFamilies();
 
   return useMemo(() => {
     return {
@@ -992,6 +1003,8 @@ function useMarkdownStyles(): MarkdownStyleSets {
           fontFamily: regularFontFamily,
           headingFontFamily: boldFontFamily,
           boldFontFamily,
+          codeFontFamily,
+          ...userTypography,
         },
       },
       assistant: {
@@ -1014,11 +1027,14 @@ function useMarkdownStyles(): MarkdownStyleSets {
           fontFamily: regularFontFamily,
           headingFontFamily: boldFontFamily,
           boldFontFamily,
+          codeFontFamily,
+          ...replyTypography,
         },
       },
     };
   }, [
     boldFontFamily,
+    codeFontFamily,
     contextChipBorderColor,
     markdownBlockquoteBorder,
     markdownBodyColor,
@@ -1035,6 +1051,8 @@ function useMarkdownStyles(): MarkdownStyleSets {
     markdownUserInlineCodeText,
     nativeMarkdownTypography,
     regularFontFamily,
+    replyTypography,
+    userTypography,
   ]);
 }
 

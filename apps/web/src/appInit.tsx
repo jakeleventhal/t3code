@@ -20,6 +20,7 @@ import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "./branding";
 import { resolveServerBackedAppDisplayName } from "./branding.logic";
 import { isElectron } from "./env";
 import { useComposerDraftStore } from "./composerDraftStore";
+import { getRenderedTypography, subscribeRenderedAppearance } from "./hooks/useTheme";
 import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
 import {
   getClientSettings,
@@ -41,8 +42,10 @@ import { resolveThreadRouteTarget } from "./threadRoutes";
 function startClientAppearance(): void {
   const root = document.documentElement;
   let applied: ClientSettings | null = null;
+  let appliedTypography: ReturnType<typeof getRenderedTypography>;
   const apply = () => {
     const settings = getClientSettings();
+    const typography = getRenderedTypography();
     const previous = applied;
     applied = settings;
     if (previous?.diffColorScheme !== settings.diffColorScheme) {
@@ -66,6 +69,8 @@ function startClientAppearance(): void {
       }
     }
     if (
+      appliedTypography !== typography ||
+      previous?.fontFamilyReply !== settings.fontFamilyReply ||
       previous?.fontFamilySans !== settings.fontFamilySans ||
       previous.fontFamilyCode !== settings.fontFamilyCode ||
       previous.fontFamilyComposer !== settings.fontFamilyComposer ||
@@ -74,7 +79,10 @@ function startClientAppearance(): void {
       previous.fontSizeCode !== settings.fontSizeCode ||
       previous.fontSmoothing !== settings.fontSmoothing
     ) {
+      appliedTypography = typography;
       applyAppearanceFontVariables(root, {
+        typography,
+        reply: settings.fontFamilyReply,
         sans: settings.fontFamilySans,
         code: settings.fontFamilyCode,
         composer: settings.fontFamilyComposer,
@@ -86,6 +94,7 @@ function startClientAppearance(): void {
     }
   };
   subscribeClientSettings(apply);
+  subscribeRenderedAppearance(apply);
   apply();
 }
 
