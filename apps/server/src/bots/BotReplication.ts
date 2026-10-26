@@ -1,3 +1,4 @@
+import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { isSubscriptionVoiceSupported } from "./VoiceConfiguration.ts";
 import { initialBotDefaults } from "./botDefaultSelections.ts";
 import * as Crypto from "effect/Crypto";
@@ -595,12 +596,28 @@ const make = Effect.gen(function* () {
         previousVoice != null &&
         previousVoiceKind === "codex-subscription" &&
         !isSubscriptionVoiceSupported(previousVoice);
+      const automatic = current.automaticModelSelections ?? {};
+      const shouldInitializeModel = (kind: "chat" | "complex") => {
+        const previous =
+          kind === "chat" ? current.defaultModelSelection : current.complexTaskModelSelection;
+        const proposed =
+          kind === "chat" ? requested.defaultModelSelection : requested.complexTaskModelSelection;
+        if (!proposed) return false;
+        if (previous == null) return true;
+        // A late Claude discovery may replace a seeded GPT fallback, never a manual choice.
+        return (
+          automatic[kind] !== undefined &&
+          modelSelectionsEqual(previous, automatic[kind]) &&
+          previous.model.startsWith("gpt-") &&
+          proposed.model.startsWith("claude-")
+        );
+      };
       const change = initialize
         ? {
-            ...(current.defaultModelSelection == null && requested.defaultModelSelection
+            ...(shouldInitializeModel("chat")
               ? { defaultModelSelection: requested.defaultModelSelection }
               : {}),
-            ...(current.complexTaskModelSelection == null && requested.complexTaskModelSelection
+            ...(shouldInitializeModel("complex")
               ? { complexTaskModelSelection: requested.complexTaskModelSelection }
               : {}),
             ...(current.defaultRuntimeMode == null
@@ -646,8 +663,18 @@ const make = Effect.gen(function* () {
         const { projectId, ...override } = change.runtimeOverride;
         runtimeOverrides[projectId] = { ...runtimeOverrides[projectId], ...override };
       }
+      const automaticModelSelections = { ...automatic };
+      for (const [kind, selection] of [
+        ["chat", change.defaultModelSelection],
+        ["complex", change.complexTaskModelSelection],
+      ] as const) {
+        if (selection === undefined) continue;
+        if (initialize && selection !== null) automaticModelSelections[kind] = selection;
+        else delete automaticModelSelections[kind];
+      }
       const value = {
         ...current,
+        automaticModelSelections,
         runtimeOverrides,
         complexTaskModelOverrides,
         voiceOverrides,

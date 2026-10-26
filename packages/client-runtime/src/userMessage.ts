@@ -78,3 +78,8 @@ export function resolveUserMessagePresentation(message: {
     scheduledTaskId: undefined,
   };
 }
+
+/** Voice handoffs carry private harness context; the call card already represents the request. */
+export function isVoiceWorkMessage(messageId: string): boolean {
+  return messageId.startsWith("voice-work:");
+}

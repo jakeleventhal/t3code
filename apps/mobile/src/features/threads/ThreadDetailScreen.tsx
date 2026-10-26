@@ -672,7 +672,11 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     if (props.isCompacting && contentPresentationKind === "ready") {
       return { kind: "compacting" };
     }
-    if (props.activeWorkStartedAt !== null && contentPresentationKind === "ready") {
+    if (
+      !props.simplifiedComposer &&
+      props.activeWorkStartedAt !== null &&
+      contentPresentationKind === "ready"
+    ) {
       return { kind: "working", startedAt: props.activeWorkStartedAt };
     }
     if (pendingBackgroundWork !== null && contentPresentationKind === "ready") {
@@ -739,7 +743,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   const showFloatingStatus =
     showWorkingControl ||
     queuedCount > 0 ||
-    agentsSegment !== null ||
+    (!props.simplifiedComposer && agentsSegment !== null) ||
     devicePreviews.length > 0 ||
     browserTabs.tabs.length > 0 ||
     props.connectionStateLabel !== "connected" ||
@@ -1446,7 +1450,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                     }
                     showScrollToEnd={showScrollToEndButton}
                     onScrollToEnd={handleScrollToEnd}
-                    agents={agentsSegment}
+                    agents={props.simplifiedComposer ? null : agentsSegment}
                     onOpenAgents={() => {
                       Keyboard.dismiss();
                       navigation.navigate("ThreadAgents", {

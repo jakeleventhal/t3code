@@ -41,7 +41,14 @@ const baseLayer = Layer.mergeAll(
   ProjectionStore.layer.pipe(Layer.provide(database)),
   ProviderReplayHarness.layerWithRegistry(
     { name: "bot-turn-defaults" },
-    ProviderAdapterRegistry.layerFromAdapters([adapter]),
+    ProviderAdapterRegistry.layerFromAdapters([
+      adapter,
+      {
+        ...adapter,
+        instanceId: ProviderInstanceId.make("grok"),
+        driver: ProviderDriverKind.make("grok"),
+      },
+    ]),
     { databaseLayer: database, settingsLayer, runEffectWorker: false },
   ),
 );
@@ -127,6 +134,47 @@ it.effect(
       const first = (yield* projections.getThreadRecords(ThreadId.make("bot"), ["runs"])).runs[0]!;
       assert.deepStrictEqual(first.modelSelection, firstModel);
       assert.strictEqual(first.runtimeMode, "approval-required");
+      const requested = {
+        instanceId: ProviderInstanceId.make("grok"),
+        model: "grok-4.7-fast",
+        options: [{ id: "reasoningEffort", value: "medium" }],
+      };
+      yield* orchestrator.dispatch({
+        type: "delegated_task.request",
+        commandId: CommandId.make("one-off-grok"),
+        parentThreadId: ThreadId.make("bot"),
+        parentRunId: first.id,
+        parentNodeId: first.rootNodeId!,
+        task: "Write a haiku with the requested model",
+        modelSelection: requested,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      const delegated = (yield* projections.getThreadRecords(ThreadId.make("bot"), ["subagents"]))
+        .subagents[0]!;
+      const child = yield* projections.getThreadRecords(delegated.childThreadId!, ["runs"]);
+      assert.deepStrictEqual(child.thread.modelSelection, requested);
+      assert.deepStrictEqual(child.runs[0]!.modelSelection, requested);
+      // Following up in the delegated conversation must also keep its selected provider.
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("grok-followup"),
+        threadId: child.thread.id,
+        messageId: MessageId.make("grok-followup"),
+        text: "Make it shorter",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      assert.deepStrictEqual(
+        (yield* projections.getThreadRecords(child.thread.id, ["runs"])).runs.at(-1)!
+          .modelSelection,
+        requested,
+      );
+
       assert.strictEqual(
         (yield* projections.getThreadShell(ThreadId.make("bot")))?.runtimeMode,
         "approval-required",

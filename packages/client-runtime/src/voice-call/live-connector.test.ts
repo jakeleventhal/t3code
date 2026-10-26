@@ -69,7 +69,12 @@ function fixture() {
       });
       await input.negotiate("offer", input.signal);
       session.receive(JSON.stringify({ type: "session.started", session: { id: "session" } }));
-      return { session, close: () => session.close(), setMuted: vi.fn(async () => undefined) };
+      return {
+        session,
+        allowReply: vi.fn(),
+        close: () => session.close(),
+        setMuted: vi.fn(async () => undefined),
+      };
     },
   });
   let calls = 0;

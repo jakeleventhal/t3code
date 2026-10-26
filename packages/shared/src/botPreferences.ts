@@ -53,7 +53,11 @@ export function botVoiceSelection(settings: ServerSettings, projectId: ProjectId
     };
   }
   const legacy = settings.projectSettingsOverrides[projectId]?.voiceSelection;
-  if (shared !== "inherit" && legacy !== undefined)
+  if (
+    settings.botSharedPreferences.voiceOverrides === undefined &&
+    shared !== "inherit" &&
+    legacy !== undefined
+  )
     return { kind: "own" as const, selection: legacy };
   return { kind: "default" as const, selection: botDefaultVoice(settings) };
 }

@@ -20,6 +20,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
     let microphone: MediaStream | null = null;
     const remoteTracks = new Set<MediaStreamTrack>();
     let stopped = false;
+    let playbackEnabled = input.playbackOnly === true;
     let disposed = false;
     const stopAudio = () => {
       stopped = true;
@@ -44,8 +45,8 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
     peer.addEventListener("track", (event) => {
       if (event.track === null) return;
       // Native WebRTC plays remote audio automatically, including tracks delivered during teardown.
-      if (stopped) event.track.enabled = false;
-      else remoteTracks.add(event.track);
+      event.track.enabled = !stopped && playbackEnabled;
+      if (!stopped) remoteTracks.add(event.track);
     });
     return {
       async offer() {
@@ -87,6 +88,10 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
       send: (packet) => {
         if (channel.readyState !== "open") throw new Error("The voice data channel is closed.");
         channel.send(packet);
+      },
+      setPlaybackEnabled: (enabled) => {
+        playbackEnabled = enabled;
+        for (const track of remoteTracks) track.enabled = !stopped && enabled;
       },
       setMicrophoneEnabled: (enabled) => {
         for (const track of microphone?.getAudioTracks() ?? []) track.enabled = enabled;

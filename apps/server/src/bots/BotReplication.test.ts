@@ -741,6 +741,26 @@ it.effect("initializes shared defaults once, including Sol, and preserves explic
     assert.equal(initialized.defaultModelSelection?.model, "gpt-6.1-sol");
     yield* replication.initializeDefaults(providers);
     assert.equal((yield* settings.getSettings).botSharedPreferences.revision, initialized.revision);
+    const claude = {
+      ...providers[0]!,
+      instanceId: ProviderInstanceId.make("claude"),
+      driver: ProviderDriverKind.make("claudeAgent"),
+      models: ["claude-haiku-5-5", "claude-opus-5-5"].map((slug) => ({
+        slug,
+        name: slug,
+        isCustom: false,
+        capabilities: null,
+      })),
+    };
+    yield* replication.initializeDefaults([...providers, claude]);
+    const preferred = (yield* settings.getSettings).botSharedPreferences;
+    assert.equal(preferred.defaultModelSelection?.model, "claude-haiku-5-5");
+    assert.equal(preferred.complexTaskModelSelection?.model, "claude-opus-5-5");
+    yield* replication.initializeDefaults(providers);
+    assert.equal(
+      (yield* settings.getSettings).botSharedPreferences.defaultModelSelection?.model,
+      "claude-haiku-5-5",
+    );
     yield* replication.configure({
       defaultVoiceSelection: null,
       defaultModelSelection: {
@@ -749,7 +769,7 @@ it.effect("initializes shared defaults once, including Sol, and preserves explic
         options: [{ id: "reasoningEffort", value: "max" }],
       },
     });
-    yield* replication.initializeDefaults(providers);
+    yield* replication.initializeDefaults([...providers, claude]);
     const manual = (yield* settings.getSettings).botSharedPreferences;
     assert.isNull(manual.defaultVoice);
     assert.equal(manual.defaultModelSelection?.model, "custom");

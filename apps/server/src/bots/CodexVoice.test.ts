@@ -55,7 +55,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         assert.equal(body.sdp, "offer");
         assert.equal(body.session.delegation.type, "client");
         assert.notProperty(body.session, "model");
-        assert.equal(body.session.initial_items[0].content[0].text, "The gym is Cedar Gate.");
+        assert.equal(body.session.audio.output.voice, "sol");
+        assert.equal(body.session.initial_items[0].role, "developer");
+        assert.include(body.session.initial_items[0].content[0].text, "The gym is Cedar Gate.");
+        assert.equal(body.session.initial_items.length, 1);
         return Effect.succeed(
           HttpClientResponse.fromWeb(
             request,
@@ -71,7 +74,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         return yield* (yield* CodexVoice.CodexVoice).connect({
           providerInstanceId: instanceId,
           cwd: directory,
-          voice: "marin",
+          voice: "sol",
           sdp: "offer",
           instructions: "Use the chosen work agent.",
           history: [{ role: "user", text: "The gym is Cedar Gate." }],

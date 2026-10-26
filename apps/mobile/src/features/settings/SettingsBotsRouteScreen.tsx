@@ -126,12 +126,12 @@ export function SettingsBotsRouteScreen() {
       <Muted>
         Choose shared defaults and each bot's voice. Changes apply from the next message.
       </Muted>
+      {primary ? <BotsEnvironmentOverview target={primary} advanced /> : null}
       <SettingsSection title="Bots">
         {availableTargets.map((target) => (
           <BotsEnvironmentOverview key={target.environmentId} target={target} advanced={false} />
         ))}
       </SettingsSection>
-      {primary ? <BotsEnvironmentOverview target={primary} advanced /> : null}
       {availableTargets.map((target) => (
         <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="advanced" />
       ))}

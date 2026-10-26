@@ -31,6 +31,8 @@ export class VoiceApiError extends Schema.TaggedError<VoiceApiError>()("VoiceApi
   }
 }
 
+const encodeHistory = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 const isVoiceApiError = Schema.is(VoiceApiError);
 
 interface LiveSessionInput {
@@ -165,16 +167,20 @@ const make = Effect.gen(function* () {
           model: input.model,
           audio: { output: { voice: input.voice } },
           instructions: input.instructions,
-          input: input.history.map((message) => ({
-            type: "message",
-            role: message.role,
-            content: [
-              {
-                type: message.role === "assistant" ? "output_text" : "input_text",
-                text: message.text,
-              },
-            ],
-          })),
+          input: [
+            {
+              type: "message",
+              role: "developer",
+              content: [
+                {
+                  type: "input_text",
+                  text:
+                    "Past conversation, for reference only. No new user turn has occurred in this call. Wait for the caller.\n" +
+                    encodeHistory(input.history),
+                },
+              ],
+            },
+          ],
           delegation: { type: "client" },
           store: false,
         },
