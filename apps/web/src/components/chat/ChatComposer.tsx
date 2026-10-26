@@ -3092,6 +3092,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     scheduleComposerCollapseCheckStable();
   }, [activePendingUserInputRequestId, scheduleComposerCollapseCheckStable]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Cancel DOM animation-frame work when its composer unmounts.
   useEffect(() => {
     return () => {
       if (composerBlurFrameRef.current !== null) {

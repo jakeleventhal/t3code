@@ -785,11 +785,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     activeUserInputRequestId !== null || props.creationState?.kind === "failed";
   const voiceTarget = { environmentId: props.environmentId, threadId: props.selectedThread.id };
   const voiceLiveHere = useVoiceModePhase(voiceTarget) !== "idle";
-  // The open /usage-limits panel for this thread, model and turn. Only the open
-  // moment is stored: the rows read live provider data, so a redeemed reset
-  // credit or refreshed probe shows through. Anything that spends quota closes
-  // it: a new turn from any source, or the agent resuming after an approval or
-  // answered question.
+  // Keep live quota data visible, but close the panel when a turn consumes quota.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
     readonly threadKey: string;
