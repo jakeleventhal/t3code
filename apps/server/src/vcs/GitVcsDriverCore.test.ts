@@ -704,6 +704,30 @@ it.effect("reads worktrees from git that rejects worktree list -z", () =>
         paths.map((listed) => NodeFS.realpathSync.native(listed)),
         worktreePath,
       );
+      yield* writeTextFile(
+        cwd,
+        ".git/hooks/post-checkout",
+        "#!/bin/sh\ngit branch feature/old-git\n",
+      );
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.chmod(cwd + "/.git/hooks/post-checkout", 0o755);
+      const failedPath = cwd + "/failed-hook";
+      const claimed: string[] = [];
+      const failed = yield* driver
+        .createWorktree(
+          { cwd, path: failedPath, refName: "HEAD", newRefName: "feature/old-git-hook" },
+          {
+            progress: {
+              onWorktreeClaimed: (path) =>
+                Effect.sync(() => {
+                  claimed.push(path);
+                }),
+            },
+          },
+        )
+        .pipe(Effect.result);
+      assert.isTrue(Result.isFailure(failed));
+      assert.deepEqual(claimed, [failedPath]);
     }),
   ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
@@ -1071,7 +1095,9 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const spawner = ChildProcessSpawner.make((command) => {
             if (
               ChildProcess.isStandardCommand(command) &&
-              (command.args.includes("worktree") || command.args[0] === "checkout")
+              (command.args.includes("worktree") ||
+                command.args[0] === "branch" ||
+                command.args[0] === "checkout")
             ) {
               locales.push(command.options.env?.LC_ALL);
             }
@@ -2938,6 +2964,37 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("gives concurrent renames to one name distinct suffixes and keeps their config", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const sources = Array.from({ length: 6 }, (_, index) => `t3/source-${index}`);
+        for (const source of sources) {
+          yield* driver.createRef({ cwd, refName: source });
+          yield* git(cwd, ["config", `branch.${source}.gh-merge-base`, "main"]);
+        }
+
+        const renamed = yield* Effect.forEach(
+          sources,
+          (oldBranch) => driver.renameBranch({ cwd, oldBranch, newBranch: "feature/shared" }),
+          { concurrency: "unbounded" },
+        );
+
+        assert.deepEqual(renamed.map((result) => result.branch).toSorted(), [
+          "feature/shared",
+          "feature/shared-1",
+          "feature/shared-2",
+          "feature/shared-3",
+          "feature/shared-4",
+          "feature/shared-5",
+        ]);
+        for (const { branch } of renamed) {
+          assert.equal(yield* git(cwd, ["config", `branch.${branch}.gh-merge-base`]), "main");
+        }
+      }),
+    );
+
     it.effect("rejects a missing branch without restoring a matching dirty file", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -3031,63 +3088,90 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("worktree operations", () => {
-    it.effect("uses parallel checkout without skipping filters or hooks", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        const { initialBranch } = yield* initRepoWithCommit(cwd);
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const driver = yield* GitVcsDriver.GitVcsDriver;
-        yield* git(cwd, ["config", "filter.test.smudge", "sed s/original/filtered/g"]);
-        yield* writeTextFile(cwd, ".gitattributes", "asset.txt filter=test\n");
-        yield* writeTextFile(cwd, "asset.txt", "original\n");
-        yield* git(cwd, ["add", "."]);
-        yield* git(cwd, ["commit", "-m", "filtered asset"]);
-        yield* writeTextFile(
-          cwd,
-          ".git/hooks/post-checkout",
-          "#!/bin/sh\ngit config checkout.workers > checkout-workers\nexit 0\n",
-        );
-        yield* fs.chmod(path.join(cwd, ".git/hooks/post-checkout"), 0o755);
-        const worktreePath = path.join(yield* makeTmpDir("git-worktrees-"), "parallel");
-
-        yield* driver.createWorktree({
-          cwd,
-          path: worktreePath,
-          refName: initialBranch,
-          newRefName: "feature/parallel",
-          baseRefName: initialBranch,
-        });
-
-        assert.notInclude(yield* git(cwd, ["worktree", "list", "--porcelain"]), "locked");
-        assert.equal(yield* fs.readFileString(path.join(worktreePath, "checkout-workers")), "0\n");
-        assert.equal(yield* fs.readFileString(path.join(worktreePath, "asset.txt")), "filtered\n");
-        assert.equal(
-          yield* git(worktreePath, ["rev-parse", "HEAD"]),
-          yield* git(cwd, ["rev-parse", "HEAD"]),
-        );
-        assert.equal(
-          yield* git(cwd, ["config", "branch.feature/parallel.t3-merge-base"]),
-          initialBranch,
-        );
-        for (const [configured, expected] of [
-          ["1", "1"],
-          ["", "0"],
-        ] as const) {
-          yield* git(cwd, ["config", "checkout.workers", configured]);
-          const configuredPath = path.join(yield* makeTmpDir("git-worktrees-"), "configured");
-          yield* driver.createWorktree({
+    it.effect.each([false, true])(
+      "reports checkout ownership when a post-checkout hook fails: %s",
+      (failHook) =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const { initialBranch } = yield* initRepoWithCommit(cwd);
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          yield* git(cwd, ["config", "filter.test.smudge", "sed s/original/filtered/g"]);
+          yield* writeTextFile(cwd, ".gitattributes", "asset.txt filter=test\n");
+          yield* writeTextFile(cwd, "asset.txt", "original\n");
+          yield* git(cwd, ["add", "."]);
+          yield* git(cwd, ["commit", "-m", "filtered asset"]);
+          yield* writeTextFile(
             cwd,
-            path: configuredPath,
-            refName: initialBranch,
-            newRefName: `feature/configured-${expected}`,
-          });
-          assert.equal(
-            yield* fs.readFileString(path.join(configuredPath, "checkout-workers")),
-            `${expected}\n`,
+            ".git/hooks/post-checkout",
+            `#!/bin/sh
+git config checkout.workers > checkout-workers
+${failHook ? `git branch ${initialBranch}` : "exit 0"}
+`,
           );
-        }
-      }),
+          yield* fs.chmod(path.join(cwd, ".git/hooks/post-checkout"), 0o755);
+          const worktreePath = path.join(yield* makeTmpDir("git-worktrees-"), "parallel");
+
+          const claimed: string[] = [];
+          const result = yield* Effect.result(
+            driver.createWorktree(
+              {
+                cwd,
+                path: worktreePath,
+                refName: initialBranch,
+                newRefName: "feature/parallel",
+                baseRefName: initialBranch,
+              },
+              {
+                progress: {
+                  onWorktreeClaimed: (path) =>
+                    Effect.sync(() => {
+                      claimed.push(path);
+                    }),
+                },
+              },
+            ),
+          );
+          assert.equal(Result.isFailure(result), failHook);
+          assert.deepEqual(claimed, [worktreePath]);
+
+          assert.notInclude(yield* git(cwd, ["worktree", "list", "--porcelain"]), "locked");
+          assert.equal(
+            yield* fs.readFileString(path.join(worktreePath, "checkout-workers")),
+            "0\n",
+          );
+          assert.equal(
+            yield* fs.readFileString(path.join(worktreePath, "asset.txt")),
+            "filtered\n",
+          );
+          assert.equal(
+            yield* git(worktreePath, ["rev-parse", "HEAD"]),
+            yield* git(cwd, ["rev-parse", "HEAD"]),
+          );
+          if (failHook) return;
+          assert.equal(
+            yield* git(cwd, ["config", "branch.feature/parallel.t3-merge-base"]),
+            initialBranch,
+          );
+          for (const [configured, expected] of [
+            ["1", "1"],
+            ["", "0"],
+          ] as const) {
+            yield* git(cwd, ["config", "checkout.workers", configured]);
+            const configuredPath = path.join(yield* makeTmpDir("git-worktrees-"), "configured");
+            yield* driver.createWorktree({
+              cwd,
+              path: configuredPath,
+              refName: initialBranch,
+              newRefName: `feature/configured-${expected}`,
+            });
+            assert.equal(
+              yield* fs.readFileString(path.join(configuredPath, "checkout-workers")),
+              `${expected}\n`,
+            );
+          }
+        }),
     );
     it.effect.each(["commit", "short-commit", "tag", "revision"] as const)(
       "creates a worktree from a %s without recording it as a PR base",
@@ -3951,6 +4035,75 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("remote operations", () => {
+    it.effect.each(["public", "launch-base"] as const)(
+      "shares one running fetch between concurrent %s callers",
+      (caller) =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+          const started = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          let fetches = 0;
+          const spawner = ChildProcessSpawner.make((command) =>
+            Effect.gen(function* () {
+              if (!ChildProcess.isStandardCommand(command))
+                return yield* Effect.die("unexpected command");
+              if (command.args[0] === "remote") return makeSuccessfulHandle("upstream\n");
+              if (command.args[0] === "for-each-ref")
+                return makeSuccessfulHandle("refs/heads/stable\tupstream\trefs/heads/release\n");
+              if (command.args[0] === "rev-parse") return makeSuccessfulHandle("remote-head\n");
+              if (command.args[0] !== "fetch") return yield* delegate.spawn(command);
+              assert.deepEqual(command.args, [
+                "fetch",
+                "--quiet",
+                "--",
+                "upstream",
+                "+refs/heads/release:refs/remotes/upstream/release",
+              ]);
+              fetches += 1;
+              yield* Deferred.succeed(started, undefined);
+              return ChildProcessSpawner.makeHandle({
+                ...makeSuccessfulHandle(""),
+                exitCode: Deferred.await(release).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+          );
+          const driver = yield* makeGitVcsDriverCore().pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provide(layerServerConfig),
+          );
+          const fetch =
+            caller === "public"
+              ? driver
+                  .fetchRemote({ cwd, remoteName: "upstream", refName: "upstream/release" })
+                  .pipe(Effect.as(null))
+              : driver.fetchWorktreeBaseCommit({ cwd, refName: "stable" });
+          const first = yield* fetch.pipe(Effect.forkChild({ startImmediately: true }));
+          yield* Deferred.await(started);
+          const joined = yield* Effect.forEach(Array.from({ length: 5 }), () =>
+            fetch.pipe(Effect.forkChild({ startImmediately: true })),
+          );
+          yield* Deferred.succeed(release, undefined);
+          const result = yield* Fiber.join(first);
+          assert.deepEqual(
+            result,
+            caller === "public"
+              ? null
+              : { commitSha: "remote-head", remoteRefName: "upstream/release" },
+          );
+          const results = yield* Effect.forEach(joined, Fiber.join);
+          assert.deepEqual(
+            results,
+            Array.from({ length: 5 }, () => result),
+          );
+          assert.equal(fetches, 1);
+
+          // A finished fetch is not reused.
+          yield* fetch;
+          assert.equal(fetches, 2);
+        }),
+    );
+
     it.effect("creates a worktree from the latest fetched remote commit", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
