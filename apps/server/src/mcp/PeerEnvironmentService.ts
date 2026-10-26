@@ -176,50 +176,42 @@ function assertLaunchCaller(
 }
 
 /** Rejects ids that belong to a different environment before anything is created there. */
-function assertLaunchTarget(
+const assertLaunchTarget = Effect.fn("assertLaunchTarget")(function* (
   catalog: PeerEnvironmentCatalogResult,
   target: { readonly projectId: ProjectId; readonly modelSelection: ModelSelection },
 ) {
   if (!catalog.projects.some((project) => project.projectId === target.projectId)) {
-    return Effect.fail(
-      new OrchestratorMcpFailure({
-        code: "invalid_request",
-        message: `Project ${target.projectId} does not exist on ${catalog.label}. Project ids are per-environment; read them with t3_environment_catalog.`,
-      }),
-    );
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: `Project ${target.projectId} does not exist on ${catalog.label}. Project ids are per-environment; read them with t3_environment_catalog.`,
+    });
   }
   const provider = catalog.providers.find(
     (candidate) => candidate.providerInstanceId === target.modelSelection.instanceId,
   );
   if (provider === undefined) {
-    return Effect.fail(
-      new OrchestratorMcpFailure({
-        code: "provider_unavailable",
-        message: `Provider instance ${target.modelSelection.instanceId} does not exist on ${catalog.label}. It has: ${catalog.providers.map((candidate) => candidate.providerInstanceId).join(", ") || "none"}.`,
-      }),
-    );
+    return yield* new OrchestratorMcpFailure({
+      code: "provider_unavailable",
+      message: `Provider instance ${target.modelSelection.instanceId} does not exist on ${catalog.label}. It has: ${catalog.providers.map((candidate) => candidate.providerInstanceId).join(", ") || "none"}.`,
+    });
   }
   if (provider.constraints.length > 0) {
-    return Effect.fail(
-      new OrchestratorMcpFailure({
-        code: "provider_unavailable",
-        message: `Provider instance ${provider.providerInstanceId} on ${catalog.label} cannot run: ${provider.constraints.join(" ")}`,
-      }),
-    );
+    return yield* new OrchestratorMcpFailure({
+      code: "provider_unavailable",
+      message: `Provider instance ${provider.providerInstanceId} on ${catalog.label} cannot run: ${provider.constraints.join(" ")}`,
+    });
   }
   if (
     provider.models.length > 0 &&
     !provider.models.some((model) => model.id === target.modelSelection.model)
   ) {
-    return Effect.fail(
-      new OrchestratorMcpFailure({
-        code: "model_unavailable",
-        message: `Model ${target.modelSelection.model} is not offered by ${provider.providerInstanceId} on ${catalog.label}.`,
-      }),
-    );
+    return yield* new OrchestratorMcpFailure({
+      code: "model_unavailable",
+      message: `Model ${target.modelSelection.model} is not offered by ${provider.providerInstanceId} on ${catalog.label}.`,
+    });
   }
-  return Effect.void;
-}
+  return;
+});
 
 /** The same page shape as a local read, taken from the window the other environment returned. */
 function readProjection(

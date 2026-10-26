@@ -1095,15 +1095,9 @@ function ThreadRouteContent(
               ? {
                   reason: composer.botSetupNeeded,
                   onOpenSettings: () =>
-                    navigation.navigate("SettingsSheet", {
-                      screen: "SettingsContent",
-                      params: {
-                        screen: "SettingsBotTurn",
-                        params: {
-                          environmentId: botProfileProject.environmentId,
-                          projectId: botProfileProject.id,
-                        },
-                      },
+                    openSettings(navigation, "SettingsBotTurn", {
+                      environmentId: botProfileProject.environmentId,
+                      projectId: botProfileProject.id,
                     }),
                 }
               : null

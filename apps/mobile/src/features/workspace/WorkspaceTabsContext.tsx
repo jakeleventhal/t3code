@@ -157,6 +157,7 @@ export function WorkspaceTabsProvider(props: {
     [stack, dispatch],
   );
   const activeTab = useRef(state.selectedTab);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Native tab callbacks must observe the selected tab from the last committed render.
   useLayoutEffect(() => {
     activeTab.current = state.selectedTab;
   }, [state.selectedTab]);

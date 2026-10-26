@@ -68,6 +68,7 @@ export function useVoiceCatalog(
   const result = useAtomValue(atom);
   const signature = voiceConnectionsSignature(connections);
   const lastSignature = useRef(signature);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Invalidate the remote voice catalog after provider connections change.
   useEffect(() => {
     if (lastSignature.current === signature) return;
     lastSignature.current = signature;
@@ -119,6 +120,7 @@ export function useVoiceCallTranscript(
         );
   // Acts when the card opens or its call ends, not when another page is added.
   const lastSync = useRef<{ readonly key: string; readonly ended: boolean } | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Refresh persisted transcript pages when a call opens or ends outside this component.
   useEffect(() => {
     if (environmentId === null || threadId === null || callId === null) {
       lastSync.current = null;

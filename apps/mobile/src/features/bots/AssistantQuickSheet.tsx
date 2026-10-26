@@ -153,6 +153,7 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
   const requested = useRef(false);
   const [failed, setFailed] = useState(false);
   const { open, canStart, defaults } = opener;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Open the Assistant once its remote connection and defaults are ready while this sheet is mounted.
   useEffect(() => {
     if (
       requested.current ||
@@ -434,12 +435,9 @@ export function AssistantQuickSheet(props: StaticScreenProps<{ readonly environm
             tone="text"
             label="Bot settings"
             onPress={() =>
-              navigation.navigate("SettingsSheet", {
-                screen: "SettingsContent",
-                params: {
-                  screen: "SettingsBotTurn",
-                  params: { environmentId, ...(project ? { projectId: project.id } : {}) },
-                },
+              openSettings(navigation, "SettingsBotTurn", {
+                environmentId,
+                ...(project ? { projectId: project.id } : {}),
               })
             }
           />

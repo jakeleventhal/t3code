@@ -249,7 +249,7 @@ export const make = Effect.gen(function* () {
   });
 
   return PeerEnvironmentBroker.of({
-    connect: (host) =>
+    connect: Effect.fn("PeerEnvironmentBroker.connect")((host) =>
       Effect.succeed(
         Stream.unwrap(
           Effect.acquireRelease(acquire(host), release).pipe(
@@ -257,6 +257,7 @@ export const make = Effect.gen(function* () {
           ),
         ),
       ),
+    ),
     respond: Effect.fn("PeerEnvironmentBroker.respond")(function* (response) {
       const entry = (yield* Ref.get(state)).pending.get(response.requestId);
       if (
@@ -280,11 +281,12 @@ export const make = Effect.gen(function* () {
           );
     }),
     list,
-    invoke: <const Operation extends PeerEnvironmentOperation>(
+    // invoke owns the span; this wrapper narrows its discriminated response.
+    invoke: Effect.fnUntraced(function* <const Operation extends PeerEnvironmentOperation>(
       operation: Operation,
       timeoutMs?: number,
-    ) =>
-      invoke(operation, timeoutMs).pipe(
+    ) {
+      return yield* invoke(operation, timeoutMs).pipe(
         Effect.flatMap((result) =>
           result.operation === operation.operation
             ? // The check above is what narrows the union to the requested operation.
@@ -296,7 +298,8 @@ export const make = Effect.gen(function* () {
                 }),
               ),
         ),
-      ),
+      );
+    }),
   });
 }).pipe(Effect.withSpan("PeerEnvironmentBroker.make"));
 

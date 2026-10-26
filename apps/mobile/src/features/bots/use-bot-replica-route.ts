@@ -31,6 +31,7 @@ export function useBotReplicaRoute(
       : null;
   const shell = useQuietThreadShell(target);
   const navigation = useNavigation();
+  // oxlint-disable-next-line t3code/react-effect-budget -- Retarget the mounted native screen after its environment becomes unavailable.
   useEffect(() => {
     if (!unavailable || !source || !target || !shell || shell.deletedAt || shell.archivedAt) return;
     const from = scopedThreadKey(source.environmentId, source.id);

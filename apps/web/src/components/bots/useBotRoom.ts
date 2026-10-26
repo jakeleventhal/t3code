@@ -102,6 +102,7 @@ export function BotRoomLocationTracker() {
     routeProject.kind === "project" && isBotProject(routeProject.project)
       ? routeProject.project.environmentId
       : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Remember committed router locations so switching rooms restores their last page.
   useEffect(() => {
     if (pathname === null || href === null || !settled || isSettingsPath(pathname)) return;
     const { recordLocation } = useBotRoomStore.getState();

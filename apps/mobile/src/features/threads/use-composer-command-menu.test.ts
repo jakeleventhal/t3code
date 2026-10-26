@@ -10,7 +10,6 @@ import {
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 
-const refreshProviders = vi.hoisted(() => vi.fn());
 const pathSearch = vi.hoisted(() => vi.fn());
 const botMentionItems = vi.hoisted(() => ({ current: [] as unknown[] }));
 const drafts = vi.hoisted(() => ({

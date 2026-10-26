@@ -1,11 +1,10 @@
 import { openSettings } from "../settings/settings-navigation";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
 import { use, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, View, type TextInputInstance } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ScrollViewMarker } from "react-native-screens";
+import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -63,7 +62,10 @@ function useInboxEntryOpener(entry: BotInboxEntry, mainOnly = false) {
     reason: unavailable ? opener.reason : null,
     open: async () => {
       if (!mainOnly && entry.previewThread && entry.previewThread.id !== bot.mainThread?.id) {
-        selectThread({ environmentId: bot.environmentId, id: entry.previewThread.id });
+        selectDetail({
+          name: "Thread",
+          params: { environmentId: bot.environmentId, threadId: entry.previewThread.id },
+        });
         return;
       }
       const target = await opener.open({
@@ -364,7 +366,7 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
   }
   // Registered with its screen so UIKit can minimize the tab bar and fade the header on scroll.
   return (
-    <ScrollViewMarker style={{ flex: 1 }}>
+    <NativeScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         className={primaryColumn ? "bg-drawer" : "bg-screen"}
         keyboardShouldPersistTaps="handled"
@@ -378,7 +380,7 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
       >
         {props.children}
       </ScrollView>
-    </ScrollViewMarker>
+    </NativeScrollViewMarker>
   );
 }
 
@@ -408,7 +410,7 @@ export function BotsScreen() {
   const assistantEnvironmentId = useAssistantEnvironmentId();
   const query = useAtomValue(botsSearchQueryAtom);
   const unsentByThreadKey = useThreadOutboxMessages();
-  // A search left open in Bots should not greet the user the next time they come back.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Clear the shared search state when the Bots room unmounts.
   useEffect(() => () => setBotsSearchQuery(null), []);
   const shown = useMemo(
     () =>

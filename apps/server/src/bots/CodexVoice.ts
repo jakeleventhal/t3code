@@ -142,11 +142,9 @@ const make = Effect.gen(function* () {
         Effect.timeout("15 seconds"),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
-      // Codex resolves file or OS credential storage and its selected workspace.
-      // The exported access token is server-local and is never returned over RPC.
-      // This is Codex's subscription WebRTC route and v3 session shape:
-      // codex-rs/codex-api/src/endpoint/realtime_call.rs in openai/codex.
-      // No model override: the subscription endpoint chooses its entitled model.
+      // Codex resolves its credential store and workspace; the token never leaves the server.
+      // This uses codex-api/src/endpoint/realtime_call.rs and its v3 session shape.
+      // The subscription endpoint chooses the entitled model.
       const request = yield* HttpClientRequest.post(
         `${auth.origin}/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas`,
       ).pipe(

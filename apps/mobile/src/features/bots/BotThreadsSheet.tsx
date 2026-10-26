@@ -34,6 +34,7 @@ import { useEnvironmentScope } from "../../state/session";
 import { environmentThreadShells } from "../../state/threads";
 import { useArchivedThreadSnapshots } from "../archive/useArchivedThreadSnapshots";
 import { useArchivedThreadListActions, useThreadListActions } from "../home/useThreadListActions";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { botThreadStatus, buildBotThreadList } from "./bot-room";
 import { useShowConversationInBots } from "./use-assistant";
@@ -177,6 +178,7 @@ function ArchivedThreads(props: {
 }) {
   const [environmentIds] = useState(() => [props.project.environmentId]);
   const { snapshots, error, isLoading, refresh } = useArchivedThreadSnapshots(environmentIds);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch archived remote snapshots when the archive view mounts.
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -260,6 +262,7 @@ export function BotThreadsSheet(
   const { archiveThread, renameThread } = useThreadListActions();
   const showConversation = useShowConversationInBots();
   const selectRoom = useWorkspaceTabs()?.selectRoom;
+  const selectDetail = useSelectWorkspaceDetail();
   const searchRef = useRef<TextInputInstance | null>(null);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -324,7 +327,7 @@ export function BotThreadsSheet(
       title: project.title,
     };
     if (selectRoom) selectRoom("bots", { name: "Thread", params: { draft } });
-    else navigation.navigate("Thread", { draft });
+    else selectDetail({ name: "Thread", params: { draft } });
   };
 
   return (

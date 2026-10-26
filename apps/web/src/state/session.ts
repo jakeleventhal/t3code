@@ -120,6 +120,7 @@ export function useLastKnownEnvironmentScope(
 
 /** Keeps each connected host's latest session answer for a reload that finds it unreachable. */
 export function useRememberSessionGrants(environmentIds: ReadonlyArray<EnvironmentId>): void {
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to remote session grants and release those subscriptions on disconnect.
   useEffect(() => {
     const stops = environmentIds.map((environmentId) => {
       const atom = environmentSession.sessionStateAtom(environmentId);

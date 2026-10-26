@@ -45,12 +45,14 @@ export function BotCallRoot() {
 // nothing here polls or reads page contents.
 function CallViewContextBridge() {
   const { snapshot } = useCurrentView();
+  // oxlint-disable-next-line t3code/react-effect-budget -- Publish the committed screen context to the independent voice session.
   useEffect(() => {
     voiceViewContext.set(
       snapshot === null ? null : describeCurrentView(snapshot),
       currentBrowserTarget(snapshot),
     );
   }, [snapshot]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Release screen context when this app host unmounts.
   useEffect(() => () => voiceViewContext.set(null), []);
   return null;
 }

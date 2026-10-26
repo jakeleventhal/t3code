@@ -120,7 +120,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     scratch: Schema.optional(
       Schema.Boolean.annotate({
         description:
-          "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
+          "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`.",
       }),
     ),
     title: TrimmedNonEmptyString,
@@ -130,7 +130,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     workspaceStrategy: Schema.optional(
       OrchestrationV2ThreadLaunchWorkspaceStrategy.annotate({
         description:
-          "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied. To launch on another environment set environmentId, projectId and modelSelection from t3_environment_catalog.",
+          "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied.",
       }),
     ),
     message: Schema.optional(

@@ -31,6 +31,7 @@ export function useBotReplicaRoute(
       : null;
   const shell = useQuietThreadShell(target);
   const navigate = useNavigate();
+  // oxlint-disable-next-line t3code/react-effect-budget -- Move the route to a ready replica when its environment disconnects outside a UI action.
   useEffect(() => {
     if (!unavailable || !source || !target || !shell || shell.deletedAt || shell.archivedAt) return;
     const store = useComposerDraftStore.getState();

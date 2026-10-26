@@ -1,3 +1,4 @@
+import { isSettingsRoute } from "../settings/settings-navigation";
 import { useCompactWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { workspaceDockBottomClearance } from "../workspace/workspace-tabs-state";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -62,6 +63,7 @@ let viewOwner: symbol | null = null;
 function CurrentViewBridge() {
   const { snapshot } = useCurrentView();
   const [owner] = useState(() => Symbol("current-view"));
+  // oxlint-disable-next-line t3code/react-effect-budget -- Publish the committed visible screen to the external voice session.
   useEffect(() => {
     viewOwner = owner;
     voiceViewContext.set(
@@ -69,6 +71,7 @@ function CurrentViewBridge() {
       currentBrowserTarget(snapshot),
     );
   }, [owner, snapshot]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Release this screen's voice context when it unmounts.
   useEffect(
     () => () => {
       if (viewOwner !== owner) return;
@@ -103,7 +106,7 @@ export function ActiveCallScreenSlot(props: {
   const bottomClearance = useWorkspaceTabs()?.bottomClearance ?? 0;
   const compactTabs = useCompactWorkspaceTabs();
   const dockClearance =
-    compactTabs && props.routeName === "SettingsSheet"
+    compactTabs && isSettingsRoute(props.routeName)
       ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight: 0 })
       : 0;
   const footer = live && !keyboardVisible && !OWN_CALL_BAR_ROUTES.has(props.routeName);

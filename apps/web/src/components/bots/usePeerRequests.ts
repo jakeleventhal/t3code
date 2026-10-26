@@ -61,6 +61,7 @@ export function usePeerRequestRows(
   ].join("|");
   const targetsKey = conversation === null ? null : JSON.stringify(conversation);
   const refreshedFor = useRef(signal);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Invalidate remote request snapshots when the external delivery signal changes.
   useEffect(() => {
     if (targetsKey === null || refreshedFor.current === signal) return;
     refreshedFor.current = signal;

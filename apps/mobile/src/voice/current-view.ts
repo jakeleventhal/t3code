@@ -79,6 +79,7 @@ export function useCurrentView(): CurrentViewSource {
   }
 
   const latest = useRef(snapshot);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Expose only committed navigation context to asynchronous voice capture.
   useEffect(() => {
     latest.current = snapshot;
   }, [snapshot]);
@@ -97,6 +98,7 @@ const readView = createEnvironmentViewReader(appAtomRegistry, botVoiceEnvironmen
 export function useCurrentViewReader() {
   const { snapshot } = useCurrentView();
   const [view] = useState(createVoiceViewContext);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Publish committed navigation changes to the independent voice session.
   useEffect(() => {
     view.set(
       snapshot === null ? null : describeCurrentView(snapshot),
@@ -106,6 +108,7 @@ export function useCurrentViewReader() {
   // Closing the panel abandons a page read still in flight. The send it belongs to outlives the
   // panel and goes out without the screen rather than failing.
   const [pending] = useState(() => new Set<AbortController>());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Abort outstanding page reads when the panel unmounts.
   useEffect(
     () => () => {
       for (const controller of pending) controller.abort();

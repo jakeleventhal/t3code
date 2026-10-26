@@ -1006,7 +1006,6 @@ export function PullRequestDiffContent({
   const { ignoreWhitespace, setIgnoreWhitespace } = useDiffWhitespacePreference();
   const openAssistant = useOpenAssistantQuick();
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(params)));
-  const openAssistant = useOpenAssistantQuick();
   const terminology = sourceControlClients.get(
     (detail.data ?? params.initialSummary)?.provider,
   ).changeRequest;

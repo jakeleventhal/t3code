@@ -1,3 +1,4 @@
+import { openSettings } from "../settings/settings-navigation";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
@@ -83,12 +84,7 @@ export function NewBotSheet(props: StaticScreenProps<{ readonly environmentId: s
               <Button
                 tone="text"
                 label="Bot defaults"
-                onPress={() =>
-                  navigation.navigate("SettingsSheet", {
-                    screen: "SettingsContent",
-                    params: { screen: "SettingsBotTurn", params: { environmentId } },
-                  })
-                }
+                onPress={() => openSettings(navigation, "SettingsBotTurn", { environmentId })}
               />
             </View>
           ) : !canCreate || !ready ? (

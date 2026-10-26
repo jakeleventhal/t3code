@@ -1,4 +1,3 @@
-import * as Option from "effect/Option";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
@@ -2554,12 +2553,10 @@ describe("OrchestratorMcpService provider resolution", () => {
             adapterRegistryLayer([codexInstanceId, peerId]),
             Layer.mock(ProjectService.ProjectService)({
               getById: () =>
-                Effect.succeed(
-                  Option.some({
-                    id: projectId,
-                    botRole: "bot" in testCase && testCase.bot ? "specialist" : null,
-                  } as never),
-                ),
+                Effect.succeedSome({
+                  id: projectId,
+                  botRole: "bot" in testCase && testCase.bot ? "specialist" : null,
+                } as never),
             }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),

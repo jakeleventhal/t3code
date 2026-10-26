@@ -113,3 +113,17 @@ describe("planThreadFeedReveal", () => {
     });
   });
 });
+
+it("reveals the real message after guest pending rows without shifting its index", () => {
+  const feed = [message("a"), message("wanted")];
+  expect(
+    planThreadFeedReveal({
+      target,
+      feed,
+      presented: [feed[0]!, { type: "guest-pending", id: "pending" }, feed[1]!],
+      expandedRunIds: new Set(),
+      history,
+      requestedPages: new Set(),
+    }),
+  ).toEqual({ type: "scroll", index: 2 });
+});

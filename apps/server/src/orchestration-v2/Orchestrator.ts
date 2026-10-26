@@ -12493,7 +12493,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         message.notification ||
         message.delegatedCompletion ||
         isNativeMaintenanceCommand(message) ||
-        isGoalCommand(message)
+        parseGoalCommand(message) !== null
       )
         continue;
       const mode = resolveMessageDispatchIntent(

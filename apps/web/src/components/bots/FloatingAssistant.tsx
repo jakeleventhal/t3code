@@ -540,6 +540,7 @@ function AssistantTranscript({
   // reader is already at the bottom, so scrolling back to read is never yanked away.
   const followRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Keep the DOM scroller at the new content edge only while the reader is following.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller !== null && followRef.current) scroller.scrollTop = scroller.scrollHeight;

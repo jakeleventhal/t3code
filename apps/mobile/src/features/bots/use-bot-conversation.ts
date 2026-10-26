@@ -1,3 +1,4 @@
+import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -102,12 +103,9 @@ function useReportSetupNeeded(environmentId: EnvironmentId | null) {
       {
         text: "Bot settings",
         onPress: () =>
-          navigation.navigate("SettingsSheet", {
-            screen: "SettingsContent",
-            params: {
-              screen: "SettingsBotTurn",
-              params: { environmentId, ...(projectId === null ? {} : { projectId }) },
-            },
+          openSettings(navigation, "SettingsBotTurn", {
+            environmentId,
+            ...(projectId === null ? {} : { projectId }),
           }),
       },
     ]);
