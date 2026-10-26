@@ -23,7 +23,11 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
 import { closeThreadFind, openThreadFind, useThreadFindOpen } from "./chat/threadFindStore";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
-import { resolveDraftHeroState } from "./ChatView.logic";
+import {
+  type DiffPanelOpenContext,
+  resolveDraftHeroState,
+  shouldResetDiffSelectionToChanges,
+} from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import {
   isPaintOnlyThreadTimeline,
@@ -921,13 +925,25 @@ export default function ChatView(props: ChatViewProps) {
   );
   const diffOpen = activeRightPanelKind === "diff";
   const explicitDiffOpenRef = useRef<ScopedThreadRef | null>(null);
+  const diffPanelOpenContextRef = useRef<DiffPanelOpenContext | null>(null);
   useLayoutEffect(() => {
     const explicitThreadRef = explicitDiffOpenRef.current;
     explicitDiffOpenRef.current = null;
-    if (diffOpen && activeThreadRef && explicitThreadRef !== activeThreadRef) {
+    const previous = diffPanelOpenContextRef.current;
+    diffPanelOpenContextRef.current = { threadKey: activeThreadKey, diffOpen };
+    if (
+      activeThreadRef &&
+      shouldResetDiffSelectionToChanges({
+        diffOpen,
+        activeThreadRef,
+        explicitThreadRef,
+        previous,
+        threadKey: activeThreadKey,
+      })
+    ) {
       useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
     }
-  }, [activeThreadRef, diffOpen]);
+  }, [activeThreadKey, activeThreadRef, diffOpen]);
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
