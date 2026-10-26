@@ -16,14 +16,13 @@ import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
-import { Route as SettingsVoiceRouteImport } from './routes/settings.voice'
-import { Route as SettingsBotsRouteImport } from './routes/settings.bots'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatBotsRouteImport } from './routes/_chat.bots'
+import { Route as ChatSettingsVoiceRouteImport } from './routes/_chat.settings.voice'
 import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
 import { Route as ChatSettingsSourceControlRouteImport } from './routes/_chat.settings.source-control'
 import { Route as ChatSettingsSnapShotRouteImport } from './routes/_chat.settings.snap-shot'
@@ -36,6 +35,7 @@ import { Route as ChatSettingsIntegrationsRouteImport } from './routes/_chat.set
 import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
 import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
 import { Route as ChatSettingsConnectionsRouteImport } from './routes/_chat.settings.connections'
+import { Route as ChatSettingsBotsRouteImport } from './routes/_chat.settings.bots'
 import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
 import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
 import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
@@ -76,16 +76,6 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
-const SettingsVoiceRoute = SettingsVoiceRouteImport.update({
-  id: '/settings/voice',
-  path: '/settings/voice',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsBotsRoute = SettingsBotsRouteImport.update({
-  id: '/settings/bots',
-  path: '/settings/bots',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   id: '/projects/$projectKey',
   path: '/projects/$projectKey',
@@ -115,6 +105,11 @@ const ChatBotsRoute = ChatBotsRouteImport.update({
   id: '/bots',
   path: '/bots',
   getParentRoute: () => ChatRoute,
+} as any)
+const ChatSettingsVoiceRoute = ChatSettingsVoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => ChatSettingsRoute,
 } as any)
 const ChatSettingsStorageRoute = ChatSettingsStorageRouteImport.update({
   id: '/storage',
@@ -180,6 +175,11 @@ const ChatSettingsConnectionsRoute = ChatSettingsConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
+const ChatSettingsBotsRoute = ChatSettingsBotsRouteImport.update({
+  id: '/bots',
+  path: '/bots',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 const ChatSettingsBetaRoute = ChatSettingsBetaRouteImport.update({
   id: '/beta',
   path: '/beta',
@@ -220,13 +220,12 @@ export interface FileRoutesByFullPath {
   '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
-  '/settings/bots': typeof SettingsBotsRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
+  '/settings/bots': typeof ChatSettingsBotsRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/settings/general': typeof ChatSettingsGeneralRoute
@@ -239,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
   '/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/settings/storage': typeof ChatSettingsStorageRoute
+  '/settings/voice': typeof ChatSettingsVoiceRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -252,14 +252,13 @@ export interface FileRoutesByTo {
   '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
-  '/settings/bots': typeof SettingsBotsRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
+  '/settings/bots': typeof ChatSettingsBotsRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/settings/general': typeof ChatSettingsGeneralRoute
@@ -272,6 +271,7 @@ export interface FileRoutesByTo {
   '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
   '/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/settings/storage': typeof ChatSettingsStorageRoute
+  '/settings/voice': typeof ChatSettingsVoiceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -287,14 +287,13 @@ export interface FileRoutesById {
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
   '/_chat/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
-  '/settings/bots': typeof SettingsBotsRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
   '/_chat/settings/beta': typeof ChatSettingsBetaRoute
+  '/_chat/settings/bots': typeof ChatSettingsBotsRoute
   '/_chat/settings/connections': typeof ChatSettingsConnectionsRoute
   '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/_chat/settings/general': typeof ChatSettingsGeneralRoute
@@ -307,6 +306,7 @@ export interface FileRoutesById {
   '/_chat/settings/snap-shot': typeof ChatSettingsSnapShotRoute
   '/_chat/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/_chat/settings/storage': typeof ChatSettingsStorageRoute
+  '/_chat/settings/voice': typeof ChatSettingsVoiceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -323,13 +323,12 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/projects/$projectKey'
-    | '/settings/bots'
-    | '/settings/voice'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/beta'
+    | '/settings/bots'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
@@ -342,6 +341,7 @@ export interface FileRouteTypes {
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
+    | '/settings/voice'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -355,14 +355,13 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/projects/$projectKey'
-    | '/settings/bots'
-    | '/settings/voice'
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/beta'
+    | '/settings/bots'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
@@ -375,6 +374,7 @@ export interface FileRouteTypes {
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
+    | '/settings/voice'
   id:
     | '__root__'
     | '/_chat'
@@ -389,14 +389,13 @@ export interface FileRouteTypes {
     | '/_chat/settings'
     | '/_chat/usage'
     | '/projects/$projectKey'
-    | '/settings/bots'
-    | '/settings/voice'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/_chat/settings/appearance'
     | '/_chat/settings/archived'
     | '/_chat/settings/beta'
+    | '/_chat/settings/bots'
     | '/_chat/settings/connections'
     | '/_chat/settings/diagnostics'
     | '/_chat/settings/general'
@@ -409,6 +408,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/snap-shot'
     | '/_chat/settings/source-control'
     | '/_chat/settings/storage'
+    | '/_chat/settings/voice'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -419,8 +419,6 @@ export interface RootRouteChildren {
   PairRoute: typeof PairRoute
   WelcomeRoute: typeof WelcomeRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
-  SettingsBotsRoute: typeof SettingsBotsRoute
-  SettingsVoiceRoute: typeof SettingsVoiceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -474,20 +472,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/settings/voice': {
-      id: '/settings/voice'
-      path: '/settings/voice'
-      fullPath: '/settings/voice'
-      preLoaderRoute: typeof SettingsVoiceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/bots': {
-      id: '/settings/bots'
-      path: '/settings/bots'
-      fullPath: '/settings/bots'
-      preLoaderRoute: typeof SettingsBotsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/projects/$projectKey': {
       id: '/projects/$projectKey'
       path: '/projects/$projectKey'
@@ -529,6 +513,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/bots'
       preLoaderRoute: typeof ChatBotsRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/_chat/settings/voice': {
+      id: '/_chat/settings/voice'
+      path: '/voice'
+      fullPath: '/settings/voice'
+      preLoaderRoute: typeof ChatSettingsVoiceRouteImport
+      parentRoute: typeof ChatSettingsRoute
     }
     '/_chat/settings/storage': {
       id: '/_chat/settings/storage'
@@ -614,6 +605,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSettingsConnectionsRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
+    '/_chat/settings/bots': {
+      id: '/_chat/settings/bots'
+      path: '/bots'
+      fullPath: '/settings/bots'
+      preLoaderRoute: typeof ChatSettingsBotsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
     '/_chat/settings/beta': {
       id: '/_chat/settings/beta'
       path: '/beta'
@@ -656,6 +654,7 @@ interface ChatSettingsRouteChildren {
   ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
   ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
   ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
+  ChatSettingsBotsRoute: typeof ChatSettingsBotsRoute
   ChatSettingsConnectionsRoute: typeof ChatSettingsConnectionsRoute
   ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
   ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
@@ -668,12 +667,14 @@ interface ChatSettingsRouteChildren {
   ChatSettingsSnapShotRoute: typeof ChatSettingsSnapShotRoute
   ChatSettingsSourceControlRoute: typeof ChatSettingsSourceControlRoute
   ChatSettingsStorageRoute: typeof ChatSettingsStorageRoute
+  ChatSettingsVoiceRoute: typeof ChatSettingsVoiceRoute
 }
 
 const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
   ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
   ChatSettingsBetaRoute: ChatSettingsBetaRoute,
+  ChatSettingsBotsRoute: ChatSettingsBotsRoute,
   ChatSettingsConnectionsRoute: ChatSettingsConnectionsRoute,
   ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
   ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
@@ -686,6 +687,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsSnapShotRoute: ChatSettingsSnapShotRoute,
   ChatSettingsSourceControlRoute: ChatSettingsSourceControlRoute,
   ChatSettingsStorageRoute: ChatSettingsStorageRoute,
+  ChatSettingsVoiceRoute: ChatSettingsVoiceRoute,
 }
 
 const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
@@ -724,8 +726,6 @@ const rootRouteChildren: RootRouteChildren = {
   PairRoute: PairRoute,
   WelcomeRoute: WelcomeRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
-  SettingsBotsRoute: SettingsBotsRoute,
-  SettingsVoiceRoute: SettingsVoiceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

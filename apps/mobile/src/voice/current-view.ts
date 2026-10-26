@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useWorkspaceTabs } from "../features/workspace/WorkspaceTabsContext";
 import { appAtomRegistry } from "../state/atom-registry";
 import { botVoiceEnvironment } from "../state/bot-voice";
-import { useProject, useQuietThreadShell } from "../state/entities";
+import { useProject, useQuietThreadShell, useThreadVoiceContext } from "../state/entities";
 import { useThreadServerBrowserTabs } from "../state/preview";
 import { classifyMobileRoute, completeMobileCurrentView } from "./current-view.logic";
 import {
@@ -62,6 +62,7 @@ export function useCurrentViewFromState(rootState: NavigationState | undefined):
   const threadRef =
     page?.kind === "thread" ? scopeThreadRef(page.environmentId, page.threadId) : null;
   const shell = useQuietThreadShell(threadRef);
+  const threadContext = useThreadVoiceContext(threadRef);
   const project = useProject(shell ? scopeProjectRef(shell.environmentId, shell.projectId) : null);
   const browserOpen = route?.detail?.kind === "browser" && threadRef !== null;
   const browser = useThreadServerBrowserTabs({ ...(threadRef ?? NO_THREAD), enabled: browserOpen });
@@ -74,11 +75,12 @@ export function useCurrentViewFromState(rootState: NavigationState | undefined):
           project,
           browserTabs: browserOpen && browser.loaded ? browser.tabs : null,
         });
-  const [held, setHeld] = useState(next);
+  const enriched = next === null ? null : { ...next, threadContext };
+  const [held, setHeld] = useState(enriched);
   let snapshot = held;
-  if (next !== null && (held === null || !sameCurrentView(held, next))) {
-    setHeld(next);
-    snapshot = next;
+  if (enriched !== null && (held === null || !sameCurrentView(held, enriched))) {
+    setHeld(enriched);
+    snapshot = enriched;
   }
 
   const latest = useRef(snapshot);

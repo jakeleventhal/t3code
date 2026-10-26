@@ -716,7 +716,7 @@ it.effect("initializes shared defaults once, including Sol, and preserves explic
         status: "ready" as const,
         auth: { status: "authenticated" as const },
         checkedAt: "2026-10-26T12:00:00Z",
-        models: ["gpt-6.1-sol", "gpt-6-astra"].map((slug) => ({
+        models: ["gpt-6.1-terra", "gpt-6-astra"].map((slug) => ({
           slug,
           name: slug,
           isCustom: false,
@@ -738,9 +738,27 @@ it.effect("initializes shared defaults once, including Sol, and preserves explic
     yield* replication.initializeDefaults(providers);
     const initialized = (yield* settings.getSettings).botSharedPreferences;
     assert.equal(initialized.defaultVoice?.voice, "sol");
-    assert.equal(initialized.defaultModelSelection?.model, "gpt-6.1-sol");
+    assert.equal(initialized.defaultModelSelection?.model, "gpt-6.1-terra");
     yield* replication.initializeDefaults(providers);
     assert.equal((yield* settings.getSettings).botSharedPreferences.revision, initialized.revision);
+    const legacyChat = {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-6.1-sol",
+      options: [{ id: "reasoningEffort", value: "low" }],
+    };
+    yield* settings.updateSettings({
+      botSharedPreferences: {
+        ...initialized,
+        defaultModelSelection: legacyChat,
+        automaticModelSelections: { ...initialized.automaticModelSelections, chat: legacyChat },
+      },
+    });
+    yield* replication.initializeDefaults(providers);
+    const refreshed = (yield* settings.getSettings).botSharedPreferences;
+    assert.equal(refreshed.defaultModelSelection?.model, "gpt-6.1-terra");
+    assert.deepEqual(refreshed.defaultModelSelection?.options, [
+      { id: "reasoningEffort", value: "medium" },
+    ]);
     const claude = {
       ...providers[0]!,
       instanceId: ProviderInstanceId.make("claude"),

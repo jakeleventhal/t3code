@@ -20,7 +20,7 @@ export function initialBotDefaults(
         ]
       : [
           ["claudeAgent", "claude-haiku-5-5", "medium"],
-          ["codex", "gpt-6.1-sol", "low"],
+          ["codex", "gpt-6.1-terra", "medium"],
         ]) {
       const provider = available.find(
         (entry) => entry.driver === driver && entry.models.some((entry) => entry.slug === model),

@@ -61,6 +61,7 @@ export interface CurrentViewSnapshot {
   readonly device: "web" | "desktop" | "mobile";
   readonly page: CurrentViewPage;
   readonly detail: CurrentViewDetail | null;
+  readonly threadContext?: string | null;
 }
 
 export interface CurrentViewCapture {
@@ -142,6 +143,7 @@ function sameRecord(left: object | null, right: object | null): boolean {
 export function sameCurrentView(left: CurrentViewSnapshot, right: CurrentViewSnapshot): boolean {
   return (
     left.device === right.device &&
+    left.threadContext === right.threadContext &&
     sameRecord(left.page, right.page) &&
     sameRecord(left.detail, right.detail)
   );
@@ -221,5 +223,9 @@ export function describeCurrentView(view: CurrentViewSnapshot): string {
         ? "desktop app"
         : "web browser";
   const page = `On their ${where}, the user is viewing ${describePage(view.page)}.`;
-  return view.detail === null ? page : `${page} Also open: ${describeDetail(view.detail)}.`;
+  const location =
+    view.detail === null ? page : `${page} Also open: ${describeDetail(view.detail)}.`;
+  return view.page.kind === "thread" && view.threadContext
+    ? `${location}\n${view.threadContext}`
+    : location;
 }

@@ -20,7 +20,7 @@ import {
 } from "../rightPanelStore";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { botVoiceEnvironment } from "../state/botVoice";
-import { useProject, useQuietThreadShell } from "../state/entities";
+import { useProject, useQuietThreadShell, useThreadVoiceContext } from "../state/entities";
 import { useEnvironmentScope } from "../state/session";
 import { PULL_REQUESTS_PATH, resolveWebCurrentView } from "./currentView.logic";
 import {
@@ -42,6 +42,7 @@ export function useCurrentView(): CurrentViewSource {
       : null,
   );
   const shell = useQuietThreadShell(threadRef);
+  const threadContext = useThreadVoiceContext(threadRef);
   const project = useProject(shell ? scopeProjectRef(shell.environmentId, shell.projectId) : null);
   const panelRef = committed?.pathname === PULL_REQUESTS_PATH ? PULL_REQUESTS_PANEL_REF : threadRef;
   const panel = useRightPanelStore((state) =>
@@ -89,11 +90,12 @@ export function useCurrentView(): CurrentViewSource {
                     floatingTabId === null ? null : (previewState.sessions[floatingTabId] ?? null),
                 },
         });
-  const [held, setHeld] = useState(next);
+  const enriched = next === null ? null : { ...next, threadContext };
+  const [held, setHeld] = useState(enriched);
   let snapshot = held;
-  if (next !== null && (held === null || !sameCurrentView(held, next))) {
-    setHeld(next);
-    snapshot = next;
+  if (enriched !== null && (held === null || !sameCurrentView(held, enriched))) {
+    setHeld(enriched);
+    snapshot = enriched;
   }
 
   const latest = useRef(snapshot);

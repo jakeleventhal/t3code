@@ -272,7 +272,7 @@ export function createGrokVoiceConnector(input: {
           send({
             type: "session.update",
             session: {
-              instructions: `${selected.context.instructions}\nUse the delegate_work function for tools, saved memory changes, work, and conversation lookup. Continue talking while work is pending.`,
+              instructions: `${selected.context.instructions}\nAnswer directly from supplied history and current thread context. Use delegate_work for tools, saved memory changes, work, and missing conversation details. Continue talking while work is pending.`,
               voice: selected.voice,
               turn_detection: { type: "server_vad" },
               audio: {
@@ -469,7 +469,7 @@ export function createGrokVoiceConnector(input: {
                   send({
                     type: "session.update",
                     session: {
-                      instructions: `${update.text}\nUse delegate_work for tools, work, memory changes and history retrieval.`,
+                      instructions: `${update.text}\nAnswer directly from supplied history and current thread context; use delegate_work for tools, work, memory changes and missing history.`,
                     },
                   });
                 else context(update.text, update.speak);

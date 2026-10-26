@@ -280,4 +280,17 @@ describe("current view sharing", () => {
     expect(captureCurrentView(view).browserPage).toMatchObject({ status: "unavailable" });
     expect(captureCurrentView(resolveWebCurrentView(input())).browserPage).toBeNull();
   });
+
+  it("publishes changed thread facts and drops them when viewing Settings", () => {
+    const view = { ...resolveWebCurrentView(input()), threadContext: "Linked PRs: 2 total." };
+    const changed = { ...view, threadContext: "Linked PRs: 3 total." };
+    expect(sameCurrentView(view, changed)).toBe(false);
+    expect(sameCurrentView(view, { ...view })).toBe(true);
+    expect(describeCurrentView(changed)).toContain("Linked PRs: 3 total.");
+    const settings = {
+      ...resolveWebCurrentView(input({ pathname: "/settings/bots", target: null })),
+      threadContext: view.threadContext,
+    };
+    expect(describeCurrentView(settings)).not.toContain("Linked PRs");
+  });
 });
