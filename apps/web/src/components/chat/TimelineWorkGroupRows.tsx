@@ -1,3 +1,4 @@
+import { TypingDots } from "../bots/TypingDots";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import {
@@ -289,11 +290,7 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
   if (simpleProgress)
     return (
       <div role="status" className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-        <span aria-hidden className="inline-flex gap-1">
-          <span className="size-1.5 rounded-full bg-current" />
-          <span className="size-1.5 rounded-full bg-current opacity-60" />
-          <span className="size-1.5 rounded-full bg-current opacity-30" />
-        </span>
+        <TypingDots />
         <span>{isCompacting ? "Reviewing the conversation…" : "Thinking…"}</span>
       </div>
     );

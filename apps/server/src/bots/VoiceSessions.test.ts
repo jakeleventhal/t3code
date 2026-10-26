@@ -765,9 +765,12 @@ it.effect(
         assert.equal(dispatched.length, 1);
         assert.equal(dispatched[0]!.threadId, threadId);
         assert.equal(dispatched[0]!.mode, "queue");
+        // Provider-origin agent messages drain native output instead of submitting a prompt.
+        assert.equal(dispatched[0]!.creationSource, "server");
         assert.notProperty(dispatched[0]!, "modelSelection");
         assert.include(dispatched[0]!.text, "This phone: browser tab");
         assert.include(dispatched[0]!.text, input.text);
+
         const projections = yield* ProjectionStore.ProjectionStoreV2;
         const records = yield* projections.getThreadRecords(threadId, ["runs"], {
           runIds: [results[0]!.runId],
@@ -786,6 +789,9 @@ it.effect(
             },
           ],
         });
+        const continuity = yield* (yield* BotContext.BotContext).readForWork(threadId, null);
+        assert.include(continuity, input.viewContext);
+        assert.include(continuity, input.text);
         assert.deepEqual(yield* sessions.startWork(input), results[0]);
         assert.equal(dispatched.length, 1);
         assert.deepInclude(
@@ -855,7 +861,7 @@ it.effect("delivers saved memory and the same conversation brief to voice and wo
 );
 
 it.effect(
-  "delivers late transcript corrections after the previous work prompt, without replaying unchanged lines",
+  "keeps the latest call in follow-up context and replaces late transcript corrections",
   () =>
     Effect.gen(function* () {
       const { calls } = yield* fixture;
@@ -871,7 +877,7 @@ it.effect(
       yield* TestClock.adjust("1 second");
       const previousPromptAt = yield* DateTime.now;
       const context = yield* BotContext.BotContext;
-      assert.notInclude(yield* context.readForWork(threadId, previousPromptAt), "Goal 190");
+      assert.include(yield* context.readForWork(threadId, previousPromptAt), "Goal 190");
       yield* TestClock.adjust("1 second");
       yield* calls.end({
         ...call,

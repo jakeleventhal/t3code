@@ -1,3 +1,5 @@
+import { attachVoiceCallCues } from "@t3tools/client-runtime/voice-call/cues";
+import { playCallCue } from "./callCues";
 import { createEnvironmentVoiceRuntime } from "@t3tools/client-runtime/voice-call/environment-runtime";
 import { createVoiceViewContext } from "@t3tools/client-runtime/voice-call/live-connector";
 
@@ -19,6 +21,7 @@ export const voiceCallController = createEnvironmentVoiceRuntime({
   openPcmAudio: createBrowserPcmAudio,
   view: voiceViewContext,
 });
+const detachCues = attachVoiceCallCues(voiceCallController, playCallCue);
 
 const stopOnPageExit = () => {
   const call = voiceCallController.getSnapshot();
@@ -33,6 +36,7 @@ voiceCallController.subscribe(() => {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    detachCues();
     window.removeEventListener("pagehide", stopOnPageExit);
     const call = voiceCallController.getSnapshot();
     if (call !== null) void voiceCallController.end(call.callId, "interrupted");

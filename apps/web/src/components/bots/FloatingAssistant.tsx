@@ -1,3 +1,4 @@
+import { TypingDots } from "./TypingDots";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import {
@@ -753,7 +754,7 @@ function StepsGroup({
 
 function StepIcon({ entry, live }: { entry: WorkLogEntry; live: boolean }) {
   const status = entry.toolLifecycleStatus;
-  if (status === "inProgress" && live) return <Spinner size="xs" tone="muted" />;
+  if (status === "inProgress" && live) return <TypingDots />;
   if (status === "failed" || status === "declined") {
     return <XIcon aria-label="Failed" className="size-3 shrink-0 text-destructive-foreground" />;
   }
@@ -792,7 +793,7 @@ function AssistantStrip({
       case "working":
         return (
           <>
-            <Spinner size="xs" tone="muted" />
+            <TypingDots />
             <span className="min-w-0 flex-1 truncate" role="status">
               {step ?? (status.label === "Working" ? "Thinking" : status.label)}
             </span>
@@ -824,7 +825,7 @@ function AssistantStrip({
       case "sending":
         return (
           <>
-            <Spinner size="xs" tone="muted" />
+            <TypingDots />
             <span className="min-w-0 flex-1 truncate" role="status">
               Sending…
             </span>

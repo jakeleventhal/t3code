@@ -511,7 +511,11 @@
       "types": "./src/reviewFileClassification.ts",
       "import": "./src/reviewFileClassification.ts"
     },
-    "./voiceProviderInstances": "./src/voiceProviderInstances.ts"
+    "./voiceProviderInstances": "./src/voiceProviderInstances.ts",
+    "./botPreferences": {
+      "types": "./src/botPreferences.ts",
+      "import": "./src/botPreferences.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

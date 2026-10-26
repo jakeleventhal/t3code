@@ -1,3 +1,6 @@
+import { botDefaultVoice } from "@t3tools/shared/botPreferences";
+import { botEnvironment } from "../../state/bots";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomValue } from "@effect/atom-react";
 import {
   AuthSettingsWriteScope,
@@ -11,17 +14,11 @@ import { useState } from "react";
 
 import { useClientSettings } from "../../hooks/useSettings";
 import { deriveLogicalProjectKeyFromSettings } from "../../logicalProject";
-import {
-  useEnvironmentSupportsVoiceSettings,
-  useVoiceCatalog,
-  useWriteEnvironmentSettings,
-} from "../../state/botVoice";
-import { useEnvironment } from "../../state/environments";
+import { useEnvironmentSupportsVoiceSettings, useVoiceCatalog } from "../../state/botVoice";
 import { serverEnvironment } from "../../state/server";
 import { useEnvironmentScope } from "../../state/session";
 import { useVoiceCall } from "../../voice/useVoiceCall";
 import {
-  botVoiceOverridePatch,
   describeVoiceSelection,
   resolveBotVoice,
   voiceOptionGroups,
@@ -148,18 +145,16 @@ function BotVoicePopoverContent({
   onCall: boolean;
 }) {
   const navigate = useNavigate();
-  const environment = useEnvironment(project.environmentId);
   const groupingMode = useClientSettings((client) => client.sidebarProjectGroupingMode);
   const groupingOverrides = useClientSettings((client) => client.sidebarProjectGroupingOverrides);
   const canWrite = useEnvironmentScope(project.environmentId, AuthSettingsWriteScope);
   const { catalog } = useVoiceCatalog(project.environmentId, settings.voiceConnections);
-  const write = useWriteEnvironmentSettings();
+  const configure = useAtomCommand(botEnvironment.configure);
   const [target, setTarget] = useState<"bot" | "default">("bot");
   const voice = resolveBotVoice(settings, project.id);
-  const defaultVoice = describeVoiceSelection(settings.voiceSelection, catalog);
-  const shown = target === "bot" ? voice.selection : settings.voiceSelection;
+  const defaultVoice = describeVoiceSelection(botDefaultVoice(settings), catalog);
+  const shown = target === "bot" ? voice.selection : botDefaultVoice(settings);
   const described = describeVoiceSelection(shown, catalog);
-  const writeTarget = { environmentId: project.environmentId, label: environment?.label ?? "" };
   const hasVoices = voiceOptionGroups(catalog).length > 0;
 
   return (
@@ -194,26 +189,27 @@ function BotVoicePopoverContent({
         {...(target === "bot"
           ? {
               inherit: {
-                label: `Default · ${defaultVoice.label}`,
+                label: `Use default · ${defaultVoice.label}`,
                 active: voice.kind === "default",
               },
             }
           : {})}
         onChange={(change) =>
-          void write(
-            writeTarget,
-            settings,
-            target === "default"
-              ? {
-                  voiceSelection:
-                    change.kind === "set" ? change.selection : settings.voiceSelection,
-                }
-              : botVoiceOverridePatch(
-                  settings,
-                  project.id,
-                  change.kind === "inherit" ? undefined : change.selection,
-                ),
-          )
+          void configure({
+            environmentId: project.environmentId,
+            input:
+              target === "default"
+                ? {
+                    defaultVoiceSelection:
+                      change.kind === "set" ? change.selection : botDefaultVoice(settings),
+                  }
+                : {
+                    voiceOverride: {
+                      projectId: project.id,
+                      selection: change.kind === "inherit" ? "inherit" : change.selection,
+                    },
+                  },
+          })
         }
       />
       {described.detail ? (

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { botVoiceSelection } from "@t3tools/shared/botPreferences";
 
 import { botVoiceEnvironment, useEnvironmentSupportsBotVoice } from "../../state/botVoice";
 import { useConnectedEnvironmentIds } from "../../state/environments";
@@ -21,7 +21,9 @@ export function useBotCallAvailability(
   const canCall = useAtomValue(botVoiceEnvironment.begin.permissionAtom(environmentId));
   const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
   const selection =
-    settings === null ? null : resolveProjectSettings(settings, projectId).settings.voiceSelection;
+    settings === null || projectId === null
+      ? null
+      : botVoiceSelection(settings, projectId).selection;
   return resolveBotCallAvailability({
     supported,
     connected: connected && settings !== null,

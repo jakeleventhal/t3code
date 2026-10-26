@@ -25,6 +25,7 @@ Bot chats have no model controls. Choose the model, reasoning, and permissions
 every bot uses in **Settings → Bots**, and give one bot its own from its
 profile (its **Settings** tab on web and desktop); **Use default** returns it to
 the defaults. The defaults are shared across connected machines and catch up after reconnection.
+Choose a **Chat model** for everyday replies and a **Complex-task model** for difficult research, planning, or coding. Choosing the latter enables delegation while the chat remains available; leave it unset to keep work on the chat model. Both choices support per-bot overrides.
 Changes apply from the next message, and a reply already running keeps its
 settings. Until you choose bot defaults, bots keep the model they already use.
 If the chosen model isn't available on that environment, the chat shows
@@ -147,8 +148,8 @@ of an in-app browser page on screen. A call is saved in the conversation as its
 transcript. T3 Code doesn't keep the audio; the voice provider's own retention
 policy still applies.
 
-Choose a bot’s voice in **Settings → Bots** and play a sample before saving.
-Voice setup is grouped by the bots that use it.
+Choose the **Default voice** in **Settings → Bots** and play a sample before saving.
+Bots inherit it unless you choose a voice in that bot’s settings. **Use default** restores inheritance. The choices follow your bots between machines; each machine still needs its own matching voice account.
 
 - **Voice setup → Voice accounts**: add an OpenAI or xAI API key, or link a ChatGPT
   subscription. Keys are stored on the environment, not in your browser, and

@@ -10,16 +10,18 @@ import { latestBotPreferences } from "@t3tools/client-runtime/assistant-environm
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { botEnvironment } from "../../state/bots";
 import { useEnvironments } from "../../state/environments";
-import { useProjects } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 const cannotWrite = Atom.make(false);
 
-export function BotPrimaryMachineSettings() {
+export function BotPrimaryMachineSettings({
+  bot,
+}: {
+  bot?: { readonly id: ProjectId; readonly title: string };
+}) {
   const { environments } = useEnvironments();
-  const projects = useProjects();
   const save = useAtomCommand(botEnvironment.configure);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,18 +36,6 @@ export function BotPrimaryMachineSettings() {
     latestBotPreferences(
       eligible.map((entry) => entry.serverConfig!.settings.botSharedPreferences),
     ) ?? EMPTY_BOT_SHARED_PREFERENCES;
-  const unique = [
-    ...new Map(
-      [...projects]
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-        .filter((project) => project.botRole != null)
-        .map((project) => [project.id, project]),
-    ).values(),
-  ];
-  const assistant = unique.find((project) => project.botRole === "assistant");
-  const bots = unique.filter(
-    (project) => project.botRole !== "assistant" || project.id === assistant?.id,
-  );
   const choices = eligible.map((entry) => ({
     value: `machine:${entry.environmentId}`,
     environmentId: entry.environmentId,
@@ -74,13 +64,13 @@ export function BotPrimaryMachineSettings() {
     label: string,
     bot?: { readonly id: ProjectId; readonly title: string },
   ) => {
-    const items = [{ value: "default", label: bot ? "Use default" : "Automatic" }, ...choices];
+    const items = [...(bot ? [{ value: "default", label: "Use default" }] : []), ...choices];
     if (value && !choices.some((item) => item.environmentId === value))
       items.push({ value: `machine:${value}`, label: "Unavailable machine" });
     return (
       <Select
         items={items}
-        value={value === null ? "default" : `machine:${value}`}
+        value={value === null ? (bot ? "default" : null) : `machine:${value}`}
         disabled={pending || !canWrite}
         onValueChange={(next) => {
           const machine = choices.find((item) => item.value === next);
@@ -88,7 +78,7 @@ export function BotPrimaryMachineSettings() {
         }}
       >
         <SelectTrigger size="sm" aria-label={label}>
-          <SelectValue />
+          <SelectValue placeholder="Choose a primary machine" />
         </SelectTrigger>
         <SelectPopup align="end" alignItemWithTrigger={false}>
           {items.map((item) => (
@@ -100,32 +90,23 @@ export function BotPrimaryMachineSettings() {
       </Select>
     );
   };
+  if (bot)
+    return (
+      <SettingsRow
+        title="Primary machine"
+        control={picker(preferences.overrides[bot.id] ?? null, `${bot.title} primary machine`, bot)}
+        status={error ? <p role="alert">{error}</p> : null}
+      />
+    );
   return (
     <SettingsSection id="bot-primary-machine" title="Primary machine">
       {error ? <p role="alert">{error}</p> : null}
       <SettingsRow
         id="bot-shared-primary"
         title="Default for all bots"
-        description="Your preferred machine. A synced copy can answer new messages when this machine is unavailable. Existing large files stay where they were uploaded."
+        description="A synced copy can answer new messages when your primary machine is unavailable. Large files stay where they were uploaded."
         control={picker(preferences.primaryEnvironmentId, "Primary machine")}
       />
-      {bots.map((bot) => (
-        <SettingsRow
-          key={bot.id}
-          id={`bot-primary-${bot.id}`}
-          title={bot.title}
-          description={
-            (preferences.overrides[bot.id] ?? null) === null
-              ? "Follows the shared default."
-              : "Uses its own primary-machine preference."
-          }
-          control={picker(
-            preferences.overrides[bot.id] ?? null,
-            `${bot.title} primary machine`,
-            bot,
-          )}
-        />
-      ))}
     </SettingsSection>
   );
 }

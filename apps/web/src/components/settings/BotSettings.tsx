@@ -1,15 +1,15 @@
 import { useBotProjects } from "../bots/useBotRoom";
+import { BotComplexModelSetting } from "./BotComplexModelSetting";
 import { BotPrimaryMachineSettings } from "./BotPrimaryMachineSettings";
 import { botEnvironment } from "../../state/bots";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { BotVoicesSettings } from "./VoiceSettings";
+import { BotVoiceSetting, VoiceSetupSettings } from "./VoiceSettings";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useDesignatedAssistantEnvironmentId } from "../bots/useBotRoom";
 import { useEnvironments } from "../../state/environments";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import {
   botRuntimeSettingsUpdateMessage,
-  botTurnOverridePatch,
   resolveBotTurnReadiness,
 } from "@t3tools/client-runtime/bot-turn-settings";
 import {
@@ -20,7 +20,7 @@ import {
 
 import type { BotOutboxItem } from "../../botOutbox/botOutbox.logic";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironmentSupportsBotRuntimeSettings } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { BotAvatar } from "../bots/BotAvatar";
@@ -84,10 +84,8 @@ export function BotSettingsPanel() {
       ) : null}
       <BotPrimaryMachineSettings />
       {render(true)}
-      <SettingsSection id="bot-overrides" title="Bots">
-        {render(false)}
-      </SettingsSection>
-      <BotVoicesSettings />
+      {render(false)}
+      <VoiceSetupSettings />
       <UnsentMessages />
     </SettingsPageContainer>
   );
@@ -106,7 +104,6 @@ function BotSettingsContent({
 }) {
   const settings = useEnvironmentSettings(environmentId);
   const providers = useEnvironmentBotProviders(environmentId);
-  const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const configureBots = useAtomCommand(botEnvironment.configure);
   const updateDefaults = async (defaults: ServerSettings["botDefaults"]) => {
     await configureBots({ environmentId, input: defaults });
@@ -154,7 +151,7 @@ function BotSettingsContent({
             serverScoped
             settingKeys={["botDefaults"]}
             id="bot-defaults-model"
-            title="Model"
+            title="Chat model"
             description={
               defaults.defaultModelSelection === null
                 ? "Not set: new bots start with the model for new threads, and existing bots keep theirs."
@@ -211,12 +208,15 @@ function BotSettingsContent({
               />
             }
           />
+          <BotVoiceSetting environmentId={environmentId} />
+          <BotComplexModelSetting environmentId={environmentId} />
         </SettingsSection>
       ) : null}
       {!advanced && bots.length > 0 ? (
         <div>
           {bots.map((bot) => {
             const own = settings.projectSettingsOverrides[bot.id];
+            const chatModel = own?.defaultModelSelection ?? shownModel;
             const ownParts = [
               own?.defaultModelSelection
                 ? botModelLabel(own.defaultModelSelection, providers)
@@ -224,38 +224,69 @@ function BotSettingsContent({
               own?.defaultRuntimeMode ? runtimeModeConfig[own.defaultRuntimeMode].label : null,
             ].filter((part) => part !== null);
             return (
-              <SettingsRow
-                key={bot.id}
-                serverScoped
-                title={
-                  <span className="flex min-w-0 items-center gap-2">
-                    <BotAvatar bot={bot} />
-                    <span className="truncate">{bot.title}</span>
-                  </span>
-                }
-                description={
-                  ownParts.length > 0
-                    ? `Own setting: ${ownParts.join(" · ")}`
-                    : "Uses the defaults. Set its own from its profile."
-                }
-                resetAction={
-                  ownParts.length > 0 ? (
-                    <SettingResetButton
-                      label={`${bot.title} model and permissions`}
-                      tooltip="Use the defaults"
+              <SettingsSection key={bot.id} title={bot.title} icon={<BotAvatar bot={bot} />}>
+                <SettingsRow
+                  title="Chat model"
+                  description={
+                    ownParts.length > 0 ? ownParts.join(" · ") : "Uses the shared defaults."
+                  }
+                  control={
+                    chatModel ? (
+                      <BotModelPicker
+                        environmentId={environmentId}
+                        projectId={bot.id}
+                        settings={settings}
+                        providers={providers}
+                        selection={chatModel}
+                        disabled={disabled}
+                        onChange={(modelSelection) =>
+                          configureBots({
+                            environmentId,
+                            input: { runtimeOverride: { projectId: bot.id, modelSelection } },
+                          })
+                        }
+                      />
+                    ) : (
+                      <span>No providers available</span>
+                    )
+                  }
+                  resetAction={
+                    own?.defaultModelSelection ? (
+                      <SettingResetButton
+                        label={`${bot.title} chat model`}
+                        tooltip="Use default"
+                        disabled={disabled}
+                        onClick={() =>
+                          configureBots({
+                            environmentId,
+                            input: { runtimeOverride: { projectId: bot.id, modelSelection: null } },
+                          })
+                        }
+                      />
+                    ) : null
+                  }
+                />
+                <BotComplexModelSetting environmentId={environmentId} projectId={bot.id} />
+                <SettingsRow
+                  title="Permissions"
+                  control={
+                    <BotPermissionsSelect
+                      value={own?.defaultRuntimeMode ?? null}
+                      inheritedLabel="Use default"
+                      ariaLabel={`${bot.title} permissions`}
                       disabled={disabled}
-                      onClick={() =>
-                        updateSettings(
-                          botTurnOverridePatch(settings, bot.id, {
-                            modelSelection: null,
-                            runtimeMode: null,
-                          }),
-                        )
+                      onChange={(runtimeMode) =>
+                        configureBots({
+                          environmentId,
+                          input: { runtimeOverride: { projectId: bot.id, runtimeMode } },
+                        })
                       }
                     />
-                  ) : null
-                }
-              />
+                  }
+                />
+                <BotVoiceSetting bot={bot} environmentId={environmentId} />
+                <BotPrimaryMachineSettings bot={bot} />
+              </SettingsSection>
             );
           })}
         </div>

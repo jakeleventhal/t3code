@@ -1,6 +1,5 @@
 import type { VoiceCallState } from "@t3tools/client-runtime/voice-call";
 import { ProjectId } from "@t3tools/contracts";
-import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -9,21 +8,10 @@ import { cn } from "../../lib/cn";
 import { useProject } from "../../state/entities";
 import { BotAvatar } from "./BotAvatar";
 import { botCallCanToggleMute, botCallPhaseLabel, type BotCallControls } from "./bot-call";
-import { BotCallTranscriptSheet } from "./BotCallTranscriptSheet";
 
-/**
- * The compact control for the one live call: who, a status word, and the controls. It never
- * shows what was said; the transcript exists only in the sheet the user opens, and the
- * `transcript` and `composer` slots mount only then, so a collapsed call never re-renders on
- * speech or typing. Pass a null `composer` when the call cannot take typed messages.
- */
 export function BotCallBar(props: {
   readonly call: VoiceCallState;
   readonly controls: BotCallControls;
-  readonly expanded: boolean;
-  readonly onExpandedChange: (expanded: boolean) => void;
-  readonly transcript: ReactNode;
-  readonly composer: ReactNode;
 }) {
   const { call, controls } = props;
   // The call keeps the name it started with; the live project shows a rename or new picture.
@@ -59,19 +47,14 @@ export function BotCallBar(props: {
         <IconButton
           accessibilityLabel={call.muted ? "Unmute" : "Mute"}
           icon={call.muted ? "mic.slash" : "mic"}
-          variant="tonal"
+          variant="standard"
           selected={call.muted}
           disabled={!botCallCanToggleMute(call.phase)}
           onPress={() => controls.toggleMute(call.callId)}
         />
         <IconButton
-          accessibilityLabel={failed ? "Show call error" : "Show call details"}
-          icon="chevron.up"
-          onPress={() => props.onExpandedChange(true)}
-        />
-        <IconButton
           accessibilityLabel="Open chat"
-          icon="arrow.up.left.and.arrow.down.right"
+          icon="viewfinder"
           onPress={() => controls.openChat(call)}
         />
         <IconButton
@@ -87,17 +70,6 @@ export function BotCallBar(props: {
       >
         {status}
       </Text>
-      {props.expanded ? (
-        <BotCallTranscriptSheet
-          botTitle={title}
-          status={status}
-          failed={failed}
-          onClose={() => props.onExpandedChange(false)}
-          onOpenChat={() => controls.openChat(call)}
-          transcript={props.transcript}
-          composer={props.composer}
-        />
-      ) : null}
     </View>
   );
 }

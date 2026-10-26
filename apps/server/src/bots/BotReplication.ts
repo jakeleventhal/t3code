@@ -19,7 +19,7 @@ import {
   OrchestrationV2ConversationMessageJson,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2TurnItem,
-  type ProjectId,
+  ProjectId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -471,7 +471,23 @@ const make = Effect.gen(function* () {
   const savePreferences = Effect.fn("BotReplication.savePreferences")(function* (
     value: BotSharedPreferences,
   ) {
+    const current = yield* settings.getSettings;
+    const projectSettingsOverrides = { ...current.projectSettingsOverrides };
+    for (const [rawId, override] of Object.entries(value.runtimeOverrides ?? {})) {
+      const id = ProjectId.make(rawId);
+      const next = { ...projectSettingsOverrides[id] };
+      if (override.modelSelection !== undefined) {
+        if (override.modelSelection === null) delete next.defaultModelSelection;
+        else next.defaultModelSelection = override.modelSelection;
+      }
+      if (override.runtimeMode !== undefined) {
+        if (override.runtimeMode === null) delete next.defaultRuntimeMode;
+        else next.defaultRuntimeMode = override.runtimeMode;
+      }
+      projectSettingsOverrides[id] = next;
+    }
     yield* settings.updateSettings({
+      projectSettingsOverrides,
       botSharedPreferences: value,
       defaultBotEnvironmentId: value.primaryEnvironmentId,
       botDefaults: {
@@ -496,8 +512,53 @@ const make = Effect.gen(function* () {
         if (change.override.environmentId === null) delete overrides[change.override.projectId];
         else overrides[change.override.projectId] = change.override.environmentId;
       }
+      const complexTaskModelOverrides = { ...current.complexTaskModelOverrides };
+      if (change.complexTaskModelOverride) {
+        const { projectId, selection } = change.complexTaskModelOverride;
+        if (selection === null) delete complexTaskModelOverrides[projectId];
+        else complexTaskModelOverrides[projectId] = selection;
+      }
+      const shareVoice = (
+        selection: NonNullable<BotPreferencesChange["defaultVoiceSelection"]>,
+      ) => {
+        const connection = saved.voiceConnections[selection.connectionId];
+        if (!connection) return null;
+        return { ...selection, connectionKind: connection.kind };
+      };
+      if (change.defaultVoiceSelection && !shareVoice(change.defaultVoiceSelection))
+        return yield* fail("settings")("The selected voice account is unavailable.");
+      const voiceOverrides = { ...current.voiceOverrides };
+      if (change.voiceOverride) {
+        const { projectId, selection } = change.voiceOverride;
+        const shared =
+          typeof selection === "object" && selection !== null ? shareVoice(selection) : selection;
+        if (selection !== null && selection !== "inherit" && shared === null)
+          return yield* fail("settings")("The selected voice account is unavailable.");
+        voiceOverrides[projectId] = shared;
+      }
+      const runtimeOverrides = { ...current.runtimeOverrides };
+      if (change.runtimeOverride) {
+        const { projectId, ...override } = change.runtimeOverride;
+        runtimeOverrides[projectId] = { ...runtimeOverrides[projectId], ...override };
+      }
       const value = {
         ...current,
+        runtimeOverrides,
+        complexTaskModelOverrides,
+        voiceOverrides,
+        ...(change.defaultVoiceSelection === undefined
+          ? {}
+          : {
+              defaultVoice:
+                change.defaultVoiceSelection === null
+                  ? null
+                  : shareVoice(change.defaultVoiceSelection),
+            }),
+        ...(change.complexTaskModelSelection === undefined
+          ? {}
+          : {
+              complexTaskModelSelection: change.complexTaskModelSelection,
+            }),
         revision: current.revision + 1,
         author: yield* identity.getEnvironmentId,
         primaryEnvironmentId:

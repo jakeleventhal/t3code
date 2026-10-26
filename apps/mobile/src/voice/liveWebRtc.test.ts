@@ -2,7 +2,13 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 
 import { openLiveNativeWebRtc } from "./liveWebRtc";
 
-const native = vi.hoisted(() => ({ createPeer: vi.fn(), getUserMedia: vi.fn() }));
+const native = vi.hoisted(() => ({
+  createPeer: vi.fn(),
+  getUserMedia: vi.fn(),
+  preferSpeaker: vi.fn(),
+  releaseWebRtcRoute: vi.fn(),
+}));
+vi.mock("expo", () => ({ requireOptionalNativeModule: () => native }));
 vi.mock("react-native-webrtc", () => ({
   RTCPeerConnection: function MockPeer() {
     return native.createPeer();
@@ -37,11 +43,13 @@ class Channel extends EventTarget {
 }
 
 function fixture() {
+  const released = deferred<void>();
   const track = new Track();
   const stream = {
     getAudioTracks: () => [track],
     release: vi.fn(() => {
       track.enabled = false;
+      released.resolve();
     }),
   };
   const channel = new Channel();
@@ -98,6 +106,7 @@ function fixture() {
     open,
     start,
     captureRequested,
+    released,
   };
 }
 
@@ -109,6 +118,7 @@ it("releases native capture and silences remote audio before draining final tran
   const f = fixture();
   const connection = await f.start();
   expect(native.getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: true, video: false });
+  expect(native.preferSpeaker).toHaveBeenCalledTimes(2);
   expect(f.negotiate).toHaveBeenCalledExactlyOnceWith("native-offer", expect.any(AbortSignal));
   const remote = new Track();
   f.peer.receiveTrack(remote);
@@ -150,9 +160,9 @@ it("cancels a pending permission prompt and releases its late native stream", as
   const pending = f.open();
   await f.captureRequested.promise;
   f.abort.abort();
-  await expect(pending).rejects.toThrow("Could not establish");
+  await expect(pending).rejects.toThrow("The voice connection was cancelled.");
   permission.resolve(f.stream);
-  await Promise.resolve();
+  await f.released.promise;
   expect(f.stream.release).toHaveBeenCalledOnce();
   expect(f.negotiate).not.toHaveBeenCalled();
   expect(f.peer.close).toHaveBeenCalledOnce();

@@ -1,3 +1,4 @@
+import { botComplexTaskModel } from "@t3tools/shared/botPreferences";
 import {
   CommandId,
   ComposerContextId,
@@ -2187,9 +2188,31 @@ const make = Effect.gen(function* () {
         operation: "delegate-task",
       });
       const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
+      const preferences = yield* serverSettings.getSettings.pipe(
+        Effect.mapError(() => failure("orchestration_error", "Unable to read bot settings.")),
+      );
+      const configuredComplex = botComplexTaskModel(
+        preferences.botSharedPreferences,
+        parent.thread.projectId,
+      );
+      const complex =
+        input.target === undefined &&
+        configuredComplex !== null &&
+        parent.thread.lineage.relationshipToParent !== "subagent" &&
+        (yield* requireProject(parent.thread.projectId)).botRole != null
+          ? configuredComplex
+          : null;
       const target = yield* resolveTargetRechecking({
         parent,
-        target: input.target,
+        target:
+          input.target ??
+          (complex
+            ? {
+                providerInstanceId: complex.instanceId,
+                model: complex.model,
+                options: complex.options ?? [],
+              }
+            : undefined),
         providers,
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
       });

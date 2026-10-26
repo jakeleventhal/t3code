@@ -2683,3 +2683,23 @@ html[data-theme-id="absolutely"]
   font-weight: 400;
   line-height: 1.25rem;
 }
+
+@keyframes bot-typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+.bot-typing-dots > span {
+  animation: bot-typing-dot 1.4s ease-in-out infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot-typing-dots > span {
+    animation: none;
+  }
+}
