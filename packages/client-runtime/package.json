@@ -547,6 +547,10 @@
     "./voice-call/preview": {
       "types": "./src/voice-call/preview.ts",
       "default": "./src/voice-call/preview.ts"
+    },
+    "./voice-call/activity-context": {
+      "types": "./src/voice-call/activity-context.ts",
+      "import": "./src/voice-call/activity-context.ts"
     }
   },
   "scripts": {

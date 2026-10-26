@@ -1,3 +1,6 @@
+import { createBotActivityContextAtom } from "@t3tools/client-runtime/voice-call/activity-context";
+import { environmentProjects } from "../state/projects";
+import { environmentPresentations } from "../state/presentation";
 import { attachVoiceCallCues } from "@t3tools/client-runtime/voice-call/cues";
 import { playCallCue } from "./callCues";
 import { createEnvironmentVoiceRuntime } from "@t3tools/client-runtime/voice-call/environment-runtime";
@@ -11,7 +14,7 @@ import {
 } from "../lib/foundation-fast-refresh";
 import { appAtomRegistry } from "../state/atom-registry";
 import { botVoiceEnvironment } from "../state/bot-voice";
-import { environmentThreads } from "../state/threads";
+import { environmentThreads, environmentThreadShells } from "../state/threads";
 import { openLiveNativeWebRtc } from "./liveWebRtc";
 import { createNativePcmAudio } from "./pcmAudio";
 
@@ -20,6 +23,11 @@ declare const module: { readonly hot?: FoundationHotModule } | undefined;
 export const voiceViewContext = createVoiceViewContext();
 export const voiceCallController = createEnvironmentVoiceRuntime({
   registry: appAtomRegistry,
+  activityContext: createBotActivityContextAtom({
+    projects: environmentProjects.projectsAtom,
+    threads: environmentThreadShells.quietThreadShellsAtom,
+    presentations: environmentPresentations.presentationsAtom,
+  }),
   commands: botVoiceEnvironment,
   endpointId: uuidv4(),
   createCallId: uuidv4,

@@ -1,3 +1,6 @@
+import { createBotActivityContextAtom } from "@t3tools/client-runtime/voice-call/activity-context";
+import { environmentProjects } from "../state/projects";
+import { environmentPresentations } from "../state/presentation";
 import { attachVoiceCallCues } from "@t3tools/client-runtime/voice-call/cues";
 import { playCallCue } from "./callCues";
 import { createEnvironmentVoiceRuntime } from "@t3tools/client-runtime/voice-call/environment-runtime";
@@ -6,13 +9,18 @@ import { createVoiceViewContext } from "@t3tools/client-runtime/voice-call/live-
 import { randomUUID } from "../lib/utils";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { botVoiceEnvironment } from "../state/botVoice";
-import { environmentThreads } from "../state/threads";
+import { environmentThreads, environmentThreadShells } from "../state/threads";
 import { openLiveWebRtc } from "./liveWebRtc";
 import { createBrowserPcmAudio } from "./pcmAudio";
 
 export const voiceViewContext = createVoiceViewContext();
 export const voiceCallController = createEnvironmentVoiceRuntime({
   registry: appAtomRegistry,
+  activityContext: createBotActivityContextAtom({
+    projects: environmentProjects.projectsAtom,
+    threads: environmentThreadShells.quietThreadShellsAtom,
+    presentations: environmentPresentations.presentationsAtom,
+  }),
   commands: botVoiceEnvironment,
   endpointId: randomUUID(),
   createCallId: randomUUID,
