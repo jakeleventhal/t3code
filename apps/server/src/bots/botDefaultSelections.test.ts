@@ -23,7 +23,7 @@ function connectedBotProvider(driver: string, models: string[]): ServerProvider 
   };
 }
 const claude = connectedBotProvider("claudeAgent", ["claude-haiku-5-5", "claude-opus-5-5"]);
-const codex = connectedBotProvider("codex", ["gpt-6.1-sol", "gpt-6-astra"]);
+const codex = connectedBotProvider("codex", ["gpt-6.1-terra", "gpt-6-astra"]);
 
 it("prefers Claude with separate chat and complex reasoning and falls back to authenticated Codex", () => {
   expect(initialBotDefaults(DEFAULT_SERVER_SETTINGS, [codex, claude])).toMatchObject({
@@ -46,8 +46,8 @@ it("prefers Claude with separate chat and complex reasoning and falls back to au
   ).toMatchObject({
     defaultModelSelection: {
       instanceId: "codex",
-      model: "gpt-6.1-sol",
-      options: [{ id: "reasoningEffort", value: "low" }],
+      model: "gpt-6.1-terra",
+      options: [{ id: "reasoningEffort", value: "medium" }],
     },
     complexTaskModelSelection: {
       instanceId: "codex",

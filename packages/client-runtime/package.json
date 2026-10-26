@@ -260,6 +260,10 @@
       "types": "./src/voice-call/persistence.ts",
       "default": "./src/voice-call/persistence.ts"
     },
+    "./voice-call/thread-context": {
+      "types": "./src/voice-call/thread-context.ts",
+      "default": "./src/voice-call/thread-context.ts"
+    },
     "./voice-call/environment-runtime": {
       "types": "./src/voice-call/environment-runtime.ts",
       "default": "./src/voice-call/environment-runtime.ts"

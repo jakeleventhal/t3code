@@ -1,3 +1,4 @@
+import { describeVoiceThreadContext } from "@t3tools/client-runtime/voice-call/thread-context";
 import type * as DateTime from "effect/DateTime";
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -468,4 +469,14 @@ export function useThreadRelationshipShells(
   ref: ScopedThreadRef,
 ): ReadonlyArray<OrchestrationV2ThreadShell> {
   return useAtomValue(relationshipShellsAtomFamily(threadKey(ref)));
+}
+
+const selectThreadVoiceContext = (thread: EnvironmentThread | null) =>
+  describeVoiceThreadContext(thread?.projection ?? null);
+
+export function useThreadVoiceContext(ref: ScopedThreadRef | null) {
+  return useAtomValue(
+    ref === null ? EMPTY_THREAD_PROJECTION_ATOM : environmentThreadDetails.threadAtom(ref),
+    selectThreadVoiceContext,
+  );
 }

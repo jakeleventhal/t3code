@@ -1,3 +1,4 @@
+import { describeVoiceThreadContext } from "@t3tools/client-runtime/voice-call/thread-context";
 import { useAtomValue } from "@effect/atom-react";
 import { deriveReportedModelSelection } from "@t3tools/client-runtime/state/thread-execution";
 
@@ -236,5 +237,15 @@ export function useThreadReportedModelSelection(ref: ScopedThreadRef | null) {
   return useAtomValue(
     ref === null ? EMPTY_THREAD_ATOM : environmentThreadDetails.threadAtom(ref),
     selectReportedModelSelection,
+  );
+}
+
+const selectThreadVoiceContext = (thread: EnvironmentThread | null) =>
+  describeVoiceThreadContext(thread?.projection ?? null);
+
+export function useThreadVoiceContext(ref: ScopedThreadRef | null) {
+  return useAtomValue(
+    ref === null ? EMPTY_THREAD_ATOM : environmentThreadDetails.threadAtom(ref),
+    selectThreadVoiceContext,
   );
 }

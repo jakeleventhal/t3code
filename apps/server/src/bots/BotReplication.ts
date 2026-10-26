@@ -604,12 +604,14 @@ const make = Effect.gen(function* () {
           kind === "chat" ? requested.defaultModelSelection : requested.complexTaskModelSelection;
         if (!proposed) return false;
         if (previous == null) return true;
-        // A late Claude discovery may replace a seeded GPT fallback, never a manual choice.
+        // Refresh seeded fallbacks and prefer newly connected Claude, never replace a manual choice.
         return (
           automatic[kind] !== undefined &&
           modelSelectionsEqual(previous, automatic[kind]) &&
-          previous.model.startsWith("gpt-") &&
-          proposed.model.startsWith("claude-")
+          ((previous.model.startsWith("gpt-") && proposed.model.startsWith("claude-")) ||
+            (kind === "chat" &&
+              previous.model === "gpt-6.1-sol" &&
+              proposed.model === "gpt-6.1-terra"))
         );
       };
       const change = initialize

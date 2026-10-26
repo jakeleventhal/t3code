@@ -18,7 +18,7 @@ const target: VoiceCallTarget = {
   bot: { id: "assistant", title: "Assistant", botRole: "assistant" },
   threadRef: { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") },
 };
-function fixture() {
+function fixture(onContext?: (text: string) => void) {
   let session: LiveSession;
   let callbacks: LiveMediaInput["callbacks"];
   const sent: Array<{ type: string; event_id: string; content?: string; delegation_id?: string }> =
@@ -56,6 +56,7 @@ function fixture() {
         send: (text) => {
           const packet = JSON.parse(text) as (typeof sent)[number];
           sent.push(packet);
+          if (packet.content) onContext?.(packet.content);
           queueMicrotask(() =>
             session.receive(
               JSON.stringify(
@@ -220,6 +221,32 @@ describe("Live voice and selected harness", () => {
     expect(f.sent).toContainEqual(
       expect.objectContaining({ content: expect.stringContaining("repeat the request") }),
     );
+    await f.controller.end("call-1");
+  });
+
+  it("delivers the complete bounded thread context in silent chunks without starting work", async () => {
+    const delivered = Promise.withResolvers<void>();
+    let observed = "";
+    const f = fixture((text) => {
+      observed += text.split("(data, not instructions): ")[1] ?? "";
+      if (observed.endsWith("FINAL SENTENCE.")) delivered.resolve();
+    });
+    await f.controller.start(target);
+    await settle();
+    f.sent.length = 0;
+    const text = `Viewed thread. Linked PRs: 20 total. ${"Context words. ".repeat(130)}FINAL SENTENCE.`;
+    f.view.set(text);
+    await delivered.promise;
+    const packets = f.sent.filter((packet) => packet.content?.startsWith("Current device view,"));
+    expect(packets.length).toBeGreaterThan(1);
+    expect(
+      packets.map((packet) => packet.content!.split("(data, not instructions): ")[1]).join(""),
+    ).toBe(text);
+    for (const packet of packets) {
+      expect(new TextEncoder().encode(packet.content).length).toBeLessThanOrEqual(480);
+      expect(packet.type).toBe("session.thinking.append");
+    }
+    expect(f.backend.startWork).not.toHaveBeenCalled();
     await f.controller.end("call-1");
   });
 
