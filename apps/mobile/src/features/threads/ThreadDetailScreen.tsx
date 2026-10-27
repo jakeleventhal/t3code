@@ -1,3 +1,4 @@
+import { BotBackGestureView } from "../bots/BotBackGestureView";
 import { useOpenThreadInspector } from "./thread-inspector-navigation";
 import { BotTaskModels } from "../bots/BotTaskModels";
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
@@ -1298,7 +1299,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   };
 
   return (
-    <View className="flex-1" onLayout={handleScreenLayout}>
+    <BotBackGestureView enabled={props.floatingBotHeader === true} onLayout={handleScreenLayout}>
       {!usesNativeWorkspaceColumns ? <NativeLayoutObserver onChange={setScreenMetrics} /> : null}
       {props.draftMode ? (
         props.draftMode.content(
@@ -1726,6 +1727,6 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
           </ComposerPopoverHost>
         </KeyboardStickyView>
       ) : null}
-    </View>
+    </BotBackGestureView>
   );
 }
