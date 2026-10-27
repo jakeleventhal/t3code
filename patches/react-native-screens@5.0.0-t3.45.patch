@@ -1,0 +1,15 @@
+diff --git a/ios/helpers/stack/RNSStackNavigationController.mm b/ios/helpers/stack/RNSStackNavigationController.mm
+--- a/ios/helpers/stack/RNSStackNavigationController.mm
++++ b/ios/helpers/stack/RNSStackNavigationController.mm
+@@ -33,6 +33,11 @@
+   UIViewController *destination = navigation.viewControllers[navigation.viewControllers.count - 2];
+   if ([navigation shouldPreventNativePopToController:destination])
+     return NO;
++  // UIKit rejects edge pops with a hidden bar, even when the screen provides its own Back control.
++  if (navigation.navigationBarHidden && gestureRecognizer == navigation.interactivePopGestureRecognizer) {
++    return navigation.transitionCoordinator == nil && navigation.presentedViewController == nil;
++  }
++
+   if ([self.originalDelegate respondsToSelector:_cmd]) {
+     return [self.originalDelegate gestureRecognizerShouldBegin:gestureRecognizer];
+   }

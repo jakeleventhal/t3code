@@ -3297,7 +3297,7 @@ export const ThreadFeed = memo(function ThreadFeed({
       case "work-toggle":
         return entry.thought ? undefined : WORK_GROUP_TOGGLE_HEIGHT;
       case "thinking":
-        return WORK_GROUP_TOGGLE_HEIGHT;
+        return simpleProgress ? undefined : WORK_GROUP_TOGGLE_HEIGHT;
       case "activity-group":
         if (entry.activities[0]?.projectedItem.item.type === "subagent") {
           return undefined;
