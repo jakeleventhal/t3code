@@ -31,7 +31,7 @@ class FakeChannel extends EventTarget {
   }
 }
 
-function fixture() {
+function fixture(protocol?: "codex") {
   const track = new FakeTrack();
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
   const channel = new FakeChannel();
@@ -76,11 +76,12 @@ function fixture() {
   const abort = new AbortController();
   const callbacks = {
     onTranscript: vi.fn(),
+    onUntimedTranscript: vi.fn(),
     onDelegation: vi.fn(),
     onClosed: vi.fn(),
     onFailure: vi.fn(),
   };
-  const negotiate = vi.fn(async () => ({ sessionId: "live-1", sdp: "remote-sdp" }));
+  const negotiate = vi.fn(async () => ({ sessionId: "live-1", sdp: "remote-sdp", protocol }));
   const open = () => openLiveWebRtc({ signal: abort.signal, negotiate, callbacks });
   const start = async () => {
     const pending = open();
@@ -177,6 +178,14 @@ describe("browser Live media lifecycle", () => {
   it("stops local audio immediately but drains the transcript before closing the peer", async () => {
     const f = fixture();
     const connection = await f.start();
+    f.channel.receive({
+      type: "session.input_transcript.delta",
+      event_id: "caller",
+      delta: "Hello",
+      start_ms: 0,
+      end_ms: 10,
+    });
+    f.callbacks.onTranscript.mockClear();
     f.abort.abort();
     expect(f.track.stop).toHaveBeenCalled();
     expect(f.playback.pause).toHaveBeenCalled();
@@ -302,4 +311,22 @@ it("voice previews receive audio without requesting microphone access", async ()
   expect(f.peer.addTransceiver).toHaveBeenCalledWith("audio", { direction: "recvonly" });
   await f.finish(media);
   expect(f.peer.close).toHaveBeenCalledOnce();
+});
+
+it("plays a Codex reply before the caller transcript arrives", async () => {
+  const f = fixture("codex");
+  const connection = await f.start();
+  const remote = new FakeTrack();
+  f.peer.dispatchEvent(Object.assign(new Event("track"), { streams: [f.stream], track: remote }));
+  expect(f.playback.play).toHaveBeenCalled();
+  expect(f.playback).toHaveProperty("muted", false);
+  f.channel.receive({ type: "output_transcript.added", item: { text: "Mango." } });
+  expect(f.callbacks.onUntimedTranscript).toHaveBeenCalledWith({
+    id: "codex-bot-0",
+    speaker: "bot",
+    text: "Mango.",
+    final: false,
+  });
+  await f.finish(connection);
+  expect(f.playback.pause).toHaveBeenCalled();
 });

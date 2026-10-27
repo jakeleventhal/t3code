@@ -130,6 +130,10 @@ export class LiveSession {
     this.protocol = protocol;
   }
 
+  get supportsQuietContext(): boolean {
+    return this.protocol !== "codex";
+  }
+
   readonly ready = (): Promise<string> => this.startup.promise;
 
   receive(packet: string): void {
@@ -268,6 +272,9 @@ export class LiveSession {
       return Promise.reject(new Error("This task belongs to a different voice session."));
     }
     if (this.protocol === "codex") {
+      // Commentary appends can provoke speech on the subscription endpoint. It has no
+      // thinking.append equivalent; fetch fresh context through a requested delegation.
+      if (!input.speak) return Promise.resolve();
       if (!this.started || this.closing || this.finished)
         return Promise.reject(new Error("The voice session is not ready."));
       try {
@@ -278,13 +285,12 @@ export class LiveSession {
                 ? "session.context.append"
                 : "delegation.context.append",
             ...(input.delegationId === undefined ? {} : { delegation_item_id: input.delegationId }),
-            // Codex defaults an omitted channel to speakable, including background snapshots.
-            channel: input.speak === true ? "speakable" : "commentary",
+            channel: "speakable",
             content: [{ type: "input_text", text: input.text }],
           }),
         );
-        // Codex's v3 protocol has no append acknowledgments. Provider errors
-        // still stop the call; successful send does not imply these words were spoken.
+        // Codex append acknowledgments have no client event ID to correlate.
+        // Provider errors still stop the call; delivery does not prove speech playback.
         return Promise.resolve();
       } catch {
         return Promise.reject(new Error("The voice context could not be sent."));

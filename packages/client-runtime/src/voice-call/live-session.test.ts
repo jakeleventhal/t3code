@@ -187,22 +187,14 @@ describe("GPT Live control protocol", () => {
 });
 
 describe("Codex subscription voice protocol", () => {
-  it("keeps background context and instructions quiet, with only requested results speakable", async () => {
+  it("does not inject background snapshots into Codex calls, but delivers requested results", async () => {
     const f = fixture();
     f.session.setProtocol("codex");
     f.start();
     await f.session.appendContext({ text: "Workout plan ready." });
     await f.session.appendInstructions("Keep responses concise.");
     await f.session.appendContext({ text: "The user changed screens.", speak: false });
-    expect(f.sent).toEqual(
-      ["Workout plan ready.", "Keep responses concise.", "The user changed screens."].map(
-        (text) => ({
-          type: "session.context.append",
-          channel: "commentary",
-          content: [{ type: "input_text", text }],
-        }),
-      ),
-    );
+    expect(f.sent).toEqual([]);
     await f.session.appendContext({ text: "Your requested result.", speak: true });
     expect(f.sent.at(-1)).toEqual({
       type: "session.context.append",
