@@ -1,6 +1,5 @@
 import { HeaderHeightContext } from "@react-navigation/elements";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BOT_CHAT_HEADER_HEIGHT } from "../bots/BotHeaderTitle";
+import { BOT_CHAT_HEADER_HEIGHT, useBotHeaderTopInset } from "../bots/BotHeaderTitle";
 import {
   createContext,
   useContext,
@@ -39,12 +38,14 @@ function ThreadScreenOutlet() {
   const store = useContext(ThreadScreenContext)!;
   const content = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const nativeHeaderHeight = useContext(HeaderHeightContext);
-  const insets = useSafeAreaInsets();
+  const botHeaderTopInset = useBotHeaderTopInset();
   if (content === null) return null;
   return "props" in content ? (
     <HeaderHeightContext
       value={
-        content.props.floatingBotHeader ? insets.top + BOT_CHAT_HEADER_HEIGHT : nativeHeaderHeight
+        content.props.floatingBotHeader
+          ? botHeaderTopInset + BOT_CHAT_HEADER_HEIGHT
+          : nativeHeaderHeight
       }
     >
       {!content.props.floatingBotHeader ? content.props.header : null}
