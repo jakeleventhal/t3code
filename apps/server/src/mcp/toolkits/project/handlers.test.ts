@@ -26,6 +26,7 @@ import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "../../../bots/BotAvatarService.ts";
 import * as BotService from "../../../bots/BotService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../../vcs/VcsProcess.ts";
@@ -355,5 +356,62 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
 
     expect((yield* launchFrom("main")).at(-1)?.result).toMatchObject({ projectId });
     expect(launched).toHaveLength(1);
+  }),
+);
+
+it.effect("avatar refinements reach the media service only with write access", () =>
+  Effect.gen(function* () {
+    const requests: Array<{ prompt: string; projectId: ProjectId; mode: string }> = [];
+    for (const runtimeModeCeiling of ["full-access", "auto"] as const) {
+      const harness = clientLaunchHarness({ runtimeModeCeiling, launched: [] });
+      const dependencies = Layer.mergeAll(
+        harness.dependencies,
+        Layer.mock(BotAvatarService.BotAvatarService)({
+          generateOptions: (input) =>
+            Effect.sync(() => {
+              requests.push({ ...input, mode: "live" });
+              return {
+                id: input.projectId,
+                botAvatar: { job: { status: "generating-options" } },
+              } as ProjectRecord;
+            }),
+          describeImage: (input) =>
+            Effect.sync(() => {
+              requests.push({ ...input, mode: "image" });
+              return {
+                id: input.projectId,
+                botAvatar: { job: { status: "generating-image" } },
+              } as ProjectRecord;
+            }),
+        }),
+      );
+      const toolkit = yield* ProjectToolkit.pipe(
+        Effect.provide(
+          McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(
+            Layer.provide(dependencies),
+          ),
+        ),
+      );
+      for (const mode of ["live", "image"] as const) {
+        const result = yield* toolkit
+          .handle("t3_bot_avatar_generate_options", {
+            projectId: harness.projectId,
+            prompt: "muscular chimpanzee wearing sunglasses, no clothes",
+            mode,
+          })
+          .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+        if (runtimeModeCeiling === "full-access") {
+          expect(result.at(-1)?.result).toEqual({
+            projectId: harness.projectId,
+            status: mode === "live" ? "generating-options" : "generating-image",
+          });
+        } else {
+          expect(result.at(-1)?.result).toMatchObject({ code: "capability_denied" });
+        }
+      }
+    }
+    expect(requests).toHaveLength(2);
+    expect(requests.map(({ mode }) => mode)).toEqual(["live", "image"]);
+    expect(requests[0]?.prompt).toContain("no clothes");
   }),
 );
