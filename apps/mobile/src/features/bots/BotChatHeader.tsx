@@ -1,4 +1,4 @@
-import { Pressable, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -20,7 +20,11 @@ export function BotChatHeader(props: {
   return (
     <>
       <NativeStackScreenOptions
-        options={{ headerShown: false, unstable_headerToolbarItems: () => [] }}
+        options={{
+          headerShown: false,
+          gestureEnabled: Platform.OS !== "ios" || layout.usesSplitView,
+          unstable_headerToolbarItems: () => [],
+        }}
       />
       <View
         pointerEvents="box-none"
