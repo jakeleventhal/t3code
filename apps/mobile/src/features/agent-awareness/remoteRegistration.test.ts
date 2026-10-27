@@ -1,4 +1,3 @@
-import { resolveApsEnvironment } from "./registrationPayload";
 /// <reference types="node" />
 
 import * as NodeCrypto from "node:crypto";

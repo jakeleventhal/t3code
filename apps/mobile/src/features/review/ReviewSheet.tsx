@@ -95,14 +95,16 @@ function ReviewHeader(
       options={{ headerTintColor: props.iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
       actions={[
-        ...(openAssistant ? [{ accessibilityLabel: "Assistant", icon: "sparkles" as const, onPress: openAssistant }] : []),
+        ...(openAssistant
+          ? [{ accessibilityLabel: "Assistant", icon: "sparkles" as const, onPress: openAssistant }]
+          : []),
         ...(props.showChangedFilesToggle
           ? [
               {
                 accessibilityLabel: panes.auxiliaryPaneVisible
                   ? "Hide changed files"
                   : "Show changed files",
-                icon: "sidebar.right",
+                icon: "sidebar.right" as const,
                 selected: panes.auxiliaryPaneVisible,
                 onPress: toggleAuxiliaryPane,
               },

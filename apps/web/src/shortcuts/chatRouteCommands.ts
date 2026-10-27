@@ -1,3 +1,4 @@
+import { withoutBotProjects } from "../components/bots/botRoom.logic";
 import { AuthPreviewOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
 
@@ -77,7 +78,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
   };
   const readProjectGroupCount = () =>
     buildSidebarProjectSnapshots({
-      projects: readProjects(),
+      projects: withoutBotProjects(readProjects()),
       settings: selectProjectGroupingSettings(getClientSettings()),
       primaryEnvironmentId: appAtomRegistry.get(primaryEnvironmentIdAtom),
       resolveEnvironmentLabel: () => null,

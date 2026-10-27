@@ -1475,7 +1475,7 @@ export function useComposerSend(input: ComposerSendInput) {
             failure = null;
             setOptimisticUserMessages((existing) => {
               for (const message of existing) {
-                if (message.id === messageIdForSend) revokeUserMessagePreviewUrls(message);
+                if (message.id === messageIdForSend) optimisticBlobPreviews.release(message);
               }
               const next = existing.filter((message) => message.id !== messageIdForSend);
               return next.length === existing.length ? existing : next;

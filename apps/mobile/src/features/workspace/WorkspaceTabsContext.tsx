@@ -1,7 +1,7 @@
 import { CommonActions, type NavigationState } from "@react-navigation/native";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { createContext, use, useState, useCallback, type Dispatch, type ReactNode } from "react";
+import { createContext, use, useState, useCallback, type ReactNode } from "react";
 
 import { mobilePreferencesAtom } from "../../state/preferences";
 import {
@@ -119,8 +119,11 @@ export function WorkspaceTabsProvider(props: {
   const registry = use(RegistryContext);
   const [model] = useState(createWorkspaceTabsModel);
   const state = useAtomValue(model.resolved);
-  const dispatch = useCallback((action: WorkspaceTabsAction) =>
-    registry.set(model.stored, workspaceTabsReducer(registry.get(model.resolved), action)), [registry, model]);
+  const dispatch = useCallback(
+    (action: WorkspaceTabsAction) =>
+      registry.set(model.stored, workspaceTabsReducer(registry.get(model.resolved), action)),
+    [registry, model],
+  );
   const { stack } = props;
   const switchRoom = useCallback(
     (room: WorkspaceRoom, target?: RoomRoute, tab?: CodeWorkspaceTab) => {
@@ -163,7 +166,8 @@ export function WorkspaceTabsProvider(props: {
   );
   const selectTab = useCallback(
     (tab: WorkspaceTab) => {
-      if (workspaceTabRoom(tab) === registry.get(model.resolved).room) dispatch({ type: "select", tab });
+      if (workspaceTabRoom(tab) === registry.get(model.resolved).room)
+        dispatch({ type: "select", tab });
       else switchRoom(workspaceTabRoom(tab), undefined, tab === "bots" ? undefined : tab);
     },
     [switchRoom, dispatch, registry, model],

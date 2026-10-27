@@ -21,7 +21,7 @@ import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import type { WorkspaceTab } from "./workspace-tabs-state";
 import { ActiveBotCallBar } from "../bots/ActiveBotCall";
-import { AssistantOrb } from "../bots/AssistantOrb";
+import { AssistantOrb, PROMINENT_ASSISTANT_ORB_SIZE } from "../bots/AssistantOrb";
 import { BotsAndroidHeader } from "../bots/BotsAndroidHeader";
 import { BotsScreen } from "../bots/BotsScreen";
 import { useAssistantEnvironmentId } from "../bots/use-assistant";
@@ -30,6 +30,7 @@ import { useBotCallSummary } from "../bots/use-bot-call";
 const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
 // Clears the list behind the call bar, which sits beside New thread in Code.
 const CALL_BAR_CLEARANCE = 66;
+const ASSISTANT_ORB_CLEARANCE = PROMINENT_ASSISTANT_ORB_SIZE + 12;
 
 function BotsPane() {
   return (
@@ -60,20 +61,23 @@ export function WorkspaceRootScreen() {
   const context = useMemo(
     () => ({
       ...workspace,
-      bottomClearance: Math.max(assistantOrb ? ASSISTANT_ORB_CLEARANCE : 0, callBar ? CALL_BAR_CLEARANCE : 0) + (floatingTabsEnabled
-        ? insets.bottom +
-          FLOATING_TABS.bottom +
-          FLOATING_TABS.edge +
-          Math.max(
-            floating.height,
-            workspace.state.selectedTab === "threads" ? floating.fabOffset + fabSize : 0,
-          )
-        : workspace.state.selectedTab === "threads"
-          ? fabClearance + 16
-          : 16),
+      bottomClearance:
+        Math.max(assistantOrb ? ASSISTANT_ORB_CLEARANCE : 0, callBar ? CALL_BAR_CLEARANCE : 0) +
+        (floatingTabsEnabled
+          ? insets.bottom +
+            FLOATING_TABS.bottom +
+            FLOATING_TABS.edge +
+            Math.max(
+              floating.height,
+              workspace.state.selectedTab === "threads" ? floating.fabOffset + fabSize : 0,
+            )
+          : workspace.state.selectedTab === "threads"
+            ? fabClearance + 16
+            : 16),
     }),
     [
-      assistantOrb, callBar,
+      assistantOrb,
+      callBar,
       floatingTabsEnabled,
       workspace,
       fabClearance,
@@ -175,10 +179,21 @@ export function WorkspaceRootScreen() {
           )}
         </SafeAreaInsetsContext>
         {assistantOrb ? (
-          <AssistantOrb environmentId={assistantEnvironmentId} style={{ right: 16, bottom: context.bottomClearance - ASSISTANT_ORB_CLEARANCE + 8 }} />
+          <AssistantOrb
+            prominent
+            style={{ right: 16, bottom: context.bottomClearance - ASSISTANT_ORB_CLEARANCE + 8 }}
+          />
         ) : null}
         {callBar ? (
-          <ActiveBotCallBar thread={null} className="absolute" style={{ left: 16, right: assistantOrb ? 16 + fabSize + 12 : 16, bottom: context.bottomClearance - CALL_BAR_CLEARANCE + 8 }} />
+          <ActiveBotCallBar
+            thread={null}
+            className="absolute"
+            style={{
+              left: 16,
+              right: assistantOrb ? 16 + fabSize + 12 : 16,
+              bottom: context.bottomClearance - CALL_BAR_CLEARANCE + 8,
+            }}
+          />
         ) : null}
         {floatingTabsEnabled ? (
           <FloatingWorkspaceTabs fillWidth onNewThread={startNewTask} />
