@@ -278,7 +278,8 @@ export class LiveSession {
                 ? "session.context.append"
                 : "delegation.context.append",
             ...(input.delegationId === undefined ? {} : { delegation_item_id: input.delegationId }),
-            ...(input.speak ? { channel: "commentary" } : {}),
+            // Codex defaults an omitted channel to speakable, including background snapshots.
+            channel: input.speak === true ? "speakable" : "commentary",
             content: [{ type: "input_text", text: input.text }],
           }),
         );

@@ -51,7 +51,11 @@ type Thread = Pick<
   readonly runtime: Pick<NonNullable<EnvironmentThreadShell["runtime"]>, "status"> | null;
   readonly latestRun: Pick<NonNullable<EnvironmentThreadShell["latestRun"]>, "status"> | null;
   readonly source: {
-    readonly latestVisibleMessage: { readonly role: string; readonly text: string } | null;
+    readonly latestVisibleMessage: {
+      readonly id: string;
+      readonly role: string;
+      readonly text: string;
+    } | null;
   };
 };
 
@@ -117,7 +121,11 @@ export function describeBotActivity(
             backgroundTasks: thread.pendingBackgroundTasks.length,
             // Shell previews may be partial during a run. Publish a result only after it ends.
             latestReply:
-              !active.has(status) && latest?.role === "assistant" ? clip(latest.text, 240) : null,
+              // VoiceCalls gives transcript messages the durable voice: namespace. Feeding
+              // these previews back into the call echoes its own speech as new context.
+              !active.has(status) && latest?.role === "assistant" && !latest.id.startsWith("voice:")
+                ? clip(latest.text, 240)
+                : null,
           }
         : {}),
     };

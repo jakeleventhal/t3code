@@ -187,6 +187,30 @@ describe("GPT Live control protocol", () => {
 });
 
 describe("Codex subscription voice protocol", () => {
+  it("keeps background context and instructions quiet, with only requested results speakable", async () => {
+    const f = fixture();
+    f.session.setProtocol("codex");
+    f.start();
+    await f.session.appendContext({ text: "Workout plan ready." });
+    await f.session.appendInstructions("Keep responses concise.");
+    await f.session.appendContext({ text: "The user changed screens.", speak: false });
+    expect(f.sent).toEqual(
+      ["Workout plan ready.", "Keep responses concise.", "The user changed screens."].map(
+        (text) => ({
+          type: "session.context.append",
+          channel: "commentary",
+          content: [{ type: "input_text", text }],
+        }),
+      ),
+    );
+    await f.session.appendContext({ text: "Your requested result.", speak: true });
+    expect(f.sent.at(-1)).toEqual({
+      type: "session.context.append",
+      channel: "speakable",
+      content: [{ type: "input_text", text: "Your requested result." }],
+    });
+  });
+
   it("preserves transcript corrections and delegates to T3 without native Codex turns", async () => {
     const f = fixture();
     f.session.setProtocol("codex");
@@ -221,7 +245,7 @@ describe("Codex subscription voice protocol", () => {
     expect(f.sent).toContainEqual({
       type: "delegation.context.append",
       delegation_item_id: "delegation",
-      channel: "commentary",
+      channel: "speakable",
       content: [{ type: "input_text", text: "Address saved." }],
     });
     await f.session.setMuted(true);

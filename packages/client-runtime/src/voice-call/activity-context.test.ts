@@ -38,12 +38,32 @@ const thread = (
   hasPendingUserInput: false,
   pendingBackgroundTasks: [],
   updatedAt: "2026-10-26T12:00:00Z",
-  source: { latestVisibleMessage: { role: "assistant", text: "Three-day plan ready." } },
+  source: {
+    latestVisibleMessage: { id: "reply", role: "assistant", text: "Three-day plan ready." },
+  },
   ...patch,
 });
 const connected = new Set([host]);
 
 describe("quick bot activity", () => {
+  it("never feeds saved call speech back as a work result while preserving ordinary replies", () => {
+    const describe = (text: string, id: string) =>
+      describeBotActivity(
+        [project],
+        [thread({ source: { latestVisibleMessage: { id, role: "assistant", text } } })],
+        connected,
+      );
+    const first = describe("I can go over the plan", 'voice:["call","codex-bot-0"]');
+    const continued = describe("I can go over the plan day by day", 'voice:["call","codex-bot-0"]');
+    const nextTurn = describe("Sure, let us start", 'voice:["call","codex-bot-1"]');
+    expect(first).toContain('"latestReply":null');
+    expect(continued).toBe(first);
+    expect(nextTurn).toBe(first);
+    expect(describe("The finished plan is ready.", "reply")).toContain(
+      "The finished plan is ready.",
+    );
+  });
+
   it("prefers a connected copy, deduplicates replicas, and marks offline status unknown", () => {
     const projects = [project, { ...project, environmentId: copy }];
     const threads = [
@@ -68,7 +88,7 @@ describe("quick bot activity", () => {
       id: ThreadId.make("busy"),
       runtime: { status: "running" },
       hasPendingApprovals: true,
-      source: { latestVisibleMessage: { role: "assistant", text: "PARTIAL" } },
+      source: { latestVisibleMessage: { id: "reply", role: "assistant", text: "PARTIAL" } },
     });
     const text = describeBotActivity([project], [thread(), busy], connected);
     expect(text.indexOf('"state":"running"')).toBeLessThan(text.indexOf('"state":"completed"'));
@@ -91,7 +111,9 @@ describe("quick bot activity", () => {
         thread({
           id: ThreadId.make(String(i)),
           title: "😀".repeat(5000),
-          source: { latestVisibleMessage: { role: "assistant", text: "😀".repeat(5000) } },
+          source: {
+            latestVisibleMessage: { id: "reply", role: "assistant", text: "😀".repeat(5000) },
+          },
         }),
       ),
       connected,
