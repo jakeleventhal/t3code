@@ -447,7 +447,8 @@ export function createLiveVoiceConnector(input: {
                   if (!media.session.supportsQuietContext) {
                     await media.session.appendContext({
                       text: boundLiveContext(update.text, 8192),
-                      speak: callerHasSpoken && update.speak === true,
+                      speak:
+                        callerHasSpoken && update.kind !== "instructions" && update.speak === true,
                     });
                     return;
                   }
