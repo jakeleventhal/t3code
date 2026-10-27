@@ -1150,3 +1150,55 @@ it.effect(
       ),
     ),
 );
+
+it.effect("includes avatar-picker context in text and voice without needing a chat message", () =>
+  Effect.gen(function* () {
+    yield* fixture;
+    const projects = yield* ProjectStore.ProjectStoreV2;
+    const at = "2026-10-26T21:37:00.000Z";
+    yield* projects.apply({
+      sequence: 2,
+      eventId: EventId.make("avatar-options"),
+      aggregateKind: "project",
+      aggregateId: projectId,
+      occurredAt: at,
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "project.meta-updated",
+      payload: {
+        projectId,
+        updatedAt: at,
+        botAvatar: {
+          version: "avatar-v1",
+          updatedAt: at,
+          clips: {},
+          job: {
+            kind: "live",
+            status: "awaiting-selection",
+            prompt: "a muscular chimpanzee with sunglasses",
+            candidates: [],
+            startedAt: at,
+          },
+        },
+      },
+    });
+    const context = yield* BotContext.BotContext;
+    for (const text of [
+      yield* context.readForWork(threadId, null),
+      (yield* context.read(threadId)).instructions,
+    ]) {
+      assert.include(text, "a muscular chimpanzee with sunglasses");
+      assert.include(text, "Avatar mode: live");
+      assert.include(text, "awaiting-selection");
+      assert.include(text, "t3_bot_avatar_generate_options");
+      assert.include(text, "not an instruction to repeat generation");
+    }
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      layer({ openLive: () => Effect.succeed(answer), grokClientSecret: unusedSecret }),
+    ),
+  ),
+);

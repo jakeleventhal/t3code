@@ -2,6 +2,8 @@ import { McpAttachmentInput } from "../attachment/input.ts";
 import {
   EnvironmentId,
   BotOpenInput,
+  BotAvatarPrompt,
+  BotAvatarJobStatus,
   BotCreateInput,
   BotThreadCreateInput,
   BotConversationResult,
@@ -35,6 +37,7 @@ import * as Struct from "effect/Struct";
 import { Tool, Toolkit } from "effect/ai";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "../../../bots/BotAvatarService.ts";
 import * as BotService from "../../../bots/BotService.ts";
 import * as VoiceCalls from "../../../bots/VoiceCalls.ts";
 import { VoiceTranscriptPage, VoiceTranscriptPageInput } from "@t3tools/contracts";
@@ -208,6 +211,18 @@ export const ProjectToolkit = Toolkit.make(
     failureMode: "return",
     dependencies: [McpInvocationContext.McpInvocationContext, VoiceCalls.VoiceCalls],
   }).annotate(Tool.Readonly, true),
+  Tool.make("t3_bot_avatar_generate_options", {
+    ...shared,
+    description:
+      "Generate or revise this bot's avatar options. Pass a complete description, incorporating the user's correction. The existing avatar remains until they choose an option. Use image mode for a single still, live mode for four animated-avatar candidates. Reuses the connected media provider; do not call for ordinary conversation or merely because prior avatar context is present.",
+    parameters: Schema.Struct({
+      projectId: Schema.optional(ProjectId),
+      prompt: BotAvatarPrompt,
+      mode: Schema.Literals(["live", "image"]),
+    }),
+    success: Schema.Struct({ projectId: ProjectId, status: Schema.NullOr(BotAvatarJobStatus) }),
+    dependencies: [...shared.dependencies, BotAvatarService.BotAvatarService],
+  }).annotate(Tool.Destructive, false),
   BotOpenTool,
   BotCreateTool,
   ThreadLaunchTool,

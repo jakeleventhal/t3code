@@ -7,6 +7,7 @@ import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageInt
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "../../../bots/BotAvatarService.ts";
 import * as BotService from "../../../bots/BotService.ts";
 import * as VoiceCalls from "../../../bots/VoiceCalls.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
@@ -57,6 +58,26 @@ const access = Effect.gen(function* () {
   return yield* Project.ProjectService;
 });
 export const layer = McpToolAccess.toLayer(ProjectToolkit, {
+  t3_bot_avatar_generate_options: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const context = yield* readCaller();
+      const projectId = yield* resolveProjectId(context, input.projectId);
+      const avatars = yield* BotAvatarService.BotAvatarService;
+      const request = { projectId, prompt: input.prompt, commandId: yield* newCommandId() };
+      const project = yield* (
+        input.mode === "image" ? avatars.describeImage(request) : avatars.generateOptions(request)
+      ).pipe(
+        Effect.mapError(
+          (error) =>
+            new OrchestratorMcpFailure({
+              code: "orchestration_error",
+              message: error.message,
+            }),
+        ),
+      );
+      return { projectId, status: project.botAvatar?.job?.status ?? null };
+    }),
+  ),
   t3_bot_thread_create: McpToolAccess.writesThreads(
     () => [],
     (input) =>
