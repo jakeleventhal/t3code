@@ -6,7 +6,6 @@ private final class WorkspaceTabBar: UITabBar {
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    let botIcon = UIImage(named: "bot", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let labels = Set((items ?? []).compactMap(\.accessibilityLabel))
     let accessible = tabFrames(in: self, labels: labels)
     if accessible.count == items?.count {
@@ -136,6 +135,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
 
   private func prepareItems() {
     let iconBundle = Bundle(for: Self.self).url(forResource: "T3NativeControlIcons", withExtension: "bundle").flatMap(Bundle.init(url:))
+    let botIcon = UIImage(named: "bot", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let pullRequestIcon = UIImage(named: "pull-request", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let labels = ["threads": "Chats", "pullRequests": "PRs", "usage": "Usage", "bots": "Bots", "settings": "Settings"]
     let symbols = ["threads": "text.bubble", "usage": "chart.bar.xaxis", "settings": "gearshape"]
