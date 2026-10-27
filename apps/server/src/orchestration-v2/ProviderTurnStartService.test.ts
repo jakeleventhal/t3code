@@ -63,7 +63,10 @@ const normalize = (target: string) => {
 const layerWorktreeLocation = (worktreesDir = managedWorktreesDir, botContinuity = "") =>
   Layer.mergeAll(
     Path.layer,
-    Layer.mock(BotContext.BotContext)({ readForWork: () => Effect.succeed(botContinuity) }),
+    Layer.mock(BotContext.BotContext)({
+      readForWork: () => Effect.succeed(botContinuity),
+      resolveFileReferences: () => Effect.succeed(() => null),
+    }),
     Layer.mock(ServerConfig.ServerConfig)({ worktreesDir } as ServerConfig.ServerConfig["Service"]),
     ServerSettings.layerTest(),
   );
@@ -630,7 +633,7 @@ function makeLocalCommandHarness(input: {
   );
   const tryHandlePromptCommand = vi.fn(() =>
     input.logoutFailure === undefined
-      ? Effect.succeed(true)
+      ? Effect.succeed(input.text.trim().toLowerCase() !== "/compact")
       : Effect.fail(
           new ProviderSetupError({
             instanceId: oldInstanceId,
@@ -1283,4 +1286,18 @@ effectIt.effect(
       expect(input?.message.text).toContain("User message:\nContinue from the call");
       expect(harness.projection().messages[0]?.text).toBe("Continue from the call");
     }),
+);
+
+effectIt.effect("keeps native compaction literal when a bot has continuity", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "/compact",
+      botContinuity: "Remember the last voice conversation.",
+      previousNativeSession: true,
+      previousMessages: ["Hello"],
+      failReadsAfterRunning: true,
+    });
+    yield* harness.start;
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe("/compact");
+  }),
 );

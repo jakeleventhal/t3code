@@ -14,8 +14,6 @@ import { dismissBotAvatarJob, retryBotAvatar, selectBotAvatarOption } from "./bo
 import { botRole } from "./bot-room";
 import { botAvatarRadius } from "./BotAvatar";
 
-const CLIP_LABEL = { idle: "Idle", working: "Working", call: "On a call" } as const;
-
 /**
  * The avatar change as it happens, above the bot chat's composer: progress while options
  * render, the four options to pick from, clips landing one by one, or a failure with Retry.
@@ -30,7 +28,7 @@ export function BotAvatarFlowCard(props: {
   if (avatar === null || job === null) return null;
   return (
     <View className={cn("rounded-2xl border border-border bg-card px-3 py-2.5", props.className)}>
-      <FlowBody project={props.project} version={avatar.version} job={job} clips={avatar.clips} />
+      <FlowBody project={props.project} version={avatar.version} job={job} />
     </View>
   );
 }
@@ -39,7 +37,6 @@ function FlowBody(props: {
   readonly project: EnvironmentProject;
   readonly version: string;
   readonly job: BotAvatarJob;
-  readonly clips: NonNullable<EnvironmentProject["botAvatar"]>["clips"];
 }) {
   const { project, job, version } = props;
   const [busy, setBusy] = useState(false);
@@ -54,16 +51,18 @@ function FlowBody(props: {
     await retryBotAvatar({ ...ids, version });
     setBusy(false);
   };
-  const progress = (title: string, detail: string, action: string) => (
+  const progress = (title: string, detail: string | null, action: string) => (
     <View className="flex-row items-center gap-2.5">
       <AppActivityIndicator />
       <View className="min-w-0 flex-1">
         <Text textRole="body" className="text-foreground">
           {title}
         </Text>
-        <Text textRole="footnote" className="text-foreground-muted" numberOfLines={1}>
-          {detail}
-        </Text>
+        {detail ? (
+          <Text textRole="footnote" className="text-foreground-muted" numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
       <Button tone="text" label={action} disabled={busy} onPress={() => void dismiss()} />
     </View>
@@ -114,16 +113,7 @@ function FlowBody(props: {
         </View>
       );
     case "animating":
-      return (
-        <View className="gap-2">
-          {progress(
-            "Animating avatar",
-            "The still is in place; each clip starts as it lands.",
-            "Stop",
-          )}
-          <ClipProgress clips={props.clips} />
-        </View>
-      );
+      return progress("Animating avatar", null, "Stop");
     case "failed":
       return (
         <View className="gap-2">
@@ -143,42 +133,12 @@ function FlowBody(props: {
             </View>
             <IconButton accessibilityLabel="Dismiss" icon="xmark" onPress={() => void dismiss()} />
           </View>
-          {job.failedStep === "animation" ? <ClipProgress clips={props.clips} /> : null}
           <View className="flex-row">
             <Button tone="secondary" label="Retry" disabled={busy} onPress={() => void retry()} />
           </View>
         </View>
       );
   }
-}
-
-function ClipProgress(props: {
-  readonly clips: NonNullable<EnvironmentProject["botAvatar"]>["clips"];
-}) {
-  return (
-    <View className="flex-row flex-wrap gap-1.5" accessibilityLabel="Clips">
-      {(["idle", "working", "call"] as const).map((kind) => {
-        const ready = props.clips[kind] !== undefined;
-        return (
-          <View
-            key={kind}
-            className={cn(
-              "rounded-full border px-2 py-0.5",
-              ready ? "border-emerald-500/40 bg-emerald-500/10" : "border-border",
-            )}
-          >
-            <Text
-              textRole="footnote"
-              className={ready ? "text-foreground" : "text-foreground-muted"}
-            >
-              {CLIP_LABEL[kind]}
-              {ready ? " ✓" : "…"}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
 }
 
 function Candidate(props: {

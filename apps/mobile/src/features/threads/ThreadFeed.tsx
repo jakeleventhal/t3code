@@ -2964,7 +2964,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const [loadedListKey, setLoadedListKey] = useState<string | null>(null);
   const { jumpToMessageId } = props;
   const jumpReady = !!jumpToMessageId && loadedListKey === `${feedThreadKey}:filled`;
-  const presentedFeed = appendGuestPendingMessages(
+  const rawPresentedFeed = appendGuestPendingMessages(
     useThreadFeedPresentation(
       props,
       expandedTurnIds,
@@ -2972,6 +2972,13 @@ export const ThreadFeed = memo(function ThreadFeed({
     ),
     guestShare,
   );
+  const presentedFeed = simpleProgress
+    ? rawPresentedFeed.filter(
+        (entry) =>
+          !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&
+          !(entry.type === "message" && isCompactionCommandFeedEntry(entry)),
+      )
+    : rawPresentedFeed;
   const jumpRunId =
     jumpReady &&
     !presentedFeed.some((entry) => entry.type === "message" && entry.id === jumpToMessageId)

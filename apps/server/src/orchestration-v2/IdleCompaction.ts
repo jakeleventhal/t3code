@@ -41,6 +41,7 @@ export function idleCompactionWindow(
     contextTransfers,
   }: IdleCompactionRecords,
   nowMs: number,
+  proactive = false,
 ): {
   readonly runId: (typeof runs)[number]["id"];
   readonly startMs: number;
@@ -81,9 +82,10 @@ export function idleCompactionWindow(
   const providerThread = providerThreads.find(
     (candidate) => candidate.id === thread.activeProviderThreadId,
   );
-  // The thread's current selection receives the /compact, so it must still be this Claude session.
+  // Only compact the same native session that produced the usage report.
   if (
-    providerThread?.driver !== "claudeAgent" ||
+    (providerThread?.driver !== "claudeAgent" &&
+      (!proactive || providerThread?.driver !== "codex")) ||
     providerThread.id !== latestRun.providerThreadId ||
     providerThread.providerInstanceId !== thread.providerInstanceId ||
     latestRun.providerInstanceId !== thread.providerInstanceId
@@ -93,7 +95,17 @@ export function idleCompactionWindow(
     .filter((turn) => turn.providerThreadId === providerThread.id && turn.tokenUsage !== undefined)
     .map((turn) => turn.tokenUsage!)
     .toSorted((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-  if ((usages[0]?.usedTokens ?? 0) < MIN_CONTEXT_TOKENS) return null;
+  const usage = usages[0];
+  if (proactive) {
+    const limit = usage?.autoCompactThreshold ?? usage?.maxTokens;
+    if (!limit || (usage?.usedTokens ?? 0) < limit * 0.7) return null;
+    return {
+      runId: latestRun.id,
+      startMs: DateTime.toEpochMillis(latestRun.completedAt) + 30_000,
+      endMs: Number.MAX_SAFE_INTEGER,
+    };
+  }
+  if ((usage?.usedTokens ?? 0) < MIN_CONTEXT_TOKENS) return null;
   // A request served fully from cache creates no cache entry and reports no
   // TTL, but it still refreshes the cache. Treat it as unknown and skip.
   const expiresAt = usages[0]?.promptCacheExpiresAt;

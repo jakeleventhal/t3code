@@ -92,6 +92,8 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
+import * as ProjectStore from "../ProjectStore.ts";
+import * as ProjectionStore from "../ProjectionStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
@@ -1199,7 +1201,7 @@ describe("ClaudeAdapterV2 resumeThread", () => {
 });
 
 describe("ClaudeAdapterV2 resume compaction", () => {
-  it.effect("resolves and cancels the SDK resume dialog through structured runtime input", () =>
+  it.effect.each([false, true])("handles resume context maintenance for bot=%s", (bot) =>
     Effect.scoped(
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -1264,6 +1266,19 @@ describe("ClaudeAdapterV2 resume compaction", () => {
         );
         const callback = openedOptions?.onUserDialog;
         assert.isFunction(callback);
+        if (bot) {
+          const result = yield* Effect.promise(() =>
+            callback!(
+              {
+                dialogKind: "resume_return",
+                payload: { sessionAgeMinutes: 90, estimatedTokens: 120000 },
+              },
+              { signal: new AbortController().signal, requestId: "bot-resume" },
+            ),
+          );
+          assert.deepEqual(result, { behavior: "completed", result: "compact" });
+          return;
+        }
         const canUseTool = openedOptions?.canUseTool;
         assert.isFunction(canUseTool);
         const longQuestion = `Choose a deployment target: ${"region ".repeat(80)}`;
@@ -1398,7 +1413,23 @@ describe("ClaudeAdapterV2 resume compaction", () => {
         );
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            Layer.mock(ProjectionStore.ProjectionStoreV2)({
+              getThreadRecords: () =>
+                Effect.succeed({
+                  thread: { projectId: ProjectId.make("resume-project") },
+                } as never),
+            }),
+            Layer.mock(ProjectStore.ProjectStoreV2)({
+              get: () =>
+                Effect.succeedSome({
+                  botRole: bot ? "assistant" : null,
+                } as ProjectStore.ProjectRow),
+            }),
+          ),
         ),
       ),
     ),
