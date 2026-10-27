@@ -470,5 +470,13 @@ it("keeps Codex snapshots off the audio stream while requested work gets the cur
       ],
     },
   ]);
+  const result = "First result detail. " + "More detail. ".repeat(100) + " Final result detail.";
+  update({ kind: "context", text: result, speak: true });
+  await settle();
+  expect(f.sent.at(-1)).toEqual({
+    type: "session.context.append",
+    channel: "speakable",
+    content: [{ type: "input_text", text: result }],
+  });
   await f.controller.end("call-1");
 });

@@ -444,6 +444,13 @@ export function createLiveVoiceConnector(input: {
               contextTail = contextTail
                 .then(async () => {
                   if (closed || media === null) return;
+                  if (!media.session.supportsQuietContext) {
+                    await media.session.appendContext({
+                      text: boundLiveContext(update.text),
+                      speak: callerHasSpoken && update.speak === true,
+                    });
+                    return;
+                  }
                   const chunks = splitLiveContext(update.text);
                   for (const [index, text] of chunks.entries()) {
                     if (closed) return;
