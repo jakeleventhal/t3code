@@ -256,7 +256,7 @@ export function createLiveVoiceConnector(input: {
         if (!speak && !media.session.supportsQuietContext) return;
         try {
           await media.session.appendContext({
-            text: boundLiveContext(text),
+            text: boundLiveContext(text, media.session.supportsQuietContext ? 480 : 8192),
             ...(delegationId === undefined ? {} : { delegationId }),
             speak: speak && callerHasSpoken,
           });
@@ -446,7 +446,7 @@ export function createLiveVoiceConnector(input: {
                   if (closed || media === null) return;
                   if (!media.session.supportsQuietContext) {
                     await media.session.appendContext({
-                      text: boundLiveContext(update.text),
+                      text: boundLiveContext(update.text, 8192),
                       speak: callerHasSpoken && update.speak === true,
                     });
                     return;
