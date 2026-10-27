@@ -10,8 +10,6 @@ import { Spinner } from "../ui/spinner";
 import { botAvatarShapeClassName } from "./BotAvatar";
 import { dismissBotAvatarJob, retryBotAvatar, selectBotAvatarOption } from "./botAvatarActions";
 
-const CLIP_LABEL = { idle: "Idle", working: "Working", call: "On a call" } as const;
-
 /**
  * The avatar change as it happens, pinned above the bot chat's composer: a progress line while
  * options render, the four options to pick from, the clips landing one by one, or a failure with
@@ -26,7 +24,7 @@ export function BotAvatarFlowCard({ project }: { project: EnvironmentProject }) 
       aria-label="Avatar change"
       className="mx-auto mb-2 w-full max-w-3xl rounded-xl border bg-card px-3 py-2.5 text-sm shadow-xs/5"
     >
-      <FlowBody project={project} version={avatar.version} job={job} clips={avatar.clips} />
+      <FlowBody project={project} version={avatar.version} job={job} />
     </section>
   );
 }
@@ -35,12 +33,10 @@ function FlowBody({
   project,
   version,
   job,
-  clips,
 }: {
   project: EnvironmentProject;
   version: string;
   job: BotAvatarJob;
-  clips: NonNullable<EnvironmentProject["botAvatar"]>["clips"];
 }) {
   const [busy, setBusy] = useState(false);
   const ids = { environmentId: project.environmentId, projectId: project.id };
@@ -128,20 +124,12 @@ function FlowBody({
       );
     case "animating":
       return (
-        <div className="grid gap-1.5">
-          <div className="flex items-center gap-2.5">
-            <Spinner size="sm" />
-            <div className="min-w-0 flex-1">
-              <p className="font-medium">Animating avatar</p>
-              <p className="text-xs text-muted-foreground">
-                The still is in place; each clip starts as soon as it lands.
-              </p>
-            </div>
-            <Button size="xs" variant="ghost-muted" disabled={busy} onClick={() => void dismiss()}>
-              Stop
-            </Button>
-          </div>
-          <ClipProgress clips={clips} />
+        <div className="flex items-center gap-2.5">
+          <Spinner size="sm" />
+          <p className="min-w-0 flex-1 font-medium">Animating avatar</p>
+          <Button size="xs" variant="ghost-muted" disabled={busy} onClick={() => void dismiss()}>
+            Stop
+          </Button>
         </div>
       );
     case "failed":
@@ -155,7 +143,6 @@ function FlowBody({
                 : "Couldn’t generate options",
             job.error ?? "Try again.",
           )}
-          {job.failedStep === "animation" ? <ClipProgress clips={clips} /> : null}
           <div className="flex items-center gap-1.5">
             <Button size="xs" variant="outline" disabled={busy} onClick={() => void retry()}>
               Retry
@@ -167,30 +154,6 @@ function FlowBody({
         </div>
       );
   }
-}
-
-function ClipProgress({ clips }: { clips: NonNullable<EnvironmentProject["botAvatar"]>["clips"] }) {
-  return (
-    <ul className="flex flex-wrap gap-1.5 text-xs" aria-label="Clips">
-      {(["idle", "working", "call"] as const).map((kind) => {
-        const ready = clips[kind] !== undefined;
-        return (
-          <li
-            key={kind}
-            className={cn(
-              "rounded-full border px-2 py-0.5",
-              ready
-                ? "border-success/40 bg-success/10 text-success-foreground"
-                : "text-muted-foreground",
-            )}
-          >
-            {CLIP_LABEL[kind]}
-            {ready ? " ✓" : "…"}
-          </li>
-        );
-      })}
-    </ul>
-  );
 }
 
 function CandidateButton({

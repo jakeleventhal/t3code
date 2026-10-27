@@ -37,30 +37,30 @@ const SIZE_CLASS = {
   sm: "size-5 text-3xs",
   md: "size-6 text-2xs",
   lg: "size-8 text-xs",
-  row: "size-9 text-sm",
-  hero: "size-11 text-base",
+  row: "size-24 text-2xl",
+  hero: "size-24 text-2xl",
   list: "size-12 text-lg",
-  profile: "size-16 text-xl",
+  profile: "size-32 text-3xl",
   xl: "size-20 text-2xl",
 } as const;
 const EMOJI_CLASS = {
   sm: "text-xs",
   md: "text-sm",
   lg: "text-base",
-  row: "text-lg",
-  hero: "text-xl",
+  row: "text-4xl",
+  hero: "text-4xl",
   list: "text-2xl",
-  profile: "text-3xl",
+  profile: "text-5xl",
   xl: "text-4xl",
 } as const;
 const ICON_CLASS = {
   sm: "size-3",
   md: "size-3.5",
   lg: "size-4",
-  row: "size-4",
-  hero: "size-5",
+  row: "size-10",
+  hero: "size-10",
   list: "size-6",
-  profile: "size-7",
+  profile: "size-14",
   xl: "size-9",
 } as const;
 // Specialists are rounded squares; the radius scales with the size so every one reads the same.
@@ -191,7 +191,7 @@ export function BotAvatar({
         workspaceRoot={bot.workspaceRoot}
         faviconPath={bot.faviconPath}
         clips={liveClips}
-        className={shape}
+        className={cn(shape, "rounded-full")}
         fallback={fallback}
       />
     );

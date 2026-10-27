@@ -473,7 +473,7 @@ export const ChatHeader = memo(function ChatHeader({
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {botProject && isServerThread ? (
+      {botProject && botProject.botRole !== "assistant" && isServerThread ? (
         <BotThreadsMenu project={botProject} activeThreadId={activeThreadId} />
       ) : null}
       {activeProject ? (

@@ -139,6 +139,8 @@ import {
 } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import * as ProjectStore from "../ProjectStore.ts";
+import * as ProjectionStore from "../ProjectionStore.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { spawnAndCollect } from "@t3tools/provider-core/server/snapshotProbe";
 import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
@@ -4245,6 +4247,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+  const projects = yield* Effect.serviceOption(ProjectStore.ProjectStoreV2);
+  const projections = yield* Effect.serviceOption(ProjectionStore.ProjectionStoreV2);
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
   const subagentModelCatalog = scopeClaudeModelCatalog(
     BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -9511,6 +9515,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Effect.gen(function* () {
               if (request.dialogKind !== "resume_return") {
                 return { behavior: "cancelled" as const };
+              }
+              if (Option.isSome(projects) && Option.isSome(projections)) {
+                const { thread } = yield* projections.value.getThreadRecords(input.threadId, []);
+                const project = yield* projects.value.get(thread.projectId);
+                if (Option.isSome(project) && project.value.botRole != null) {
+                  return { behavior: "completed" as const, result: "compact" as const };
+                }
               }
               const idleCompaction = Option.isSome(serverSettings)
                 ? yield* serverSettings.value.getSettings.pipe(

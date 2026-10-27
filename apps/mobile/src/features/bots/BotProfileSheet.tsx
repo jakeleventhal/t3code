@@ -288,7 +288,7 @@ function BotIdentity(props: {
     });
   };
 
-  const avatar = <BotAvatar role={role} title={title} size={72} project={project} />;
+  const avatar = <BotAvatar role={role} title={title} size={128} project={project} />;
   return (
     <View className="items-center gap-1.5">
       {canEdit ? (
@@ -303,7 +303,7 @@ function BotIdentity(props: {
           className="active:opacity-80"
         >
           {avatar}
-          <View className="absolute -bottom-0.5 -right-1 size-[26px] items-center justify-center rounded-full border border-border bg-card">
+          <View className="absolute -bottom-0.5 -right-1 size-8 items-center justify-center rounded-full border border-border bg-card">
             <SymbolView name="pencil" size={12} tintColorClassName="accent-icon-muted" />
           </View>
         </Pressable>

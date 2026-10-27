@@ -1106,12 +1106,15 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      const authoredText = projectComposerContextForProvider({
-        resolveAttachmentPath,
-        text: message.text,
-        records: message.context?.records ?? [],
-        currentView: message.context?.currentView,
-      });
+      const compactCommand = isCompactionCommandMessage(message);
+      const authoredText = compactCommand
+        ? message.text
+        : projectComposerContextForProvider({
+            resolveAttachmentPath,
+            text: message.text,
+            records: message.context?.records ?? [],
+            currentView: message.context?.currentView,
+          });
       // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
       const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
       const goalCommand = goalDriver && parseGoalCommand(message) !== null;
@@ -1188,7 +1191,10 @@ export const layer: Layer.Layer<
           ? source.startedAt
           : latest;
       }, null);
-      const continuity = yield* botContext.readForWork(input.threadId, lastBotContextAt);
+      // Native compaction must reach the provider as a command, without a prose wrapper.
+      const continuity = compactCommand
+        ? ""
+        : yield* botContext.readForWork(input.threadId, lastBotContextAt);
       const userText =
         continuity === "" ? authoredText : `${continuity}\n\nUser message:\n${authoredText}`;
       const legacyRecoveredRunIds = new Set(
@@ -1346,7 +1352,7 @@ export const layer: Layer.Layer<
             message: {
               ...turnInput.message,
               text:
-                context === "" || goalCommand
+                context === "" || goalCommand || compactCommand
                   ? userText
                   : `${context}\n\nUser message:\n${userText}`,
             },

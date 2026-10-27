@@ -1005,14 +1005,15 @@ function ThreadRouteContent(
           }),
       }
     : undefined;
-  const handleOpenBotThreads = botProfileProject
-    ? () =>
-        navigation.navigate("BotThreads", {
-          environmentId: String(botProfileProject.environmentId),
-          projectId: String(botProfileProject.id),
-          ...(selectedThread ? { threadId: String(selectedThread.id) } : {}),
-        })
-    : undefined;
+  const handleOpenBotThreads =
+    botProfileProject && botProfileProject.botRole !== "assistant"
+      ? () =>
+          navigation.navigate("BotThreads", {
+            environmentId: String(botProfileProject.environmentId),
+            projectId: String(botProfileProject.id),
+            ...(selectedThread ? { threadId: String(selectedThread.id) } : {}),
+          })
+      : undefined;
   const callThread = selectedThread
     ? { environmentId: selectedThread.environmentId, threadId: selectedThread.id }
     : null;

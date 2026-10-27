@@ -699,7 +699,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
             row.kind !== "work-toggle" &&
             row.kind !== "work-live" &&
             row.kind !== "turn-fold" &&
-            row.kind !== "attempt-fold",
+            row.kind !== "attempt-fold" &&
+            row.kind !== "context-compaction",
         )
       : rawRows,
     listIdentityKey,

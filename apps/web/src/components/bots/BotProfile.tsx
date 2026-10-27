@@ -241,9 +241,9 @@ function BotIdentity({ project, connected }: { project: EnvironmentProject; conn
             {avatar}
             <span
               aria-hidden
-              className="absolute -end-1 -bottom-0.5 grid size-6 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs/5 group-hover:text-foreground"
+              className="absolute -end-1 -bottom-0.5 grid size-8 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs/5 group-hover:text-foreground"
             >
-              <PencilIcon className="size-3" />
+              <PencilIcon className="size-4" />
             </span>
           </PopoverTrigger>
           <PopoverPopup side="bottom" align="center" className="w-72">

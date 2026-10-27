@@ -24,7 +24,11 @@ const providerThreadId = ProviderThreadId.make("provider-thread");
 const modelSelection = { instanceId, model: "claude-opus-5-5" };
 
 function records(
-  usage: { readonly usedTokens?: number; readonly cacheExpiresInMs?: number } = {},
+  usage: {
+    readonly usedTokens?: number;
+    readonly maxTokens?: number;
+    readonly cacheExpiresInMs?: number;
+  } = {},
 ): { -readonly [Key in keyof IdleCompactionRecords]: IdleCompactionRecords[Key] } {
   const messageId = MessageId.make("message-1");
   const nodeId = NodeId.make("root-node");
@@ -120,6 +124,7 @@ function records(
         completedAt: at(),
         tokenUsage: {
           usedTokens: usage.usedTokens ?? 250_000,
+          maxTokens: usage.maxTokens,
           ...(usage.cacheExpiresInMs === undefined
             ? {}
             : { promptCacheExpiresAt: DateTime.formatIso(at(usage.cacheExpiresInMs)) }),
@@ -152,5 +157,45 @@ describe("idleCompactionWindow", () => {
     const archived = records(cache);
     archived.thread = { ...archived.thread, archivedAt: at() };
     expect(idleCompactionWindow(archived, NOW_MS)).toBeNull();
+  });
+});
+
+describe("proactive bot compaction", () => {
+  it.each(["claudeAgent", "codex"])(
+    "compacts %s after idle time with context headroom",
+    (driver) => {
+      const state = records({ usedTokens: 140_000, maxTokens: 200_000 });
+      state.providerThreads = [
+        { ...state.providerThreads[0]!, driver: ProviderDriverKind.make(driver) },
+      ];
+      expect(idleCompactionWindow(state, NOW_MS, true)).toEqual({
+        runId,
+        startMs: NOW_MS + 30_000,
+        endMs: Number.MAX_SAFE_INTEGER,
+      });
+    },
+  );
+
+  it("does not guess unknown context limits or compact small contexts", () => {
+    expect(idleCompactionWindow(records(), NOW_MS, true)).toBeNull();
+    expect(
+      idleCompactionWindow(records({ usedTokens: 139_999, maxTokens: 200_000 }), NOW_MS, true),
+    ).toBeNull();
+  });
+
+  it("rechecks active work, provider support, and previous compaction", () => {
+    const state = records({ usedTokens: 180_000, maxTokens: 200_000 });
+    state.runs = [{ ...state.runs[0]!, status: "running" }];
+    expect(idleCompactionWindow(state, NOW_MS, true)).toBeNull();
+    state.runs = [{ ...state.runs[0]!, status: "completed" }];
+    state.providerThreads = [
+      { ...state.providerThreads[0]!, driver: ProviderDriverKind.make("grok") },
+    ];
+    expect(idleCompactionWindow(state, NOW_MS, true)).toBeNull();
+    state.providerThreads = [
+      { ...state.providerThreads[0]!, driver: ProviderDriverKind.make("claudeAgent") },
+    ];
+    state.messages = [{ ...state.messages[0]!, text: "/compact" }];
+    expect(idleCompactionWindow(state, NOW_MS, true)).toBeNull();
   });
 });

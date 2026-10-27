@@ -284,7 +284,7 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
   } = use(TimelineRowActivityCtx);
   const { botIdentity } = use(TimelineRowCtx);
   if (simpleProgress) {
-    const verb = isCompacting ? "Reviewing the conversation" : "Thinking";
+    const verb = "Thinking";
     return (
       <div role="status" className="flex flex-col gap-1 py-2 text-sm text-muted-foreground">
         <div className="flex min-w-0 items-center gap-2">

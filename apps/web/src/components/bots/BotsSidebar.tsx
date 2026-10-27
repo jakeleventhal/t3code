@@ -277,7 +277,7 @@ export default function BotsSidebar() {
   const [query, setQuery] = useState("");
   const [openingKey, setOpeningKey] = useState<string | null>(null);
 
-  const { assistant, specialists, otherAssistants } = buildBotsCollection({
+  const { assistant, specialists } = buildBotsCollection({
     projects,
     environments: environments
       .filter((environment) => environment.isEnabled)
@@ -559,30 +559,6 @@ export default function BotsSidebar() {
                     </span>
                   </span>
                 </button>
-                {assistantProject ? renderOpenThread(assistantProject) : null}
-                {routeBot?.botRole === "assistant" && otherAssistants.length > 0 ? (
-                  <ul
-                    aria-label="Earlier Assistant conversations"
-                    className="flex flex-col gap-px pb-1.5"
-                  >
-                    {otherAssistants.flatMap((entry) => {
-                      if (!entry.project) return [];
-                      const { main, topics } = conversationsFor(entry.project);
-                      return [...(main ? [main] : []), ...topics].map((thread) => (
-                        <OpenBotThreadRow
-                          key={`${thread.environmentId}:${thread.id}`}
-                          bot={entry.project!}
-                          thread={thread}
-                          active={
-                            thread.environmentId === routeThreadRef?.environmentId &&
-                            thread.id === routeThreadRef.threadId
-                          }
-                          onOpen={() => openBotThread(thread)}
-                        />
-                      ));
-                    })}
-                  </ul>
-                ) : null}
               </SidebarMenuItem>
             ) : null}
           </SidebarMenu>

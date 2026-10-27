@@ -117,7 +117,7 @@ export function BotAvatar(props: {
         live={live}
         size={size}
         fallback={fallback}
-        borderRadius={style.borderRadius}
+        borderRadius={size / 2}
       />
     );
   }
