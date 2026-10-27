@@ -207,6 +207,7 @@ import { useVoiceModePhase } from "../voice-mode/useVoiceMode";
 
 export interface ThreadDetailScreenProps {
   readonly header?: React.ReactNode;
+  readonly floatingBotHeader?: boolean;
   /** Bot chats: the composer offers only the message, attachments, and send. */
   readonly simplifiedComposer?: boolean;
   readonly botSetup?: ThreadComposerProps["botSetup"];
@@ -886,12 +887,15 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   const estimatedOverlayHeight = composerOverlapHeight;
   // UIKit adds safe-area bottom to overlay insets; subtract here and include it in ThreadFeed scroll math.
   const nativeInsetOvercount =
-    props.usesAutomaticContentInsets === true && Platform.OS === "ios" ? insets.bottom : 0;
+    !props.floatingBotHeader && props.usesAutomaticContentInsets === true && Platform.OS === "ios"
+      ? insets.bottom
+      : 0;
+  const composerFeedGap = props.simplifiedComposer ? 8 : 0;
   const { contentInsetEndAdjustment, onComposerLayout } = useKeyboardChatComposerInset(
     listRef,
     composerOverlayRef,
-    Math.max(0, estimatedOverlayHeight - nativeInsetOvercount),
-    -nativeInsetOvercount,
+    Math.max(0, estimatedOverlayHeight + composerFeedGap - nativeInsetOvercount),
+    composerFeedGap - nativeInsetOvercount,
     // The composer already reports its animated height on each layout.
     // Easing these samples again makes the feed trail behind it.
     0,
@@ -1014,7 +1018,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   // Android measures its expanded card in-flow; only iOS needs extra overlay coverage.
   const userInputCoverageApplies = Platform.OS === "ios" && activeUserInputRequestId !== null;
   const combinedContentInsetEndAdjustment = useSharedValue(
-    Math.max(0, estimatedOverlayHeight - nativeInsetOvercount),
+    Math.max(0, estimatedOverlayHeight + composerFeedGap - nativeInsetOvercount),
   );
   useAnimatedReaction(
     () =>
@@ -1361,7 +1365,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
               ref={feedRef}
               contentInsetEndAdjustment={combinedContentInsetEndAdjustment}
               keyboardOffset={composerKeyboardOffset}
-              contentTopInset={0}
+              contentTopInset={props.floatingBotHeader ? navigationHeaderHeight : 0}
               contentBottomInset={
                 estimatedOverlayHeight +
                 (showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : 0)
@@ -1372,7 +1376,9 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
               onRevealSettled={props.onRevealSettled}
               contentSideInsets={nativeMetrics?.safeArea}
               layoutVariant={layoutVariant}
-              usesAutomaticContentInsets={props.usesAutomaticContentInsets}
+              usesAutomaticContentInsets={
+                props.floatingBotHeader ? false : props.usesAutomaticContentInsets
+              }
               onHeaderMaterialVisibilityChange={props.onHeaderMaterialVisibilityChange}
               onEndFollowEnabledChange={handleEndFollowEnabledChange}
               skills={selectedProviderSkills}

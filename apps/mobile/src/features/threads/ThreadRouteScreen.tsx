@@ -1092,6 +1092,7 @@ function ThreadRouteContent(
             )
           }
           simplifiedComposer={botProfileProject !== null}
+          floatingBotHeader={botProfileProject !== null && !props.inspectorPresentation}
           botSetup={
             botProfileProject && composer.botSetupNeeded && routeConnectionState === "connected"
               ? {
@@ -1104,7 +1105,13 @@ function ThreadRouteContent(
                 }
               : null
           }
-          composerPlaceholder={botProfileProject ? `Message ${botProfileProject.title}` : undefined}
+          composerPlaceholder={
+            botProfileProject?.botAvatar?.job?.status === "awaiting-selection"
+              ? "Describe changes to these avatars"
+              : botProfileProject
+                ? `Message ${botProfileProject.title}`
+                : undefined
+          }
           canOperateThread={canOperateThread}
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           selectedThreadDetailRef={selectedThreadDetailRef}

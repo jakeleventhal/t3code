@@ -3705,7 +3705,11 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               botProjectId={routeBotProject?.id ?? null}
                               messagePlaceholder={
-                                routeBotProject ? `Message ${routeBotProject.title}` : undefined
+                                activeProject?.botAvatar?.job?.status === "awaiting-selection"
+                                  ? "Describe changes to these avatars"
+                                  : routeBotProject
+                                    ? `Message ${routeBotProject.title}`
+                                    : undefined
                               }
                               restingControlsHaveLeadingContext={
                                 mountComposerContextStrip &&

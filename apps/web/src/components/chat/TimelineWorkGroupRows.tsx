@@ -1,4 +1,3 @@
-import { BotAvatar } from "../bots/BotAvatar";
 import { TypingDots } from "../bots/TypingDots";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
@@ -294,13 +293,11 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
     progressDetail,
     simpleActivity,
   } = use(TimelineRowActivityCtx);
-  const { botIdentity } = use(TimelineRowCtx);
   if (simpleProgress) {
     const verb = "Thinking";
     return (
       <div role="status" className="flex flex-col gap-1 py-2 text-sm text-muted-foreground">
         <div className="flex min-w-0 items-center gap-2">
-          {botIdentity ? <BotAvatar bot={botIdentity} size="sm" /> : null}
           <TypingDots />
           <span
             ref={observeVisibleAnimation}

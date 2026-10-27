@@ -85,7 +85,7 @@ function FlowBody(props: {
                 Pick an avatar
               </Text>
               <Text textRole="footnote" className="text-foreground-muted">
-                The one you choose is used right away, then animated.
+                Choose a look, or describe changes below. Dismiss to return to chat.
               </Text>
             </View>
             <IconButton accessibilityLabel="Dismiss" icon="xmark" onPress={() => void dismiss()} />

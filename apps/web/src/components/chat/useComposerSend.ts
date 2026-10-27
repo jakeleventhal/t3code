@@ -121,7 +121,7 @@ import {
 } from "@t3tools/client-runtime/botMentionItems";
 import { botOutbox, botOutboxHoldsThread } from "../../botOutbox/botOutbox";
 import { classifyBotOutboxFailure } from "../../botOutbox/botOutbox.logic";
-import { parseBotAvatarPrompt } from "@t3tools/client-runtime/bot-avatar";
+import { botAvatarComposerPrompt } from "@t3tools/client-runtime/bot-avatar";
 import { requestBotAvatarOptions } from "../bots/botAvatarActions";
 import {
   composerBotOutboxItem,
@@ -568,9 +568,11 @@ export function useComposerSend(input: ComposerSendInput) {
     // A bot reads threads on other connected machines through t3_thread_read(environmentId);
     // a Code agent can read only its own machine's threads.
     const isBotChat = activeProject?.botRole != null;
-    // "Change your avatar to …" in a bot chat changes the avatar instead of starting a turn.
+    // An open picker owns follow-up descriptions until it is dismissed.
     const avatarSubject =
-      isBotChat && activeProject && isServerThread ? parseBotAvatarPrompt(promptForSend) : null;
+      isBotChat && activeProject && isServerThread
+        ? botAvatarComposerPrompt(promptForSend, activeProject.botAvatar?.job)
+        : null;
     if (avatarSubject !== null && activeProject) {
       if (composerImages.length > 0 || composerFiles.length > 0) {
         setThreadError(

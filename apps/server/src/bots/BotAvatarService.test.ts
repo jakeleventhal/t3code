@@ -272,6 +272,46 @@ describe("BotAvatarService", () => {
       }).pipe(Effect.scoped, Effect.provide(dependencies)),
   );
 
+  it.effect("revising a ready picker removes old choices before replacement images finish", () =>
+    Effect.gen(function* () {
+      const { fake, instance } = yield* makeFake;
+      const { projectId, service, read } = yield* fixture([instance]);
+      yield* service.generateOptions({
+        commandId: command("first-options"),
+        projectId,
+        prompt: "a monkey",
+      });
+      yield* service.awaitIdle(projectId);
+      const previous = (yield* read).botAvatar!;
+      assert.equal(previous.job?.candidates?.length, 4);
+      const gate = yield* Deferred.make<void>();
+      yield* Ref.set(fake.gate, gate);
+      const revised = yield* service.generateOptions({
+        commandId: command("revise-options"),
+        projectId,
+        prompt: "a muscular monkey, no clothes",
+      });
+      assert.equal(revised.botAvatar?.job?.status, "generating-options");
+      assert.equal((yield* read).botAvatar?.job?.candidates, undefined);
+      const stale = yield* service
+        .selectOption({
+          commandId: command("pick-old"),
+          projectId,
+          version: previous.version,
+          candidate: previous.job!.candidates![0]!,
+        })
+        .pipe(Effect.flip);
+      assert.equal(stale.reason, "stale");
+      yield* Deferred.succeed(gate, undefined);
+      yield* service.awaitIdle(projectId);
+      const ready = (yield* read).botAvatar!;
+      assert.equal(ready.job?.status, "awaiting-selection");
+      assert.equal(ready.job?.candidates?.length, 4);
+      assert.equal(ready.job?.prompt, "a muscular monkey, no clothes");
+      assert.notEqual(ready.version, previous.version);
+    }).pipe(Effect.scoped, Effect.provide(dependencies)),
+  );
+
   it.effect("a newer choice cancels the older job and its results never land", () =>
     Effect.gen(function* () {
       const { fake, instance } = yield* makeFake;

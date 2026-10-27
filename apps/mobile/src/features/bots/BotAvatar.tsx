@@ -9,7 +9,7 @@ import type {
 import { isProjectFaviconFallbackUrl } from "@t3tools/shared/projectFavicon";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useEffect, useState, type ReactNode } from "react";
+import { use, useEffect, useState, type ReactNode } from "react";
 import { AppState, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 
@@ -17,6 +17,7 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { projectIconColorClassNames, projectMonogramColor } from "../../lib/projectIcon";
 import { projectFaviconUrlAtom, useAssetUrl } from "../../state/assets";
+import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
 import { useBotAvatarActivity } from "./bot-avatar-activity";
 import type { BotRole } from "./bot-room";
 
@@ -30,8 +31,7 @@ export interface BotAvatarProject {
   readonly botAvatar?: BotAvatarState | null;
 }
 
-/** Decoding video for a 26 px face is waste, and inbox rows (44–48) must not all decode; only
- * the hero and the profile sizes play a clip. */
+/** Tiny icons stay still; inbox rows additionally gate playback by their visible bounds. */
 const LIVE_MIN_SIZE = 56;
 
 export function botAvatarRadius(role: BotRole, size: number): number {
@@ -191,7 +191,9 @@ function BotLiveClip(props: {
   readonly size: number;
 }) {
   const reducedMotion = useReducedMotion();
-  const focused = useIsFocused();
+  const routeFocused = useIsFocused();
+  const tabActive = use(NativeWorkspaceTabActivityContext)?.active ?? true;
+  const focused = routeFocused && tabActive;
   const kind = useBotAvatarActivity({ id: props.botId, environmentId: props.environmentId });
   const clip = botAvatarClipFor(props.clips, kind);
   const url = useAssetUrl(

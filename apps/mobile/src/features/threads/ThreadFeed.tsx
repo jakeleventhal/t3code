@@ -1,5 +1,4 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { BotAvatar } from "../bots/BotAvatar";
 import { TypingDots } from "../bots/TypingDots";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -1306,22 +1305,7 @@ function compactionLabel(label: string, title: string | undefined) {
     : label;
 }
 
-const BOT_REPLY_AVATAR_SIZE = 30;
-/** The avatar, its gap, and the card's padding and border, taken from a bot reply's width. */
-const BOT_REPLY_INSET = BOT_REPLY_AVATAR_SIZE + 10 + 30;
-
-function BotReplyAvatar(props: { readonly project: EnvironmentProject }) {
-  return (
-    <View className="mt-0.5">
-      <BotAvatar
-        role={props.project.botRole === "assistant" ? "assistant" : "specialist"}
-        title={props.project.title}
-        size={BOT_REPLY_AVATAR_SIZE}
-        project={props.project}
-      />
-    </View>
-  );
-}
+const BOT_REPLY_INSET = 30;
 
 function renderFeedEntry(
   info: { item: ThreadFeedRow; index: number },
@@ -1442,7 +1426,6 @@ function renderFeedEntry(
         accessibilityLabel="Thinking"
         accessibilityLiveRegion="polite"
       >
-        {props.botProject ? <BotReplyAvatar project={props.botProject} /> : null}
         <View className="flex-row items-center gap-2 rounded-[20px] rounded-tl-md border border-border-subtle bg-card px-3.5 py-2.5">
           <TypingDots />
           <Text className="text-sm text-foreground-muted">Thinking</Text>
@@ -1483,12 +1466,7 @@ function renderFeedEntry(
 
   if (entry.type === "work-toggle" && props.simpleProgress) {
     return (
-      <View
-        className={cn(
-          "min-h-8 flex-row items-center gap-2 py-1",
-          props.botProject ? "pl-11 pr-1.5" : "px-1.5",
-        )}
-      >
+      <View className="min-h-8 flex-row items-center gap-2 px-1.5 py-1">
         {entry.live ? <TypingDots /> : null}
         <Text numberOfLines={2} className="flex-1 text-sm text-foreground-muted">
           {entry.summary}
@@ -1936,12 +1914,11 @@ function renderFeedEntry(
         {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
       >
         {props.botProject ? (
-          <View className="flex-row items-start gap-2.5">
-            <BotReplyAvatar project={props.botProject} />
+          <View className="items-start">
             <View
               className={cn(
                 "min-w-0 shrink rounded-[20px] rounded-tl-md border border-border-subtle bg-card px-3.5 py-2.5",
-                hasWideBlock && "flex-1",
+                hasWideBlock && "w-full",
               )}
             >
               {replyContent}
@@ -1957,7 +1934,7 @@ function renderFeedEntry(
           />
         ) : null}
         {showAssistantMeta ? (
-          <View className={cn("mt-1 flex-row items-center gap-1", botCard && "pl-10")}>
+          <View className="mt-1 flex-row items-center gap-1">
             <CopyTextButton
               accessibilityLabel="Copy message"
               text={renderedText}
@@ -1984,7 +1961,7 @@ function renderFeedEntry(
 
   if (props.simpleProgress) {
     return (
-      <View className={cn("gap-1 py-1", props.botProject ? "pl-11 pr-1.5" : "px-1.5")}>
+      <View className="gap-1 px-1.5 py-1">
         {entry.activities.map((activity) => (
           <View key={activity.id} className="min-h-8 flex-row items-center gap-2">
             {activity.live ? <TypingDots /> : null}

@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type TextInputInstance,
@@ -37,7 +38,26 @@ import { botsSearchQueryAtom, setBotsSearchQuery } from "./bots-header";
 import { useAssistantEnvironmentId, useBotProjects } from "./use-assistant";
 import { useOpenBotConversation } from "./use-bot-conversation";
 
-const HeroPlaybackContext = createContext(true);
+const InboxViewportContext = createContext({ top: 0, height: 0, active: false });
+const InboxPlaybackContext = createContext(false);
+
+function InboxPlaybackFrame({ children }: { readonly children: ReactNode }) {
+  const viewport = use(InboxViewportContext);
+  const [bounds, setBounds] = useState({ y: 0, height: 0 });
+  const visible =
+    viewport.active &&
+    bounds.height > 0 &&
+    viewport.height > 0 &&
+    bounds.y < viewport.top + viewport.height &&
+    bounds.y + bounds.height > viewport.top;
+  return (
+    <View
+      onLayout={({ nativeEvent: { layout } }) => setBounds({ y: layout.y, height: layout.height })}
+    >
+      <InboxPlaybackContext value={visible}>{children}</InboxPlaybackContext>
+    </View>
+  );
+}
 const HERO_AVATAR_SIZE = 96;
 const ROW_AVATAR_SIZE = 56;
 
@@ -104,7 +124,7 @@ function useStatusColor(entry: BotInboxEntry): string | null {
 
 function InboxAvatar(props: { readonly entry: BotInboxEntry; readonly size: number }) {
   const { bot } = props.entry;
-  const heroVisible = use(HeroPlaybackContext);
+  const visible = use(InboxPlaybackContext);
   const statusColor = useStatusColor(props.entry);
   const dot = Math.round(props.size * 0.26);
   return (
@@ -115,7 +135,7 @@ function InboxAvatar(props: { readonly entry: BotInboxEntry; readonly size: numb
           title={bot.title}
           size={props.size}
           project={bot.project}
-          live={props.size === HERO_AVATAR_SIZE && heroVisible}
+          live={visible}
         />
       </View>
       {statusColor === null ? null : (
@@ -355,12 +375,20 @@ function BotsSearch(props: { readonly query: string }) {
   );
 }
 
-function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: number }) {
+function BotsScrollView(props: {
+  readonly children: ReactNode;
+  readonly bottom: number;
+  readonly active: boolean;
+}) {
   const insets = useSafeAreaInsets();
-  const [heroVisible, setHeroVisible] = useState(true);
+  const [viewport, setViewport] = useState({ top: -insets.top, height: 0 });
+  const onLayout = (event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    setViewport((previous) => (previous.height === height ? previous : { ...previous, height }));
+  };
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // Include the search field and hero padding before suspending the only animated inbox image.
-    setHeroVisible(event.nativeEvent.contentOffset.y < 320);
+    const { contentOffset, layoutMeasurement } = event.nativeEvent;
+    setViewport({ top: contentOffset.y, height: layoutMeasurement.height });
   };
   const primaryColumn = use(NativePrimaryColumnContext);
   const contentContainerStyle = {
@@ -373,11 +401,14 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
       <ScrollView
         className="flex-1"
         keyboardShouldPersistTaps="handled"
+        onLayout={onLayout}
         onScroll={onScroll}
         scrollEventThrottle={100}
         contentContainerStyle={contentContainerStyle}
       >
-        <HeroPlaybackContext value={heroVisible}>{props.children}</HeroPlaybackContext>
+        <InboxViewportContext value={{ ...viewport, active: props.active }}>
+          {props.children}
+        </InboxViewportContext>
       </ScrollView>
     );
   }
@@ -387,6 +418,7 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
       <ScrollView
         className={primaryColumn ? "bg-drawer" : "bg-screen"}
         keyboardShouldPersistTaps="handled"
+        onLayout={onLayout}
         onScroll={onScroll}
         scrollEventThrottle={100}
         keyboardDismissMode="interactive"
@@ -397,7 +429,9 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
         scrollIndicatorInsets={{ top: insets.top }}
         contentContainerStyle={contentContainerStyle}
       >
-        <HeroPlaybackContext value={heroVisible}>{props.children}</HeroPlaybackContext>
+        <InboxViewportContext value={{ ...viewport, active: props.active }}>
+          {props.children}
+        </InboxViewportContext>
       </ScrollView>
     </NativeScrollViewMarker>
   );
@@ -486,24 +520,18 @@ export function BotsScreen() {
   }
 
   return (
-    <BotsScrollView bottom={bottom}>
+    <BotsScrollView bottom={bottom} active={visible}>
       {query !== null ? <BotsSearch query={query} /> : null}
       {inbox.hero ? (
-        <AssistantHero
-          key={inbox.hero.bot.key}
-          entry={inbox.hero}
-          selected={rowSelected(inbox.hero, selectedThreadKey)}
-        />
+        <InboxPlaybackFrame key={inbox.hero.bot.key}>
+          <AssistantHero entry={inbox.hero} selected={rowSelected(inbox.hero, selectedThreadKey)} />
+        </InboxPlaybackFrame>
       ) : null}
-      <View>
-        {inbox.rows.map((entry) => (
-          <BotInboxRow
-            key={entry.bot.key}
-            entry={entry}
-            selected={rowSelected(entry, selectedThreadKey)}
-          />
-        ))}
-      </View>
+      {inbox.rows.map((entry) => (
+        <InboxPlaybackFrame key={entry.bot.key}>
+          <BotInboxRow entry={entry} selected={rowSelected(entry, selectedThreadKey)} />
+        </InboxPlaybackFrame>
+      ))}
       {query !== null && query.trim().length > 0 && inbox.rows.length === 0 ? (
         <Text textRole="footnote" className="px-5 py-6 text-center text-foreground-muted">
           No bot named “{query.trim()}”.
