@@ -572,6 +572,13 @@ export function useComposerSend(input: ComposerSendInput) {
     const avatarSubject =
       isBotChat && activeProject && isServerThread ? parseBotAvatarPrompt(promptForSend) : null;
     if (avatarSubject !== null && activeProject) {
+      if (composerImages.length > 0 || composerFiles.length > 0) {
+        setThreadError(
+          activeThread.id,
+          "Avatar generation currently accepts a text description only. Remove the attachment to continue; your draft has been kept.",
+        );
+        return;
+      }
       const started = await requestBotAvatarOptions({
         environmentId,
         projectId: activeProject.id,

@@ -1,3 +1,8 @@
+// Tiptap node wrappers default to normal whitespace. In the compact editor that can wrap
+// a chip, trigger expansion, fit on one line, and immediately collapse again.
+export const COMPOSER_RESTING_EDITOR_CLASS_NAME =
+  "my-0 max-h-8 min-h-8 redesign:min-h-8 overflow-hidden py-0 whitespace-pre! leading-8! [&_p]:leading-8 [&_.react-renderer]:whitespace-pre! [&_[data-node-view-wrapper]]:whitespace-pre!";
+
 const COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX = 620;
 const COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX = 780;
 const RESTING_COMPOSER_IMAGE_THUMBNAIL_LIMIT = 3;

@@ -605,6 +605,13 @@ export function useThreadComposerState() {
     const avatarSubject =
       selectedThreadProject?.botRole != null ? parseBotAvatarPrompt(text) : null;
     if (avatarSubject !== null && selectedThreadProject) {
+      if (attachments.length > 0) {
+        Dialog.alert(
+          "Reference image not supported",
+          "Avatar generation currently accepts a text description only. Remove the attachment to continue; your draft has been kept.",
+        );
+        return null;
+      }
       const started = await requestBotAvatarOptions({
         environmentId: selectedThreadShell.environmentId,
         projectId: selectedThreadProject.id,

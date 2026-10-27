@@ -245,6 +245,7 @@ import {
   resetComposerScrollGesture,
   suppressActiveComposerScrollGesture,
 } from "./composerScrollGesture";
+import { COMPOSER_RESTING_EDITOR_CLASS_NAME } from "../composerFooterLayout";
 import { observeResize } from "~/lib/observeResize";
 
 const isEnvironmentRequestInvalidError = Schema.is(EnvironmentRequestInvalidError);
@@ -3906,8 +3907,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     className={cn(
                       showMobilePendingAnswerActions && "max-sm:pb-12",
                       messageOnly && !isComposerResting && "min-h-8",
-                      isComposerResting &&
-                        "my-0 max-h-8 min-h-8 redesign:min-h-8 overflow-hidden py-0 whitespace-pre! leading-8! [&_p]:leading-8",
+                      isComposerResting && COMPOSER_RESTING_EDITOR_CLASS_NAME,
                     )}
                     placeholderClassName={cn(
                       isComposerResting &&

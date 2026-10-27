@@ -9,11 +9,10 @@ export function useCommittedLocation(): {
   readonly pathname: string;
   readonly href: string;
 } | null {
-  const pathname = useRouterState({
-    select: (state) => (state.status === "idle" ? state.location.pathname : null),
+  return useRouterState({
+    select: (state) =>
+      state.status === "idle"
+        ? { pathname: state.location.pathname, href: state.location.href }
+        : null,
   });
-  const href = useRouterState({
-    select: (state) => (state.status === "idle" ? state.location.href : null),
-  });
-  return pathname === null || href === null ? null : { pathname, href };
 }

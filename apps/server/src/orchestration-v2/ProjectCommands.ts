@@ -1,3 +1,5 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Deterministic hashing keeps command planning pure.
+import * as NodeCrypto from "node:crypto";
 import {
   type BotAvatar,
   type CommandId,
@@ -219,7 +221,28 @@ export function planProjectCommand(input: {
           ...(command.autoPull === undefined ? {} : { autoPull: command.autoPull }),
           ...(command.faviconPath === undefined ? {} : { faviconPath: command.faviconPath }),
           ...(command.projectIcon === undefined ? {} : { projectIcon: command.projectIcon }),
-          ...(command.botAvatar === undefined ? {} : { botAvatar: command.botAvatar }),
+          ...(command.botAvatar !== undefined
+            ? { botAvatar: command.botAvatar }
+            : project.botRole != null &&
+                (command.projectIcon !== undefined || command.faviconPath !== undefined)
+              ? {
+                  botAvatar: {
+                    version: NodeCrypto.createHash("sha256")
+                      .update(command.commandId)
+                      .digest("hex"),
+                    clips: {},
+                    job: null,
+                    updatedAt:
+                      project.botAvatar && project.botAvatar.updatedAt >= occurredAt
+                        ? DateTime.formatIso(
+                            DateTime.add(DateTime.makeUnsafe(project.botAvatar.updatedAt), {
+                              milliseconds: 1,
+                            }),
+                          )
+                        : occurredAt,
+                  },
+                }
+              : {}),
           ...(command.scripts === undefined ? {} : { scripts: command.scripts }),
           updatedAt: occurredAt,
         },

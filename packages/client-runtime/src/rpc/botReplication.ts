@@ -23,6 +23,9 @@ export function manifestAvatarAssets(
   for (const clip of Object.values(manifest.project.botAvatar?.clips ?? {})) {
     if (clip !== undefined && !assets.includes(clip)) assets.push(clip);
   }
+  for (const candidate of manifest.project.botAvatar?.job?.candidates ?? []) {
+    if (!assets.includes(candidate)) assets.push(candidate);
+  }
   return assets;
 }
 

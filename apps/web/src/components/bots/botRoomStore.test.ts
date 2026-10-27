@@ -69,3 +69,17 @@ describe("saved Bots locations", () => {
     expect(useBotRoomStore.getState().botLocationByEnvironment[envA]).toBeUndefined();
   });
 });
+
+describe("Code return location", () => {
+  it.each(["/settings", "/settings/bots?tab=voice", "/usage#models"])(
+    "does not replace the Code thread with %s",
+    (href) => {
+      const store = useBotRoomStore.getState();
+      store.recordLocation({ room: "code", href: "/env/code-thread" });
+      store.recordLocation({ room: "bots", environmentId: envA, location: null });
+      store.recordLocation({ room: "code", href });
+      expect(useBotRoomStore.getState().codeHref).toBe("/env/code-thread");
+      expect(useBotRoomStore.getState().room).toBe("bots");
+    },
+  );
+});

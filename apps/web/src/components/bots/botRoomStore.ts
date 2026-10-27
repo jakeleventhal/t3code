@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { create } from "zustand";
 
 import type { ThreadRouteTarget } from "../../threadRoutes";
+import { isAppModalPage } from "../sidebar/mainAppLocation";
 import type { AppRoom } from "./botRoom.logic";
 
 export type BotProfileTab = "routines" | "files" | "settings";
@@ -130,6 +131,7 @@ export const useBotRoomStore = create<BotRoomState>()((set, get) => {
     recordLocation: (input) =>
       set((state) => {
         if (input.room === "code") {
+          if (isAppModalPage(input.href.split(/[?#]/, 1)[0]!)) return state;
           return {
             room: "code",
             codeHref: input.href,

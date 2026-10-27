@@ -179,11 +179,21 @@ const make = Effect.gen(function* () {
                 project.faviconPath && isAvatarAssetPath(project.faviconPath)
                   ? project.faviconPath
                   : null,
-              // A replica shows the finished avatar; the step in flight stays with its origin.
+              // The job is durable UI state; only its origin runs the provider.
               botAvatar:
                 project.botAvatar === null || project.botAvatar === undefined
                   ? null
-                  : { ...project.botAvatar, job: null },
+                  : {
+                      ...project.botAvatar,
+                      job:
+                        project.botAvatar.job === null
+                          ? null
+                          : {
+                              ...project.botAvatar.job,
+                              originEnvironmentId:
+                                project.botAvatar.job.originEnvironmentId ?? environmentId,
+                            },
+                    },
               botRole: project.botRole,
               botMainThreadId: project.botMainThreadId ?? null,
               createdAt: project.createdAt,
@@ -308,18 +318,28 @@ const make = Effect.gen(function* () {
               projectId: page.projectId,
               botMainThreadId: manifest.project.botMainThreadId,
               projectIcon: manifest.project.projectIcon,
+              botAvatar: null,
             });
           }
         }
 
-        if ("faviconPath" in manifest.project) {
+        const sourceAvatar = manifest.project.botAvatar ?? null;
+        const localAvatar = project.botAvatar ?? null;
+        // A replica can echo an older manifest after the origin advances its job.
+        // Equal revisions are echoes too, including old clients that strip the job.
+        const newerAvatar =
+          localAvatar === null ||
+          (sourceAvatar !== null &&
+            (sourceAvatar.updatedAt > localAvatar.updatedAt ||
+              (sourceAvatar.updatedAt === localAvatar.updatedAt &&
+                sourceAvatar.version > localAvatar.version)));
+        if ("faviconPath" in manifest.project && newerAvatar) {
           // Only files already copied here are referenced; a missing clip falls back to the still.
           const still =
             manifest.project.faviconPath &&
             (yield* hasAsset(project.workspaceRoot, manifest.project.faviconPath))
               ? manifest.project.faviconPath
               : null;
-          const sourceAvatar = manifest.project.botAvatar ?? null;
           const clips: Record<string, BotAvatarAssetPath> = {};
           for (const [kind, clip] of Object.entries(sourceAvatar?.clips ?? {})) {
             if (clip !== undefined && (yield* hasAsset(project.workspaceRoot, clip))) {
@@ -333,7 +353,7 @@ const make = Effect.gen(function* () {
                   version: sourceAvatar.version,
                   clips,
                   updatedAt: sourceAvatar.updatedAt,
-                  job: null,
+                  job: sourceAvatar.job,
                 };
           const identityChanged =
             (project.faviconPath ?? null) !== still ||

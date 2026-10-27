@@ -1,6 +1,12 @@
 import * as Schema from "effect/Schema";
 
-import { CommandId, IsoDateTime, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  CommandId,
+  EnvironmentId,
+  IsoDateTime,
+  ProjectId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 /**
@@ -33,6 +39,8 @@ export type BotAvatarJobStatus = typeof BotAvatarJobStatus.Type;
 
 /** The in-progress or failed step of an avatar change; null once the change is complete. */
 export const BotAvatarJob = Schema.Struct({
+  /** Only this environment owns the running generation; replicas display its progress. */
+  originEnvironmentId: Schema.optional(EnvironmentId),
   kind: Schema.Literals(["live", "image"]),
   status: BotAvatarJobStatus,
   prompt: BotAvatarPrompt,

@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
+  EnvironmentId,
   ProjectId,
   ProviderInstanceId,
   type BotAvatarAssetPath,
@@ -36,6 +37,7 @@ import * as Favicon from "../project/ProjectFaviconResolver.ts";
 import * as Repository from "../project/RepositoryIdentityResolver.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as BotAvatarService from "./BotAvatarService.ts";
 
 const encoder = new TextEncoder();
@@ -148,6 +150,9 @@ const dependencies = Layer.mergeAll(
   Layer.provideMerge(ProjectEnrichment.layer),
   Layer.provideMerge(
     Layer.mergeAll(
+      Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
+        getEnvironmentId: Effect.succeed(EnvironmentId.make("avatar-test")),
+      }),
       Layer.mock(GitWorkflow.GitWorkflowService)({ isRepository: () => Effect.succeed(false) }),
       Layer.mock(Git.GitVcsDriver)({}),
       Layer.succeed(Repository.RepositoryIdentityResolver, { resolve: () => Effect.succeed(null) }),
@@ -227,6 +232,7 @@ describe("BotAvatarService", () => {
         const ready = yield* read;
         const job = ready.botAvatar?.job;
         assert.equal(job?.status, "awaiting-selection");
+        assert.isTrue(ready.botAvatar!.updatedAt > started.botAvatar!.updatedAt);
         assert.equal(job?.candidates?.length, 4);
         assert.equal((yield* Ref.get(fake.images))[0]?.prompts.length, 4);
         assert.ok((yield* Ref.get(fake.images))[0]?.prompts[0]?.includes("a chubby white cat"));
@@ -247,6 +253,7 @@ describe("BotAvatarService", () => {
         yield* service.awaitIdle(projectId);
         const done = yield* read;
         assert.equal(done.botAvatar?.job, null);
+        assert.isTrue(done.botAvatar!.updatedAt > selected.botAvatar!.updatedAt);
         assert.deepEqual(Object.keys(done.botAvatar!.clips).sort(), ["call", "idle", "working"]);
         assert.notEqual(done.botAvatar?.version, version);
         assert.equal(done.botAvatar?.version, selected.botAvatar?.version);
@@ -460,3 +467,37 @@ describe("BotAvatarService", () => {
     }).pipe(Effect.scoped, Effect.provide(dependencies)),
   );
 });
+
+it.effect("restarting a replica does not fail a job owned by another environment", () =>
+  Effect.gen(function* () {
+    const { instance } = yield* makeFake;
+    const { projectId, read } = yield* fixture([instance]);
+    const remote = {
+      version: "remote-job",
+      clips: {},
+      updatedAt: "2026-10-26T20:00:00.000Z",
+      job: {
+        kind: "live" as const,
+        status: "generating-options" as const,
+        prompt: "A cloud",
+        startedAt: "2026-10-26T20:00:00.000Z",
+        originEnvironmentId: EnvironmentId.make("remote"),
+      },
+    };
+    yield* (yield* ProjectService.ProjectService).update({
+      commandId: command("remote"),
+      projectId,
+      botAvatar: remote,
+    });
+    yield* Layer.build(
+      BotAvatarService.layer.pipe(
+        Layer.provide(
+          Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+            listInstances: Effect.succeed([instance]),
+          }),
+        ),
+      ),
+    );
+    assert.deepEqual((yield* read).botAvatar, remote);
+  }).pipe(Effect.scoped, Effect.provide(dependencies)),
+);
