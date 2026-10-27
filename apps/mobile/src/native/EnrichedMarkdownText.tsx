@@ -166,7 +166,10 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const { markdown, fileHrefs } = useMemo(() => {
     const content = markdownWithInlineFileLinks(
-      markdownWithStandaloneMediaLinks(markdownForNativeParsing(props.markdown), props.workspaceRoot),
+      markdownWithStandaloneMediaLinks(
+        markdownForNativeParsing(props.markdown),
+        props.workspaceRoot,
+      ),
       ENRICHED_INLINE_FILE_LINK_REGEX,
     );
     const files = fileEmbedLabel
