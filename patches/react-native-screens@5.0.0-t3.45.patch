@@ -1,7 +1,7 @@
 diff --git a/ios/helpers/stack/RNSStackNavigationController.mm b/ios/helpers/stack/RNSStackNavigationController.mm
 --- a/ios/helpers/stack/RNSStackNavigationController.mm
 +++ b/ios/helpers/stack/RNSStackNavigationController.mm
-@@ -33,9 +33,38 @@
+@@ -33,15 +33,45 @@
    UIViewController *destination = navigation.viewControllers[navigation.viewControllers.count - 2];
    if ([navigation shouldPreventNativePopToController:destination])
      return NO;
@@ -19,9 +19,9 @@ diff --git a/ios/helpers/stack/RNSStackNavigationController.mm b/ios/helpers/sta
    if ([self.originalDelegate respondsToSelector:_cmd]) {
      return [self.originalDelegate gestureRecognizerShouldBegin:gestureRecognizer];
    }
-+  return YES;
-+}
-+
+   return YES;
+ }
+ 
 +- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 +{
 +  if (self.navigationController.navigationBarHidden)
@@ -37,9 +37,17 @@ diff --git a/ios/helpers/stack/RNSStackNavigationController.mm b/ios/helpers/sta
 +    return YES;
 +  if ([self.originalDelegate respondsToSelector:_cmd])
 +    return [self.originalDelegate gestureRecognizer:gestureRecognizer shouldReceiveEvent:event];
-   return YES;
++  return YES;
++}
++
+ - (BOOL)respondsToSelector:(SEL)selector
+ {
+-  return [super respondsToSelector:selector] || [self.originalDelegate respondsToSelector:selector];
++  return [super respondsToSelector:selector] ||
++      (!self.navigationController.navigationBarHidden && [self.originalDelegate respondsToSelector:selector]);
  }
  
+ - (id)forwardingTargetForSelector:(SEL)selector
 diff --git a/ios/helpers/stack/RNSStackNavigationBarCoordinator.mm b/ios/helpers/stack/RNSStackNavigationBarCoordinator.mm
 --- a/ios/helpers/stack/RNSStackNavigationBarCoordinator.mm
 +++ b/ios/helpers/stack/RNSStackNavigationBarCoordinator.mm
@@ -55,3 +63,19 @@ diff --git a/ios/helpers/stack/RNSStackNavigationBarCoordinator.mm b/ios/helpers
  }
  
  #if !TARGET_OS_TV
+diff --git a/ios/stack/screen/RNSStackScreenController.mm b/ios/stack/screen/RNSStackScreenController.mm
+--- a/ios/stack/screen/RNSStackScreenController.mm
++++ b/ios/stack/screen/RNSStackScreenController.mm
+@@ -69,6 +69,12 @@
+ {
+   [super viewDidAppear:animated];
+   [self.headerCoordinator restoreDetachedTitleView];
++#if !TARGET_OS_TV
++  // UIKit disables edge-pop when a push hides the bar; restore it after that transition finishes.
++  if (self.navigationController.navigationBarHidden) {
++    self.navigationController.interactivePopGestureRecognizer.enabled = YES;
++  }
++#endif
+   [[self reactEventEmitter] emitOnDidAppear];
+ }
+ 
