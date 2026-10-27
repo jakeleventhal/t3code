@@ -121,8 +121,18 @@ The requesting bot returns a short summary linked to the result.
 
 Click a bot's name in its chat header, from its main conversation or any thread,
 to open its profile beside the chat; on a narrow window it opens as a sheet.
-Click the name to rename the bot, or the picture to choose an emoji, colored
-initials, or a photo. Assistant can be renamed and given a picture too.
+Click the name to rename the bot, or the picture to edit its avatar. Choose an
+emoji and background color, upload a photo, or describe a picture to generate.
+Assistant can be renamed and given a picture too.
+
+**Live Animation** starts an avatar request in the conversation. Describe what
+you want, then choose from the generated pictures. Your choice appears right
+away while silent idle, working, and phone animations are made. You can keep
+chatting while they finish, and retry a failed animation without choosing again.
+Generated pictures require a connected Codex or Grok account. Live animations require Grok
+with generation available under its usage and privacy settings. Your chosen
+avatar follows the bot across connected devices; small icons and reduced-motion
+views use its still picture.
 
 **Routines** lists what the bot does on a schedule. Ask the bot in chat to set
 one up or change it; the switch pauses or resumes it. **Files** collects what

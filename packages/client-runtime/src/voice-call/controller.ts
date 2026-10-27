@@ -31,6 +31,7 @@ export interface VoiceCallState extends VoiceCallTarget {
   readonly muted: boolean;
   readonly error: string | null;
   readonly canSendText: boolean;
+  readonly connectedAt: number | null;
 }
 
 export interface VoiceCallTranscriptEntry {
@@ -198,6 +199,7 @@ export class VoiceCallController {
       muted: false,
       error: null,
       canSendText: false,
+      connectedAt: null,
     });
     this.notify(this.transcriptListeners);
     this.notify(this.draftListeners);
@@ -325,7 +327,15 @@ export class VoiceCallController {
         if (this.state !== null) this.setState({ ...this.state, callId: event.callId });
         return;
       case "phase":
-        if (this.state !== null) this.setState({ ...this.state, phase: event.phase, error: null });
+        if (this.state !== null) {
+          this.setState({
+            ...this.state,
+            phase: event.phase,
+            error: null,
+            connectedAt:
+              this.state.connectedAt ?? (event.phase === "reconnecting" ? null : Date.now()),
+          });
+        }
         return;
       case "transcript": {
         const previous = call.entries.get(event.entry.id);

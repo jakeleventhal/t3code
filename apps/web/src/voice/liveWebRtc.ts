@@ -1,5 +1,8 @@
 import { VoiceCallSetupError } from "@t3tools/client-runtime/voice-call";
+import { rtcStatsAudioLevels } from "@t3tools/client-runtime/voice-call/audio-levels";
 import { openLiveMedia, type LiveMediaInput } from "@t3tools/client-runtime/voice-call/live-media";
+
+import { callAudioLevels } from "./callAudioLevels";
 
 /** Browser media stays on WebRTC; the environment receives only the SDP offer. */
 export function openLiveWebRtc(input: LiveMediaInput) {
@@ -10,10 +13,27 @@ export function openLiveWebRtc(input: LiveMediaInput) {
     playback.autoplay = true;
     playback.muted = input.playbackOnly !== true;
     let microphone: MediaStream | null = null;
+    let microphoneEnabled = true;
     let stopped = false;
     let disposed = false;
+    // Voice previews play outside any call, so only a call's own audio drives the call bar.
+    const detachLevels =
+      input.playbackOnly === true
+        ? () => undefined
+        : callAudioLevels.attach(() =>
+            stopped
+              ? null
+              : peer.getStats().then((report) => {
+                  const levels = rtcStatsAudioLevels(report);
+                  return {
+                    microphone: microphoneEnabled ? levels.microphone : 0,
+                    speaker: playback.muted ? 0 : levels.speaker,
+                  };
+                }),
+          );
     const stopAudio = () => {
       stopped = true;
+      detachLevels();
       for (const track of microphone?.getTracks() ?? []) track.stop();
       playback.pause();
       playback.srcObject = null;
@@ -77,6 +97,7 @@ export function openLiveWebRtc(input: LiveMediaInput) {
         playback.muted = !enabled;
       },
       setMicrophoneEnabled: (enabled) => {
+        microphoneEnabled = enabled;
         for (const track of microphone?.getAudioTracks() ?? []) track.enabled = enabled;
       },
       stopAudio,

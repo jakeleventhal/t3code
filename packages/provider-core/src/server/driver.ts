@@ -19,6 +19,7 @@ import type * as ProviderAdapter from "./ProviderAdapter.ts";
 import type { ProviderAuthController } from "./auth.ts";
 import type { ProviderDriverError } from "./errors.ts";
 import type { ManagedServerProvider } from "./snapshot.ts";
+import type { ProviderMediaGeneration } from "./mediaGeneration.ts";
 import type { ProviderTextGeneration } from "./textGeneration.ts";
 import type { ProviderUsageReader } from "./usage.ts";
 
@@ -51,6 +52,8 @@ export interface ProviderInstance {
   >;
   readonly orchestrationAdapter: ProviderAdapter.ProviderAdapterV2["Service"];
   readonly textGeneration: ProviderTextGeneration;
+  /** Present only for drivers whose CLI exposes native image/video tools on the user's account. */
+  readonly mediaGeneration?: ProviderMediaGeneration;
   readonly auth?: ProviderAuthController;
   readonly acpSessionManagement?: {
     readonly listSessions: (input: {

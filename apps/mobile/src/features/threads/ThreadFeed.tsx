@@ -1,3 +1,5 @@
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { BotAvatar } from "../bots/BotAvatar";
 import { TypingDots } from "../bots/TypingDots";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -969,7 +971,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   });
 });
 
-function useMarkdownStyles(): MarkdownStyleSets {
+function useMarkdownStyles(botConversation: boolean): MarkdownStyleSets {
   const { appearance } = useAppearancePreferences();
   const nativeMarkdownTypography = useMemo(
     () => resolveNativeMarkdownTypography(appearance.baseFontSize),
@@ -987,12 +989,14 @@ function useMarkdownStyles(): MarkdownStyleSets {
   // Native chip drawing parses opaque hex only, and this role is translucent.
   const contextChipBorderColor = flattenThemeColor(
     theme["--color-border"],
-    theme["--color-user-bubble"],
+    theme[botConversation ? "--color-primary" : "--color-user-bubble"],
   );
-  const markdownUserBodyColor = theme["--color-user-bubble-foreground"];
+  const markdownUserBodyColor =
+    theme[botConversation ? "--color-primary-foreground" : "--color-user-bubble-foreground"];
   const markdownUserCodeBg = theme["--color-md-user-code-bg"];
   const markdownUserCodeText = theme["--color-md-user-code-text"];
-  const markdownUserInlineCodeText = theme["--color-user-bubble-foreground-muted"];
+  const markdownUserInlineCodeText =
+    theme[botConversation ? "--color-primary-foreground" : "--color-user-bubble-foreground-muted"];
   const markdownUserFenceBg = theme["--color-md-user-fence-bg"];
   const regularFontFamily = FONT_FAMILIES.regular;
   const boldFontFamily = FONT_FAMILIES.bold;
@@ -1073,6 +1077,7 @@ function AgentMessageFoldHeader(props: {
   readonly expanded: boolean;
   readonly onToggle: () => void;
   readonly iconSubtleColor: ColorValue;
+  readonly botConversation: boolean;
 }) {
   const senderShell = useQuietThreadShell(
     props.senderThreadId ? scopeThreadRef(props.environmentId, props.senderThreadId) : null,
@@ -1095,16 +1100,29 @@ function AgentMessageFoldHeader(props: {
         name="bubble.left.and.bubble.right"
         size={14}
         weight="medium"
-        tintColorClassName="accent-user-bubble-foreground-muted"
+        tintColorClassName={
+          props.botConversation
+            ? "accent-primary-foreground"
+            : "accent-user-bubble-foreground-muted"
+        }
         type="monochrome"
       />
       <Text
         numberOfLines={1}
-        className="max-w-[50%] shrink-0 font-t3-medium text-sm text-user-bubble-foreground-muted"
+        className={cn(
+          "max-w-[50%] shrink-0 font-t3-medium text-sm",
+          props.botConversation ? "text-primary-foreground" : "text-user-bubble-foreground-muted",
+        )}
       >
         {label}
       </Text>
-      <Text numberOfLines={1} className="min-w-0 shrink text-sm text-user-bubble-foreground">
+      <Text
+        numberOfLines={1}
+        className={cn(
+          "min-w-0 shrink text-sm",
+          props.botConversation ? "text-primary-foreground" : "text-user-bubble-foreground",
+        )}
+      >
         {props.summary}
       </Text>
       <ThreadDisclosureChevron
@@ -1259,6 +1277,23 @@ function compactionLabel(label: string, title: string | undefined) {
     : label;
 }
 
+const BOT_REPLY_AVATAR_SIZE = 30;
+/** The avatar, its gap, and the card's padding and border, taken from a bot reply's width. */
+const BOT_REPLY_INSET = BOT_REPLY_AVATAR_SIZE + 10 + 30;
+
+function BotReplyAvatar(props: { readonly project: EnvironmentProject }) {
+  return (
+    <View className="mt-0.5">
+      <BotAvatar
+        role={props.project.botRole === "assistant" ? "assistant" : "specialist"}
+        title={props.project.title}
+        size={BOT_REPLY_AVATAR_SIZE}
+        project={props.project}
+      />
+    </View>
+  );
+}
+
 function renderFeedEntry(
   info: { item: ThreadFeedRow; index: number },
   props: Pick<
@@ -1272,6 +1307,8 @@ function renderFeedEntry(
     | "workspaceRoot"
   > & {
     readonly simpleProgress: boolean;
+    /** The bot replying in a bot chat, shown beside its replies; null in Code threads. */
+    readonly botProject: EnvironmentProject | null;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly workRowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
@@ -1371,11 +1408,16 @@ function renderFeedEntry(
   if (entry.type === "thinking" && props.simpleProgress) {
     return (
       <View
-        className="min-h-8 flex-row items-center gap-2 px-1.5 py-1"
+        className="min-h-8 flex-row items-center gap-2.5 px-1 py-1"
+        accessible
+        accessibilityLabel="Thinking"
         accessibilityLiveRegion="polite"
       >
-        <TypingDots />
-        <Text className="text-sm text-foreground-muted">Thinking…</Text>
+        {props.botProject ? <BotReplyAvatar project={props.botProject} /> : null}
+        <View className="flex-row items-center gap-2 rounded-[20px] rounded-tl-md border border-border-subtle bg-card px-3.5 py-2.5">
+          <TypingDots />
+          <Text className="text-sm text-foreground-muted">Thinking</Text>
+        </View>
       </View>
     );
   }
@@ -1412,7 +1454,12 @@ function renderFeedEntry(
 
   if (entry.type === "work-toggle" && props.simpleProgress) {
     return (
-      <View className="min-h-8 flex-row items-center gap-2 px-1.5 py-1">
+      <View
+        className={cn(
+          "min-h-8 flex-row items-center gap-2 py-1",
+          props.botProject ? "pl-11 pr-1.5" : "px-1.5",
+        )}
+      >
         {entry.live ? <TypingDots /> : null}
         <Text numberOfLines={2} className="flex-1 text-sm text-foreground-muted">
           {entry.summary}
@@ -1636,6 +1683,7 @@ function renderFeedEntry(
             {presentation.attribution === "guest" ? <GuestBubbleTint /> : null}
             {foldRowId !== null ? (
               <AgentMessageFoldHeader
+                botConversation={props.simpleProgress}
                 environmentId={props.environmentId}
                 senderThreadId={message.senderThreadId}
                 summary={
@@ -1815,18 +1863,18 @@ function renderFeedEntry(
     }
 
     const enterAnimated = isFreshTimestamp(message.createdAt);
-    return (
-      <Animated.View
-        className={cn(
-          showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
-            ? "mb-5 px-1"
-            : "mb-1 px-1",
-          hasWideBlock && "w-full",
-        )}
-        {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
-      >
+    // Bot replies read as messages from someone: a card beside the bot's face.
+    const botCard = props.botProject !== null;
+    const replyContent = (
+      <>
         {renderedText.trim().length > 0 ? (
-          <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
+          <MarkdownImageAvailableWidthContext
+            value={
+              botCard
+                ? Math.max(0, props.markdownContentWidth - BOT_REPLY_INSET)
+                : props.markdownContentWidth
+            }
+          >
             <AssistantMarkdownContent
               markdown={renderedText}
               environmentId={props.environmentId}
@@ -1844,6 +1892,33 @@ function renderFeedEntry(
           onPressPreview={props.onPressPreview}
           onPlaybackStart={props.onPlaybackStart}
         />
+      </>
+    );
+    return (
+      <Animated.View
+        className={cn(
+          showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
+            ? "mb-5 px-1"
+            : "mb-1 px-1",
+          hasWideBlock && "w-full",
+        )}
+        {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
+      >
+        {props.botProject ? (
+          <View className="flex-row items-start gap-2.5">
+            <BotReplyAvatar project={props.botProject} />
+            <View
+              className={cn(
+                "min-w-0 shrink rounded-[20px] rounded-tl-md border border-border-subtle bg-card px-3.5 py-2.5",
+                hasWideBlock && "flex-1",
+              )}
+            >
+              {replyContent}
+            </View>
+          </View>
+        ) : (
+          replyContent
+        )}
         {showAssistantMeta && message.checkpointSummary ? (
           <TurnDiffStat
             checkpoint={message.checkpointSummary}
@@ -1851,7 +1926,7 @@ function renderFeedEntry(
           />
         ) : null}
         {showAssistantMeta ? (
-          <View className="mt-1 flex-row items-center gap-1">
+          <View className={cn("mt-1 flex-row items-center gap-1", botCard && "pl-10")}>
             <CopyTextButton
               accessibilityLabel="Copy message"
               text={renderedText}
@@ -1878,7 +1953,7 @@ function renderFeedEntry(
 
   if (props.simpleProgress) {
     return (
-      <View className="gap-1 px-1.5 py-1">
+      <View className={cn("gap-1 py-1", props.botProject ? "pl-11 pr-1.5" : "px-1.5")}>
         {entry.activities.map((activity) => (
           <View key={activity.id} className="min-h-8 flex-row items-center gap-2">
             {activity.live ? <TypingDots /> : null}
@@ -2378,7 +2453,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const theme = useUniwindTheme();
   const iconSubtleColor = theme["--color-icon-subtle"];
   const screenColor = theme["--color-screen"];
-  const userBubbleColor = theme["--color-user-bubble"];
+  const userBubbleColor = theme[simpleProgress ? "--color-primary" : "--color-user-bubble"];
   const openSkillInstructions = (path: string) => {
     void Haptics.selectionAsync();
     navigation.navigate("ThreadFile", {
@@ -2729,7 +2804,7 @@ export const ThreadFeed = memo(function ThreadFeed({
       />
     ) : null;
   };
-  const markdownStyles = useMarkdownStyles();
+  const markdownStyles = useMarkdownStyles(simpleProgress);
   const renderReasoning = (text: string) => (
     <AssistantMarkdownContent
       markdown={text}
@@ -3293,6 +3368,7 @@ export const ThreadFeed = memo(function ThreadFeed({
         <ThreadMediaVisibility>
           {renderFeedEntry(info, {
             simpleProgress,
+            botProject: simpleProgress ? project : null,
             environmentId: props.environmentId,
             dispatchingMessageId: props.dispatchingMessageId,
             onEditPendingMessage: props.onEditPendingMessage,

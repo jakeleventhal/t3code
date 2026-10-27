@@ -1,8 +1,16 @@
 import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
-import { use, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { Platform, Pressable, ScrollView, View, type TextInputInstance } from "react-native";
+import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type TextInputInstance,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 
@@ -29,8 +37,9 @@ import { botsSearchQueryAtom, setBotsSearchQuery } from "./bots-header";
 import { useAssistantEnvironmentId, useBotProjects } from "./use-assistant";
 import { useOpenBotConversation } from "./use-bot-conversation";
 
-const HERO_AVATAR_SIZE = 88;
-const ROW_AVATAR_SIZE = 52;
+const HeroPlaybackContext = createContext(true);
+const HERO_AVATAR_SIZE = 96;
+const ROW_AVATAR_SIZE = 56;
 
 /**
  * Navigation shells leave archived threads out, so a main conversation the project names but the
@@ -95,12 +104,19 @@ function useStatusColor(entry: BotInboxEntry): string | null {
 
 function InboxAvatar(props: { readonly entry: BotInboxEntry; readonly size: number }) {
   const { bot } = props.entry;
+  const heroVisible = use(HeroPlaybackContext);
   const statusColor = useStatusColor(props.entry);
   const dot = Math.round(props.size * 0.26);
   return (
     <View style={{ width: props.size, height: props.size }}>
       <View className={props.entry.status === "offline" ? "opacity-50" : undefined}>
-        <BotAvatar role={bot.role} title={bot.title} size={props.size} project={bot.project} />
+        <BotAvatar
+          role={bot.role}
+          title={bot.title}
+          size={props.size}
+          project={bot.project}
+          live={props.size === HERO_AVATAR_SIZE && heroVisible}
+        />
       </View>
       {statusColor === null ? null : (
         <View
@@ -220,12 +236,12 @@ function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel(entry, opener.reason, false)}
+      accessibilityLabel={accessibilityLabel(entry, opener.reason)}
       accessibilityState={{ disabled: opener.disabled, selected: props.selected }}
       disabled={opener.disabled || opener.pending}
       onPress={opener.open}
       className={cn(
-        "mx-4 items-center gap-2 rounded-3xl px-6 pb-5 pt-3 active:opacity-70",
+        "mx-4 items-center gap-1.5 rounded-3xl px-6 pb-4 pt-2 active:opacity-70",
         props.selected && "bg-thread-selected",
         opener.disabled && "opacity-45",
       )}
@@ -236,7 +252,7 @@ function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected
           textRole="headline"
           numberOfLines={1}
           className={cn(
-            "font-t3-bold text-foreground",
+            "font-t3-semibold text-foreground",
             props.selected && "text-thread-selected-foreground",
           )}
         >
@@ -250,13 +266,7 @@ function AssistantHero(props: { readonly entry: BotInboxEntry; readonly selected
         {opener.pending ? <AppActivityIndicator size="small" /> : <InboxBadges entry={entry} />}
       </View>
       <View className="max-w-[300px]">
-        <InboxSummary
-          entry={entry}
-          reason={opener.reason}
-          showPreview={false}
-          centered
-          numberOfLines={2}
-        />
+        <InboxSummary entry={entry} reason={opener.reason} centered numberOfLines={2} />
       </View>
     </Pressable>
   );
@@ -277,7 +287,7 @@ function BotInboxRow(props: { readonly entry: BotInboxEntry; readonly selected: 
     >
       <View
         className={cn(
-          "min-h-[76px] flex-row items-center gap-3.5 px-5 py-3",
+          "min-h-[78px] flex-row items-center gap-3.5 px-4 py-3",
           opener.disabled && "opacity-45",
         )}
       >
@@ -285,11 +295,11 @@ function BotInboxRow(props: { readonly entry: BotInboxEntry; readonly selected: 
         <View className="min-w-0 flex-1 gap-0.5">
           <View className="flex-row items-baseline gap-2">
             <Text
-              textRole="body"
+              textRole="headline"
               numberOfLines={1}
               className={cn(
                 "min-w-0 flex-1 text-foreground",
-                entry.unread ? "font-t3-bold" : "font-t3-medium",
+                entry.unread ? "font-t3-bold" : "font-t3-semibold",
                 props.selected && "text-thread-selected-foreground",
               )}
             >
@@ -302,7 +312,7 @@ function BotInboxRow(props: { readonly entry: BotInboxEntry; readonly selected: 
               <Text
                 textRole="caption"
                 className={
-                  entry.unread ? "font-t3-bold text-primary-text" : "text-foreground-tertiary"
+                  entry.unread ? "font-t3-semibold text-primary-text" : "text-foreground-tertiary"
                 }
               >
                 {time}
@@ -347,6 +357,11 @@ function BotsSearch(props: { readonly query: string }) {
 
 function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: number }) {
   const insets = useSafeAreaInsets();
+  const [heroVisible, setHeroVisible] = useState(true);
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // Include the search field and hero padding before suspending the only animated inbox image.
+    setHeroVisible(event.nativeEvent.contentOffset.y < 320);
+  };
   const primaryColumn = use(NativePrimaryColumnContext);
   const contentContainerStyle = {
     gap: 8,
@@ -358,9 +373,11 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
       <ScrollView
         className="flex-1"
         keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={100}
         contentContainerStyle={contentContainerStyle}
       >
-        {props.children}
+        <HeroPlaybackContext value={heroVisible}>{props.children}</HeroPlaybackContext>
       </ScrollView>
     );
   }
@@ -370,6 +387,8 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
       <ScrollView
         className={primaryColumn ? "bg-drawer" : "bg-screen"}
         keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={100}
         keyboardDismissMode="interactive"
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
@@ -378,7 +397,7 @@ function BotsScrollView(props: { readonly children: ReactNode; readonly bottom: 
         scrollIndicatorInsets={{ top: insets.top }}
         contentContainerStyle={contentContainerStyle}
       >
-        {props.children}
+        <HeroPlaybackContext value={heroVisible}>{props.children}</HeroPlaybackContext>
       </ScrollView>
     </NativeScrollViewMarker>
   );
@@ -440,11 +459,12 @@ export function BotsScreen() {
 
   if (shown.length === 0) {
     return (
-      <View className="flex-1 justify-center bg-screen">
+      <View className="flex-1 items-center justify-center gap-2 bg-screen">
+        <BotAvatar role="assistant" title="Assistant" size={64} />
         <EmptyState
           variant="plain"
-          title="No environments"
-          detail="Bots live on an environment. Add one to start talking to your Assistant."
+          title="Talk to Assistant"
+          detail="Add an environment that runs T3 Code and your Assistant appears here, with the same conversation on every device."
           actionLabel="Add environment"
           onAction={() => openSettings(navigation, "SettingsEnvironmentNew")}
         />
@@ -454,7 +474,8 @@ export function BotsScreen() {
 
   if (query === null && inbox.hero === null && inbox.rows.length === 0) {
     return (
-      <View className="flex-1 justify-center bg-screen">
+      <View className="flex-1 items-center justify-center gap-2 bg-screen">
+        <BotAvatar role="assistant" title="Assistant" size={64} />
         <EmptyState
           variant="plain"
           title="No bots yet"
@@ -485,7 +506,7 @@ export function BotsScreen() {
       </View>
       {query !== null && query.trim().length > 0 && inbox.rows.length === 0 ? (
         <Text textRole="footnote" className="px-5 py-6 text-center text-foreground-muted">
-          No bots match.
+          No bot named “{query.trim()}”.
         </Text>
       ) : null}
     </BotsScrollView>

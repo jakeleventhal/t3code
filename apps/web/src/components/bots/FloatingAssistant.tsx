@@ -440,7 +440,11 @@ function AssistantCard({
         describe={describe}
         onOpenChat={openChat}
       />
-      <BotTaskModels threadRef={mainThreadRef} />
+      <BotTaskModels
+        threadRef={mainThreadRef}
+        projectId={assistant?.id ?? null}
+        className="mx-3 mb-1.5 self-start"
+      />
       <AssistantStrip
         status={status}
         step={step}

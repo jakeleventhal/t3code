@@ -62,6 +62,42 @@ export function botVoiceSelection(settings: ServerSettings, projectId: ProjectId
   return { kind: "default" as const, selection: botDefaultVoice(settings) };
 }
 
+/**
+ * Every model a bot reaches without being asked: its chat and complex-task choices, their
+ * per-bot overrides, and the automatic picks used when those are unavailable.
+ */
+export function botRoutedModels(
+  preferences: BotSharedPreferences,
+  projectId: ProjectId | null,
+): ReadonlySet<string> {
+  const runtime = projectId === null ? undefined : preferences.runtimeOverrides?.[projectId];
+  return new Set(
+    [
+      botComplexTaskModel(preferences, projectId),
+      preferences.defaultModelSelection,
+      runtime?.modelSelection,
+      preferences.automaticModelSelections?.chat,
+      preferences.automaticModelSelections?.complex,
+    ].flatMap((selection) => (selection ? [selection.model] : [])),
+  );
+}
+
+/**
+ * Running work on a model the user named for it. Ordinary routing, including quiet escalation
+ * to the complex-task model, stays unlabeled.
+ */
+export function explicitBotTaskModels(
+  agents: readonly OrchestrationV2Subagent[],
+  routed: ReadonlySet<string>,
+): string[] {
+  return activeBotTaskModels(
+    agents.filter((agent) => {
+      const model = agent.modelSelection?.model ?? agent.model;
+      return model !== undefined && model !== null && !routed.has(model);
+    }),
+  );
+}
+
 export function activeBotTaskModels(agents: readonly OrchestrationV2Subagent[]): string[] {
   return [
     ...new Set(

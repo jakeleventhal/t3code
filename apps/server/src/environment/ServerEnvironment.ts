@@ -251,6 +251,7 @@ export const make = Effect.gen(function* () {
       botVoiceConfiguration: true,
       botVoice: true,
       botVoicePreview: true,
+      botAvatarGeneration: true,
       threadPinReorder: true,
       threadActiveReorder: true,
       threadAutoSettleOptOut: true,

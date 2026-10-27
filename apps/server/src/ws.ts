@@ -219,6 +219,7 @@ import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "./bots/BotAvatarService.ts";
 import * as BotService from "./bots/BotService.ts";
 import * as VoiceConfiguration from "./bots/VoiceConfiguration.ts";
 import * as VoiceCalls from "./bots/VoiceCalls.ts";
@@ -569,6 +570,14 @@ const MainWsRpcGroup = ServerWsRpcGroup.omit(
   WS_METHODS.previewReadPage,
   WS_METHODS.botsFiles,
   WS_METHODS.botsSetAvatar,
+  WS_METHODS.botsAvatarCapabilities,
+  WS_METHODS.botsAvatarGenerateOptions,
+  WS_METHODS.botsAvatarSelectOption,
+  WS_METHODS.botsAvatarDescribeImage,
+  WS_METHODS.botsAvatarRetry,
+  WS_METHODS.botsAvatarDismiss,
+  WS_METHODS.botsAvatarAssetRead,
+  WS_METHODS.botsAvatarAssetReceive,
 );
 
 // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
@@ -3397,6 +3406,50 @@ export const layerWsRpc = (
     Layer.merge(
       ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsSetAvatar, (input) =>
         Effect.flatMap(BotService.BotService, (bots) => bots.setAvatar(input)),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarCapabilities, () =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.capabilities),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarGenerateOptions, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) =>
+          avatars.generateOptions(input),
+        ),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarSelectOption, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.selectOption(input)),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarDescribeImage, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) =>
+          avatars.describeImage(input),
+        ),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarRetry, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.retry(input)),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarDismiss, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.dismiss(input)),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarAssetRead, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.assetRead(input)),
+      ),
+    ),
+    Layer.merge(
+      ServerWsRpcGroup.toLayerHandler(WS_METHODS.botsAvatarAssetReceive, (input) =>
+        Effect.flatMap(BotAvatarService.BotAvatarService, (avatars) => avatars.assetReceive(input)),
       ),
     ),
     Layer.merge(

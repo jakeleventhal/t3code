@@ -423,7 +423,10 @@ class T3WorkspaceNavigationView(
   @Composable
   private fun tabIcon(tab: String, tint: Color = androidx.compose.material3.LocalContentColor.current) {
     BadgedBox(badge = {
-      if (tab == "bots" && botBadge.isNotEmpty()) Badge { Text(botBadge) }
+      // A blank badge is the unread dot; only attention carries text.
+      if (tab == "bots" && botBadge.isNotEmpty()) {
+        if (botBadge.isBlank()) Badge() else Badge { Text(botBadge) }
+      }
     }) { Icon(tabIconPainter(tab), contentDescription = null, tint = tint) }
   }
 

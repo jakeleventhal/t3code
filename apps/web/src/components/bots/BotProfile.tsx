@@ -1,4 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
+import { botAvatarStatusLabel } from "@t3tools/client-runtime/bot-avatar";
+import { botVoiceSelection } from "@t3tools/shared/botPreferences";
+import { useNavigate } from "@tanstack/react-router";
 import {
   scopeThreadRef,
   scopedProjectKey,
@@ -11,16 +14,11 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   AuthOrchestrationOperateScope,
-  BOT_AVATAR_MAX_BYTES,
-  CommandId,
-  ProjectMonogramText,
   type BotFile,
   type BotFilesPage,
-  type ProjectIconColor,
   type ProjectIconOverride,
   type ScheduledTask,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 import {
   FileIcon,
   FileSpreadsheetIcon,
@@ -29,15 +27,19 @@ import {
   ImageIcon,
   LayoutTemplateIcon,
   MusicIcon,
+  HeadphonesIcon,
+  PencilIcon,
   XIcon,
 } from "lucide-react";
-import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
-import { cn, randomUUID } from "~/lib/utils";
+import { useClientSettings } from "../../hooks/useSettings";
+import { deriveLogicalProjectKeyFromSettings } from "../../logicalProject";
+import { useEnvironmentSupportsVoiceSettings } from "../../state/botVoice";
+import { useVoiceCall } from "../../voice/useVoiceCall";
+import { cn } from "~/lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { projectIconColorClassName } from "../../projectIconColors";
-import { deriveProjectIdentity } from "../../projectIdentity";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../../rightPanelLayout";
 import { botEnvironment } from "../../state/bots";
 import { useEnvironmentSupportsBotProfiles, useThreadShell } from "../../state/entities";
@@ -57,7 +59,11 @@ import { Sheet, SheetPopup, SheetTitle } from "../ui/sheet";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { BotAvatar } from "./BotAvatar";
+import { BotAvatar, botAvatarShapeClassName } from "./BotAvatar";
+import { BotAvatarEditor } from "./BotAvatarEditor";
+import { BotCallStartButton } from "./BotCallStartButton";
+import { startBotCall } from "./botCallActions";
+import { useBotCallAvailability } from "./useBotCallAvailability";
 import { BotTurnSettingsPanel } from "./BotRuntimeSettings";
 import {
   botFilePreviewTarget,
@@ -67,24 +73,10 @@ import {
   groupBotFiles,
   type BotFileVisual,
 } from "./botProfile.logic";
-import { botInitials } from "./botRoom.logic";
 import { useBotRoomStore } from "./botRoomStore";
 import { useBotActions } from "./useBotActions";
 
 const FILES_PAGE_SIZE = 24;
-const AVATAR_EMOJIS = ["🧭", "🌿", "📈", "☕", "🛰️", "🐙", "✈️", "🏠", "🦊", "🎧", "📚", "⚡"];
-const AVATAR_COLORS: ReadonlyArray<ProjectIconColor> = [
-  "amber",
-  "sky",
-  "green",
-  "rose",
-  "violet",
-  "yellow",
-  "gray",
-];
-const AVATAR_PHOTO_SIZE = 256;
-const AVATAR_PHOTO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const isMonogramText = Schema.is(ProjectMonogramText);
 
 function reportFailure(title: string, error: unknown) {
   toastManager.add({
@@ -196,6 +188,7 @@ function BotIdentity({ project, connected }: { project: EnvironmentProject; conn
   const [editingName, setEditingName] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const nameCommittedRef = useRef(false);
+  const status = botAvatarStatusLabel(project.botAvatar);
 
   const update = async (
     input: { title?: string; projectIcon?: ProjectIconOverride | null; faviconPath?: null },
@@ -228,23 +221,32 @@ function BotIdentity({ project, connected }: { project: EnvironmentProject; conn
     }
   };
 
-  const avatar = <BotAvatar bot={project} size="xl" />;
+  const avatar = <BotAvatar bot={project} size="profile" />;
   return (
-    <div className="flex flex-col items-center gap-2 text-center">
+    <div className="flex flex-col items-center gap-1.5 text-center">
       {canEdit ? (
         <Popover open={avatarOpen} onOpenChange={setAvatarOpen}>
           <PopoverTrigger
             render={
               <button
                 type="button"
-                aria-label="Change picture"
-                className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring hover:opacity-90"
+                aria-label="Edit avatar"
+                className={cn(
+                  "group relative outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  botAvatarShapeClassName(project.botRole, "profile"),
+                )}
               />
             }
           >
             {avatar}
+            <span
+              aria-hidden
+              className="absolute -end-1 -bottom-0.5 grid size-6 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs/5 group-hover:text-foreground"
+            >
+              <PencilIcon className="size-3" />
+            </span>
           </PopoverTrigger>
-          <PopoverPopup side="bottom" align="center" className="w-64">
+          <PopoverPopup side="bottom" align="center" className="w-72">
             <BotAvatarEditor
               project={project}
               onChange={(projectIcon) =>
@@ -289,174 +291,76 @@ function BotIdentity({ project, connected }: { project: EnvironmentProject; conn
       ) : (
         <h2 className="max-w-full truncate px-2 text-xl font-semibold">{project.title}</h2>
       )}
+      <p className="text-xs text-muted-foreground">
+        {project.botRole === "assistant" ? "Your Assistant" : "Specialist"}
+        {connected ? null : " · Offline"}
+        {status === null ? null : ` · ${status}`}
+      </p>
+      <BotIdentityShortcuts project={project} />
     </div>
   );
 }
 
-function initialsIcon(title: string, color: ProjectIconColor): ProjectIconOverride {
-  const initials = botInitials(title).toUpperCase();
-  return {
-    kind: "monogram",
-    text: isMonogramText(initials) ? initials : deriveProjectIdentity(title).monogram,
-    color,
-  };
-}
-
-function BotAvatarEditor({
-  project,
-  onChange,
-  onRemovePhoto,
-  onDone,
-}: {
-  project: EnvironmentProject;
-  onChange: (icon: ProjectIconOverride) => void;
-  onRemovePhoto: () => void;
-  onDone: () => void;
-}) {
-  const icon = project.projectIcon ?? null;
-  const hasPhoto = icon === null && project.faviconPath != null;
-  const photosSupported = useEnvironmentSupportsBotProfiles(project.environmentId);
-  const canUpload =
-    useAtomValue(botEnvironment.setAvatar.permissionAtom(project.environmentId)) && photosSupported;
-  const setAvatar = useAtomCommand(botEnvironment.setAvatar, { reportFailure: false });
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const upload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    if (!file) return;
-    if (!AVATAR_PHOTO_TYPES.has(file.type)) {
-      reportFailure("Could not use that photo", new Error("Use a PNG, JPEG, WebP or GIF."));
-      return;
-    }
-    setUploading(true);
-    try {
-      const dataUrl = await squareAvatarDataUrl(file);
-      const result = await setAvatar({
-        environmentId: project.environmentId,
-        input: {
-          commandId: CommandId.make(randomUUID()),
-          projectId: project.id,
-          image: { mimeType: "image/png", dataUrl },
-        },
-      });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        reportFailure(`Could not save ${project.title}'s photo`, squashAtomCommandFailure(result));
-      }
-    } catch (error) {
-      reportFailure("Could not use that photo", error);
-    }
-    setUploading(false);
-  };
-
+/** Call and Voice sit under the name, so the two things people do with a bot's voice are one tap. */
+function BotIdentityShortcuts({ project }: { project: EnvironmentProject }) {
+  const supported = useEnvironmentSupportsVoiceSettings(project.environmentId);
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(project.environmentId));
+  const availability = useBotCallAvailability(project.environmentId, project.id);
+  const call = useVoiceCall();
+  const navigate = useNavigate();
+  const groupingMode = useClientSettings((client) => client.sidebarProjectGroupingMode);
+  const groupingOverrides = useClientSettings((client) => client.sidebarProjectGroupingOverrides);
+  if (!supported || settings === null) return null;
+  const threadId = project.botMainThreadId ?? null;
+  const bot = { id: project.id, title: project.title, botRole: project.botRole ?? null };
+  const voice = botVoiceSelection(settings, project.id).selection;
+  const voiceLabel = voice === null ? "Voice" : `Voice · ${voice.voice}`;
   return (
-    <div className="grid gap-3">
-      <div className="grid grid-cols-6 gap-1" role="group" aria-label="Emoji">
-        {AVATAR_EMOJIS.map((emoji) => {
-          const selected = icon?.kind === "emoji" && icon.emoji === emoji;
-          return (
-            <Button
-              key={emoji}
-              size="icon-sm"
-              variant="ghost"
-              aria-label={emoji}
-              aria-pressed={selected}
-              data-pressed={selected || undefined}
-              onClick={() => onChange({ kind: "emoji", emoji })}
-            >
-              <span className="text-lg leading-none">{emoji}</span>
-            </Button>
+    <div className="mt-1 flex items-center gap-1.5">
+      <BotCallStartButton
+        prominent
+        environmentId={project.environmentId}
+        bot={bot}
+        threadId={threadId}
+        active={call}
+        availability={availability}
+        onStart={({ replacingCallId }) => {
+          if (threadId === null) return;
+          void startBotCall(
+            {
+              environmentId: project.environmentId,
+              bot,
+              threadRef: scopeThreadRef(project.environmentId, threadId),
+            },
+            replacingCallId,
           );
-        })}
-      </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Initials color">
-        {AVATAR_COLORS.map((color) => {
-          const selected = icon?.kind === "monogram" && icon.color === color;
-          return (
-            <button
-              key={color}
-              type="button"
-              aria-label={`Initials in ${color}`}
-              aria-pressed={selected}
-              className={cn(
-                "grid size-7 place-items-center rounded-full text-2xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                projectIconColorClassName(color),
-                selected && "ring-2 ring-inset ring-foreground",
-              )}
-              style={{ backgroundColor: "color-mix(in srgb, currentColor 16%, transparent)" }}
-              onClick={() => onChange(initialsIcon(project.title, color))}
-            >
-              {botInitials(project.title).toUpperCase()}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex items-center gap-1.5">
-        {canUpload ? (
-          <>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? "Saving…" : "Upload photo"}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              hidden
-              onChange={(event) => void upload(event)}
-            />
-          </>
-        ) : null}
-        {hasPhoto ? (
-          <Button size="sm" variant="ghost" onClick={onRemovePhoto}>
-            Remove
-          </Button>
-        ) : null}
-        <Button size="sm" className="ml-auto" onClick={onDone}>
-          Done
-        </Button>
-      </div>
+        }}
+        onOpenActive={() => {
+          if (call !== null) useBotRoomStore.getState().setCallTranscriptOpenFor(call.callId);
+        }}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        aria-label={`Voice settings for ${project.title}`}
+        onClick={() =>
+          void navigate({
+            to: "/settings/voice",
+            search: {
+              machine: project.environmentId,
+              project: deriveLogicalProjectKeyFromSettings(project, {
+                sidebarProjectGroupingMode: groupingMode,
+                sidebarProjectGroupingOverrides: groupingOverrides,
+              }),
+            },
+          })
+        }
+      >
+        <HeadphonesIcon />
+        {voiceLabel}
+      </Button>
     </div>
   );
-}
-
-/** Crops to a centered square and scales down, so a phone photo stays well under the limit. */
-async function squareAvatarDataUrl(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file).catch(() => {
-    throw new Error("That image couldn't be read.");
-  });
-  try {
-    const side = Math.min(bitmap.width, bitmap.height);
-    const size = Math.min(AVATAR_PHOTO_SIZE, side);
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("That image couldn't be read.");
-    context.drawImage(
-      bitmap,
-      (bitmap.width - side) / 2,
-      (bitmap.height - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      size,
-      size,
-    );
-    const dataUrl = canvas.toDataURL("image/png");
-    if (dataUrl.length > Math.ceil((BOT_AVATAR_MAX_BYTES * 4) / 3)) {
-      throw new Error("That photo is too large. Use one up to 2 MB.");
-    }
-    return dataUrl;
-  } finally {
-    bitmap.close();
-  }
 }
 
 function PanelNote({ children, action }: { children: string; action?: ReactNode }) {

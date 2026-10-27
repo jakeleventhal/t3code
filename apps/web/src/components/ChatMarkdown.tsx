@@ -220,6 +220,7 @@ const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 interface ChatMarkdownProps {
   /** Compact markdown transforms remove blocks before rendering inside a label. */
   inline?: boolean;
+  botCards?: boolean;
   text: string;
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
@@ -923,6 +924,7 @@ const ChatMarkdownRendererContext = React.createContext<
 
 // Isolate streamed source text from the renderer context; only offset-based renderers need it.
 const ChatMarkdownTextContext = React.createContext("");
+const BotMarkdownCardsContext = React.createContext(false);
 
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
@@ -957,9 +959,38 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     return <div {...props}>{children}</div>;
   },
-  p: function MarkdownParagraph({ node: _node, children, ...props }) {
+  p: function MarkdownParagraph({ node, children, ...props }) {
     const { skills, threadRef } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills, threadRef)}</p>;
+    const botCards = use(BotMarkdownCardsContext);
+    const nodes = node?.children.filter(
+      (child) => child.type !== "text" || child.value.trim() !== "",
+    );
+    const only = nodes?.length === 1 ? nodes[0] : null;
+    const href = only?.type === "element" && only.tagName === "a" ? only.properties.href : null;
+    const card = botCards && typeof href === "string" && /^(https?:\/\/|\/)/i.test(href);
+    let host: string | null = null;
+    if (card && typeof href === "string" && /^https?:/i.test(href)) {
+      try {
+        host = new URL(href).hostname;
+      } catch {
+        /* Incomplete streaming URLs remain ordinary links. */
+      }
+    }
+    return (
+      <p
+        {...props}
+        className={cn(
+          props.className,
+          card &&
+            "max-w-md rounded-xl border border-border/60 bg-card px-3 py-2 font-sans text-sm shadow-xs [&>a]:block [&>a]:no-underline",
+        )}
+      >
+        {renderSkillInlineMarkdownChildren(children, skills, threadRef)}
+        {host ? (
+          <span className="mt-1 block truncate text-xs text-muted-foreground">{host}</span>
+        ) : null}
+      </p>
+    );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const alert =
@@ -1593,6 +1624,7 @@ function ChatMarkdown({
   text,
   className,
   inline = false,
+  botCards = false,
   lineBreaks = false,
   parseRawHtml = true,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
@@ -1636,19 +1668,21 @@ function ChatMarkdown({
     >
       <ChatMarkdownRendererContext value={componentState}>
         <ChatMarkdownTextContext value={text}>
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={
-              parseRawHtml
-                ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
-                : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
-            }
-            skipHtml={false}
-            components={CHAT_MARKDOWN_COMPONENTS}
-            urlTransform={markdownUrlTransform}
-          >
-            {text}
-          </ReactMarkdown>
+          <BotMarkdownCardsContext value={botCards}>
+            <ReactMarkdown
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={
+                parseRawHtml
+                  ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
+                  : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
+              }
+              skipHtml={false}
+              components={CHAT_MARKDOWN_COMPONENTS}
+              urlTransform={markdownUrlTransform}
+            >
+              {text}
+            </ReactMarkdown>
+          </BotMarkdownCardsContext>
         </ChatMarkdownTextContext>
       </ChatMarkdownRendererContext>
       {localMediaPreview ? (

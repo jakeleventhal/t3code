@@ -48,6 +48,15 @@ interface BotRoomState {
   /** The bot profile beside the chat stays open across that bot's conversations and others'. */
   readonly profileOpen: boolean;
   readonly profileTab: BotProfileTab;
+  /**
+   * Text the open chat's composer should append and focus, asked for by a surface that cannot
+   * reach the composer itself (the profile). The chat consumes it; `nonce` makes repeats distinct.
+   */
+  readonly composerPrefill: {
+    readonly threadKey: string;
+    readonly text: string;
+    readonly nonce: number;
+  } | null;
   readonly recordLocation: (
     input:
       | { readonly room: "code"; readonly href: string }
@@ -64,6 +73,8 @@ interface BotRoomState {
   readonly setCallTranscriptOpenFor: (callId: string | null) => void;
   readonly setProfileOpen: (open: boolean) => void;
   readonly setProfileTab: (tab: BotProfileTab) => void;
+  readonly requestComposerPrefill: (threadKey: string, text: string) => void;
+  readonly clearComposerPrefill: (nonce: number) => void;
   readonly setAssistantDraft: (environmentId: EnvironmentId, draft: string) => void;
   /** Marks a send in flight and returns the draft it carries, or null if one already is. */
   readonly beginAssistantSend: (environmentId: EnvironmentId) => string | null;
@@ -109,6 +120,13 @@ export const useBotRoomStore = create<BotRoomState>()((set, get) => {
     callTranscriptOpenFor: null,
     profileOpen: false,
     profileTab: "routines",
+    composerPrefill: null,
+    requestComposerPrefill: (threadKey, text) =>
+      set((state) => ({
+        composerPrefill: { threadKey, text, nonce: (state.composerPrefill?.nonce ?? 0) + 1 },
+      })),
+    clearComposerPrefill: (nonce) =>
+      set((state) => (state.composerPrefill?.nonce === nonce ? { composerPrefill: null } : {})),
     recordLocation: (input) =>
       set((state) => {
         if (input.room === "code") {

@@ -1,3 +1,4 @@
+import { botPreviewText } from "@t3tools/shared/botPreview";
 import { environmentAssistants } from "@t3tools/client-runtime/assistant-environment";
 import type {
   EnvironmentProject,
@@ -248,7 +249,7 @@ function mainPreview(bot: BotRoomBot, unread: boolean): string | null {
     if (bot.project === null) return "Start a conversation";
     return bot.project.botMainThreadId ? "Reopen conversation" : "No messages yet";
   }
-  const text = main.source.latestVisibleMessage?.text.replace(/\s+/g, " ").trim();
+  const text = botPreviewText(main.source.latestVisibleMessage?.text);
   if (text) return text;
   const run = main.latestRun;
   if (run === null) return "No messages yet";
@@ -427,6 +428,13 @@ export function botThreadsAccessibilityLabel(badge: {
   return badge.needsYou ? `Threads, ${count}, one needs you` : `Threads, ${count}`;
 }
 
+/**
+ * A blank badge, which native tab bars draw as a plain dot: unread replies are worth noticing,
+ * not counting.
+ */
+export const BOT_UNREAD_BADGE = " ";
+
+/** "!" while a bot needs the user, a dot for unread replies, nothing otherwise. */
 export function botNotificationBadge(
   projects: ReadonlyArray<EnvironmentProject>,
   threads: ReadonlyArray<EnvironmentThreadShell>,
@@ -436,12 +444,12 @@ export function botNotificationBadge(
       .filter((project) => botRole(project) !== null)
       .map((project) => `${project.environmentId}:${project.id}`),
   );
-  let unread = 0;
+  let unread = false;
   for (const thread of threads) {
     if (thread.archivedAt !== null || !keys.has(`${thread.environmentId}:${thread.projectId}`))
       continue;
     if (botThreadStatus(thread) === "needs-you") return "!";
-    if (threadHasUnseenCompletion(thread)) unread++;
+    if (threadHasUnseenCompletion(thread)) unread = true;
   }
-  return unread === 0 ? undefined : unread > 99 ? "99+" : String(unread);
+  return unread ? BOT_UNREAD_BADGE : undefined;
 }

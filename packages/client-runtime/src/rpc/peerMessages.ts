@@ -38,11 +38,14 @@ export const withPeerAccess = Effect.fn("EnvironmentRpc.withPeerAccess")(functio
     | typeof WS_METHODS.peerEnvironmentsSendToThread
     | typeof WS_METHODS.peerMessagesFlush
     | typeof WS_METHODS.botsReplicaReceive
+    | typeof WS_METHODS.botsAvatarAssetReceive
     | typeof WS_METHODS.botsMergePreferences,
   effect: Effect.Effect<A, E, R>,
 ) {
   const requiredScope =
-    method === WS_METHODS.botsReplicaReceive || method === WS_METHODS.botsMergePreferences
+    method === WS_METHODS.botsReplicaReceive ||
+    method === WS_METHODS.botsAvatarAssetReceive ||
+    method === WS_METHODS.botsMergePreferences
       ? AuthSettingsWriteScope
       : AuthOrchestrationOperateScope;
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;

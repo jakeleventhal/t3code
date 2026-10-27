@@ -23,6 +23,7 @@ import { type MessagesTimelineRow, type WorkGroupScrollAnchor } from "./Messages
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import type { TurnItemDetailSource } from "../../state/queries";
 import { type HandoffTimelineRun } from "./V2LifecycleRow";
+import type { BotAvatarBot } from "../bots/BotAvatar";
 
 /**
  * Where an expanded row reads an item's detail and a command's output. The owner's rows read them
@@ -37,6 +38,8 @@ export interface TurnItemSource {
 }
 
 export interface TimelineRowSharedState {
+  /** The bot replying in a bot chat, named above its replies; absent in Code threads. */
+  botIdentity?: BotAvatarBot | null;
   citationRequest: AssistantCitationTarget | null;
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
@@ -92,6 +95,9 @@ export interface TimelineRowSharedState {
 
 export interface TimelineRowActivityState {
   readonly simpleProgress?: boolean;
+  /** Bot chats: an optional chip beside the thinking line, and the tool running now. */
+  readonly progressDetail?: ReactNode;
+  readonly simpleActivity?: string | null;
   isWorking: boolean;
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;

@@ -159,6 +159,10 @@
       "types": "./src/server/textGeneration.ts",
       "import": "./src/server/textGeneration.ts"
     },
+    "./server/mediaGeneration": {
+      "types": "./src/server/mediaGeneration.ts",
+      "import": "./src/server/mediaGeneration.ts"
+    },
     "./server/textGenerationOperations": {
       "types": "./src/server/textGenerationOperations.ts",
       "import": "./src/server/textGenerationOperations.ts"

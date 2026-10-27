@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import { EnvironmentId, ProjectId, IsoDateTime, ThreadId } from "./baseSchemas.ts";
 import { ProjectIconOverride } from "./project.ts";
+import { BotAvatar, BotAvatarAssetPath } from "./botAvatar.ts";
 import { BotContinuityFiles } from "./botContinuity.ts";
 import { BotSharedPreferences } from "./botPreferences.ts";
 import {
@@ -19,6 +20,10 @@ export const BotReplicaManifest = Schema.Struct({
     id: ProjectId,
     title: Schema.String,
     projectIcon: Schema.NullOr(ProjectIconOverride),
+    // The still and clips are content-addressed files; `avatarAssets` below says which a
+    // replica already holds, so the carrier copies the rest before applying this manifest.
+    faviconPath: Schema.optional(Schema.NullOr(BotAvatarAssetPath)),
+    botAvatar: Schema.optional(Schema.NullOr(BotAvatar)),
     botRole: Schema.Literals(["assistant", "specialist"]),
     botMainThreadId: Schema.NullOr(ThreadId),
     createdAt: IsoDateTime,
@@ -51,7 +56,13 @@ export const BotReplicaPage = Schema.Struct({
 export type BotReplicaPage = typeof BotReplicaPage.Type;
 export const BotReplicationStatus = Schema.Struct({
   preferences: BotSharedPreferences,
-  projects: Schema.Array(Schema.Struct({ projectId: ProjectId, ready: Schema.Boolean })),
+  projects: Schema.Array(
+    Schema.Struct({
+      projectId: ProjectId,
+      ready: Schema.Boolean,
+      avatarAssets: Schema.optional(Schema.Array(BotAvatarAssetPath)),
+    }),
+  ),
   cursors: Schema.Array(
     Schema.Struct({
       environmentId: EnvironmentId,

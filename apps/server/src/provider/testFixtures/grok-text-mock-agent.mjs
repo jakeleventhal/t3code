@@ -43,6 +43,14 @@ for await (const line of NodeReadline.createInterface({ input: process.stdin }))
       result = {};
       break;
     case "session/prompt":
+      // Native tool activity, as Grok Build reports Imagine calls, before the reply text.
+      for (const update of JSON.parse(process.env.T3_ACP_TOOL_UPDATES ?? "[]")) {
+        write({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: { sessionId, update },
+        });
+      }
       write({
         jsonrpc: "2.0",
         method: "session/update",

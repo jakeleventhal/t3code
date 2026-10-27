@@ -1,8 +1,14 @@
+import {
+  createPcmPlaybackLevels,
+  pcm16Level,
+} from "@t3tools/client-runtime/voice-call/audio-levels";
 import type {
   PcmAudio,
   PcmAudioFactory,
   PcmPlaybackPosition,
 } from "@t3tools/client-runtime/voice-call/pcm-audio";
+
+import { callAudioLevels } from "./callAudioLevels";
 
 const CAPTURE_PROCESSOR = "t3-pcm-capture";
 const CAPTURE_CHUNK_MS = 40;
@@ -10,6 +16,8 @@ const CAPTURE_CHUNK_MS = 40;
 const PLAYBACK_LEAD_SECONDS = 0.05;
 /** Replies arrive faster than real time; past this much unplayed audio the call fails instead of growing. */
 const MAX_QUEUED_PLAYBACK_SECONDS = 180;
+/** A microphone chunk older than this no longer describes what is being said. */
+const MICROPHONE_LEVEL_STALE_MS = 4 * CAPTURE_CHUNK_MS;
 
 /**
  * Inline so there is no separate asset to resolve: the same Blob URL loads under Vite dev, bundled
@@ -111,6 +119,12 @@ function decodePcm16(base64: string): Float32Array<ArrayBuffer> | null {
   return samples;
 }
 
+function sampleLevel(samples: Float32Array): number {
+  let sum = 0;
+  for (const sample of samples) sum += sample * sample;
+  return Math.sqrt(sum / samples.length);
+}
+
 function microphoneError(error: unknown): Error {
   const name = error instanceof DOMException ? error.name : null;
   if (name === "NotAllowedError" || name === "SecurityError")
@@ -154,6 +168,9 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
   let segments: PlaybackSegment[] = [];
   let nextStart = 0;
   let scheduledItem: { readonly itemId: string; scheduledMs: number } | null = null;
+  const playbackLevels = createPcmPlaybackLevels();
+  let microphoneLevel = { level: 0, at: 0 };
+  let detachLevels = () => {};
 
   const onContextStateChange = (event: Event) => {
     if ((event.target as AudioContext).state === "closed") fail("Voice audio stopped.");
@@ -181,6 +198,7 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
     segments = [];
     nextStart = 0;
     scheduledItem = null;
+    playbackLevels.clear();
   };
 
   const releaseContext = (context: AudioContext | null) => {
@@ -194,6 +212,7 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
     closed = true;
     lifetime.abort();
     signal.removeEventListener("abort", close);
+    detachLevels();
     stopPlayback();
     for (const track of microphone?.getTracks() ?? []) {
       track.removeEventListener("ended", onTrackEnded);
@@ -299,8 +318,11 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
       },
     });
     capture.port.onmessage = (event: MessageEvent<unknown>) => {
-      if (!closed && !muted && event.data instanceof ArrayBuffer)
-        onAudio(bytesToBase64(new Uint8Array(event.data)));
+      if (!closed && !muted && event.data instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(event.data);
+        microphoneLevel = { level: pcm16Level(bytes), at: performance.now() };
+        onAudio(bytesToBase64(bytes));
+      }
     };
     capture.onprocessorerror = () => fail("Microphone audio stopped.");
     captureSource.connect(capture);
@@ -310,6 +332,15 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
         throw new Error("Call audio could not start.");
       }),
     );
+    detachLevels = callAudioLevels.attach(() => {
+      const now = performance.now();
+      return {
+        microphone:
+          muted || now - microphoneLevel.at > MICROPHONE_LEVEL_STALE_MS ? 0 : microphoneLevel.level,
+        speaker:
+          playbackContext === null ? 0 : playbackLevels.levelAt(playbackContext.currentTime * 1000),
+      };
+    });
   };
 
   if (signal.aborted) close();
@@ -362,6 +393,7 @@ export const createBrowserPcmAudio: PcmAudioFactory = ({
         if (segments.length === 0 && !closed) onPlaybackIdle();
       };
       segments.push(segment);
+      playbackLevels.push(sampleLevel(samples), segment.durationMs, start * 1000);
       source.start(start);
       nextStart = start + audio.duration;
       if (context.state === "suspended") void context.resume().catch(() => undefined);

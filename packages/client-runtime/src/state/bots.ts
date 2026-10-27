@@ -41,6 +41,42 @@ export function createBotEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    avatarCapabilities: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:bots:avatar-capabilities",
+      tag: WS_METHODS.botsAvatarCapabilities,
+      staleTimeMs: 30_000,
+      idleTtlMs: 60_000,
+    }),
+    avatarGenerateOptions: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:avatar-generate-options",
+      tag: WS_METHODS.botsAvatarGenerateOptions,
+      scheduler,
+      concurrency,
+    }),
+    avatarSelectOption: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:avatar-select-option",
+      tag: WS_METHODS.botsAvatarSelectOption,
+      scheduler,
+      concurrency,
+    }),
+    avatarDescribeImage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:avatar-describe-image",
+      tag: WS_METHODS.botsAvatarDescribeImage,
+      scheduler,
+      concurrency,
+    }),
+    avatarRetry: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:avatar-retry",
+      tag: WS_METHODS.botsAvatarRetry,
+      scheduler,
+      concurrency,
+    }),
+    avatarDismiss: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:avatar-dismiss",
+      tag: WS_METHODS.botsAvatarDismiss,
+      scheduler,
+      concurrency,
+    }),
     open: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:bots:open",
       tag: WS_METHODS.botsOpen,

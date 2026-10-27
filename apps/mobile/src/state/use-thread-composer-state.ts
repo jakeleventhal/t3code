@@ -51,6 +51,8 @@ import {
   removePersistedComposerAttachmentFile,
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { parseBotAvatarPrompt } from "@t3tools/client-runtime/bot-avatar";
+import { requestBotAvatarOptions } from "../features/bots/bot-avatar-actions";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildThreadFeed, createThreadFeedCache } from "../lib/threadActivity";
 import { acknowledgedThreadMessagesAtom } from "./acknowledged-thread-messages";
@@ -580,6 +582,18 @@ export function useThreadComposerState() {
       return null;
     }
 
+    // "Change your avatar to …" in a bot chat changes the avatar instead of starting a turn.
+    const avatarSubject =
+      selectedThreadProject?.botRole != null ? parseBotAvatarPrompt(text) : null;
+    if (avatarSubject !== null && selectedThreadProject) {
+      const started = await requestBotAvatarOptions({
+        environmentId: selectedThreadShell.environmentId,
+        projectId: selectedThreadProject.id,
+        prompt: avatarSubject,
+      });
+      if (started) clearComposerDraftContent(threadKey);
+      return null;
+    }
     const serverConfig = selectedEnvironmentRuntime?.serverConfig;
     // Read at send time so the message carries the bot's settings as they are now. A chosen model
     // that can't run blocks the send rather than quietly using the chat's own.

@@ -7,7 +7,10 @@ import {
   PhoneOffIcon,
 } from "lucide-react";
 import type { VoiceCallDraft, VoiceCallState } from "@t3tools/client-runtime/voice-call";
-import { useRef, type ReactNode } from "react";
+import { useRef, useSyncExternalStore, type ReactNode } from "react";
+import { secondTick } from "@t3tools/client-runtime/clock";
+import { formatVoiceCallDuration } from "@t3tools/client-runtime/work-log/voice-call";
+import { getDocumentActivity, subscribeDocumentActivity } from "../../lib/documentActivity";
 
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { ProjectId } from "@t3tools/contracts";
@@ -19,6 +22,7 @@ import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { BotAvatar } from "./BotAvatar";
+import { CallWaveform } from "./CallWaveform";
 import {
   botCallCanToggleMute,
   botCallPhaseLabel,
@@ -27,14 +31,14 @@ import {
 } from "./botCall.logic";
 
 /**
- * The compact corner control for the one live call: who, a status word, and the controls. It
- * never shows what was said; the transcript exists only in the drawer the user opens, and the
- * `transcript` and `composer` slots mount only then, so a collapsed call never re-renders on
- * speech or typing. Pass a null `composer` when the call cannot take typed messages.
+ * The one live call as a slim bar. The transcript and composer slots mount only while the drawer
+ * is open, so speech and typing never re-render it; a null `composer` takes no typed messages.
+ * `inline` is the call's own chat, where opening the chat would go nowhere.
  */
 export function BotCallDock({
   call,
   controls,
+  inline,
   expanded,
   onExpandedChange,
   transcript,
@@ -42,6 +46,7 @@ export function BotCallDock({
 }: {
   call: VoiceCallState;
   controls: BotCallControls;
+  inline: boolean;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   transcript: ReactNode;
@@ -61,107 +66,149 @@ export function BotCallDock({
     <div
       role="group"
       aria-label={`Call with ${title}`}
-      className="surface-glass flex w-[min(380px,calc(100vw-2rem))] flex-col rounded-xl border border-border/60 p-2 shadow-sm"
+      className={cn(
+        "flex flex-col rounded-xl border bg-card shadow-xs/5",
+        inline ? "w-full" : "w-[min(360px,calc(100vw-2rem))]",
+        failed && "border-destructive/40",
+      )}
     >
-      <div className="flex items-center gap-1">
-        <BotAvatar bot={project ?? call.bot} className={cn(!failed && "ring-2 ring-success")} />
-        <div className="flex min-w-0 flex-1 flex-col px-1 leading-tight">
+      <div className="flex h-10 items-center gap-2 ps-2.5 pe-1">
+        <span
+          aria-hidden
+          className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-destructive" : "bg-success")}
+        />
+        <BotAvatar bot={project ?? call.bot} />
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <span className="truncate text-xs font-semibold">{title}</span>
           <span
             className={cn(
-              "truncate text-2xs",
+              "shrink-0 text-2xs",
               failed ? "text-destructive-foreground" : "text-muted-foreground",
             )}
           >
             {botCallPhaseLabel(call.phase, call.muted)}
           </span>
         </div>
-        <CallIconButton
-          label={call.muted ? "Unmute" : "Mute"}
-          pressed={call.muted}
-          disabled={!canMute}
-          onClick={() => controls.toggleMute(call.callId)}
-        >
-          {call.muted ? <MicOffIcon /> : <MicIcon />}
-        </CallIconButton>
-        <Popover open={expanded} onOpenChange={onExpandedChange}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <PopoverTrigger
-                  render={
-                    <Button
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      aria-label={expanded ? "Hide transcript" : "Show transcript"}
-                    />
-                  }
-                />
+        {!failed && call.connectedAt != null ? (
+          <CallElapsed connectedAt={call.connectedAt} />
+        ) : null}
+        {failed ? null : (
+          <CallWaveform
+            live={canMute}
+            className={cn(
+              "shrink-0",
+              call.phase === "speaking" ? "text-success" : "text-muted-foreground",
+            )}
+          />
+        )}
+        <div className="flex shrink-0 items-center">
+          <CallIconButton
+            label={call.muted ? "Unmute" : "Mute"}
+            pressed={call.muted}
+            disabled={!canMute}
+            onClick={() => controls.toggleMute(call.callId)}
+          >
+            {call.muted ? <MicOffIcon /> : <MicIcon />}
+          </CallIconButton>
+          <Popover open={expanded} onOpenChange={onExpandedChange}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        size="icon-xs"
+                        variant="ghost-muted"
+                        aria-label={expanded ? "Hide transcript" : "Show transcript"}
+                      />
+                    }
+                  />
+                }
+              >
+                <ChevronUpIcon />
+              </TooltipTrigger>
+              <TooltipPopup side="top">
+                {expanded ? "Hide transcript" : "Show transcript"}
+              </TooltipPopup>
+            </Tooltip>
+            <PopoverPopup
+              side="top"
+              align="end"
+              sideOffset={8}
+              padding="none"
+              width="md"
+              aria-label="Call transcript"
+              // Mouse and keyboard opens land in the type box. Touch takes the first button instead,
+              // so opening the drawer to read does not raise the on-screen keyboard.
+              initialFocus={(interactionType) =>
+                interactionType === "touch" ||
+                (drawerRef.current?.querySelector<HTMLElement>("[data-call-composer]") ?? true)
               }
             >
-              <ChevronUpIcon />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {expanded ? "Hide transcript" : "Show transcript"}
-            </TooltipPopup>
-          </Tooltip>
-          <PopoverPopup
-            side="top"
-            align="end"
-            sideOffset={8}
-            padding="none"
-            width="md"
-            aria-label="Call transcript"
-            // Mouse and keyboard opens land in the type box. Touch takes the first button instead,
-            // so opening the drawer to read does not raise the on-screen keyboard.
-            initialFocus={(interactionType) =>
-              interactionType === "touch" ||
-              (drawerRef.current?.querySelector<HTMLElement>("[data-call-composer]") ?? true)
-            }
+              <div ref={drawerRef} className="flex w-full flex-col">
+                <div className="flex items-center gap-2 border-b px-3 py-2">
+                  <span className="text-sm font-semibold">Transcript</span>
+                  <span className="truncate text-xs text-muted-foreground">{title}</span>
+                  <span className="flex-1" />
+                  {inline ? null : (
+                    <Button size="xs" variant="outline" onClick={() => controls.openChat(call)}>
+                      <MaximizeIcon />
+                      Open chat
+                    </Button>
+                  )}
+                </div>
+                {call.error ? (
+                  <p
+                    role="status"
+                    className="px-3 py-2 text-sm text-destructive-foreground wrap-anywhere"
+                  >
+                    {status}
+                  </p>
+                ) : null}
+                {transcript}
+                {composer}
+                <div className="flex justify-end px-3 pb-2 text-2xs text-muted-foreground">
+                  <span>Esc to close</span>
+                </div>
+              </div>
+            </PopoverPopup>
+          </Popover>
+          {inline ? null : (
+            <CallIconButton label="Open chat" onClick={() => controls.openChat(call)}>
+              <MaximizeIcon />
+            </CallIconButton>
+          )}
+          <CallIconButton
+            label={failed ? "Dismiss" : "End call"}
+            variant="ghost-destructive"
+            onClick={() => controls.end(call.callId)}
           >
-            <div ref={drawerRef} className="flex w-full flex-col">
-              <div className="flex items-center gap-2 border-b px-3 py-2">
-                <span className="text-sm font-semibold">Transcript</span>
-                <span className="truncate text-xs text-muted-foreground">{title}</span>
-                <span className="flex-1" />
-                <Button size="xs" variant="outline" onClick={() => controls.openChat(call)}>
-                  <MaximizeIcon />
-                  Open chat
-                </Button>
-              </div>
-              {call.error ? (
-                <p
-                  role="status"
-                  className="px-3 py-2 text-sm text-destructive-foreground wrap-anywhere"
-                >
-                  {status}
-                </p>
-              ) : null}
-              {transcript}
-              {composer}
-              <div className="flex justify-end px-3 pb-2 text-2xs text-muted-foreground">
-                <span>Esc to close</span>
-              </div>
-            </div>
-          </PopoverPopup>
-        </Popover>
-        <CallIconButton label="Open chat" onClick={() => controls.openChat(call)}>
-          <MaximizeIcon />
-        </CallIconButton>
-        <CallIconButton
-          label={failed ? "Dismiss" : "End call"}
-          variant="ghost-destructive"
-          onClick={() => controls.end(call.callId)}
-        >
-          <PhoneOffIcon />
-        </CallIconButton>
+            <PhoneOffIcon />
+          </CallIconButton>
+        </div>
       </div>
       {call.error ? (
-        <p role="status" className="px-1 pt-2 text-xs text-destructive-foreground wrap-anywhere">
+        <p role="status" className="px-3 pb-2 text-xs text-destructive-foreground wrap-anywhere">
           {status}
         </p>
       ) : null}
     </div>
+  );
+}
+
+const noTick = () => () => {};
+const documentVisible = () => getDocumentActivity().visible;
+
+function CallElapsed({ connectedAt }: { connectedAt: number }) {
+  const visible = useSyncExternalStore(subscribeDocumentActivity, documentVisible);
+  const now = useSyncExternalStore(visible ? secondTick.subscribe : noTick, secondTick.getSnapshot);
+  return (
+    <span
+      className="shrink-0 text-2xs tabular-nums text-muted-foreground"
+      aria-label="Call duration"
+    >
+      {formatVoiceCallDuration(new Date(connectedAt).toISOString(), new Date(now).toISOString())}
+    </span>
   );
 }
 

@@ -11,6 +11,7 @@ import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
 import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
+import { makeCodexMediaGeneration } from "../CodexMediaGeneration.ts";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { chatGptModels } from "../CodexChatGptModels.ts";
 import { makeCodexManagedRuntime } from "../CodexManagedRuntime.ts";
@@ -295,6 +296,7 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
     snapshot,
     orchestrationAdapter,
     textGeneration,
+    mediaGeneration: yield* makeCodexMediaGeneration(config, {}, resolveRuntime),
     auth: runtime.auth.controller,
     snapshotForCwd: (cwd: string) =>
       enabled

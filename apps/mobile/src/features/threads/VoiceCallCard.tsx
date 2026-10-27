@@ -53,16 +53,23 @@ export function VoiceCallCard(props: {
   const title = `Call with ${call.botTitle}`;
   const status = voiceCallStatusLabel(call);
   return (
-    <View className="mb-3 overflow-hidden rounded-xl border border-border bg-card">
+    <View className="mb-3 overflow-hidden rounded-[18px] border border-border bg-card">
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityValue={{ text: status }}
         accessibilityState={{ expanded: props.expanded }}
-        className="min-h-11 flex-row items-center gap-2 px-3 py-2 active:bg-subtle"
+        className="min-h-12 flex-row items-center gap-2.5 px-3 py-2 active:bg-subtle"
         onPress={props.onToggle}
       >
-        <SymbolView name="phone" size={13} tintColor={props.iconColor} type="monochrome" />
+        <View className="size-7 items-center justify-center rounded-full bg-emerald-500/15">
+          <SymbolView
+            name="phone"
+            size={12}
+            tintColorClassName="accent-emerald-500"
+            type="monochrome"
+          />
+        </View>
         <Text className="shrink font-t3-medium text-sm text-foreground" numberOfLines={1}>
           {title}
         </Text>

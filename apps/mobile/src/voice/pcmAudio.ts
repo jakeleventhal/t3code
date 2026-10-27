@@ -1,3 +1,7 @@
+import {
+  createPcmPlaybackLevels,
+  pcm16Base64Level,
+} from "@t3tools/client-runtime/voice-call/audio-levels";
 import type {
   PcmAudioFactory,
   PcmPlaybackPosition,
@@ -5,6 +9,7 @@ import type {
 import { requireOptionalNativeModule } from "expo";
 
 import { uuidv4 } from "../lib/uuid";
+import { callAudioLevels } from "./callAudioLevels";
 
 interface VoiceAudioEvents {
   readonly onAudio: (event: { readonly sessionId: string; readonly data: string }) => void;
@@ -27,6 +32,14 @@ interface NativeVoiceAudio {
 }
 
 const CANCELLED = "The voice audio was cancelled.";
+/** A microphone chunk older than this no longer describes what is being said. */
+const MICROPHONE_LEVEL_STALE_MS = 200;
+
+/** PCM16 frames in a base64 chunk, without decoding it. */
+function base64Frames(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor(((base64.length * 3) / 4 - padding) / 2);
+}
 
 let nativeModule: NativeVoiceAudio | null | undefined;
 function nativeVoiceAudio(): NativeVoiceAudio | null {
@@ -50,16 +63,24 @@ export const createNativePcmAudio: PcmAudioFactory = (input) => {
   // A native failure while starting becomes start()'s rejection rather than a second report.
   let setupFailure: string | null = null;
   const isClosed = () => phase === "closed";
+  // Native plays replies on its own clock, so their loudness follows the schedule JS queued them on.
+  const playbackLevels = createPcmPlaybackLevels();
+  let microphoneChunk = { base64: "", at: 0 };
+  let detachLevels = () => {};
 
   const subscriptions =
     native === null
       ? []
       : [
           native.addListener("onAudio", (event) => {
-            if (event.sessionId === sessionId && !isClosed()) input.onAudio(event.data);
+            if (event.sessionId !== sessionId || isClosed()) return;
+            microphoneChunk = { base64: event.data, at: Date.now() };
+            input.onAudio(event.data);
           }),
           native.addListener("onPlaybackIdle", (event) => {
-            if (event.sessionId === sessionId && !isClosed()) input.onPlaybackIdle();
+            if (event.sessionId !== sessionId || isClosed()) return;
+            playbackLevels.clear();
+            input.onPlaybackIdle();
           }),
           native.addListener("onError", (event) => {
             if (event.sessionId === sessionId) fail(event.message);
@@ -71,6 +92,7 @@ export const createNativePcmAudio: PcmAudioFactory = (input) => {
     const reserved = phase !== "idle";
     phase = "closed";
     input.signal.removeEventListener("abort", close);
+    detachLevels();
     for (const subscription of subscriptions) subscription.remove();
     if (reserved) native?.stop(sessionId);
   }
@@ -107,11 +129,26 @@ export const createNativePcmAudio: PcmAudioFactory = (input) => {
       if (isClosed()) throw new Error(setupFailure ?? CANCELLED);
       phase = "started";
       if (muted) native.setMuted(sessionId, true);
+      detachLevels = callAudioLevels.attach(() => {
+        const now = Date.now();
+        return {
+          microphone:
+            muted || now - microphoneChunk.at > MICROPHONE_LEVEL_STALE_MS
+              ? 0
+              : pcm16Base64Level(microphoneChunk.base64),
+          speaker: playbackLevels.levelAt(now),
+        };
+      });
     },
     enqueue: (base64, itemId) => {
       if (isClosed() || native === null) return;
       try {
         native.enqueue(sessionId, base64, itemId);
+        playbackLevels.push(
+          () => pcm16Base64Level(base64),
+          (base64Frames(base64) / input.sampleRate) * 1000,
+          Date.now(),
+        );
       } catch (error) {
         fail(messageOf(error, "The voice reply couldn't be played."));
       }
@@ -120,6 +157,7 @@ export const createNativePcmAudio: PcmAudioFactory = (input) => {
       if (phase !== "started" || native === null) return null;
       try {
         const position = native.clear(sessionId);
+        playbackLevels.clear();
         // Truncation must never claim audio the user did not hear.
         return position === null
           ? null

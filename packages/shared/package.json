@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./botPreview": {
+      "types": "./src/botPreview.ts",
+      "import": "./src/botPreview.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

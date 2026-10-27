@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
+import { BotAvatar } from "./botAvatar.ts";
 import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import {
@@ -90,6 +91,8 @@ const ProjectLucideIcon = Schema.Struct({
 const ProjectEmojiIcon = Schema.Struct({
   kind: Schema.Literal("emoji"),
   emoji: ProjectEmoji,
+  /** Bot avatars tint the emoji's background; absent keeps the surface's own neutral fill. */
+  color: Schema.optional(ProjectIconColor),
 });
 const ProjectMonogramIcon = Schema.Struct({
   kind: Schema.Literal("monogram"),
@@ -162,6 +165,7 @@ export const Project = Schema.Struct({
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   faviconPath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   projectIcon: Schema.optional(Schema.NullOr(ReceivedProjectIcon)),
+  botAvatar: Schema.optional(Schema.NullOr(BotAvatar)),
   defaultModelSelection: Schema.NullOr(ModelSelection),
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
   // Opt-in because background sync performs network I/O and may move the checkout.

@@ -1,3 +1,4 @@
+import { botPreviewText } from "@t3tools/shared/botPreview";
 import { useAssistantEnvironmentId } from "./use-assistant";
 import { environmentAssistant } from "@t3tools/client-runtime/assistant-environment";
 import { useAtomValue } from "@effect/atom-react";
@@ -14,11 +15,14 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, View, type TextInputInstance } from "react-native";
+import { ScrollView, View, type TextInputInstance } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
-import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
+import { Button } from "../../components/ui/Button";
+import { useWorkspaceEnvironments } from "../../state/workspace";
+import { useBotConversationCall } from "./use-bot-call";
+import { openSettings } from "../settings/settings-navigation";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { IconButton } from "../../components/ui/IconButton";
@@ -39,8 +43,22 @@ import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { botThreadStatus, buildBotThreadList } from "./bot-room";
 import { useShowConversationInBots } from "./use-assistant";
 import { useBotAvailability } from "./use-bot-conversation";
+import { BotAvatar } from "./BotAvatar";
+import { threadHasUnseenCompletion } from "../threads/threadListV2";
 
 type ThreadMenuAction = "rename" | "archive" | "reopen";
+
+/** The newest visible line, else what the thread is doing or when it last moved. */
+function threadPreview(thread: EnvironmentThreadShell): string {
+  const status = botThreadStatus(thread);
+  if (status !== null) return threadSubtitle(thread);
+  return botPreviewText(thread.source.latestVisibleMessage?.text) || threadSubtitle(thread);
+}
+
+function threadTime(thread: EnvironmentThreadShell): string | null {
+  const age = relativeTime(thread.updatedAt);
+  return age === "<1m" ? "now" : age;
+}
 
 function threadSubtitle(thread: EnvironmentThreadShell): string {
   const status = botThreadStatus(thread);
@@ -54,6 +72,8 @@ function ThreadRow(props: {
   readonly icon: AppSymbolName;
   readonly title: string;
   readonly subtitle: string;
+  readonly time?: string | null;
+  readonly unread?: boolean;
   readonly current: boolean;
   readonly attention?: boolean;
   readonly divider: boolean;
@@ -78,27 +98,49 @@ function ThreadRow(props: {
   const content = (
     <RowPressable
       accessibilityRole="button"
-      accessibilityLabel={`${props.title}, ${props.subtitle}`}
+      accessibilityLabel={[props.title, props.unread ? "New reply" : null, props.subtitle]
+        .filter((part) => part !== null)
+        .join(", ")}
       accessibilityState={{ selected: props.current }}
       onPress={props.onPress}
       className="flex-1"
     >
-      <View className="flex-row items-center gap-3 py-3 pl-4 pr-2">
+      <View className="min-h-[60px] flex-row items-center gap-3 py-2.5 pl-4 pr-2">
         <SymbolView name={props.icon} size={16} tintColorClassName="accent-icon-muted" />
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text
-            className={cn("text-foreground", props.current && "text-thread-selected-foreground")}
-            numberOfLines={1}
-          >
-            {props.title}
-          </Text>
-          <Text
-            textRole="footnote"
-            className={props.attention ? "text-warning-foreground" : "text-foreground-muted"}
-            numberOfLines={1}
-          >
-            {props.subtitle}
-          </Text>
+          <View className="flex-row items-baseline gap-2">
+            <Text
+              className={cn(
+                "min-w-0 flex-1 text-foreground",
+                props.unread && "font-t3-semibold",
+                props.current && "text-thread-selected-foreground",
+              )}
+              numberOfLines={1}
+            >
+              {props.title}
+            </Text>
+            {props.time ? (
+              <Text
+                textRole="label"
+                className={props.unread ? "text-primary-text" : "text-foreground-tertiary"}
+              >
+                {props.time}
+              </Text>
+            ) : null}
+          </View>
+          <View className="flex-row items-center gap-2">
+            <Text
+              textRole="footnote"
+              className={cn(
+                "min-w-0 flex-1",
+                props.attention ? "text-warning-foreground" : "text-foreground-muted",
+              )}
+              numberOfLines={1}
+            >
+              {props.subtitle}
+            </Text>
+            {props.unread ? <View className="size-2.5 rounded-full bg-blue-500" /> : null}
+          </View>
         </View>
         {props.current ? (
           <SymbolView name="checkmark" size={14} tintColorClassName="accent-icon-muted" />
@@ -143,6 +185,7 @@ function ActionRow(props: {
   readonly icon: AppSymbolName;
   readonly label: string;
   readonly expanded?: boolean;
+  readonly primary?: boolean;
   readonly onPress: () => void;
 }) {
   return (
@@ -154,8 +197,18 @@ function ActionRow(props: {
       className="bg-grouped-card"
     >
       <View className="min-h-12 flex-row items-center gap-3 py-3 pl-4 pr-4">
-        <SymbolView name={props.icon} size={16} tintColorClassName="accent-icon-muted" />
-        <Text textRole="footnote" className="min-w-0 flex-1 text-foreground-muted">
+        <SymbolView
+          name={props.icon}
+          size={16}
+          tintColorClassName={props.primary ? "accent-primary-text" : "accent-icon-muted"}
+        />
+        <Text
+          textRole={props.primary ? "body" : "footnote"}
+          className={cn(
+            "min-w-0 flex-1",
+            props.primary ? "text-primary-text" : "text-foreground-muted",
+          )}
+        >
           {props.label}
         </Text>
       </View>
@@ -271,17 +324,31 @@ export function BotThreadsSheet(
   };
   const open = (threadId: ThreadId) => showConversation({ environmentId, threadId });
 
-  const header =
-    Platform.OS === "android" ? (
-      <AndroidSheetHeader title="Threads" onBack={close} />
-    ) : (
-      <View className="flex-row items-center justify-between px-4 pt-3">
-        <Text textRole="headline" className="font-t3-bold text-foreground">
-          Threads
-        </Text>
-        <IconButton accessibilityLabel="Close threads" icon="xmark" onPress={close} />
-      </View>
-    );
+  const connected = useWorkspaceEnvironments().some(
+    (entry) => entry.environmentId === environmentId && entry.connectionState === "connected",
+  );
+  const onCall = useBotConversationCall({
+    thread: project?.botMainThreadId ? { environmentId, threadId: project.botMainThreadId } : null,
+    project,
+    connected,
+    onOpenSettings: () =>
+      openSettings(navigation, "SettingsVoiceBot", { environmentId, projectId }),
+  });
+  const header = (
+    <View
+      className="flex-row items-center justify-between px-4 pb-2"
+      style={{ paddingTop: insets.top + 8 }}
+    >
+      <IconButton accessibilityLabel="Back" icon="chevron.left" onPress={close} />
+      {onCall ? (
+        <IconButton
+          accessibilityLabel={`Call ${project?.title ?? "bot"}`}
+          icon="phone"
+          onPress={onCall}
+        />
+      ) : null}
+    </View>
+  );
 
   const earlierProjectKeys = new Set(
     projects
@@ -343,13 +410,39 @@ export function BotThreadsSheet(
           paddingBottom: Math.max(insets.bottom, 16) + 16,
         }}
       >
+        <View className="items-center gap-3 pb-4">
+          <BotAvatar
+            role={project.botRole === "assistant" ? "assistant" : "specialist"}
+            title={project.title}
+            size={96}
+            project={project}
+          />
+          <Text className="text-2xl font-t3-bold text-foreground">{project.title}</Text>
+          <Text textRole="footnote" className="text-foreground-muted">
+            {project.botRole === "assistant" ? "Your assistant" : "Specialist"}
+            {connected ? "" : " · Offline"}
+          </Text>
+          <View className="flex-row gap-2">
+            {mainThreadId ? (
+              <Button label="Message" icon="bubble.left" onPress={() => open(mainThreadId)} />
+            ) : null}
+            <Button
+              label="Profile"
+              icon="person.crop.circle"
+              onPress={() => navigation.navigate("BotProfile", { environmentId, projectId })}
+            />
+          </View>
+        </View>
+        <Text textRole="headline" className="text-foreground">
+          Conversations
+        </Text>
         <View className="flex-row">
           <SearchField
             autoFocus={false}
             inputRef={searchRef}
-            accessibilityLabel="Search threads"
+            accessibilityLabel="Search conversations"
             clearAccessibilityLabel="Clear search"
-            placeholder="Search threads"
+            placeholder="Search conversations"
             value={query}
             onChangeText={setQuery}
           />
@@ -359,7 +452,9 @@ export function BotThreadsSheet(
             <ThreadRow
               icon="bubble.left"
               title="Main conversation"
-              subtitle={list.main ? threadSubtitle(list.main) : "Reopen conversation"}
+              subtitle={list.main ? threadPreview(list.main) : "Reopen conversation"}
+              time={list.main ? threadTime(list.main) : null}
+              unread={list.main !== null && threadHasUnseenCompletion(list.main)}
               current={currentThreadId === mainThreadId}
               attention={list.main !== null && botThreadStatus(list.main) === "needs-you"}
               divider={list.active.length > 0 || canStart}
@@ -371,7 +466,9 @@ export function BotThreadsSheet(
               key={thread.id}
               icon="text.bubble"
               title={thread.title}
-              subtitle={threadSubtitle(thread)}
+              subtitle={threadPreview(thread)}
+              time={threadTime(thread)}
+              unread={threadHasUnseenCompletion(thread)}
               current={thread.id === currentThreadId}
               attention={botThreadStatus(thread) === "needs-you"}
               divider
@@ -386,7 +483,9 @@ export function BotThreadsSheet(
               onPress={() => open(thread.id)}
             />
           ))}
-          {canStart ? <ActionRow icon="plus" label="New thread" onPress={startThread} /> : null}
+          {canStart ? (
+            <ActionRow icon="plus" label="New conversation" primary onPress={startThread} />
+          ) : null}
         </ListSection>
         {earlierConversations.length > 0 ? (
           <ListSection>
@@ -411,7 +510,7 @@ export function BotThreadsSheet(
         earlierConversations.length === 0 &&
         query.trim().length > 0 ? (
           <Text textRole="footnote" className="px-2 text-center text-foreground-muted">
-            No open threads match.
+            No conversations match.
           </Text>
         ) : null}
         <ListSection>

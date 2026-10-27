@@ -172,7 +172,13 @@ export function WorkspaceNativeTabs(props: {
               screenKey={slot}
               title=""
               badgeValue={!settings && tab === "bots" ? botBadge : undefined}
-              tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
+              tabBarItemAccessibilityLabel={
+                settings
+                  ? "Settings"
+                  : tab === "bots" && botBadge !== undefined
+                    ? `${WORKSPACE_TAB_LABELS[tab]}, ${botBadge === "!" ? "needs you" : "unread replies"}`
+                    : WORKSPACE_TAB_LABELS[tab]
+              }
               ios={{
                 icon: settings
                   ? { type: "sfSymbol", name: "gearshape" }
