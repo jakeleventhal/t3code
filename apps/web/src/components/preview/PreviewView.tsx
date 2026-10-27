@@ -263,7 +263,11 @@ export function PreviewView({
     } catch {}
   };
 
-  const handleOpenServerUrl = async (next: string, targetPort?: number, urlKind?: DiscoveredLocalServerUrlKind) => {
+  const handleOpenServerUrl = async (
+    next: string,
+    targetPort?: number,
+    urlKind?: DiscoveredLocalServerUrlKind,
+  ) => {
     try {
       const resolved =
         isServerTab || !previewBridge
