@@ -315,10 +315,18 @@ export const GuestMessageAttribution = Schema.Struct({
 });
 export type GuestMessageAttribution = typeof GuestMessageAttribution.Type;
 
+export const BotMessageReaction = Schema.Struct({
+  messageId: MessageId,
+  text: BoundedString(8_192),
+  emoji: Schema.NullOr(BoundedString(32)),
+});
+export type BotMessageReaction = typeof BotMessageReaction.Type;
+
 /** Structured context riding on a user message. Undecodable records are dropped, not fatal. */
 export const OrchestrationMessageContext = Schema.Struct({
   version: Schema.Literal(1),
   guest: Schema.optional(GuestMessageAttribution),
+  botReaction: Schema.optional(BotMessageReaction),
   // A device snapshot accompanies the request without becoming authored message text.
   currentView: Schema.optionalKey(BoundedString(8_192)),
   records: Schema.Array(Schema.Unknown)

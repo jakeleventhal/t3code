@@ -23,7 +23,7 @@ export const NAVIGATION_TAB_ICONS = {
   threads: "text.bubble",
   pullRequests: PullRequestGlyph.pullRequest,
   usage: "chart.bar.xaxis",
-  bots: "square.grid.2x2",
+  bots: "bot",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 
 export function useNavigationTabOrder() {

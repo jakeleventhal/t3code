@@ -9,9 +9,9 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ServerSettings from "../serverSettings.ts";
 import * as CodexVoice from "./CodexVoice.ts";
 
-it.effect(
-  "exports the selected CLI sign-in, keeps credentials server-side, and never starts a backing Codex turn",
-  () =>
+it.effect.each([true, false])(
+  "exports CLI sign-in with workspace routing=%s without starting a backing Codex turn",
+  (routed) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -30,7 +30,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const results = {
     initialize: { codexHome: ${JSON.stringify(directory)}, userAgent: "codex/0.164.0", platformFamily: "unix", platformOs: "macos" },
     getAuthStatus: { authMethod: "chatgpt", authToken: "fake-subscription-token", requiresOpenaiAuth: true },
-    "account/read": { account: { type: "chatgpt", email: "test@example.com", planType: "pro" }, requiresOpenaiAuth: true, workspaceRouting: { backendOrigin: "https://us.chatgpt.com", chatgptAccountId: "selected-workspace", accountRoutingOverride: "us" } },
+    "account/read": { account: { type: "chatgpt", email: "test@example.com", planType: "pro" }, requiresOpenaiAuth: true, workspaceRouting: ${routed ? JSON.stringify({ backendOrigin: "https://us.chatgpt.com", chatgptAccountId: "selected-workspace", accountRoutingOverride: "us" }) : "undefined"} },
     "account/rateLimits/read": { accountId: "selected-workspace", rateLimits: { primary: null, secondary: null, credits: null, planType: "pro" } },
   };
   const result = results[input.method];
@@ -44,7 +44,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         requests++;
         assert.equal(
           request.url,
-          "https://us.chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas",
+          `https://${routed ? "us." : ""}chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas`,
         );
         assert.equal(request.headers.authorization, "Bearer fake-subscription-token");
         assert.equal(request.headers["chatgpt-account-id"], "selected-workspace");
@@ -108,7 +108,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         "initialized",
         "getAuthStatus",
         "account/read",
-        "account/rateLimits/read",
+        ...(routed ? [] : ["account/rateLimits/read"]),
       ]);
       assert.notInclude(JSON.stringify(result), "fake-subscription-token");
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),

@@ -55,6 +55,10 @@
       "types": "./src/assistantEnvironment.ts",
       "default": "./src/assistantEnvironment.ts"
     },
+    "./bot-message-reactions": {
+      "types": "./src/bot-message-reactions.ts",
+      "default": "./src/bot-message-reactions.ts"
+    },
     "./bot-avatar": {
       "types": "./src/botAvatar.ts",
       "default": "./src/botAvatar.ts"

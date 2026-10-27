@@ -1,3 +1,7 @@
+import {
+  botMessageReactions,
+  silentBotReactionReplyIds,
+} from "@t3tools/client-runtime/bot-message-reactions";
 import { AudioPreviewUnmountContext } from "../files/AudioPreview";
 import type { BotAvatarBot } from "../bots/BotAvatar";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
@@ -691,6 +695,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
     availableRevertTurnCounts,
     worktreeSetup,
   });
+  const botMessages = simpleProgress
+    ? timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : []))
+    : [];
+  const reactions = botMessageReactions(botMessages);
+  const silentReplies = silentBotReactionReplyIds(botMessages);
   const rows = useStableRows(
     simpleProgress
       ? rawRows.filter(
@@ -700,7 +709,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
             row.kind !== "work-live" &&
             row.kind !== "turn-fold" &&
             row.kind !== "attempt-fold" &&
-            row.kind !== "context-compaction",
+            row.kind !== "context-compaction" &&
+            !(
+              (row.kind === "message" || row.kind === "assistant-meta") &&
+              (row.message.context?.botReaction || silentReplies.has(row.message.id))
+            ),
         )
       : rawRows,
     listIdentityKey,
@@ -1292,12 +1305,32 @@ const ConversationTimeline = memo(function ConversationTimeline({
         >
           <AudioPreviewUnmountContext value={onAudioUnmount}>
             <TimelineRowContent row={item} />
+            {item.kind === "message" && reactions?.has(item.message.id) ? (
+              <div
+                className={cn(
+                  "flex pb-2",
+                  item.message.role === "user" ? "justify-end" : "justify-start",
+                )}
+              >
+                <span
+                  className="rounded-full bg-muted px-2 py-1 text-sm"
+                  aria-label={`Your reaction ${reactions.get(item.message.id)}`}
+                >
+                  {reactions.get(item.message.id)}
+                </span>
+              </div>
+            ) : null}
           </AudioPreviewUnmountContext>
         </div>
       </div>
     </TimelineRowCtx>
   );
-  const listExtraData = { identity: listIdentityKey, rowCount: rows.length, sharedState };
+  const listExtraData = {
+    identity: listIdentityKey,
+    rowCount: rows.length,
+    sharedState,
+    reactions,
+  };
 
   const forwardMinimapWheel = (event: WheelEvent) => {
     const scrollNode = listRef.current?.getScrollableNode();

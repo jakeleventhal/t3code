@@ -1,3 +1,4 @@
+import IconRobot from "@tabler/icons-react-native/IconRobot";
 import IconMaximize from "@tabler/icons-react-native/IconMaximize";
 import type { Icon } from "@tabler/icons-react-native/types";
 /* Package-root imports eagerly register the entire Tabler icon set in Metro. */
@@ -264,6 +265,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "square.and.pencil": IconEdit,
   "square.on.square": IconCopy,
   "square.grid.2x2": IconApps,
+  bot: IconRobot,
   "square.split.2x1": IconLayoutColumns,
   star: IconStar,
   "star.fill": IconStarFilled,
@@ -291,13 +293,13 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "xmark.circle.fill": IconCircleXFilled,
 } satisfies Partial<
   Record<
-    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff",
+    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff" | "bot",
     Icon
   >
 >;
 const SF_ICON_LOOKUP: Partial<
   Record<
-    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff",
+    SFSymbol | "git.pull-request.closed" | "git.pull-request.draft" | "git.commit" | "file.diff" | "bot",
     Icon
   >
 > = ANDROID_ICON_BY_SF_SYMBOL;

@@ -32,6 +32,7 @@ import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 
+const BOT_ICON = require("../../../assets/icons/bot.png");
 const PULL_REQUEST_ICON = require("../../../assets/icons/pull-request.png");
 
 /**
@@ -184,13 +185,13 @@ export function WorkspaceNativeTabs(props: {
                   ? { type: "sfSymbol", name: "gearshape" }
                   : tab === "pullRequests"
                     ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
-                    : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
+                    : tab === "bots"
+                      ? { type: "templateSource", templateSource: BOT_ICON }
+                      : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
                 selectedIcon:
                   !settings && tab === "threads"
                     ? { type: "sfSymbol", name: "text.bubble.fill" }
-                    : !settings && tab === "bots"
-                      ? { type: "sfSymbol", name: "square.grid.2x2.fill" }
-                      : undefined,
+                    : undefined,
                 overrideScrollViewContentInsetAdjustmentBehavior: false,
               }}
             >

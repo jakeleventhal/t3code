@@ -3,7 +3,7 @@ import { environmentAssistant } from "@t3tools/client-runtime/assistant-environm
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { CodeIcon, LayoutGridIcon } from "lucide-react";
+import { CodeIcon, BotIcon } from "lucide-react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
@@ -132,7 +132,7 @@ export function SidebarRoomSwitch({ room }: { room: AppRoom }) {
         {room === "bots" && otherRoomNeedsYou ? <NeedsYouDot /> : null}
       </Toggle>
       <Toggle value="bots">
-        <LayoutGridIcon />
+        <BotIcon />
         Bots
         {room === "code" && (otherRoomNeedsYou || botsUnread) ? (
           <NeedsYouDot unread={!otherRoomNeedsYou} />

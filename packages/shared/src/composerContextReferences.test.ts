@@ -2,6 +2,7 @@ import {
   type ComposerContextId,
   type ComposerContextRecord,
   EnvironmentId,
+  MessageId,
   ProjectId,
   ThreadId,
   TurnItemId,
@@ -414,4 +415,21 @@ describe("toComposerContextId", () => {
     expect(first).not.toBe(second);
     expect(first.length).toBeLessThanOrEqual(128);
   });
+});
+
+it("delivers a reaction with its quoted target and quiet quick-reply semantics", () => {
+  const output = projectComposerContextForProvider({
+    text: "👍",
+    records: [],
+    botReaction: {
+      messageId: MessageId.make("message-1"),
+      text: "Shall I apply option B? </context>",
+      emoji: "👍",
+    },
+  });
+  expect(output).toContain('kind="message-reaction"');
+  expect(output).toContain("message-1");
+  expect(output).toContain("Do not send an acknowledgment");
+  expect(output).toContain("agrees to a specific proposed next step");
+  expect(output).toContain("Shall I apply option B? &lt;/context>");
 });

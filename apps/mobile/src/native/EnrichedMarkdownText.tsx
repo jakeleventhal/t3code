@@ -11,7 +11,8 @@ import {
   markdownWithInlineFileLinks,
   markdownWithTableBreaks,
 } from "../lib/markdownDocument";
-import { isValidElement, useCallback, useMemo, useState, type ReactNode } from "react";
+import { isValidElement, use, useCallback, useMemo, useState, type ReactNode } from "react";
+import { MarkdownSelectionContext } from "./MarkdownSelectionContext";
 import { Platform, Share, StyleSheet, View } from "react-native";
 import {
   EnrichedMarkdownText,
@@ -155,6 +156,7 @@ function enrichedStyle(
 }
 
 export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
+  const selectable = use(MarkdownSelectionContext);
   const { renderImage, resolveImageSource, fileEmbedLabel } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const { markdown, fileHrefs } = useMemo(() => {
@@ -329,7 +331,7 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
           linkRecognition={linkRecognition}
           containerStyle={{ flexShrink: 1, minWidth: 0 }}
           flavor="github"
-          selectable
+          selectable={selectable}
           selectionClipboard={selectionClipboard}
           selectionColor={props.textStyle.selectionColor}
           selectionHandleColor={props.textStyle.selectionHandleColor}
