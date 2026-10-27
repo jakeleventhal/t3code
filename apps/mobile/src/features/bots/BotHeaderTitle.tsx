@@ -2,6 +2,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { GlassSurface } from "../../components/ui/GlassSurface";
 import { botName, botRole } from "./bot-room";
 import { BotAvatar } from "./BotAvatar";
 
@@ -12,7 +13,8 @@ export interface BotChatIdentity {
   readonly onPress: () => void;
 }
 
-/** A bot chat's header names the bot, not the thread; tapping it opens the bot's profile. */
+export const BOT_CHAT_HEADER_HEIGHT = 112;
+
 export function BotHeaderTitle(props: BotChatIdentity & { readonly maxWidth: number }) {
   const { project } = props;
   const role = botRole(project) ?? "specialist";
@@ -24,20 +26,21 @@ export function BotHeaderTitle(props: BotChatIdentity & { readonly maxWidth: num
       accessibilityHint="Opens this bot's profile"
       hitSlop={6}
       onPress={props.onPress}
-      className="flex-row items-center gap-2 active:opacity-70"
+      className="items-center active:opacity-70"
       style={{ maxWidth: props.maxWidth }}
     >
-      <BotAvatar role={role} title={name} size={26} project={project} />
-      <View className="min-w-0 shrink">
-        <Text className="font-t3-bold text-foreground" style={{ fontSize: 15 }} numberOfLines={1}>
-          {name}
-        </Text>
-        {props.topic ? (
-          <Text className="text-foreground-muted" style={{ fontSize: 12 }} numberOfLines={1}>
-            {props.topic}
+      <BotAvatar role={role} title={name} size={68} project={project} live />
+      <GlassSurface style={{ borderRadius: 24, marginTop: -2, maxWidth: props.maxWidth }}>
+        <View className="px-4 py-1.5">
+          <Text
+            className="font-t3-semibold text-foreground"
+            style={{ fontSize: 16 }}
+            numberOfLines={1}
+          >
+            {name}
           </Text>
-        ) : null}
-      </View>
+        </View>
+      </GlassSurface>
     </Pressable>
   );
 }

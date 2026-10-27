@@ -3,6 +3,7 @@ import type {
   BotAvatarAssetPath,
   BotAvatarClipKind,
   BotAvatarClips,
+  BotAvatarJob,
   ServerProvider,
 } from "@t3tools/contracts";
 import { isProviderAvailable } from "@t3tools/contracts";
@@ -18,6 +19,19 @@ export function parseBotAvatarPrompt(text: string): string | null {
   const match = AVATAR_PROMPT_PATTERN.exec(text);
   const subject = match?.[1]?.replace(/\s+/g, " ").trim() ?? "";
   return subject.length > 0 ? subject : null;
+}
+
+/** While the picker is open the composer edits its description; dismissing it restores chat. */
+export function botAvatarComposerPrompt(
+  text: string,
+  job: BotAvatarJob | null | undefined,
+): string | null {
+  const explicit = parseBotAvatarPrompt(text);
+  if (explicit !== null) return explicit;
+  const correction = text.trim();
+  if (job?.status !== "awaiting-selection" || correction.length === 0 || correction.startsWith("/"))
+    return null;
+  return `${job.prompt}\n\nRevise this avatar description with the following correction. Preserve the other requested details. If a correction conflicts with an earlier detail, the latest correction takes precedence:\n${correction}`;
 }
 
 export interface BotAvatarActivity {

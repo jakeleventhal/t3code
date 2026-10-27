@@ -102,7 +102,7 @@ function FlowBody({
         <div className="grid gap-2">
           {header(
             "Pick an avatar",
-            `“${job.prompt}” · the one you choose is used right away, then animated`,
+            "Choose a look, or describe changes below. Dismiss to return to chat.",
           )}
           <div className="grid grid-cols-4 gap-2" role="group" aria-label="Avatar options">
             {(job.candidates ?? []).map((candidate, index) => (

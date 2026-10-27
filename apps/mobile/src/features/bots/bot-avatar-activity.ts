@@ -5,10 +5,7 @@ import { useThreadShells } from "../../state/entities";
 import { botThreadStatus } from "./bot-room";
 import { useActiveBotCall } from "./use-bot-call";
 
-/**
- * What the bot is really doing, from its threads' runs and the one live call. Only animated
- * avatar sizes subscribe, so list rows never pay for it.
- */
+/** Call activity takes precedence over work in any of the bot's conversations. */
 export function useBotAvatarActivity(bot: {
   readonly id: string;
   readonly environmentId: EnvironmentId;

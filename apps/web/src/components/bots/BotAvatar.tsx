@@ -76,7 +76,7 @@ const SQUARE_RADIUS_CLASS = {
 } as const;
 /** Decoding video for a 20 px face is waste, and a sidebar of rows must not all decode; only
  * the one hero, the empty-state face, and the profile ever play a clip. */
-const LIVE_SIZES = new Set<BotAvatarSize>(["hero", "list", "profile", "xl"]);
+const LIVE_SIZES = new Set<BotAvatarSize>(["hero", "row", "list", "profile", "xl"]);
 
 export type BotAvatarSize = keyof typeof SIZE_CLASS;
 
@@ -300,8 +300,7 @@ function BotLiveClip(props: {
       muted
       loop
       playsInline
-      autoPlay
-      preload="auto"
+      preload="none"
       disablePictureInPicture
       disableRemotePlayback
       aria-hidden

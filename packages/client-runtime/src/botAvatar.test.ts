@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   botAvatarClipFor,
+  botAvatarComposerPrompt,
   botAvatarClipKind,
   botAvatarShowsLiveClips,
   botAvatarStatusLabel,
@@ -24,6 +25,31 @@ describe("parseBotAvatarPrompt", () => {
     expect(parseBotAvatarPrompt("Change your avatar to ")).toBeNull();
     expect(parseBotAvatarPrompt("Can you change your avatar later?")).toBeNull();
     expect(parseBotAvatarPrompt("What's the weather")).toBeNull();
+  });
+});
+
+describe("avatar composer revisions", () => {
+  const job = {
+    kind: "live" as const,
+    status: "awaiting-selection" as const,
+    prompt: "a muscular monkey with sunglasses",
+    startedAt: "2026-10-26T00:00:00Z",
+  };
+  it("combines a correction with the current description without starting ordinary chat", () => {
+    const prompt = botAvatarComposerPrompt("no clothes and a six pack", job)!;
+    expect(prompt).toContain(job.prompt);
+    expect(prompt).toContain("no clothes and a six pack");
+    const revised = botAvatarComposerPrompt("make the sunglasses blue", { ...job, prompt })!;
+    expect(revised).toContain("no clothes and a six pack");
+    expect(revised).toContain("make the sunglasses blue");
+  });
+  it("returns to ordinary messages outside the picker and leaves commands alone", () => {
+    expect(botAvatarComposerPrompt("hello", null)).toBeNull();
+    expect(botAvatarComposerPrompt("hello", { ...job, status: "animating" })).toBeNull();
+    expect(botAvatarComposerPrompt("hello", { ...job, status: "generating-options" })).toBeNull();
+    expect(botAvatarComposerPrompt("/compact", job)).toBeNull();
+    expect(botAvatarComposerPrompt("  ", job)).toBeNull();
+    expect(botAvatarComposerPrompt("Change your avatar to a dog", job)).toBe("a dog");
   });
 });
 

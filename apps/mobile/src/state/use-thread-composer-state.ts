@@ -51,7 +51,7 @@ import {
   removePersistedComposerAttachmentFile,
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
-import { parseBotAvatarPrompt } from "@t3tools/client-runtime/bot-avatar";
+import { botAvatarComposerPrompt } from "@t3tools/client-runtime/bot-avatar";
 import { requestBotAvatarOptions } from "../features/bots/bot-avatar-actions";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildThreadFeed, createThreadFeedCache } from "../lib/threadActivity";
@@ -582,9 +582,11 @@ export function useThreadComposerState() {
       return null;
     }
 
-    // "Change your avatar to …" in a bot chat changes the avatar instead of starting a turn.
+    // An open picker owns follow-up descriptions until it is dismissed.
     const avatarSubject =
-      selectedThreadProject?.botRole != null ? parseBotAvatarPrompt(text) : null;
+      selectedThreadProject?.botRole != null
+        ? botAvatarComposerPrompt(text, selectedThreadProject.botAvatar?.job)
+        : null;
     if (avatarSubject !== null && selectedThreadProject) {
       if (attachments.length > 0) {
         Dialog.alert(

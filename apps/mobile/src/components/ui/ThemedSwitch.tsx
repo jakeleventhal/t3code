@@ -16,6 +16,9 @@ export function ThemedSwitch(props: ThemedSwitchProps) {
       ios_backgroundColorClassName="accent-switch-inactive-track"
       trackColorOffClassName="accent-switch-inactive-track"
       trackColorOnClassName="accent-switch-active-track"
+      thumbColorClassName={
+        props.value ? "accent-switch-active-thumb" : "accent-switch-inactive-thumb"
+      }
     />
   );
 }
