@@ -31,6 +31,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerConfig from "../config.ts";
 import * as Identity from "../environment/ServerEnvironment.ts";
@@ -791,5 +792,82 @@ it.effect("initializes shared defaults once, including Sol, and preserves explic
     const manual = (yield* settings.getSettings).botSharedPreferences;
     assert.isNull(manual.defaultVoice);
     assert.equal(manual.defaultModelSelection?.model, "custom");
+  }).pipe(Effect.scoped),
+);
+
+it.effect("keeps avatar jobs and choices through bidirectional sync and stale echoes", () =>
+  Effect.gen(function* () {
+    const a = yield* Layer.build(fixture("avatar-origin"));
+    const b = yield* Layer.build(fixture("avatar-replica"));
+    const first = Context.get(a, Replication.BotReplication);
+    const second = Context.get(b, Replication.BotReplication);
+    const projects = Context.get(a, Projects.ProjectService);
+    const replicaProjects = Context.get(b, Projects.ProjectService);
+    const fs = Context.get(a, FileSystem.FileSystem);
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "replica-avatar-" });
+    yield* projects.create({
+      commandId: CommandId.make("avatar-create"),
+      projectId,
+      title: "Fitness",
+      workspaceRoot: root,
+      botRole: "specialist",
+    });
+    const generating = {
+      version: "avatar-1",
+      clips: {},
+      updatedAt: "2026-10-26T20:00:00.000Z",
+      job: {
+        kind: "live" as const,
+        status: "generating-options" as const,
+        prompt: "A cloud",
+        startedAt: "2026-10-26T20:00:00.000Z",
+        originEnvironmentId: EnvironmentId.make("avatar-origin"),
+      },
+    };
+    yield* projects.update({
+      commandId: CommandId.make("avatar-start"),
+      projectId,
+      botAvatar: generating,
+    });
+    yield* second.receive(yield* first.read({ projectId, includeManifest: true }));
+    const readAvatar = (service: Projects.ProjectService["Service"]) =>
+      service
+        .getById(projectId)
+        .pipe(Effect.map((project) => Option.getOrThrow(project).botAvatar));
+    assert.deepEqual(yield* readAvatar(replicaProjects), generating);
+    const echo = yield* second.read({ projectId, includeManifest: true });
+    yield* first.receive(echo);
+    assert.deepEqual(yield* readAvatar(projects), generating);
+
+    const candidate = `.avatars/${"a".repeat(64)}.png`;
+    const replica = Option.getOrThrow(yield* replicaProjects.getById(projectId));
+    for (const workspace of [root, replica.workspaceRoot]) {
+      yield* fs.makeDirectory(`${workspace}/.avatars`, { recursive: true });
+      yield* fs.writeFileString(`${workspace}/${candidate}`, "fixture");
+    }
+    const choices = {
+      ...generating,
+      updatedAt: "2026-10-26T20:01:00.000Z",
+      job: { ...generating.job, status: "awaiting-selection" as const, candidates: [candidate] },
+    };
+    yield* projects.update({
+      commandId: CommandId.make("avatar-options"),
+      projectId,
+      botAvatar: choices,
+    });
+    // An old receiver may strip jobs, then emit that old avatar in a newer manifest.
+    yield* first.receive({
+      ...echo,
+      manifestRevision: echo.manifestRevision! + 1,
+      manifest: {
+        ...echo.manifest!,
+        project: { ...echo.manifest!.project, botAvatar: { ...generating, job: null } },
+      },
+    });
+    assert.deepEqual(yield* readAvatar(projects), choices);
+    yield* second.receive(yield* first.read({ projectId, includeManifest: true }));
+    assert.deepEqual(yield* readAvatar(replicaProjects), choices);
+    yield* first.receive(yield* second.read({ projectId, includeManifest: true }));
+    assert.deepEqual(yield* readAvatar(projects), choices);
   }).pipe(Effect.scoped),
 );

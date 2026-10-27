@@ -140,3 +140,40 @@ describe("planProjectCommand", () => {
     }
   });
 });
+
+it("an explicit bot picture change invalidates generation and carries a sync revision", () => {
+  const prior = {
+    version: "old-generation",
+    clips: {},
+    job: null,
+    updatedAt: "2025-12-01T00:00:00.000Z",
+  };
+  const payload = payloadOf(
+    plan(
+      {
+        type: "project.meta.update",
+        commandId: CommandId.make("emoji"),
+        projectId,
+        projectIcon: { kind: "emoji", emoji: "🦊" },
+      },
+      { project: row({ botRole: "specialist", botAvatar: prior }) },
+    ),
+  );
+  const avatar = payload.botAvatar as typeof prior;
+  assert.notEqual(avatar.version, prior.version);
+  assert.equal(avatar.updatedAt, DateTime.formatIso(now));
+  assert.isNull(avatar.job);
+  const copied = payloadOf(
+    plan(
+      {
+        type: "project.meta.update",
+        commandId: CommandId.make("copy"),
+        projectId,
+        projectIcon: { kind: "emoji", emoji: "🦊" },
+        botAvatar: avatar,
+      },
+      { project: row({ botRole: "specialist" }) },
+    ),
+  );
+  assert.deepEqual(copied.botAvatar, avatar);
+});

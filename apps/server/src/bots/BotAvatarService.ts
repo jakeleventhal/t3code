@@ -41,6 +41,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
@@ -122,6 +123,8 @@ function fromMediaError(error: ProviderMediaGenerationError): BotAvatarError {
 }
 
 const make = Effect.gen(function* () {
+  const environmentId = yield* (yield* ServerEnvironment.ServerEnvironmentIdentity)
+    .getEnvironmentId;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
@@ -305,11 +308,30 @@ const make = Effect.gen(function* () {
           return yield* new BotAvatarError({ reason: "stale", projectId: input.projectId });
         }
         const next = input.patch(current);
+        const avatar = next.botAvatar;
+        const botAvatar =
+          avatar === null
+            ? null
+            : {
+                ...avatar,
+                updatedAt:
+                  current.botAvatar && avatar.updatedAt <= current.botAvatar.updatedAt
+                    ? DateTime.formatIso(
+                        DateTime.add(DateTime.makeUnsafe(current.botAvatar.updatedAt), {
+                          milliseconds: 1,
+                        }),
+                      )
+                    : avatar.updatedAt,
+                job:
+                  avatar.job === null
+                    ? null
+                    : { ...avatar.job, originEnvironmentId: environmentId },
+              };
         return yield* projects
           .update({
             commandId: input.commandId,
             projectId: input.projectId,
-            botAvatar: next.botAvatar,
+            botAvatar,
             ...(next.faviconPath === undefined ? {} : { faviconPath: next.faviconPath }),
             ...(next.projectIcon === undefined ? {} : { projectIcon: next.projectIcon }),
           })
@@ -692,12 +714,19 @@ const make = Effect.gen(function* () {
       if (jobs.get(project.id) === running) jobs.delete(project.id);
     }
     const at = yield* now;
+    const version = yield* newVersion;
     return yield* write({
       projectId: project.id,
       commandId: input.commandId,
       expectVersion: avatar.version,
       patch: (current) => ({
-        botAvatar: { ...avatar, clips: current.botAvatar?.clips ?? {}, updatedAt: at, job: null },
+        botAvatar: {
+          ...avatar,
+          version,
+          clips: current.botAvatar?.clips ?? {},
+          updatedAt: at,
+          job: null,
+        },
       }),
     });
   });
@@ -799,6 +828,7 @@ const make = Effect.gen(function* () {
       if (
         !project.botAvatar ||
         !job ||
+        (job.originEnvironmentId !== undefined && job.originEnvironmentId !== environmentId) ||
         job.status === "failed" ||
         job.status === "awaiting-selection"
       )

@@ -22,11 +22,11 @@ import { useEnvironmentConnectionSummaries } from "../../state/environments";
 import {
   BOTS_HOME_PATH,
   isBotProject,
-  isSettingsPath,
   resolveRoom,
   type AppRoom,
   type RouteProjectState,
 } from "./botRoom.logic";
+import { isAppModalPage } from "../sidebar/mainAppLocation";
 import { useBotRoomStore } from "./botRoomStore";
 
 const NO_ROUTE_PROJECT: RouteProjectState<EnvironmentProject> = { kind: "none" };
@@ -104,7 +104,7 @@ export function BotRoomLocationTracker() {
       : null;
   // oxlint-disable-next-line t3code/react-effect-budget -- Remember committed router locations so switching rooms restores their last page.
   useEffect(() => {
-    if (pathname === null || href === null || !settled || isSettingsPath(pathname)) return;
+    if (pathname === null || href === null || !settled || isAppModalPage(pathname)) return;
     const { recordLocation } = useBotRoomStore.getState();
     if (room === "code") {
       recordLocation({ room: "code", href });
