@@ -6,6 +6,7 @@ private final class WorkspaceTabBar: UITabBar {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let botIcon = UIImage(named: "bot", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let labels = Set((items ?? []).compactMap(\.accessibilityLabel))
     let accessible = tabFrames(in: self, labels: labels)
     if accessible.count == items?.count {
@@ -137,10 +138,10 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     let iconBundle = Bundle(for: Self.self).url(forResource: "T3NativeControlIcons", withExtension: "bundle").flatMap(Bundle.init(url:))
     let pullRequestIcon = UIImage(named: "pull-request", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let labels = ["threads": "Chats", "pullRequests": "PRs", "usage": "Usage", "bots": "Bots", "settings": "Settings"]
-    let symbols = ["threads": "text.bubble", "usage": "chart.bar.xaxis", "bots": "square.grid.2x2", "settings": "gearshape"]
-    let selectedSymbols = ["threads": "text.bubble.fill", "bots": "square.grid.2x2.fill"]
+    let symbols = ["threads": "text.bubble", "usage": "chart.bar.xaxis", "settings": "gearshape"]
+    let selectedSymbols = ["threads": "text.bubble.fill"]
     for (tab, label) in labels {
-      let icon = tab == "pullRequests" ? pullRequestIcon : UIImage(systemName: symbols[tab] ?? "circle")
+      let icon = tab == "pullRequests" ? pullRequestIcon : tab == "bots" ? botIcon : UIImage(systemName: symbols[tab] ?? "circle")
       let item = UITabBarItem(title: nil, image: tabIcon(icon), tag: 0)
       item.accessibilityLabel = label
       item.accessibilityIdentifier = "workspace-tab-\(tab)"

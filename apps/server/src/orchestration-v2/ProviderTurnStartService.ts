@@ -443,6 +443,7 @@ export const layer: Layer.Layer<
                   text: message.text,
                   records: message.context?.records ?? [],
                   currentView: message.context?.currentView,
+                  botReaction: message.context?.botReaction,
                 }),
                 hasAttachments: false,
               }),
@@ -1055,6 +1056,7 @@ export const layer: Layer.Layer<
             text: message.text,
             records: message.context?.records ?? [],
             currentView: message.context?.currentView,
+            botReaction: message.context?.botReaction,
           });
       // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
       const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";

@@ -1354,6 +1354,22 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
               contentPresentation={props.contentPresentation}
               agentLabel={agentLabel}
               threadTitle={props.selectedThread.title}
+              onReplyToBotMessage={(text) => {
+                const draft =
+                  props.composerDraftKey === null
+                    ? ""
+                    : getComposerDraftSnapshot(props.composerDraftKey).text;
+                const next = `${text
+                  .slice(0, 8192)
+                  .split("\n")
+                  .map((line) => `> ${line}`)
+                  .join("\n")}\n\n${draft}`;
+                props.onChangeDraftMessage(next);
+                requestAnimationFrame(() => {
+                  composerEditorRef.current?.focus();
+                  composerEditorRef.current?.setSelection({ start: next.length, end: next.length });
+                });
+              }}
               latestRun={props.activityRun}
               activeWorkStartedAt={props.activeWorkStartedAt}
               runlessWorkActive={props.runlessWorkActive ?? false}

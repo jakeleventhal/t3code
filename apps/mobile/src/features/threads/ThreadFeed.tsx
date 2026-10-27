@@ -1,5 +1,11 @@
+import { BotMessageActions } from "../bots/BotMessageActions";
+import {
+  botMessageReactions,
+  silentBotReactionReplyIds,
+} from "@t3tools/client-runtime/bot-message-reactions";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { TypingDots } from "../bots/TypingDots";
+import { botMessageTimeMarkers, botMessageTimeLabel } from "../bots/bot-message-spacing";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
@@ -373,6 +379,7 @@ export interface ThreadFeedProps {
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
+  readonly onReplyToBotMessage?: (text: string) => void;
 }
 
 async function waitForThreadShell(
@@ -1662,7 +1669,7 @@ function renderFeedEntry(
       );
       return (
         <Animated.View
-          className="mb-5 items-end"
+          className={props.simpleProgress ? "mb-2 items-end" : "mb-5 items-end"}
           {...(enterAnimated ? { entering: FadeInUp.duration(220) } : {})}
         >
           {presentation.attribution === "t3code" ? (
@@ -1792,7 +1799,8 @@ function renderFeedEntry(
               </View>
             ) : null}
           </View>
-          {bubbleBodyVisible ? (
+          {bubbleBodyVisible &&
+          (!props.simpleProgress || (entry.pendingMessage && !entry.acknowledged)) ? (
             <View className="mt-1 flex-row items-center justify-end gap-1 pr-0.5">
               {foldRowId !== null && message.senderThreadId ? (
                 <OpenSenderThreadButton
@@ -1871,7 +1879,6 @@ function renderFeedEntry(
     }
 
     const enterAnimated = isFreshTimestamp(message.createdAt);
-    // Bot replies read as messages from someone: a card beside the bot's face.
     const botCard = props.botProject !== null;
     const replyContent = (
       <>
@@ -1906,9 +1913,11 @@ function renderFeedEntry(
     return (
       <Animated.View
         className={cn(
-          showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
-            ? "mb-5 px-1"
-            : "mb-1 px-1",
+          botCard
+            ? "mb-2 px-1"
+            : showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
+              ? "mb-5 px-1"
+              : "mb-1 px-1",
           hasWideBlock && "w-full",
         )}
         {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
@@ -1933,7 +1942,7 @@ function renderFeedEntry(
             onOpenTurnDiff={props.onOpenTurnDiff}
           />
         ) : null}
-        {showAssistantMeta ? (
+        {showAssistantMeta && !botCard ? (
           <View className="mt-1 flex-row items-center gap-1">
             <CopyTextButton
               accessibilityLabel="Copy message"
@@ -2949,13 +2958,24 @@ export const ThreadFeed = memo(function ThreadFeed({
     ),
     guestShare,
   );
+  const botMessages = simpleProgress
+    ? rawPresentedFeed.flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
+    : [];
+  const reactions = botMessageReactions(botMessages);
+  const silentReplies = silentBotReactionReplyIds(botMessages);
   const presentedFeed = simpleProgress
     ? rawPresentedFeed.filter(
         (entry) =>
           !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&
-          !(entry.type === "message" && isCompactionCommandFeedEntry(entry)),
+          !(
+            entry.type === "message" &&
+            (isCompactionCommandFeedEntry(entry) ||
+              entry.message.context?.botReaction ||
+              silentReplies.has(entry.message.id))
+          ),
       )
     : rawPresentedFeed;
+  const botTimeMarkers = simpleProgress ? botMessageTimeMarkers(presentedFeed) : null;
   const jumpRunId =
     jumpReady &&
     !presentedFeed.some((entry) => entry.type === "message" && entry.id === jumpToMessageId)
@@ -3385,66 +3405,79 @@ export const ThreadFeed = memo(function ThreadFeed({
       key={info.item.id}
       entering={disclosureToggleSettling ? THREAD_FEED_DISCLOSURE_ENTER_TRANSITION : undefined}
     >
-      <MessageImageGalleryScope
-        entry={info.item}
+      {botTimeMarkers?.has(info.item.id) ? (
+        <Text className="py-3 text-center text-xs text-foreground-muted">
+          {botMessageTimeLabel(info.item.createdAt)}
+        </Text>
+      ) : null}
+      <BotMessageActions
+        message={simpleProgress && info.item.type === "message" ? info.item.message : null}
         environmentId={props.environmentId}
         threadId={props.threadId}
-        workspaceRoot={props.workspaceRoot}
+        reaction={info.item.type === "message" ? reactions?.get(info.item.message.id) : undefined}
+        onReply={props.onReplyToBotMessage}
       >
-        <ThreadMediaVisibility>
-          {renderFeedEntry(info, {
-            simpleProgress,
-            botProject: simpleProgress ? project : null,
-            environmentId: props.environmentId,
-            dispatchingMessageId: props.dispatchingMessageId,
-            onEditPendingMessage: props.onEditPendingMessage,
-            onUseArtifactTemplate: props.onUseArtifactTemplate,
-            threadId: props.threadId,
-            copiedRowId,
-            expandedWorkRows,
-            workRowSizing,
-            workGroupScrollPositions,
-            terminalAssistantMessageIds,
-            unsettledTurnId,
-            compactionLabelsByEntryId,
-            failedRunIds,
-            onCopyWorkRow,
-            onToggleWorkGroup,
-            onToggleWorkRow,
-            onToggleVoiceCall,
-            onVoiceCallTranscriptPending,
-            onVoiceCallTranscriptSettled,
-            onToggleTurnFold,
-            onOpenTurnDiff,
-            onPressPreview,
-            onPlaybackStart: onInlinePlaybackStart,
-            markdownLinkHandlers,
-            renderMarkdownImage,
-            renderViewedImage,
-            renderReasoning,
-            iconSubtleColor,
-            screenColor,
-            userBubbleColor,
-            markdownStyles,
-            reviewCommentColors,
-            reviewCommentBubbleWidth,
-            themeAppearance,
-            duoColumns,
-            userBubbleMaxWidth,
-            markdownContentWidth,
-            contentWidth,
-            threadTitle: props.threadTitle,
-            skills: props.skills,
-            workspaceRoot: props.workspaceRoot,
-            workflowOpening,
-          })}
-          {props.worktreeSetup && info.index === setupAnchorIndex ? (
-            <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />
-          ) : props.setupWorkingStartedAt && info.index === setupAnchorIndex ? (
-            <WorktreeWorkingHeader startedAt={props.setupWorkingStartedAt} />
-          ) : null}
-        </ThreadMediaVisibility>
-      </MessageImageGalleryScope>
+        <MessageImageGalleryScope
+          entry={info.item}
+          environmentId={props.environmentId}
+          threadId={props.threadId}
+          workspaceRoot={props.workspaceRoot}
+        >
+          <ThreadMediaVisibility>
+            {renderFeedEntry(info, {
+              simpleProgress,
+              botProject: simpleProgress ? project : null,
+              environmentId: props.environmentId,
+              dispatchingMessageId: props.dispatchingMessageId,
+              onEditPendingMessage: props.onEditPendingMessage,
+              onUseArtifactTemplate: props.onUseArtifactTemplate,
+              threadId: props.threadId,
+              copiedRowId,
+              expandedWorkRows,
+              workRowSizing,
+              workGroupScrollPositions,
+              terminalAssistantMessageIds,
+              unsettledTurnId,
+              compactionLabelsByEntryId,
+              failedRunIds,
+              onCopyWorkRow,
+              onToggleWorkGroup,
+              onToggleWorkRow,
+              onToggleVoiceCall,
+              onVoiceCallTranscriptPending,
+              onVoiceCallTranscriptSettled,
+              onToggleTurnFold,
+              onOpenTurnDiff,
+              onPressPreview,
+              onPlaybackStart: onInlinePlaybackStart,
+              markdownLinkHandlers,
+              renderMarkdownImage,
+              renderViewedImage,
+              renderReasoning,
+              iconSubtleColor,
+              screenColor,
+              userBubbleColor,
+              markdownStyles,
+              reviewCommentColors,
+              reviewCommentBubbleWidth,
+              themeAppearance,
+              duoColumns,
+              userBubbleMaxWidth,
+              markdownContentWidth,
+              contentWidth,
+              threadTitle: props.threadTitle,
+              skills: props.skills,
+              workspaceRoot: props.workspaceRoot,
+              workflowOpening,
+            })}
+            {props.worktreeSetup && info.index === setupAnchorIndex ? (
+              <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />
+            ) : props.setupWorkingStartedAt && info.index === setupAnchorIndex ? (
+              <WorktreeWorkingHeader startedAt={props.setupWorkingStartedAt} />
+            ) : null}
+          </ThreadMediaVisibility>
+        </MessageImageGalleryScope>
+      </BotMessageActions>
     </Animated.View>
   );
 
@@ -3521,7 +3554,7 @@ export const ThreadFeed = memo(function ThreadFeed({
               followsEnd && !disclosureToggleSettling ? false : maintainVisibleContentPosition
             }
             data={presentedFeed}
-            extraData={listAppearanceData}
+            extraData={{ ...listAppearanceData, reactions }}
             renderItem={renderItem}
             viewabilityConfig={THREAD_MEDIA_VIEWABILITY_CONFIG}
             keyExtractor={(entry) => entry.id}

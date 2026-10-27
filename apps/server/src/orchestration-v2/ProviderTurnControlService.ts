@@ -362,6 +362,7 @@ export const layer: Layer.Layer<
             text: message.text,
             records: message.context?.records ?? [],
             currentView: message.context?.currentView,
+            botReaction: message.context?.botReaction,
           });
           yield* loaded.session.value
             .steerTurn({

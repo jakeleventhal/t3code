@@ -536,6 +536,25 @@ export const layer: Layer.Layer<
       return events;
     });
 
+    const isSilentReactionReply = Effect.fn("ProviderEventIngestor.isSilentReactionReply")(
+      function* (threadId: ThreadId, runId: RunId | null, text: string, streaming: boolean) {
+        const value = text.trim();
+        if (
+          runId === null ||
+          !(
+            value === "[no-reply]" ||
+            (streaming && value.length > 0 && "[no-reply]".startsWith(value))
+          )
+        )
+          return false;
+        const records = yield* projections.getThreadRecords(threadId, ["messages"], {
+          messageRoles: ["user"],
+          messageRunIds: [runId],
+        });
+        return records.messages.some((message) => message.context?.botReaction !== undefined);
+      },
+    );
+
     const normalize: ProviderEventIngestorV2Shape["normalize"] =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(
@@ -640,6 +659,16 @@ export const layer: Layer.Layer<
                 }),
               ];
             case "message.updated":
+              if (
+                input.event.message.role === "assistant" &&
+                (yield* isSilentReactionReply(
+                  input.event.message.threadId,
+                  input.event.message.runId,
+                  input.event.message.text,
+                  input.event.message.streaming,
+                ))
+              )
+                return [];
               return [
                 yield* makeDomainEvent(input, {
                   type: "message.updated",
@@ -650,6 +679,16 @@ export const layer: Layer.Layer<
                 }),
               ];
             case "turn_item.updated":
+              if (
+                input.event.turnItem.type === "assistant_message" &&
+                (yield* isSilentReactionReply(
+                  input.event.turnItem.threadId,
+                  input.event.turnItem.runId,
+                  input.event.turnItem.text,
+                  input.event.turnItem.streaming,
+                ))
+              )
+                return [];
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",

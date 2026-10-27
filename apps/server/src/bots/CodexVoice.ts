@@ -123,10 +123,9 @@ const make = Effect.gen(function* () {
           .pipe(Effect.flatMap(decodeAccount));
         if (account.account?.type !== "chatgpt")
           return yield* new VoiceConnectionError({ reason: "credentials-refused" });
-        const usage = yield* client.request("account/rateLimits/read", {});
         const accountId =
           account.workspaceRouting?.chatgptAccountId ??
-          usage.accountId ??
+          (yield* client.request("account/rateLimits/read", {})).accountId ??
           (yield* decodeTokenClaims(
             Buffer.from(exported.authToken.split(".")[1] ?? "", "base64url").toString("utf8"),
           ))["https://api.openai.com/auth"].chatgpt_account_id;

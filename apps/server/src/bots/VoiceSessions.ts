@@ -15,6 +15,7 @@ import {
   type VoiceCallWorkResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
@@ -73,6 +74,15 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const attempted = new Set<string>();
+  const prepared = new Map<
+    string,
+    {
+      threadId: string;
+      endpointId: string;
+      at: number;
+      brief: VoiceCallContext;
+    }
+  >();
 
   const preview = Effect.fn("VoiceSessions.preview")(function* (
     input: VoicePreviewInput,
@@ -129,10 +139,21 @@ const make = Effect.gen(function* () {
     const selected = yield* configuration.resolve(thread.projectId);
     const brief = yield* context.read(input.threadId);
     yield* calls.authorize(input);
-    return {
+    const result = {
       ...brief,
       transport: selected.kind === "xai-api" ? ("websocket" as const) : ("webrtc" as const),
     };
+    const key = encodeAttempt([input.callId, input.owner]);
+    if (!attempted.has(key)) {
+      prepared.set(key, {
+        threadId: input.threadId,
+        endpointId: input.endpointId,
+        at: yield* Clock.currentTimeMillis,
+        brief: result,
+      });
+      if (prepared.size > 64) prepared.delete(prepared.keys().next().value!);
+    }
+    return result;
   });
 
   const observeContext = (input: VoiceCallContextInput & { readonly owner: string }) =>
@@ -179,9 +200,20 @@ const make = Effect.gen(function* () {
     if ((selected.kind !== "xai-api") !== (input.transport.type === "webrtc")) {
       return yield* new VoiceConnectionError({ reason: "transport-mismatch" });
     }
-    const brief = yield* context.read(input.threadId);
-    yield* calls.authorize(input);
     const attemptKey = encodeAttempt([input.callId, input.owner]);
+    const cached = prepared.get(attemptKey);
+    prepared.delete(attemptKey);
+    // Transport discovery already read the bot directory. Reuse it only for this
+    // endpoint's immediate negotiation; authorization and configuration stay fresh.
+    const now = yield* Clock.currentTimeMillis;
+    const brief =
+      cached &&
+      cached.threadId === input.threadId &&
+      cached.endpointId === input.endpointId &&
+      now - cached.at < 30_000
+        ? cached.brief
+        : yield* context.read(input.threadId);
+    yield* calls.authorize(input);
     if (attempted.has(attemptKey)) {
       return yield* new VoiceConnectionError({ reason: "already-attempted" });
     }

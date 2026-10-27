@@ -2264,3 +2264,82 @@ it.effect.each([
     assert.isEmpty(persisted);
   }).pipe(Effect.provide(layerFailingWrites(errors))),
 );
+
+it.effect(
+  "keeps reaction silence out of messages and previews without hiding ordinary replies",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const sink = yield* EventSink.EventSinkV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const ids = yield* IdAllocator.IdAllocatorV2;
+      const root = yield* threadCreatedEvent(now);
+      if (root.type !== "thread.created") throw new Error("Expected thread fixture");
+      const runId = RunId.make("reaction-run");
+      const nodeId = NodeId.make("reaction-node");
+      const message = {
+        id: MessageId.make("reaction-input"),
+        threadId: root.threadId,
+        runId,
+        nodeId,
+        role: "user" as const,
+        text: "❤️",
+        attachments: [],
+        streaming: false,
+        createdBy: "user" as const,
+        creationSource: "mobile" as const,
+        createdAt: now,
+        updatedAt: now,
+        context: {
+          version: 1 as const,
+          records: [],
+          botReaction: { messageId: MessageId.make("target"), text: "A joke", emoji: "❤️" },
+        },
+      };
+      yield* sink.write({
+        events: [
+          root,
+          {
+            id: yield* ids.allocate.event({ threadId: root.threadId }),
+            type: "message.updated",
+            threadId: root.threadId,
+            runId,
+            nodeId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: message,
+          },
+        ],
+      });
+      const providerSessionId = yield* ids.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId: root.threadId,
+      });
+      for (const sample of [
+        { text: "[no-", streaming: true, runId, count: 0 },
+        { text: "[no-reply]", streaming: false, runId, count: 0 },
+        { text: "Applied option B.", streaming: false, runId, count: 1 },
+        { text: "[no-reply]", streaming: false, runId: RunId.make("ordinary"), count: 1 },
+      ]) {
+        const events = yield* ingestor.normalize({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: root.threadId,
+          event: {
+            type: "message.updated",
+            driver: CODEX_DRIVER,
+            message: {
+              ...message,
+              context: undefined,
+              id: MessageId.make("reply"),
+              role: "assistant",
+              text: sample.text,
+              streaming: sample.streaming,
+              runId: sample.runId,
+            },
+          },
+        });
+        assert.equal(events.length, sample.count);
+      }
+    }).pipe(Effect.provide(layerTest)),
+);

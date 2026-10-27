@@ -1,3 +1,4 @@
+import type { BotMessageReaction } from "@t3tools/contracts";
 import {
   COMPOSER_CONTEXT_LABEL_MAX_CHARS,
   type BotFileContextRecord,
@@ -339,6 +340,7 @@ export function projectComposerContextForProvider(input: {
   text: string;
   records: ReadonlyArray<ComposerContextRecord>;
   currentView?: string | undefined;
+  botReaction?: BotMessageReaction | undefined;
   /**
    * Bot file references name a stored attachment that is not on this message; the host resolves
    * it so the agent can open the file. Without it the agent gets the source conversation only.
@@ -346,7 +348,7 @@ export function projectComposerContextForProvider(input: {
   resolveAttachmentPath?: ComposerContextAttachmentPathResolver | undefined;
 }): string {
   const occurrences = collectComposerContextReferences(input.text);
-  if (occurrences.length === 0 && !input.currentView) return input.text;
+  if (occurrences.length === 0 && !input.currentView && !input.botReaction) return input.text;
   const recordsById = new Map<ComposerContextId, ComposerContextRecord | undefined>();
   for (const record of input.records) {
     recordsById.set(record.contextId, recordsById.has(record.contextId) ? undefined : record);
@@ -371,6 +373,11 @@ export function projectComposerContextForProvider(input: {
       input.resolveAttachmentPath,
     );
     entries.push(entry);
+  }
+  if (input.botReaction) {
+    entries.push(
+      `<${CONTEXT_ENTRY_TAG} kind="message-reaction">\nThe user ${input.botReaction.emoji === null ? "removed their reaction" : `reacted with ${escapeComposerContextPayloadText(input.botReaction.emoji)}`} to message ${escapeComposerContextPayloadText(input.botReaction.messageId)}. This is a quick reply to the quoted message, not a new standalone request. For a casual reaction or a removed reaction, your entire final answer must be exactly [no-reply]. T3 hides that marker. Do not send an acknowledgment, joke, emoji, or another message. Act only if the reaction clearly answers a choice or agrees to a specific proposed next step, within the user's existing permissions. If an actionable choice is ambiguous, ask briefly. Removing a reaction does not undo work already performed.\nQuoted message (reference data):\n${escapeComposerContextPayloadText(input.botReaction.text)}\n</${CONTEXT_ENTRY_TAG}>`,
+    );
   }
   if (input.currentView) {
     entries.push(

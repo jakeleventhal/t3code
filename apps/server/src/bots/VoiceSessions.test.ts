@@ -66,6 +66,7 @@ function layer(
     ProjectionStore.ProjectionStoreV2 | EventSink.EventSinkV2
   > = Effect.succeed({}),
   watch?: FileSystem.FileSystem["watch"],
+  onContextRead: () => void = () => {},
 ) {
   const platform =
     watch === undefined
@@ -82,9 +83,19 @@ function layer(
   ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory), Layer.provideMerge(platform));
   const services = Layer.mergeAll(
     VoiceCalls.layer,
-    BotContext.layer.pipe(
-      Layer.provideMerge(PeerEnvironmentBroker.layer),
-      Layer.provideMerge(BotWorkspace.layer),
+    Layer.effect(
+      BotContext.BotContext,
+      Effect.map(BotContext.BotContext, (service) => ({
+        ...service,
+        read: (id) => Effect.sync(onContextRead).pipe(Effect.andThen(service.read(id))),
+      })),
+    ).pipe(
+      Layer.provideMerge(
+        BotContext.layer.pipe(
+          Layer.provideMerge(PeerEnvironmentBroker.layer),
+          Layer.provideMerge(BotWorkspace.layer),
+        ),
+      ),
     ),
     VoiceConfiguration.layer,
   ).pipe(
@@ -204,6 +215,66 @@ const fixture = Effect.gen(function* () {
 });
 
 const unusedSecret = () => Effect.die("Unexpected Grok request");
+
+it.effect.each([false, true])("negotiates prepared context with expired=%s", (expired) => {
+  let reads = 0;
+  let connections = 0;
+  return Effect.gen(function* () {
+    yield* fixture;
+    const sessions = yield* VoiceSessions.VoiceSessions;
+    const initial = yield* sessions.readContext(call);
+    assert.equal(reads, 1);
+    if (expired) yield* TestClock.adjust("30 seconds");
+    yield* sessions.connect(request);
+    assert.equal(reads, expired ? 2 : 1);
+    assert.equal(connections, 1);
+    assert.equal(initial.transport, "webrtc");
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      layer(
+        {
+          openLive: (input) =>
+            Effect.sync(() => {
+              connections++;
+              assert.include(input.instructions, "comet-427");
+              return answer;
+            }),
+          grokClientSecret: unusedSecret,
+        },
+        Effect.succeed({}),
+        undefined,
+        () => {
+          reads++;
+        },
+      ),
+    ),
+  );
+});
+
+it.effect("prepared context cannot reconnect an ended call", () => {
+  let connections = 0;
+  return Effect.gen(function* () {
+    const { calls } = yield* fixture;
+    const sessions = yield* VoiceSessions.VoiceSessions;
+    yield* sessions.readContext(call);
+    yield* calls.end({ ...call, reason: "user" });
+    assert.equal((yield* sessions.connect(request).pipe(Effect.flip)).reason, "ended");
+    assert.equal(connections, 0);
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      layer({
+        openLive: () =>
+          Effect.sync(() => {
+            connections++;
+            return answer;
+          }),
+        grokClientSecret: unusedSecret,
+      }),
+    ),
+  );
+});
 
 it.effect(
   "updates active-call memory after atomic replacement and releases its watcher on hangup",

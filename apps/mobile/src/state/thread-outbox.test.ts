@@ -138,6 +138,31 @@ describe("thread outbox", () => {
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
   });
+  it.each(["👍", null])(
+    "preserves a reaction and its target through persistence and dispatch: %s",
+    (emoji) => {
+      const context = {
+        version: 1 as const,
+        records: [],
+        botReaction: { messageId: MessageId.make("target"), text: "Proceed with option B?", emoji },
+      };
+      const message: QueuedThreadMessage = {
+        ...queuedMessage({ messageId: "reaction", createdAt: "2026-10-27T12:00:00.000Z" }),
+        text: emoji ?? "Removed reaction",
+        context,
+      };
+      const stored = decodeQueuedThreadMessage(
+        JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message))),
+      );
+      expect(
+        serializeComposerMessageForServer(
+          stored.text,
+          uploadedComposerContext(stored.context, stored.attachments, []),
+          true,
+        ),
+      ).toEqual({ text: message.text, context });
+    },
+  );
   it("delivers a stored Assistant request's screen as context, apart from its text", () => {
     const currentView = 'On their mobile device, the user is viewing the Code thread "Fix login".';
     const message: QueuedThreadMessage = {

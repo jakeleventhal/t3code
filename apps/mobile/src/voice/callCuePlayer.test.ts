@@ -29,3 +29,17 @@ it("keeps missing or failed sounds from rejecting the call lifecycle", async () 
   });
   await expect(failedPlayback("connected")).resolves.toBeUndefined();
 });
+
+it("preloads the end cue during connection and reuses it on hang-up", async () => {
+  const load = vi.fn(async (kind: string) => `${kind}.wav`);
+  const play = vi.fn();
+  const cue = createCallCuePlayer({ load, play });
+  await cue("connected");
+  expect(load.mock.calls).toEqual([["ended"], ["connected"]]);
+  await cue("ended");
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(play.mock.calls).toEqual([
+    ["connected.wav", false],
+    ["ended.wav", true],
+  ]);
+});
