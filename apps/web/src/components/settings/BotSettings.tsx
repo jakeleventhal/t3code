@@ -1,4 +1,5 @@
 import { useBotProjects } from "../bots/useBotRoom";
+import { BotSettingMode } from "./BotSettingMode";
 import { BotComplexModelSetting } from "./BotComplexModelSetting";
 import { BotPrimaryMachineSettings } from "./BotPrimaryMachineSettings";
 import { botEnvironment } from "../../state/bots";
@@ -12,11 +13,14 @@ import {
   botRuntimeSettingsUpdateMessage,
   resolveBotTurnReadiness,
 } from "@t3tools/client-runtime/bot-turn-settings";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   AuthSettingsWriteScope,
   type ServerSettings,
   type EnvironmentId,
 } from "@t3tools/contracts";
+import { ChevronRightIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import type { BotOutboxItem } from "../../botOutbox/botOutbox.logic";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
@@ -40,12 +44,10 @@ import {
 import { partitionEnvironmentBots } from "../bots/botRoom.logic";
 import { runtimeModeConfig } from "../chat/runtimeModeConfig";
 import { Button } from "../ui/button";
-import {
-  SettingResetButton,
-  SettingsPageContainer,
-  SettingsRow,
-  SettingsSection,
-} from "./settingsLayout";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
+import { SettingsGroup } from "./SettingsGroup";
+import { resolveBotVoice } from "./voiceSettings.logic";
+import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 
 export function BotSettingsPanel() {
   const { environments } = useEnvironments();
@@ -82,8 +84,8 @@ export function BotSettingsPanel() {
           Connect to your bots to change their settings.
         </p>
       ) : null}
-      <BotPrimaryMachineSettings />
       {render(true)}
+      <BotPrimaryMachineSettings />
       {render(false)}
       <VoiceSetupSettings />
       <UnsentMessages />
@@ -146,7 +148,15 @@ function BotSettingsContent({
         </p>
       ) : null}
       {advanced ? (
-        <SettingsSection id={`bot-defaults-${environmentId}`} title="Defaults for bots">
+        <SettingsSection
+          id={`bot-defaults-${environmentId}`}
+          title="Shared defaults"
+          titleAction={
+            <span className="text-xs text-muted-foreground">
+              Every bot uses these unless it has its own
+            </span>
+          }
+        >
           <SettingsRow
             serverScoped
             settingKeys={["botDefaults"]}
@@ -204,7 +214,15 @@ function BotSettingsContent({
         </SettingsSection>
       ) : null}
       {!advanced && bots.length > 0 ? (
-        <div>
+        <SettingsSection
+          title="Your bots"
+          titleAction={
+            <span className="text-xs text-muted-foreground">
+              Open a bot to give it its own settings
+            </span>
+          }
+          variant="plain"
+        >
           {bots.map((bot) => {
             const own = settings.projectSettingsOverrides[bot.id];
             const chatModel = own?.defaultModelSelection ?? shownModel;
@@ -214,75 +232,165 @@ function BotSettingsContent({
                 : null,
               own?.defaultRuntimeMode ? runtimeModeConfig[own.defaultRuntimeMode].label : null,
             ].filter((part) => part !== null);
+            const preferences = settings.botSharedPreferences;
+            const customized = [
+              own?.defaultModelSelection ? "chat model" : null,
+              preferences.complexTaskModelOverrides?.[bot.id] ? "complex tasks" : null,
+              own?.defaultRuntimeMode ? "permissions" : null,
+              resolveBotVoice(settings, bot.id).kind === "own" ? "voice" : null,
+              preferences.overrides[bot.id] ? "machine" : null,
+            ].filter((part) => part !== null);
             return (
-              <SettingsSection key={bot.id} title={bot.title} icon={<BotAvatar bot={bot} />}>
+              <BotSettingsCard
+                key={bot.id}
+                bot={bot}
+                summary={
+                  customized.length > 0
+                    ? `Own ${customized.join(", ")}`
+                    : "Uses all shared defaults"
+                }
+              >
                 <SettingsRow
                   title="Chat model"
                   description={
                     ownParts.length > 0 ? ownParts.join(" · ") : "Uses the shared defaults."
                   }
                   control={
-                    chatModel ? (
-                      <BotModelPicker
-                        environmentId={environmentId}
-                        projectId={bot.id}
-                        settings={settings}
-                        providers={providers}
-                        selection={chatModel}
-                        disabled={disabled}
-                        onChange={(modelSelection) =>
-                          configureBots({
+                    <BotSettingMode
+                      label={`${bot.title} chat model`}
+                      custom={own?.defaultModelSelection != null}
+                      disabled={disabled || chatModel === null}
+                      onDefault={() =>
+                        void configureBots({
+                          environmentId,
+                          input: { runtimeOverride: { projectId: bot.id, modelSelection: null } },
+                        })
+                      }
+                      onCustom={() => {
+                        if (chatModel && !own?.defaultModelSelection)
+                          void configureBots({
                             environmentId,
-                            input: { runtimeOverride: { projectId: bot.id, modelSelection } },
-                          })
-                        }
-                      />
-                    ) : (
-                      <span>No providers available</span>
-                    )
-                  }
-                  resetAction={
-                    own?.defaultModelSelection ? (
-                      <SettingResetButton
-                        label={`${bot.title} chat model`}
-                        tooltip="Use default"
-                        disabled={disabled}
-                        onClick={() =>
-                          configureBots({
-                            environmentId,
-                            input: { runtimeOverride: { projectId: bot.id, modelSelection: null } },
-                          })
-                        }
-                      />
-                    ) : null
+                            input: {
+                              runtimeOverride: { projectId: bot.id, modelSelection: chatModel },
+                            },
+                          });
+                      }}
+                    >
+                      {chatModel ? (
+                        <BotModelPicker
+                          environmentId={environmentId}
+                          projectId={bot.id}
+                          settings={settings}
+                          providers={providers}
+                          selection={chatModel}
+                          disabled={disabled}
+                          onChange={(modelSelection) =>
+                            configureBots({
+                              environmentId,
+                              input: { runtimeOverride: { projectId: bot.id, modelSelection } },
+                            })
+                          }
+                        />
+                      ) : (
+                        <span>No providers available</span>
+                      )}
+                    </BotSettingMode>
                   }
                 />
                 <BotComplexModelSetting environmentId={environmentId} projectId={bot.id} />
                 <SettingsRow
                   title="Permissions"
                   control={
-                    <BotPermissionsSelect
-                      value={own?.defaultRuntimeMode ?? null}
-                      inheritedLabel="Use default"
-                      ariaLabel={`${bot.title} permissions`}
+                    <BotSettingMode
+                      label={`${bot.title} permissions`}
+                      custom={own?.defaultRuntimeMode != null}
                       disabled={disabled}
-                      onChange={(runtimeMode) =>
-                        configureBots({
+                      onDefault={() =>
+                        void configureBots({
                           environmentId,
-                          input: { runtimeOverride: { projectId: bot.id, runtimeMode } },
+                          input: { runtimeOverride: { projectId: bot.id, runtimeMode: null } },
                         })
                       }
-                    />
+                      onCustom={() => {
+                        if (!own?.defaultRuntimeMode)
+                          void configureBots({
+                            environmentId,
+                            input: {
+                              runtimeOverride: {
+                                projectId: bot.id,
+                                runtimeMode:
+                                  defaults.defaultRuntimeMode ??
+                                  newThread?.runtimeMode ??
+                                  "full-access",
+                              },
+                            },
+                          });
+                      }}
+                    >
+                      <BotPermissionsSelect
+                        value={
+                          own?.defaultRuntimeMode ??
+                          defaults.defaultRuntimeMode ??
+                          newThread?.runtimeMode ??
+                          "full-access"
+                        }
+                        allowInherit={false}
+                        inheritedLabel="Use default"
+                        ariaLabel={`${bot.title} permissions`}
+                        disabled={disabled}
+                        onChange={(runtimeMode) =>
+                          configureBots({
+                            environmentId,
+                            input: { runtimeOverride: { projectId: bot.id, runtimeMode } },
+                          })
+                        }
+                      />
+                    </BotSettingMode>
                   }
                 />
                 <BotVoiceSetting bot={bot} environmentId={environmentId} />
                 <BotPrimaryMachineSettings bot={bot} />
-              </SettingsSection>
+              </BotSettingsCard>
             );
           })}
-        </div>
+        </SettingsSection>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One bot, closed to a line that says what it overrides. Its rows only mount while open, so the
+ * page lists many bots without building every picker.
+ */
+function BotSettingsCard({
+  bot,
+  summary,
+  children,
+}: {
+  bot: EnvironmentProject;
+  summary: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <SettingsGroup divided={false}>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4">
+          <BotAvatar bot={bot} size="lg" />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-semibold">{bot.title}</span>
+            <span className="truncate text-xs text-muted-foreground">{summary}</span>
+          </span>
+          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-90 motion-reduce:transition-none" />
+        </CollapsibleTrigger>
+        <CollapsiblePanel>
+          <div className="border-t border-border/50 [&>*+*]:border-t [&>*+*]:border-border/50 [&>[data-slot=settings-row]]:rounded-none">
+            {children}
+          </div>
+        </CollapsiblePanel>
+      </Collapsible>
+    </SettingsGroup>
   );
 }
 

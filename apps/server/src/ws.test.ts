@@ -51,6 +51,7 @@ import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "./bots/BotAvatarService.ts";
 import * as BotService from "./bots/BotService.ts";
 import * as VoiceConfiguration from "./bots/VoiceConfiguration.ts";
 import * as VoiceCalls from "./bots/VoiceCalls.ts";
@@ -404,6 +405,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
   Layer.mock(BotReplication.BotReplication)({ initializeDefaults: () => Effect.void }),
   Layer.mock(BotService.BotService)({}),
+  Layer.mock(BotAvatarService.BotAvatarService)({}),
   Layer.mock(VoiceConfiguration.VoiceConfiguration)({}),
   Layer.mock(VoiceCalls.VoiceCalls)({}),
   Layer.mock(VoiceSessions.VoiceSessions)({}),

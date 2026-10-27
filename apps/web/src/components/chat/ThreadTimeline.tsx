@@ -10,6 +10,7 @@ import {
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
 import { MessagesTimeline } from "./MessagesTimeline";
+import { workEntryDisplayLabel } from "./MessagesTimeline.logic";
 
 /**
  * The timeline with the streamed text. ChatView reads the thread through its quiet
@@ -46,6 +47,19 @@ export function ThreadTimeline({
     visibleTurnItems,
   });
   const entries = draftEntries ?? serverEntries;
+  // Bot chats hide the work log, so the one tool running now becomes a single line instead.
+  const liveTool = simpleProgress
+    ? entries.findLast(
+        (entry) =>
+          entry.kind === "work" &&
+          entry.entry.tone === "tool" &&
+          entry.entry.toolLifecycleStatus === "inProgress",
+      )
+    : undefined;
+  const simpleActivity =
+    liveTool?.kind === "work"
+      ? workEntryDisplayLabel(liveTool.entry, readyWorkspaceRoot ?? undefined)
+      : null;
   const displayed = resolveThreadSwitchTimeline({
     loading: entries.length === 0 && syncing,
     activeThreadKey,
@@ -67,6 +81,7 @@ export function ThreadTimeline({
     <MessagesTimeline
       {...timelineProps}
       simpleProgress={simpleProgress}
+      simpleActivity={simpleActivity}
       timelineEntries={
         simpleProgress
           ? displayed.entries.filter(

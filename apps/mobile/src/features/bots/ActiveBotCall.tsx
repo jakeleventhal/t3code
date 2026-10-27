@@ -18,6 +18,8 @@ import { useActiveBotCall, useBotCallSummary } from "./use-bot-call";
 
 export function ActiveBotCallBar(props: {
   readonly thread: ScopedThreadRef | null;
+  /** This screen is the full chat for `thread`; the quick sheet still offers going full screen. */
+  readonly fullChat?: boolean;
   readonly className?: string;
   readonly style?: StyleProp<ViewStyle>;
 }) {
@@ -43,7 +45,16 @@ export function ActiveBotCallBar(props: {
   };
   return (
     <View pointerEvents="box-none" className={props.className} style={props.style}>
-      <BotCallBar call={call} controls={controls} />
+      <BotCallBar
+        call={call}
+        controls={controls}
+        inChat={
+          props.fullChat === true &&
+          props.thread !== null &&
+          props.thread.environmentId === call.threadRef.environmentId &&
+          props.thread.threadId === call.threadRef.threadId
+        }
+      />
     </View>
   );
 }

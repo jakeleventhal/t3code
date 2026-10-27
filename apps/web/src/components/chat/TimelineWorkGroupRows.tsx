@@ -1,3 +1,4 @@
+import { BotAvatar } from "../bots/BotAvatar";
 import { TypingDots } from "../bots/TypingDots";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
@@ -285,15 +286,40 @@ function ExpandedWorkGroupEntries({
 const workEntryKey = (entry: TimelineWorkEntry) => entry.id;
 
 export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup, simpleProgress } =
-    use(TimelineRowActivityCtx);
-  if (simpleProgress)
+  const {
+    isCompacting,
+    isPreparingWorktree,
+    backgroundWorktreeSetup,
+    simpleProgress,
+    progressDetail,
+    simpleActivity,
+  } = use(TimelineRowActivityCtx);
+  const { botIdentity } = use(TimelineRowCtx);
+  if (simpleProgress) {
+    const verb = isCompacting ? "Reviewing the conversation" : "Thinking";
     return (
-      <div role="status" className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-        <TypingDots />
-        <span>{isCompacting ? "Reviewing the conversation…" : "Thinking…"}</span>
+      <div role="status" className="flex flex-col gap-1 py-2 text-sm text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          {botIdentity ? <BotAvatar bot={botIdentity} size="sm" /> : null}
+          <TypingDots />
+          <span
+            ref={observeVisibleAnimation}
+            className="relative shrink-0 overflow-hidden font-medium whitespace-nowrap"
+          >
+            {verb}
+            <ActivityShimmerOverlay>{verb}</ActivityShimmerOverlay>
+          </span>
+          {progressDetail}
+        </div>
+        {simpleActivity ? (
+          <div className="flex min-w-0 items-center gap-2 ps-0.5 text-xs">
+            <Spinner size="xs" tone="muted" aria-hidden />
+            <span className="truncate">{simpleActivity}</span>
+          </div>
+        ) : null}
       </div>
     );
+  }
   const compacting = row.compacting ?? (isCompacting ? "Compacting…" : undefined);
   const shimmer = isPreparingWorktree || compacting !== undefined;
   const label = isPreparingWorktree ? (

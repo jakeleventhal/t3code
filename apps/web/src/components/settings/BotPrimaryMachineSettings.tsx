@@ -1,3 +1,4 @@
+import { BotSettingMode } from "./BotSettingMode";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
@@ -94,7 +95,20 @@ export function BotPrimaryMachineSettings({
     return (
       <SettingsRow
         title="Primary machine"
-        control={picker(preferences.overrides[bot.id] ?? null, `${bot.title} primary machine`, bot)}
+        control={
+          <BotSettingMode
+            label={`${bot.title} primary machine`}
+            custom={preferences.overrides[bot.id] != null}
+            disabled={pending || !canWrite}
+            onDefault={() => void change(null, bot)}
+            onCustom={() => {
+              const primary = preferences.primaryEnvironmentId ?? writer?.environmentId;
+              if (primary && !preferences.overrides[bot.id]) void change(primary, bot);
+            }}
+          >
+            {picker(preferences.overrides[bot.id] ?? null, `${bot.title} primary machine`, bot)}
+          </BotSettingMode>
+        }
         status={error ? <p role="alert">{error}</p> : null}
       />
     );

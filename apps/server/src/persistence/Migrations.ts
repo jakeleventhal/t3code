@@ -1,3 +1,4 @@
+import Migration0078 from "./Migrations/078_ProjectionProjectBotAvatar.ts";
 import Migration0077 from "./Migrations/077_BotVoiceReplication.ts";
 import Migration0076 from "./Migrations/076_BotReplication.ts";
 import * as Migrator from "effect/sql/Migrator";
@@ -160,6 +161,7 @@ const migrationEntries = [
   [75, "PeerMessageOutbox", Migration0075],
   [76, "BotReplication", Migration0076],
   [77, "BotVoiceReplication", Migration0077],
+  [78, "ProjectionProjectBotAvatar", Migration0078],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

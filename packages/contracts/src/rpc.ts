@@ -24,6 +24,17 @@ import {
   BotSetAvatarInput,
 } from "./bots.ts";
 import {
+  BotAvatarAssetReadInput,
+  BotAvatarAssetTransfer,
+  BotAvatarCapabilities,
+  BotAvatarDescribeImageInput,
+  BotAvatarDismissInput,
+  BotAvatarError,
+  BotAvatarGenerateOptionsInput,
+  BotAvatarRetryInput,
+  BotAvatarSelectOptionInput,
+} from "./botAvatar.ts";
+import {
   VoiceCallContext,
   VoiceCallContextInput,
   VoiceCatalog,
@@ -472,6 +483,14 @@ export const WS_METHODS = {
   botsCreate: "bots.create",
   botsFiles: "bots.files",
   botsSetAvatar: "bots.setAvatar",
+  botsAvatarCapabilities: "bots.avatarCapabilities",
+  botsAvatarGenerateOptions: "bots.avatarGenerateOptions",
+  botsAvatarSelectOption: "bots.avatarSelectOption",
+  botsAvatarDescribeImage: "bots.avatarDescribeImage",
+  botsAvatarRetry: "bots.avatarRetry",
+  botsAvatarDismiss: "bots.avatarDismiss",
+  botsAvatarAssetRead: "bots.avatarAssetRead",
+  botsAvatarAssetReceive: "bots.avatarAssetReceive",
   botsVoicePreview: "bots.voicePreview",
   botsVoiceCatalog: "bots.voiceCatalog",
   botsVoiceTranscript: "bots.voiceTranscript",
@@ -1445,6 +1464,46 @@ const WsBotsSetAvatarRpc = Rpc.make(WS_METHODS.botsSetAvatar, {
   success: Project,
   error: Schema.Union([BotOperationError, EnvironmentAuthorizationError]),
 });
+const WsBotsAvatarCapabilitiesRpc = Rpc.make(WS_METHODS.botsAvatarCapabilities, {
+  payload: Schema.Struct({}),
+  success: BotAvatarCapabilities,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarGenerateOptionsRpc = Rpc.make(WS_METHODS.botsAvatarGenerateOptions, {
+  payload: BotAvatarGenerateOptionsInput,
+  success: Project,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarSelectOptionRpc = Rpc.make(WS_METHODS.botsAvatarSelectOption, {
+  payload: BotAvatarSelectOptionInput,
+  success: Project,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarDescribeImageRpc = Rpc.make(WS_METHODS.botsAvatarDescribeImage, {
+  payload: BotAvatarDescribeImageInput,
+  success: Project,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarRetryRpc = Rpc.make(WS_METHODS.botsAvatarRetry, {
+  payload: BotAvatarRetryInput,
+  success: Project,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarDismissRpc = Rpc.make(WS_METHODS.botsAvatarDismiss, {
+  payload: BotAvatarDismissInput,
+  success: Project,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarAssetReadRpc = Rpc.make(WS_METHODS.botsAvatarAssetRead, {
+  payload: BotAvatarAssetReadInput,
+  success: BotAvatarAssetTransfer,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
+const WsBotsAvatarAssetReceiveRpc = Rpc.make(WS_METHODS.botsAvatarAssetReceive, {
+  payload: BotAvatarAssetTransfer,
+  success: Schema.Void,
+  error: Schema.Union([BotAvatarError, EnvironmentAuthorizationError]),
+});
 
 const WsBotsVoicePreviewRpc = Rpc.make(WS_METHODS.botsVoicePreview, {
   payload: VoicePreviewInput,
@@ -2362,6 +2421,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsBotsCreateRpc,
   WsBotsFilesRpc,
   WsBotsSetAvatarRpc,
+  WsBotsAvatarCapabilitiesRpc,
+  WsBotsAvatarGenerateOptionsRpc,
+  WsBotsAvatarSelectOptionRpc,
+  WsBotsAvatarDescribeImageRpc,
+  WsBotsAvatarRetryRpc,
+  WsBotsAvatarDismissRpc,
+  WsBotsAvatarAssetReadRpc,
+  WsBotsAvatarAssetReceiveRpc,
   WsBotsVoicePreviewRpc,
   WsBotsVoiceCatalogRpc,
   WsBotsVoiceTranscriptRpc,

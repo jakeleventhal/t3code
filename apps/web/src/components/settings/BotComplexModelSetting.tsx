@@ -9,7 +9,8 @@ import {
   useEnvironmentBotProviders,
   newThreadFallback,
 } from "../bots/BotRuntimeSettings";
-import { SettingsRow, SettingResetButton } from "./settingsLayout";
+import { BotSettingMode } from "./BotSettingMode";
+import { SettingsRow } from "./settingsLayout";
 
 export function BotComplexModelSetting({
   environmentId,
@@ -38,40 +39,39 @@ export function BotComplexModelSetting({
         ? { complexTaskModelOverride: { projectId, selection: selection ?? null } }
         : { complexTaskModelSelection: selection ?? null },
     });
+  const picker = shown ? (
+    <BotModelPicker
+      environmentId={environmentId}
+      projectId={projectId}
+      settings={settings}
+      providers={providers}
+      selection={shown}
+      {...(!selection ? { placeholder: projectId ? "Use default" : "Choose a model" } : {})}
+      disabled={!canWrite}
+      onChange={change}
+    />
+  ) : (
+    <span>No providers available</span>
+  );
   return (
     <SettingsRow
       title="Complex-task model"
-      description={
-        selection
-          ? "Handles difficult work while chat stays available."
-          : projectId
-            ? "Use default. Choose a model to override it for this bot."
-            : "Choose a model to enable delegation for difficult work."
-      }
-      resetAction={
-        projectId && own ? (
-          <SettingResetButton
-            label="complex-task model"
-            tooltip="Use default"
-            disabled={!canWrite}
-            onClick={() => change(null)}
-          />
-        ) : null
-      }
+      description="Handles difficult work while chat stays available."
       control={
-        shown ? (
-          <BotModelPicker
-            environmentId={environmentId}
-            projectId={projectId}
-            settings={settings}
-            providers={providers}
-            selection={shown}
-            {...(!selection ? { placeholder: projectId ? "Use default" : "Choose a model" } : {})}
-            disabled={!canWrite}
-            onChange={change}
-          />
+        projectId ? (
+          <BotSettingMode
+            label="Complex-task model"
+            custom={own != null}
+            disabled={!canWrite || !shown}
+            onDefault={() => change(null)}
+            onCustom={() => {
+              if (!own && shown) change(shown);
+            }}
+          >
+            {picker}
+          </BotSettingMode>
         ) : (
-          <span>No providers available</span>
+          picker
         )
       }
     />

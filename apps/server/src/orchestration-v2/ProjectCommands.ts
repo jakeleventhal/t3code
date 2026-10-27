@@ -1,4 +1,5 @@
 import {
+  type BotAvatar,
   type CommandId,
   type EventId,
   MAX_SCRIPT_ID_LENGTH,
@@ -41,6 +42,7 @@ export interface ProjectMetaUpdateCommand {
   readonly autoPull?: boolean;
   readonly faviconPath?: string | null;
   readonly projectIcon?: ProjectIconOverride | null;
+  readonly botAvatar?: BotAvatar | null;
   readonly scripts?: ReadonlyArray<ProjectScript>;
 }
 
@@ -217,6 +219,7 @@ export function planProjectCommand(input: {
           ...(command.autoPull === undefined ? {} : { autoPull: command.autoPull }),
           ...(command.faviconPath === undefined ? {} : { faviconPath: command.faviconPath }),
           ...(command.projectIcon === undefined ? {} : { projectIcon: command.projectIcon }),
+          ...(command.botAvatar === undefined ? {} : { botAvatar: command.botAvatar }),
           ...(command.scripts === undefined ? {} : { scripts: command.scripts }),
           updatedAt: occurredAt,
         },

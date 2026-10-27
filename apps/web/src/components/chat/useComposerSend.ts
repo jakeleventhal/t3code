@@ -121,6 +121,8 @@ import {
 } from "@t3tools/client-runtime/botMentionItems";
 import { botOutbox, botOutboxHoldsThread } from "../../botOutbox/botOutbox";
 import { classifyBotOutboxFailure } from "../../botOutbox/botOutbox.logic";
+import { parseBotAvatarPrompt } from "@t3tools/client-runtime/bot-avatar";
+import { requestBotAvatarOptions } from "../bots/botAvatarActions";
 import {
   composerBotOutboxItem,
   composerDraftUnchangedSinceQueue,
@@ -566,6 +568,22 @@ export function useComposerSend(input: ComposerSendInput) {
     // A bot reads threads on other connected machines through t3_thread_read(environmentId);
     // a Code agent can read only its own machine's threads.
     const isBotChat = activeProject?.botRole != null;
+    // "Change your avatar to …" in a bot chat changes the avatar instead of starting a turn.
+    const avatarSubject =
+      isBotChat && activeProject && isServerThread ? parseBotAvatarPrompt(promptForSend) : null;
+    if (avatarSubject !== null && activeProject) {
+      const started = await requestBotAvatarOptions({
+        environmentId,
+        projectId: activeProject.id,
+        prompt: avatarSubject,
+      });
+      if (started) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
+      return;
+    }
     const botPresentation = isBotChat ? readEnvironmentPresentation(environmentId) : undefined;
     const unreadableBotReference = isBotChat
       ? referencesBotServerCannotRead({

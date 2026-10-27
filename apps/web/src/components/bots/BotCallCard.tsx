@@ -29,10 +29,12 @@ export function BotCallCard({
     open ? { environmentId, threadId, callId: call.callId, ended: call.endedAt !== null } : null,
   );
   return (
-    <div className="w-full max-w-md rounded-lg border bg-card text-sm">
+    <div className="w-full max-w-md overflow-hidden rounded-xl border bg-card text-sm">
       <Collapsible open={open} onOpenChange={onOpenChange}>
-        <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-start">
-          <PhoneIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <CollapsibleTrigger className="group flex w-full items-center gap-2.5 px-2.5 py-2 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground">
+            <PhoneIcon className="size-3" />
+          </span>
           <span className="truncate font-medium">Call with {call.botTitle}</span>
           <span className="shrink-0 truncate text-xs text-muted-foreground">
             {voiceCallStatusLabel(call)}

@@ -1,4 +1,5 @@
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
+import { BotAvatar } from "../bots/BotAvatar";
 import { MessageId, type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 import { memo, use, useState } from "react";
@@ -30,7 +31,13 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>T3 Code</MessageAuthorHeading>
+        <MessageAuthorHeading>{ctx.botIdentity?.title ?? "T3 Code"}</MessageAuthorHeading>
+        {ctx.botIdentity ? (
+          <div aria-hidden className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <BotAvatar bot={ctx.botIdentity} size="sm" />
+            <span className="truncate font-semibold text-foreground">{ctx.botIdentity.title}</span>
+          </div>
+        ) : null}
         <div data-thread-find-text="true">
           <AssistantCitationSource
             messageId={row.message.id}
@@ -40,6 +47,7 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             listRef={ctx.listRef}
           >
             <ChatMarkdown
+              botCards={ctx.botIdentity !== null}
               text={messageText}
               className="font-reply text-(length:--font-size-reply,var(--text-sm)) leading-(--leading-reply)"
               cwd={ctx.markdownCwd}

@@ -63,6 +63,10 @@
       "types": "./src/assistantEnvironment.ts",
       "default": "./src/assistantEnvironment.ts"
     },
+    "./bot-avatar": {
+      "types": "./src/botAvatar.ts",
+      "default": "./src/botAvatar.ts"
+    },
     "./bot-turn-settings": {
       "types": "./src/botTurnSettings.ts",
       "default": "./src/botTurnSettings.ts"
@@ -252,6 +256,7 @@
       "default": "./src/state/peerRequests.ts"
     },
     "./voice-call/cues": "./src/voice-call/cues.ts",
+    "./voice-call/audio-levels": "./src/voice-call/audio-levels.ts",
     "./voice-call": {
       "types": "./src/voice-call/controller.ts",
       "default": "./src/voice-call/controller.ts"

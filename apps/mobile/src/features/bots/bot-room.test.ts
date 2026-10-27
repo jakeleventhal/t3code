@@ -10,6 +10,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 import { makeThreadShellFixture } from "../../test-fixtures";
 import {
   botProjectKeys,
+  BOT_UNREAD_BADGE,
   botNotificationBadge,
   botSecondaryThreadCount,
   botThreadStatus,
@@ -560,7 +561,7 @@ it("badges bot attention across hosts and clears when read or archived", () => {
   ).toBeUndefined();
 });
 
-it("counts unread bot replies across hosts, gives attention priority, and clears on reading", () => {
+it("marks unread bot replies with a dot across hosts, gives attention priority, and clears on reading", () => {
   const reply = thread({
     environmentId: HOME,
     id: ThreadId.make("reply"),
@@ -570,7 +571,7 @@ it("counts unread bot replies across hosts, gives attention priority, and clears
   });
   const remoteBot = { ...fitness, environmentId: WORK };
   const remoteReply = { ...reply, environmentId: WORK };
-  expect(botNotificationBadge([fitness, remoteBot], [reply, remoteReply])).toBe("2");
+  expect(botNotificationBadge([fitness, remoteBot], [reply, remoteReply])).toBe(BOT_UNREAD_BADGE);
   expect(
     botNotificationBadge(
       [fitness, remoteBot],

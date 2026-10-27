@@ -1,3 +1,4 @@
+import { BotSettingMode } from "./BotSettingMode";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
@@ -83,6 +84,18 @@ export function BotPrimaryMachineSettings({
           disabled={pending || !canWrite}
           onPress={() => setEditing(editing === key ? null : key)}
         />
+        {bot ? (
+          <BotSettingMode
+            label="Primary machine"
+            custom={value !== null}
+            disabled={pending || !canWrite || !writer}
+            onDefault={() => void change(null, bot)}
+            onCustom={() => {
+              const selected = value ?? preferences.primaryEnvironmentId ?? writer?.environmentId;
+              if (selected) void change(selected, bot);
+            }}
+          />
+        ) : null}
         {editing === key
           ? [...(bot ? [{ value: null, label: fallback }] : []), ...choices].map((choice) => (
               <SettingsChoiceRow

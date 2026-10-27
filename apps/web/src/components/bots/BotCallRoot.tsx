@@ -101,6 +101,7 @@ function BotCallDockHost({ call }: { call: VoiceCallState }) {
       <BotCallDock
         call={call}
         controls={controls}
+        inline={inline}
         expanded={expanded}
         onExpandedChange={setExpanded}
         transcript={<LiveCallTranscript callId={call.callId} />}
@@ -113,7 +114,7 @@ function BotCallDockHost({ call }: { call: VoiceCallState }) {
 
 /** Holds the call bar in a thread's own chat; empty and sizeless otherwise. */
 export function BotCallBarSlot({ threadKey }: { threadKey: string }) {
-  return <div ref={callBarSlotRef(threadKey)} className="flex justify-end pb-2 empty:hidden" />;
+  return <div ref={callBarSlotRef(threadKey)} className="flex flex-col pb-2 empty:hidden" />;
 }
 
 // These two subscribe only while the drawer shows them, so speech and typing never re-render

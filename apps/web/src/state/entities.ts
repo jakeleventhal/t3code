@@ -357,6 +357,16 @@ export function useEnvironmentSupportsBotProfiles(environmentId: EnvironmentId |
   );
 }
 
+export function useEnvironmentSupportsBotAvatarGeneration(
+  environmentId: EnvironmentId | null,
+): boolean {
+  const configs = useServerConfigs();
+  return (
+    environmentId !== null &&
+    configs.get(environmentId)?.environment.capabilities.botAvatarGeneration === true
+  );
+}
+
 export function readEnvironmentSupportsBotConversations(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities

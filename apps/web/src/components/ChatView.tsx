@@ -271,7 +271,8 @@ import {
   resolveScrollToEndClearance,
 } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
-import { registerAssistantOrbSlot } from "./bots/botRoomStore";
+import { registerAssistantOrbSlot, useBotRoomStore } from "./bots/botRoomStore";
+import { BotAvatarFlowCard } from "./bots/BotAvatarFlowCard";
 import { BotCallBarSlot } from "./bots/BotCallRoot";
 import { BotProfileHost } from "./bots/BotProfile";
 import { isBotProject } from "./bots/botRoom.logic";
@@ -1823,6 +1824,17 @@ export default function ChatView(props: ChatViewProps) {
     });
   };
   const scheduleComposerFocusStable = useStableCallback(scheduleComposerFocus);
+  // The bot profile asks for text in the composer it cannot reach (Live Animation's opening
+  // phrase); it is appended after the current draft and the composer takes focus.
+  const composerPrefill = useBotRoomStore((state) => state.composerPrefill);
+  useEffect(() => {
+    if (composerPrefill === null || composerPrefill.threadKey !== activeThreadKey) return;
+    const composer = composerRef.current;
+    if (!composer) return;
+    useBotRoomStore.getState().clearComposerPrefill(composerPrefill.nonce);
+    composer.insertTextAtEnd(composerPrefill.text, { ensureLeadingBoundary: true });
+    scheduleComposerFocusStable();
+  }, [composerPrefill, activeThreadKey, composerRef, scheduleComposerFocusStable]);
   const insertArtifactTemplate = (template: CodexArtifactTemplate) => {
     const composer = composerRef.current;
     if (!composer) return;
@@ -3286,9 +3298,17 @@ export default function ChatView(props: ChatViewProps) {
               setThreadErrorBannerDismissTick={setThreadErrorBannerDismissTick}
             />
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
-              {isBotChat ? <BotTaskModels threadRef={activeThreadRef} /> : null}
               <ThreadTimeline
                 simpleProgress={isBotChat}
+                botIdentity={routeBotProject}
+                progressDetail={
+                  isBotChat ? (
+                    <BotTaskModels
+                      threadRef={activeThreadRef}
+                      projectId={routeBotProject?.id ?? null}
+                    />
+                  ) : null
+                }
                 threadDetailRef={routeThreadDetailRef}
                 entriesInput={timelineEntriesInput}
                 draftEntries={isServerThread ? null : draftTimelineEntries}
@@ -3549,6 +3569,9 @@ export default function ChatView(props: ChatViewProps) {
                                   : null
                               }
                             />
+                          ) : null}
+                          {activeProject && isBotProject(activeProject) ? (
+                            <BotAvatarFlowCard project={activeProject} />
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer

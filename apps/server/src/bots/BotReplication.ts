@@ -4,6 +4,7 @@ import { initialBotDefaults } from "./botDefaultSelections.ts";
 import * as Crypto from "effect/Crypto";
 import * as Hex from "effect/encoding/Hex";
 import {
+  BotAvatarAssetPath,
   BotId,
   BotReplicaManifest,
   BotReplicationError,
@@ -29,8 +30,10 @@ import {
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -48,6 +51,8 @@ const readMessage = Schema.decodeSync(
 const readCall = Schema.decodeSync(Schema.fromJsonString(OrchestrationV2TurnItemJson.members[0]));
 const readThread = Schema.decodeSync(Schema.fromJsonString(OrchestrationV2AppThreadJson));
 const readCursor = Schema.decodeSync(Schema.fromJsonString(BotReplicaCursor));
+const isAvatarAssetPath = Schema.is(BotAvatarAssetPath);
+const jsonOf = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const writeCursor = Schema.encodeSync(Schema.fromJsonString(BotReplicaCursor));
 const writeManifest = Schema.encodeEffect(Schema.fromJsonString(BotReplicaManifest));
 
@@ -80,7 +85,23 @@ const make = Effect.gen(function* () {
   const sink = yield* EventSink.EventSinkV2;
   const settings = yield* ServerSettings.ServerSettingsService;
   const identity = yield* ServerEnvironment.ServerEnvironmentIdentity;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const lock = yield* Semaphore.make(1);
+  // Avatar stills and clips are content-addressed files beside the continuity files. The
+  // carrier compares these lists to copy what a replica lacks before it applies a manifest.
+  const avatarAssets = (workspaceRoot: string) =>
+    fs.readDirectory(path.join(workspaceRoot, ".avatars")).pipe(
+      Effect.map((entries) =>
+        entries
+          .map((entry) => `.avatars/${entry}`)
+          .filter((entry): entry is BotAvatarAssetPath => isAvatarAssetPath(entry))
+          .sort(),
+      ),
+      Effect.orElseSucceed(() => [] as ReadonlyArray<BotAvatarAssetPath>),
+    );
+  const hasAsset = (workspaceRoot: string, asset: string) =>
+    fs.exists(path.join(workspaceRoot, asset)).pipe(Effect.orElseSucceed(() => false));
   const fail = (operation: BotReplicationError["operation"]) => (cause: unknown) =>
     new BotReplicationError({ operation, cause });
 
@@ -95,12 +116,17 @@ const make = Effect.gen(function* () {
     }>`SELECT * FROM bot_replica_sources`;
     return {
       preferences: (yield* settings.getSettings).botSharedPreferences,
-      projects: snapshot.projects
-        .filter((project) => project.botRole != null && project.deletedAt === null)
-        .map((project) => ({
-          projectId: project.id,
-          ready: !sources.some((source) => source.project_id === project.id && !source.ready),
-        })),
+      projects: yield* Effect.forEach(
+        snapshot.projects.filter(
+          (project) => project.botRole != null && project.deletedAt === null,
+        ),
+        (project) =>
+          Effect.map(avatarAssets(project.workspaceRoot), (assets) => ({
+            projectId: project.id,
+            ready: !sources.some((source) => source.project_id === project.id && !source.ready),
+            avatarAssets: assets,
+          })),
+      ),
       cursors: sources.map((source) => ({
         environmentId: source.environment_id as BotReplicaPage["environmentId"],
         projectId: source.project_id,
@@ -149,6 +175,15 @@ const make = Effect.gen(function* () {
               id: project.id,
               title: project.title,
               projectIcon: project.projectIcon ?? null,
+              faviconPath:
+                project.faviconPath && isAvatarAssetPath(project.faviconPath)
+                  ? project.faviconPath
+                  : null,
+              // A replica shows the finished avatar; the step in flight stays with its origin.
+              botAvatar:
+                project.botAvatar === null || project.botAvatar === undefined
+                  ? null
+                  : { ...project.botAvatar, job: null },
               botRole: project.botRole,
               botMainThreadId: project.botMainThreadId ?? null,
               createdAt: project.createdAt,
@@ -277,6 +312,45 @@ const make = Effect.gen(function* () {
           }
         }
 
+        if ("faviconPath" in manifest.project) {
+          // Only files already copied here are referenced; a missing clip falls back to the still.
+          const still =
+            manifest.project.faviconPath &&
+            (yield* hasAsset(project.workspaceRoot, manifest.project.faviconPath))
+              ? manifest.project.faviconPath
+              : null;
+          const sourceAvatar = manifest.project.botAvatar ?? null;
+          const clips: Record<string, BotAvatarAssetPath> = {};
+          for (const [kind, clip] of Object.entries(sourceAvatar?.clips ?? {})) {
+            if (clip !== undefined && (yield* hasAsset(project.workspaceRoot, clip))) {
+              clips[kind] = clip;
+            }
+          }
+          const botAvatar =
+            sourceAvatar === null
+              ? null
+              : {
+                  version: sourceAvatar.version,
+                  clips,
+                  updatedAt: sourceAvatar.updatedAt,
+                  job: null,
+                };
+          const identityChanged =
+            (project.faviconPath ?? null) !== still ||
+            jsonOf(project.projectIcon ?? null) !== jsonOf(manifest.project.projectIcon) ||
+            jsonOf(project.botAvatar ?? null) !== jsonOf(botAvatar);
+          if (identityChanged) {
+            project = yield* projects.update({
+              commandId: CommandId.make(
+                `bot-replica-avatar:${page.environmentId}:${page.projectId}:${page.manifestRevision}`,
+              ),
+              projectId: page.projectId,
+              projectIcon: manifest.project.projectIcon,
+              faviconPath: still,
+              botAvatar,
+            });
+          }
+        }
         const base = yield* sql<{
           path: string;
           text: string;

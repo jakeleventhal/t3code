@@ -1,3 +1,4 @@
+import { botPreviewText } from "@t3tools/shared/botPreview";
 import {
   environmentAssistant,
   environmentAssistants,
@@ -7,6 +8,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ProjectBotRole, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 
 export type AppRoom = "code" | "bots";
@@ -329,4 +331,28 @@ export async function commitBotThreadRename(input: {
     input.report({ kind: "failed", error: squashAtomCommandFailure(result) });
   }
   return false;
+}
+
+type BotConversationSummary = Pick<
+  EnvironmentThreadShell,
+  "source" | "latestUserMessageAt" | "latestRun"
+>;
+
+/** What a bot or topic row says under its name: the newest visible line, else nothing. */
+export function botConversationPreview(thread: BotConversationSummary | null): string | null {
+  return botPreviewText(thread?.source.latestVisibleMessage?.text);
+}
+
+/** When a conversation last moved, for the compact time beside its row. */
+export function botConversationActivityAt(thread: BotConversationSummary | null): string | null {
+  if (thread === null) return null;
+  let latest: string | null = null;
+  for (const value of [
+    thread.latestUserMessageAt,
+    thread.latestRun?.completedAt,
+    thread.latestRun?.requestedAt,
+  ]) {
+    if (value && (latest === null || Date.parse(value) > Date.parse(latest))) latest = value;
+  }
+  return latest;
 }

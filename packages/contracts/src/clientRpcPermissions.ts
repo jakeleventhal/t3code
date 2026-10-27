@@ -24,6 +24,12 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsSetAvatar]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarGenerateOptions]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarSelectOption]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarDescribeImage]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarRetry]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarDismiss]: AuthOrchestrationOperateScope,
+  [WS_METHODS.botsAvatarAssetReceive]: AuthSettingsWriteScope,
   [WS_METHODS.botsVoiceBegin]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoiceContext]: AuthOrchestrationOperateScope,
   [WS_METHODS.botsVoicePreview]: AuthOrchestrationOperateScope,
@@ -87,7 +93,7 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
-  if (method === WS_METHODS.botsReplicaReceive)
+  if (method === WS_METHODS.botsReplicaReceive || method === WS_METHODS.botsAvatarAssetReceive)
     return [AuthSettingsWriteScope, AuthOrchestrationOperateScope, AuthFilesystemWriteScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);

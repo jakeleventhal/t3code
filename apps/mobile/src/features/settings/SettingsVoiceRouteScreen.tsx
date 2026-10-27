@@ -1,3 +1,4 @@
+import { BotSettingMode } from "./BotSettingMode";
 import { openSettings } from "./settings-navigation";
 import { botDefaultVoice } from "@t3tools/shared/botPreferences";
 import { botEnvironment } from "../../state/bots";
@@ -327,17 +328,34 @@ export function BotVoiceSettingsRow({
       : { kind: "own", selection: botDefaultVoice(settings) }
     : null;
   return (
-    <SettingsRow
-      icon="headphones"
-      label={projectId ? "Voice" : "Default voice"}
-      value={`${source?.kind === "default" ? "Use default · " : ""}${voiceSelectionLabel(voice.catalog.data, source?.selection ?? null)}`}
-      valuePosition="below"
-      onPress={() =>
-        projectId
-          ? navigation.navigate("SettingsVoiceBot", { environmentId, projectId })
-          : navigation.navigate("SettingsVoiceDefault", { environmentId })
-      }
-    />
+    <>
+      <SettingsRow
+        icon="headphones"
+        label={projectId ? "Voice" : "Default voice"}
+        value={`${source?.kind === "default" ? "Use default · " : ""}${voiceSelectionLabel(voice.catalog.data, source?.selection ?? null)}`}
+        valuePosition="below"
+        onPress={() =>
+          projectId
+            ? navigation.navigate("SettingsVoiceBot", { environmentId, projectId })
+            : navigation.navigate("SettingsVoiceDefault", { environmentId })
+        }
+      />
+      {projectId && source ? (
+        <BotSettingMode
+          label="Voice"
+          custom={source.kind !== "default"}
+          disabled={voice.pending || !voice.canWriteSettings || !voice.supported}
+          onDefault={() =>
+            void voice.configure({ voiceOverride: { projectId, selection: "inherit" } })
+          }
+          onCustom={() => {
+            if (source.selection)
+              void voice.configure({ voiceOverride: { projectId, selection: source.selection } });
+            else navigation.navigate("SettingsVoiceBot", { environmentId, projectId });
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

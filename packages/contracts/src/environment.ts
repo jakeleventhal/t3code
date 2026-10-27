@@ -115,6 +115,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   botVoiceConfiguration: Schema.optionalKey(Schema.Boolean),
   botVoice: Schema.optionalKey(Schema.Boolean),
   botVoicePreview: Schema.optionalKey(Schema.Boolean),
+  botAvatarGeneration: Schema.optionalKey(Schema.Boolean),
   threadPinReorder: Schema.optionalKey(Schema.Boolean),
   threadActiveReorder: Schema.optionalKey(Schema.Boolean),
   threadAutoSettleOptOut: Schema.optionalKey(Schema.Boolean),

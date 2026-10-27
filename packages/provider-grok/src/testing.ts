@@ -27,3 +27,4 @@ export {
   registerXAiBackgroundTaskTracking,
   xAiRateLimitedErrorCode,
 } from "./server/xaiAcpExtension.ts";
+export { classifyGrokMediaRefusal, makeGrokMediaGeneration } from "./server/mediaGeneration.ts";

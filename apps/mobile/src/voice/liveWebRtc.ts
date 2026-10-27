@@ -1,7 +1,10 @@
 import { requireOptionalNativeModule } from "expo";
 import { VoiceCallSetupError } from "@t3tools/client-runtime/voice-call";
+import { rtcStatsAudioLevels } from "@t3tools/client-runtime/voice-call/audio-levels";
 import { openLiveMedia, type LiveMediaInput } from "@t3tools/client-runtime/voice-call/live-media";
 import type { MediaStream, MediaStreamTrack } from "react-native-webrtc";
+
+import { callAudioLevels } from "./callAudioLevels";
 
 let nextRouteId = 0;
 
@@ -21,9 +24,26 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
     const remoteTracks = new Set<MediaStreamTrack>();
     let stopped = false;
     let playbackEnabled = input.playbackOnly === true;
+    let microphoneEnabled = true;
     let disposed = false;
+    // Voice previews play outside any call, so only a call's own audio drives the call bar.
+    const detachLevels =
+      input.playbackOnly === true
+        ? () => undefined
+        : callAudioLevels.attach(() =>
+            stopped
+              ? null
+              : peer.getStats().then((report) => {
+                  const levels = rtcStatsAudioLevels(report);
+                  return {
+                    microphone: microphoneEnabled ? levels.microphone : 0,
+                    speaker: playbackEnabled ? levels.speaker : 0,
+                  };
+                }),
+          );
     const stopAudio = () => {
       stopped = true;
+      detachLevels();
       // Native track.stop only disables the source. release frees microphone capture.
       microphone?.release();
       microphone = null;
@@ -94,6 +114,7 @@ export async function openLiveNativeWebRtc(input: LiveMediaInput) {
         for (const track of remoteTracks) track.enabled = !stopped && enabled;
       },
       setMicrophoneEnabled: (enabled) => {
+        microphoneEnabled = enabled;
         for (const track of microphone?.getAudioTracks() ?? []) track.enabled = enabled;
       },
       stopAudio,

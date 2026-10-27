@@ -18,6 +18,7 @@ import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as BotAvatarService from "../bots/BotAvatarService.ts";
 import * as BotService from "../bots/BotService.ts";
 import * as VoiceConfiguration from "../bots/VoiceConfiguration.ts";
 import * as VoiceCalls from "../bots/VoiceCalls.ts";
@@ -315,6 +316,9 @@ const layerBotProvided = BotService.layer.pipe(
     ),
   ),
 );
+const layerBotAvatarProvided = BotAvatarService.layer.pipe(
+  Layer.provide(Layer.mergeAll(layerProjectService, layerManagedProjectFoldersProvided)),
+);
 const layerVoiceCallsProvided = VoiceCalls.layer.pipe(
   Layer.provide(Layer.mergeAll(layerEventSinkProvided, ProjectionStore.layer, ProjectStore.layer)),
 );
@@ -433,6 +437,7 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerBotProvided,
+  layerBotAvatarProvided,
   layerBotReplication,
   VoiceConfiguration.layer,
   layerVoiceCallsProvided,

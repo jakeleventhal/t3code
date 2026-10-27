@@ -1,3 +1,4 @@
+import { BotSettingMode } from "./BotSettingMode";
 import { botDefaultVoice } from "@t3tools/shared/botPreferences";
 import { botEnvironment } from "../../state/bots";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -133,6 +134,32 @@ export function BotVoiceSetting({
     : { kind: "own", selection: botDefaultVoice(settings) };
   const own = voice.kind === "own";
   const defaultLabel = describeVoiceSelection(botDefaultVoice(settings), catalog).label;
+  const picker = (
+    <VoiceSelectionPicker
+      environmentId={environmentId}
+      catalog={catalog}
+      selection={voice.selection}
+      {...(bot ? { inherit: { label: `Use default · ${defaultLabel}`, active: !own } } : {})}
+      ariaLabel={bot ? `${bot.title} voice` : "Default bot voice"}
+      className="w-full sm:w-56"
+      disabled={!canWrite}
+      onChange={(change) =>
+        void configure({
+          environmentId,
+          input: bot
+            ? {
+                voiceOverride: {
+                  projectId: bot.id,
+                  selection: change.kind === "inherit" ? "inherit" : change.selection,
+                },
+              }
+            : change.kind === "set"
+              ? { defaultVoiceSelection: change.selection }
+              : {},
+        })
+      }
+    />
+  );
   return (
     <SettingsRow
       id={bot ? botVoiceSettingsTargetId(bot.id) : "voice-default"}
@@ -140,30 +167,30 @@ export function BotVoiceSetting({
       description={bot ? undefined : "Every bot uses this voice unless you choose an override."}
       status={<VoiceStatus description={describeVoiceSelection(voice.selection, catalog)} />}
       control={
-        <VoiceSelectionPicker
-          environmentId={environmentId}
-          catalog={catalog}
-          selection={voice.selection}
-          {...(bot ? { inherit: { label: `Use default · ${defaultLabel}`, active: !own } } : {})}
-          ariaLabel={bot ? `${bot.title} voice` : "Default bot voice"}
-          className="w-full sm:w-56"
-          disabled={!canWrite}
-          onChange={(change) =>
-            void configure({
-              environmentId,
-              input: bot
-                ? {
-                    voiceOverride: {
-                      projectId: bot.id,
-                      selection: change.kind === "inherit" ? "inherit" : change.selection,
-                    },
-                  }
-                : change.kind === "set"
-                  ? { defaultVoiceSelection: change.selection }
-                  : {},
-            })
-          }
-        />
+        bot ? (
+          <BotSettingMode
+            label={`${bot.title} voice`}
+            custom={own}
+            disabled={!canWrite}
+            onDefault={() =>
+              void configure({
+                environmentId,
+                input: { voiceOverride: { projectId: bot.id, selection: "inherit" } },
+              })
+            }
+            onCustom={() => {
+              if (!own)
+                void configure({
+                  environmentId,
+                  input: { voiceOverride: { projectId: bot.id, selection: voice.selection } },
+                });
+            }}
+          >
+            {picker}
+          </BotSettingMode>
+        ) : (
+          picker
+        )
       }
     />
   );

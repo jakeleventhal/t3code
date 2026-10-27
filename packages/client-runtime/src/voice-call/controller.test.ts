@@ -70,6 +70,34 @@ function harness() {
 }
 
 describe("VoiceCallController", () => {
+  it("starts duration on media readiness, preserves it through reconnection, and resets on a new call", async () => {
+    using now = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const { controller, attempts } = harness();
+    const pending = controller.start(target());
+    const first = attempts[0]!;
+    expect(controller.getSnapshot()?.connectedAt).toBeNull();
+    first.ready.resolve(first.connection);
+    await pending;
+    expect(controller.getSnapshot()?.connectedAt).toBeNull();
+    first.input.onEvent({ type: "phase", phase: "reconnecting" });
+    expect(controller.getSnapshot()?.connectedAt).toBeNull();
+    now.mockReturnValue(20_000);
+    first.input.onEvent({ type: "phase", phase: "listening" });
+    expect(controller.getSnapshot()?.connectedAt).toBe(20_000);
+    now.mockReturnValue(30_000);
+    first.input.onEvent({ type: "phase", phase: "reconnecting" });
+    first.input.onEvent({ type: "phase", phase: "speaking" });
+    expect(controller.getSnapshot()?.connectedAt).toBe(20_000);
+    await controller.end("call-1");
+    const next = controller.start(target());
+    expect(controller.getSnapshot()?.connectedAt).toBeNull();
+    attempts[1]!.ready.resolve(attempts[1]!.connection);
+    await next;
+    attempts[1]!.input.onEvent({ type: "phase", phase: "listening" });
+    expect(controller.getSnapshot()?.connectedAt).toBe(30_000);
+    await controller.end("call-2");
+  });
+
   it("waits for media readiness and rejects a second call without the observed replacement id", async () => {
     const { controller, attempts } = harness();
     const connecting = controller.start(target());

@@ -97,6 +97,7 @@ import { ThreadHeader } from "./ThreadHeader";
 import { AssistantOrb } from "../bots/AssistantOrb";
 import { botRole } from "../bots/bot-room";
 import { ActiveBotCallBar } from "../bots/ActiveBotCall";
+import { BotAvatarFlowCard } from "../bots/BotAvatarFlowCard";
 import { PeerRequestRows } from "../bots/PeerRequestRows";
 import { useBotConversationCall } from "../bots/use-bot-call";
 import {
@@ -1208,7 +1209,10 @@ function ThreadRouteContent(
           }
           callBar={
             <>
-              <ActiveBotCallBar thread={callThread} className="px-4 pb-2" />
+              <ActiveBotCallBar thread={callThread} fullChat className="px-4 pb-2" />
+              {selectedThreadProject && botRole(selectedThreadProject) !== null ? (
+                <BotAvatarFlowCard project={selectedThreadProject} className="mx-4 mb-2" />
+              ) : null}
               {selectedThreadProject && botRole(selectedThreadProject) !== null ? (
                 <PeerRequestRows
                   key={`${selectedThread.environmentId}:${selectedThread.id}`}

@@ -1,6 +1,8 @@
 import { withPeerAccess } from "./peerMessages.ts";
 import {
+  type BotAvatarAssetPath,
   type BotReplicaCursor,
+  type BotReplicaManifest,
   type BotReplicationStatus,
   type EnvironmentId,
   WS_METHODS,
@@ -10,6 +12,19 @@ import * as Schedule from "effect/Schedule";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Registry from "../connection/registry.ts";
 import * as Rpc from "./client.ts";
+
+/** The still and every clip a manifest refers to, in the order the target should receive them. */
+export function manifestAvatarAssets(
+  manifest: BotReplicaManifest | null,
+): ReadonlyArray<BotAvatarAssetPath> {
+  if (manifest === null) return [];
+  const assets: Array<BotAvatarAssetPath> = [];
+  if (manifest.project.faviconPath) assets.push(manifest.project.faviconPath);
+  for (const clip of Object.values(manifest.project.botAvatar?.clips ?? {})) {
+    if (clip !== undefined && !assets.includes(clip)) assets.push(clip);
+  }
+  return assets;
+}
 
 /** Clients carry only history/context over their existing authorized connections. */
 export const synchronizeBots = Effect.fn("clientRuntime.bots.synchronize")(function* () {
@@ -81,6 +96,29 @@ export const synchronizeBots = Effect.fn("clientRuntime.bots.synchronize")(funct
                   : {}),
               }),
             );
+            // Avatar files travel ahead of the manifest that names them, so the target never
+            // references a still or clip it cannot serve.
+            const held =
+              target.status.projects.find((entry) => entry.projectId === project.projectId)
+                ?.avatarAssets ?? [];
+            for (const asset of manifestAvatarAssets(page.manifest)) {
+              if (held.includes(asset)) continue;
+              const transfer = yield* registry.run(
+                source.environmentId,
+                Rpc.request(WS_METHODS.botsAvatarAssetRead, {
+                  projectId: project.projectId,
+                  path: asset,
+                }),
+              );
+              yield* registry.run(
+                target.environmentId,
+                withPeerAccess(
+                  target.environmentId,
+                  WS_METHODS.botsAvatarAssetReceive,
+                  Rpc.requestGuarded(WS_METHODS.botsAvatarAssetReceive, transfer),
+                ),
+              );
+            }
             yield* registry.run(
               target.environmentId,
               withPeerAccess(

@@ -1004,13 +1004,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: {
         gestureEnabled: true,
         headerShown: false,
-        ...(Platform.OS === "android"
-          ? { presentation: "card" as const }
-          : {
-              ...HORIZONTAL_FORM_SHEET_OPTIONS,
-              sheetAllowedDetents: formSheetDetents(0.6, 1),
-              sheetGrabberVisible: true,
-            }),
+        presentation: "fullScreenModal",
       },
     }),
     ThreadSettingsSheet: createNativeStackScreen({

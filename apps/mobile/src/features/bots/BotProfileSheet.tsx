@@ -1,5 +1,6 @@
 import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
+import { botAvatarStatusLabel } from "@t3tools/client-runtime/bot-avatar";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   isAtomCommandInterrupted,
@@ -8,12 +9,10 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
-  CommandId,
   EnvironmentId,
   ProjectId,
   type BotFile,
   type BotFilesPage,
-  type ProjectIconColor,
   type ProjectIconOverride,
   type ScheduledTask,
 } from "@t3tools/contracts";
@@ -35,8 +34,6 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { assetImageSource } from "../../lib/assetImageSource";
 import { cn } from "../../lib/cn";
-import { projectIconColorClassNames } from "../../lib/projectIcon";
-import { uuidv4 } from "../../lib/uuid";
 import { useAssetUrl } from "../../state/assets";
 import { botEnvironment } from "../../state/bots";
 import { useEnvironmentServerConfig, useProject } from "../../state/entities";
@@ -46,13 +43,10 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { useWorkspaceEnvironments } from "../../state/workspace";
-import { pickBotAvatarPhoto } from "./bot-avatar-photo";
 import {
   botFilePreviewTarget,
   botFileTitle,
   botFileVisual,
-  botInitials,
-  botInitialsIcon,
   botRoutineScheduleLabel,
   groupBotFiles,
   mergeBotFilePages,
@@ -60,22 +54,14 @@ import {
 } from "./bot-profile";
 import { botRole } from "./bot-room";
 import { BotAvatar } from "./BotAvatar";
+import { BotAvatarEditor } from "./BotAvatarEditor";
+import { useBotConversationCall } from "./use-bot-call";
 import { useShowConversationInBots } from "./use-assistant";
 import { useBotTurnSettings } from "./use-bot-turn-settings";
 
 const FILES_PAGE_SIZE = 24;
-const AVATAR_EMOJIS = ["🧭", "🌿", "📈", "☕", "🛰️", "🐙", "✈️", "🏠", "🦊", "🎧", "📚", "⚡"];
-const AVATAR_COLORS: ReadonlyArray<ProjectIconColor> = [
-  "amber",
-  "sky",
-  "green",
-  "rose",
-  "violet",
-  "yellow",
-  "gray",
-];
 
-type ProfileTab = "routines" | "files";
+type ProfileTab = "routines" | "files" | "settings";
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
   if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -139,32 +125,27 @@ export function BotProfileSheet(
           <ProfileNote>This bot isn’t on this device anymore.</ProfileNote>
         ) : (
           <>
-            <BotIdentity project={project} connected={environment.connected} />
-            {environment.voiceConfigurable ? (
-              <View className="items-center">
-                <Button
-                  label="Voice settings"
-                  icon="headphones"
-                  onPress={() =>
-                    openSettings(navigation, "SettingsVoiceBot", { environmentId, projectId })
-                  }
-                />
-              </View>
-            ) : null}
-            <BotTurnSettingsSection project={project} />
+            <BotIdentity
+              project={project}
+              connected={environment.connected}
+              voiceConfigurable={environment.voiceConfigurable}
+            />
             <View className="items-center">
               <SegmentedControl
                 role="tab"
-                className="w-56"
+                className="w-72"
                 options={[
                   { value: "routines", label: "Routines" },
                   { value: "files", label: "Files" },
+                  { value: "settings", label: "Settings" },
                 ]}
                 selected={tab}
                 onSelect={setTab}
               />
             </View>
-            {tab === "routines" ? (
+            {tab === "settings" ? (
+              <BotTurnSettingsSection project={project} />
+            ) : tab === "routines" ? (
               <BotRoutines
                 project={project}
                 connected={environment.connected}
@@ -193,7 +174,13 @@ function BotTurnSettingsSection(props: { readonly project: EnvironmentProject })
   const { project } = props;
   const navigation = useNavigation();
   const turn = useBotTurnSettings(project.environmentId, project.id);
-  if (!turn.supported) return null;
+  if (!turn.supported) {
+    return (
+      <ProfileNote>
+        Update this bot’s environment to change its model and permissions here.
+      </ProfileNote>
+    );
+  }
   const disabled = !turn.editable || !turn.canWrite || turn.pending;
   const open = () =>
     openSettings(navigation, "SettingsBotTurn", {
@@ -254,9 +241,16 @@ function ProfileNote(props: { readonly children: string; readonly action?: React
   );
 }
 
-function BotIdentity(props: { readonly project: EnvironmentProject; readonly connected: boolean }) {
+function BotIdentity(props: {
+  readonly project: EnvironmentProject;
+  readonly connected: boolean;
+  readonly voiceConfigurable: boolean;
+}) {
   const { project } = props;
   const role = botRole(project) ?? "specialist";
+  const navigation = useNavigation();
+  const showInBots = useShowConversationInBots();
+  const status = botAvatarStatusLabel(project.botAvatar);
   const canOperate = useAtomValue(botEnvironment.setAvatar.permissionAtom(project.environmentId));
   const canEdit = canOperate && props.connected;
   const updateProject = useAtomCommand(projectEnvironment.update, {
@@ -294,9 +288,9 @@ function BotIdentity(props: { readonly project: EnvironmentProject; readonly con
     });
   };
 
-  const avatar = <BotAvatar role={role} title={title} size={88} project={project} />;
+  const avatar = <BotAvatar role={role} title={title} size={72} project={project} />;
   return (
-    <View className="items-center gap-2">
+    <View className="items-center gap-1.5">
       {canEdit ? (
         <Pressable
           accessibilityRole="button"
@@ -306,9 +300,12 @@ function BotIdentity(props: { readonly project: EnvironmentProject; readonly con
             commitName();
             setAvatarOpen((open) => !open);
           }}
-          className="rounded-full active:opacity-80"
+          className="active:opacity-80"
         >
           {avatar}
+          <View className="absolute -bottom-0.5 -right-1 size-[26px] items-center justify-center rounded-full border border-border bg-card">
+            <SymbolView name="pencil" size={12} tintColorClassName="accent-icon-muted" />
+          </View>
         </Pressable>
       ) : (
         avatar
@@ -356,10 +353,19 @@ function BotIdentity(props: { readonly project: EnvironmentProject; readonly con
           {title}
         </Text>
       )}
+      <Text textRole="footnote" className="text-foreground-muted">
+        {role === "assistant" ? "Your Assistant" : "Specialist"}
+        {props.connected ? "" : " · Offline"}
+        {status === null ? "" : ` · ${status}`}
+      </Text>
+      <BotIdentityShortcuts
+        project={project}
+        connected={props.connected}
+        voiceConfigurable={props.voiceConfigurable}
+      />
       {avatarOpen && canEdit ? (
         <BotAvatarEditor
           project={project}
-          title={title}
           onChange={(projectIcon) =>
             void update({ projectIcon }, `Couldn’t change ${project.title}’s picture`)
           }
@@ -367,131 +373,46 @@ function BotIdentity(props: { readonly project: EnvironmentProject; readonly con
             void update({ faviconPath: null }, `Couldn’t remove ${project.title}’s photo`)
           }
           onDone={() => setAvatarOpen(false)}
+          onOpenConversation={(target) => {
+            if (navigation.canGoBack()) navigation.goBack();
+            showInBots(target);
+          }}
         />
       ) : null}
     </View>
   );
 }
 
-function BotAvatarEditor(props: {
+/** Call and Voice sit under the name, so the two things people do with a bot's voice are one tap. */
+function BotIdentityShortcuts(props: {
   readonly project: EnvironmentProject;
-  readonly title: string;
-  readonly onChange: (icon: ProjectIconOverride) => void;
-  readonly onRemovePhoto: () => void;
-  readonly onDone: () => void;
+  readonly connected: boolean;
+  readonly voiceConfigurable: boolean;
 }) {
   const { project } = props;
-  const icon = project.projectIcon ?? null;
-  const hasPhoto = icon === null && project.faviconPath != null;
-  const photosSupported =
-    useEnvironmentServerConfig(project.environmentId)?.environment.capabilities.botProfiles ===
-    true;
-  const setAvatar = useAtomCommand(botEnvironment.setAvatar, {
-    label: "bot profile photo",
-    reportFailure: false,
+  const navigation = useNavigation();
+  const threadId = project.botMainThreadId ?? null;
+  const thread = threadId === null ? null : { environmentId: project.environmentId, threadId };
+  const openVoice = () =>
+    openSettings(navigation, "SettingsVoiceBot", {
+      environmentId: project.environmentId,
+      projectId: project.id,
+    });
+  const call = useBotConversationCall({
+    thread,
+    project,
+    connected: props.connected,
+    onOpenSettings: props.voiceConfigurable ? openVoice : undefined,
   });
-  const [uploading, setUploading] = useState(false);
-  const initials = botInitials(props.title);
-
-  const choosePhoto = async () => {
-    if (uploading) return;
-    setUploading(true);
-    // No `finally`: the React Compiler cannot lower it. Every path below reaches the reset.
-    try {
-      const image = await pickBotAvatarPhoto();
-      if (image !== null) {
-        const result = await setAvatar({
-          environmentId: project.environmentId,
-          input: { commandId: CommandId.make(uuidv4()), projectId: project.id, image },
-        });
-        reportFailure(`Couldn’t save ${project.title}’s photo`, result);
-      }
-    } catch (error) {
-      Dialog.alert(
-        "Couldn’t use that photo",
-        error instanceof Error ? error.message : "Please try another one.",
-      );
-    }
-    setUploading(false);
-  };
-
+  if (call === undefined && !props.voiceConfigurable) return null;
   return (
-    <View className="mt-2 w-full gap-4 rounded-3xl border-continuous bg-grouped-card p-4">
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Emoji"
-        className="flex-row flex-wrap"
-      >
-        {AVATAR_EMOJIS.map((emoji) => {
-          const selected = icon?.kind === "emoji" && icon.emoji === emoji;
-          return (
-            <Pressable
-              key={emoji}
-              accessibilityRole="radio"
-              accessibilityLabel={emoji}
-              accessibilityState={{ selected }}
-              onPress={() => props.onChange({ kind: "emoji", emoji })}
-              className={cn(
-                "h-11 w-1/6 items-center justify-center rounded-xl active:bg-subtle",
-                selected && "bg-subtle-strong",
-              )}
-            >
-              <Text allowFontScaling={false} style={{ fontSize: 22 }}>
-                {emoji}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      {initials !== null ? (
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Initials color"
-          className="flex-row flex-wrap gap-2.5"
-        >
-          {AVATAR_COLORS.map((color) => {
-            const selected = icon?.kind === "monogram" && icon.color === color;
-            const colors = projectIconColorClassNames(color);
-            const next = botInitialsIcon(props.title, color);
-            return (
-              <Pressable
-                key={color}
-                accessibilityRole="radio"
-                accessibilityLabel={`Initials in ${color}`}
-                accessibilityState={{ selected }}
-                onPress={() => next && props.onChange(next)}
-                className={cn(
-                  "size-9 items-center justify-center rounded-full border-2 active:opacity-70",
-                  colors.background,
-                  selected ? "border-foreground" : "border-transparent",
-                )}
-              >
-                <Text
-                  allowFontScaling={false}
-                  className={`font-t3-bold ${colors.text}`}
-                  style={{ fontSize: 12 }}
-                >
-                  {initials}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+    <View className="mt-1 flex-row items-center gap-2">
+      {call !== undefined ? (
+        <Button tone="secondary" label="Call" icon="phone" onPress={call} />
       ) : null}
-      <View className="flex-row items-center gap-2">
-        {photosSupported ? (
-          <Button
-            tone="secondary"
-            label={uploading ? "Saving…" : "Choose photo"}
-            loading={uploading}
-            disabled={uploading}
-            onPress={() => void choosePhoto()}
-          />
-        ) : null}
-        {hasPhoto ? <Button tone="text" label="Remove" onPress={props.onRemovePhoto} /> : null}
-        <View className="flex-1" />
-        <Button tone="primary" label="Done" onPress={props.onDone} />
-      </View>
+      {props.voiceConfigurable ? (
+        <Button tone="secondary" label="Voice" icon="headphones" onPress={openVoice} />
+      ) : null}
     </View>
   );
 }

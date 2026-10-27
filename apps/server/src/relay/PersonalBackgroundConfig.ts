@@ -1,5 +1,6 @@
 import * as NodeOS from "node:os";
 import * as Path from "effect/Path";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -26,6 +27,9 @@ export class PersonalBackgroundConfig extends Context.Reference<typeof Publisher
 ) {}
 
 const make = Effect.gen(function* () {
+  // Isolated development servers must be able to avoid the machine-wide personal relay.
+  if (yield* Config.Boolean("T3CODE_DISABLE_PERSONAL_RELAY").pipe(Config.withDefault(false)))
+    return null;
   const fs = yield* FileSystem.FileSystem;
   const paths = yield* Path.Path;
   const path = paths.join(NodeOS.homedir(), ".config", "t3-personal-relay", "publisher.json");

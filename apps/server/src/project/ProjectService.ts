@@ -1,4 +1,5 @@
 import {
+  type BotAvatar,
   CommandId,
   type OrchestrationProjectShell,
   ProjectId,
@@ -44,6 +45,8 @@ export interface ProjectUpdateInput extends ProjectUpdatePayload {
   readonly commandId: CommandId;
   readonly projectId: ProjectId;
   readonly botMainThreadId?: ThreadId | null;
+  /** Server-owned: generated bot avatars are written by the avatar service, never by clients. */
+  readonly botAvatar?: BotAvatar | null;
 }
 
 export interface ProjectBootstrapInput extends ProjectCreateInput {}
@@ -171,6 +174,7 @@ export const make = Effect.gen(function* () {
     defaultThreadEnvMode: row.defaultThreadEnvMode,
     autoPull: row.autoPull,
     projectIcon: row.projectIcon,
+    botAvatar: row.botAvatar ?? null,
     scripts: row.scripts,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -378,6 +382,7 @@ export const make = Effect.gen(function* () {
         ...(input.autoPull === undefined ? {} : { autoPull: input.autoPull }),
         ...(input.projectIcon === undefined ? {} : { projectIcon: input.projectIcon }),
         ...(input.faviconPath === undefined ? {} : { faviconPath: input.faviconPath }),
+        ...(input.botAvatar === undefined ? {} : { botAvatar: input.botAvatar }),
         ...(input.defaultThreadEnvMode === undefined
           ? {}
           : { defaultThreadEnvMode: input.defaultThreadEnvMode }),

@@ -11,6 +11,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { makeGrokMediaGeneration } from "./mediaGeneration.ts";
 import { makeGrokTextGeneration } from "./textGeneration.ts";
 import { GrokAdapterV2Driver, type GrokAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
@@ -166,6 +167,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
       ),
     );
     const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
+    const mediaGeneration = yield* makeGrokMediaGeneration(effectiveConfig, processEnv);
 
     const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
       Effect.filterOrElse(
@@ -255,6 +257,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
       snapshotForCwd,
       orchestrationAdapter,
       textGeneration,
+      mediaGeneration,
     } satisfies ProviderInstance;
   }),
 };

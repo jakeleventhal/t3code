@@ -1,4 +1,5 @@
 import { AudioPreviewUnmountContext } from "../files/AudioPreview";
+import type { BotAvatarBot } from "../bots/BotAvatar";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
@@ -186,6 +187,9 @@ export interface MessagesTimelineHistoryControls {
 
 interface MessagesTimelineProps {
   simpleProgress?: boolean;
+  botIdentity?: BotAvatarBot | null;
+  progressDetail?: ReactNode;
+  simpleActivity?: string | null;
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
   timelineSource?: TimelineSourceRequest | null;
@@ -299,6 +303,9 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 
 const ConversationTimeline = memo(function ConversationTimeline({
   simpleProgress = false,
+  botIdentity = null,
+  progressDetail,
+  simpleActivity = null,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
   timelineSource = null,
@@ -673,7 +680,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
     simpleProgress
       ? rawRows.filter(
           (row) =>
-            row.kind !== "thinking" && row.kind !== "work-toggle" && row.kind !== "work-live",
+            row.kind !== "thinking" &&
+            row.kind !== "work-toggle" &&
+            row.kind !== "work-live" &&
+            row.kind !== "turn-fold" &&
+            row.kind !== "attempt-fold",
         )
       : rawRows,
     listIdentityKey,
@@ -1034,6 +1045,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   };
 
   const sharedState: TimelineRowSharedState = {
+    botIdentity,
     citationRequest: readyCitationRequest,
     listRef,
     timestampFormat,
@@ -1089,6 +1101,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
       : null;
   const activityState: TimelineRowActivityState = {
     simpleProgress,
+    progressDetail,
+    simpleActivity,
     isWorking,
     isCompacting: compactionAwaitingRow,
     isRevertingCheckpoint,

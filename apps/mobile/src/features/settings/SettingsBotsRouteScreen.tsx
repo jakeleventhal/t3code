@@ -37,7 +37,7 @@ import { useBotHostCandidates } from "../bots/use-assistant";
 import { useBotTurnSettings, type BotTurnSettingsChange } from "../bots/use-bot-turn-settings";
 import { RUNTIME_MODE_CHOICES } from "../threads/thread-settings-options";
 import { ThreadSettingsPickerScreen } from "../threads/ThreadSettingsSheet";
-import { SettingsActionRow } from "./components/SettingsActionRow";
+import { BotSettingMode } from "./BotSettingMode";
 import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 import {
   AndroidSettingsEnvironmentFilter,
@@ -127,7 +127,8 @@ export function SettingsBotsRouteScreen() {
         Choose shared defaults and each bot's voice. Changes apply from the next message.
       </Muted>
       {primary ? <BotsEnvironmentOverview target={primary} advanced /> : null}
-      <SettingsSection title="Bots">
+      <BotPrimaryMachineSettings />
+      <SettingsSection title="Your bots" footer="Open a bot to give it its own settings.">
         {availableTargets.map((target) => (
           <BotsEnvironmentOverview key={target.environmentId} target={target} advanced={false} />
         ))}
@@ -135,7 +136,6 @@ export function SettingsBotsRouteScreen() {
       {availableTargets.map((target) => (
         <VoiceEnvironmentOverview key={target.environmentId} target={target} mode="advanced" />
       ))}
-      <BotPrimaryMachineSettings />
     </BotsScreen>
   );
 }
@@ -156,12 +156,12 @@ function BotsEnvironmentOverview(props: {
         <>
           {props.advanced ? (
             <SettingsSection
-              title="Defaults for bots"
+              title="Shared defaults"
               footer={
                 defaults.updateMessage ??
                 (defaults.setupNeeded
                   ? `Setup needed · ${defaults.setupNeeded}`
-                  : "Bots use these unless they have their own.")
+                  : "Every bot uses these unless it has its own.")
               }
             >
               <SettingsRow
@@ -173,7 +173,7 @@ function BotsEnvironmentOverview(props: {
               />
               <SettingsRow
                 icon="sparkles"
-                label="Complex-task model"
+                label="Complex tasks"
                 value={
                   defaults.config
                     ? (botComplexTaskModel(defaults.config.settings.botSharedPreferences, null)
@@ -291,11 +291,21 @@ function BotOverviewRow(props: {
 }) {
   const turn = useBotTurnSettings(props.environmentId, props.projectId);
   const open = useOpenBotTurnSettings();
+  const own = [
+    turn.sources.model.own !== null ? "model" : null,
+    turn.sources.runtimeMode.own !== null ? "permissions" : null,
+  ].filter((part) => part !== null);
   return (
     <SettingsRow
       icon={props.assistant ? "sparkles" : "person.crop.circle"}
       label={props.title}
-      value={turn.setupNeeded ? `Setup needed · ${turn.modelLabel}` : turn.modelLabel}
+      value={
+        turn.setupNeeded
+          ? `Setup needed · ${turn.modelLabel}`
+          : own.length > 0
+            ? `Own ${own.join(" and ")} · ${turn.modelLabel}`
+            : `Uses shared defaults · ${turn.modelLabel}`
+      }
       valuePosition="below"
       onPress={() => open({ environmentId: props.environmentId, projectId: props.projectId })}
     />
@@ -333,7 +343,6 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
   const disabled = !turn.editable || !turn.canWrite || turn.pending;
   const save = (change: BotTurnSettingsChange) => void turn.save(change);
   const { model, runtimeMode } = turn.sources;
-  const followLabel = "Use default";
   return (
     <BotsScreen title={title}>
       {turn.updateMessage ? <Muted>{turn.updateMessage}</Muted> : null}
@@ -381,13 +390,17 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
             })
           }
         />
-        {forBot && model.own !== null ? (
-          <SettingsActionRow
-            icon="arrow.uturn.backward"
-            label={followLabel}
-            description={turn.followedModelLabel}
+        {forBot ? (
+          <BotSettingMode
+            label="Chat model"
+            custom={model.own !== null}
             disabled={disabled}
-            onPress={() => save({ modelSelection: null })}
+            onDefault={() => save({ modelSelection: null })}
+            onCustom={() => {
+              const selection = model.own ?? model.inherited;
+              if (selection) save({ modelSelection: selection });
+              else navigation.navigate("SettingsBotTurnModel", { environmentId, projectId });
+            }}
           />
         ) : null}
         {turn.setupNeeded ? (
@@ -417,22 +430,37 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
             })
           }
         />
-        {projectId &&
-        (projectId
-          ? turn.config.settings.botSharedPreferences.complexTaskModelOverrides?.[projectId]
-          : turn.config.settings.botSharedPreferences.complexTaskModelSelection) ? (
-          <SettingsActionRow
-            icon="arrow.uturn.backward"
-            label="Use default"
+        {projectId ? (
+          <BotSettingMode
+            label="Complex-task model"
+            custom={
+              turn.config.settings.botSharedPreferences.complexTaskModelOverrides?.[projectId] !=
+              null
+            }
             disabled={disabled}
-            onPress={() =>
+            onDefault={() =>
               void configureBots({
                 environmentId,
-                input: projectId
-                  ? { complexTaskModelOverride: { projectId, selection: null } }
-                  : { complexTaskModelSelection: null },
+                input: { complexTaskModelOverride: { projectId, selection: null } },
               })
             }
+            onCustom={() => {
+              const selection = botComplexTaskModel(
+                turn.config!.settings.botSharedPreferences,
+                projectId,
+              );
+              if (selection)
+                void configureBots({
+                  environmentId,
+                  input: { complexTaskModelOverride: { projectId, selection } },
+                });
+              else
+                navigation.navigate("SettingsBotTurnModel", {
+                  environmentId,
+                  projectId,
+                  modelPurpose: "complex",
+                });
+            }}
           />
         ) : null}
       </SettingsSection>
@@ -446,14 +474,20 @@ export function SettingsBotTurnRouteScreen({ route }: StaticScreenProps<BotTurnR
       ) : null}
       <SettingsSection title="Permissions">
         {forBot ? (
-          <SettingsChoiceRow
-            label={followLabel}
-            description={turn.followedRuntimeModeLabel}
-            selected={runtimeMode.own === null}
+          <BotSettingMode
+            label="Permissions"
+            custom={runtimeMode.own !== null}
             disabled={disabled}
-            onPress={() => {
-              if (runtimeMode.own !== null) save({ runtimeMode: null });
-            }}
+            onDefault={() => save({ runtimeMode: null })}
+            onCustom={() =>
+              save({
+                runtimeMode:
+                  runtimeMode.own ??
+                  runtimeMode.inherited ??
+                  turn.config!.settings.defaultRuntimeMode ??
+                  DEFAULT_RUNTIME_MODE,
+              })
+            }
           />
         ) : null}
         {RUNTIME_MODE_CHOICES.map((choice) => (

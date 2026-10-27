@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { LayoutGridIcon } from "lucide-react";
 import { useState } from "react";
 
 import { isElectron } from "../../env";
@@ -10,6 +9,7 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { BotAvatar } from "./BotAvatar";
 import { partitionEnvironmentBots } from "./botRoom.logic";
 import { BOTS_UNSUPPORTED_MESSAGE, useBotActions } from "./useBotActions";
 import { useDesignatedAssistantEnvironmentId } from "./useBotRoom";
@@ -29,24 +29,30 @@ export function BotsHome() {
 
   const description =
     environmentId === null
-      ? "Connect an environment to talk to Assistant and your bots."
+      ? "Bots run on an environment with T3 Code. Connect one and Assistant appears here."
       : assistant === null && !canOpen
         ? supported
           ? "Assistant isn’t set up yet, and this connection can’t start it."
           : BOTS_UNSUPPORTED_MESSAGE
         : offline
           ? `${name}’s environment is offline. ${name} stays there and answers again once it reconnects.`
-          : `${name} is one ongoing conversation. Each bot you add keeps its own.`;
+          : `One ongoing conversation that follows you across devices. Pick a bot on the left, or start here.`;
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       {isElectron ? <WorkspacePageHeader electron /> : null}
       <Empty className="flex-1">
         <EmptyHeader className="max-w-md">
-          <EmptyMedia variant="icon">
-            <LayoutGridIcon />
+          <EmptyMedia>
+            <BotAvatar
+              bot={assistant ?? { id: "assistant", title: name, botRole: "assistant" }}
+              size="list"
+              className={offline ? "opacity-55" : undefined}
+            />
           </EmptyMedia>
-          <EmptyTitle>Bots</EmptyTitle>
+          <EmptyTitle>
+            {environmentId === null ? "No environment connected" : `Talk to ${name}`}
+          </EmptyTitle>
           <EmptyDescription>{description}</EmptyDescription>
           {environmentId !== null && (assistant !== null || canOpen) ? (
             <div className="mt-5 flex justify-center">
