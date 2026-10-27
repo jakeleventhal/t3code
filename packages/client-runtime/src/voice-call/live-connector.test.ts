@@ -18,7 +18,7 @@ const target: VoiceCallTarget = {
   bot: { id: "assistant", title: "Assistant", botRole: "assistant" },
   threadRef: { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") },
 };
-function fixture(onContext?: (text: string) => void) {
+function fixture(onContext?: (text: string) => void, protocol: "live" | "codex" = "live") {
   let session: LiveSession;
   let callbacks: LiveMediaInput["callbacks"];
   const sent: Array<{ type: string; event_id: string; content?: string; delegation_id?: string }> =
@@ -68,6 +68,7 @@ function fixture(onContext?: (text: string) => void) {
           );
         },
       });
+      session.setProtocol(protocol);
       await input.negotiate("offer", input.signal);
       session.receive(JSON.stringify({ type: "session.started", session: { id: "session" } }));
       return {
@@ -98,6 +99,18 @@ function fixture(onContext?: (text: string) => void) {
     view,
     fragment,
     delegate,
+    nativeDelegate: (text: string) =>
+      session.receive(
+        JSON.stringify({
+          type: "delegation.created",
+          item: {
+            id: "native-work",
+            type: "delegation",
+            target: "client",
+            content: [{ type: "input_text", text }],
+          },
+        }),
+      ),
     detachWork,
     update: (value: VoiceWorkUpdate) => updateWork!(value),
   };
@@ -422,4 +435,40 @@ describe("current device browser capture", () => {
       vi.useRealTimers();
     }
   });
+});
+
+it("keeps Codex snapshots off the audio stream while requested work gets the current view", async () => {
+  const f = fixture(undefined, "codex");
+  await f.controller.start(target);
+  const update = f.backend.watchContext.mock.calls.at(-1)![1];
+  update({ kind: "context", text: "Last conversation: Monday, bench press" });
+  update({ kind: "instructions", text: "Updated memory" });
+  f.view.set("The user is now viewing Settings on this device.");
+  await settle();
+  expect(f.sent).toEqual([]);
+  f.nativeDelegate("What is on my screen?");
+  await settle();
+  expect(f.backend.startWork).toHaveBeenCalledWith(
+    expect.objectContaining({
+      text: expect.stringContaining("What is on my screen?"),
+      viewContext: "The user is now viewing Settings on this device.",
+    }),
+  );
+  expect(f.sent).toEqual([]);
+  f.update({ status: "completed", text: "Settings is open." });
+  await settle();
+  expect(f.sent).toEqual([
+    {
+      type: "delegation.context.append",
+      delegation_item_id: "native-work",
+      channel: "speakable",
+      content: [
+        {
+          type: "input_text",
+          text: "Work result: Settings is open.\nThe full result remains in this conversation.",
+        },
+      ],
+    },
+  ]);
+  await f.controller.end("call-1");
 });

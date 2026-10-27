@@ -238,6 +238,7 @@ it.effect.each([false, true])("negotiates prepared context with expired=%s", (ex
             Effect.sync(() => {
               connections++;
               assert.include(input.instructions, "comet-427");
+              assert.isBelow(Buffer.byteLength(input.instructions), 6000);
               return answer;
             }),
           grokClientSecret: unusedSecret,

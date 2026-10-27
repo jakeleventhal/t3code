@@ -43,7 +43,7 @@ class Channel extends EventTarget {
   }
 }
 
-function fixture() {
+function fixture(protocol?: "codex") {
   const released = deferred<void>();
   const track = new Track();
   const stream = {
@@ -84,11 +84,12 @@ function fixture() {
   const abort = new AbortController();
   const callbacks = {
     onTranscript: vi.fn(),
+    onUntimedTranscript: vi.fn(),
     onDelegation: vi.fn(),
     onClosed: vi.fn(),
     onFailure: vi.fn(),
   };
-  const negotiate = vi.fn(async () => ({ sessionId: "native-live", sdp: "answer" }));
+  const negotiate = vi.fn(async () => ({ sessionId: "native-live", sdp: "answer", protocol }));
   const open = () => openLiveNativeWebRtc({ signal: abort.signal, negotiate, callbacks });
   const start = async () => {
     const pending = open();
@@ -241,4 +242,40 @@ it("keeps each new call silent until fresh user speech and never starts work fro
     await closed;
     expect(remote.enabled).toBe(false);
   }
+});
+
+it("plays Codex audio when a context rollover omits the caller transcript", async () => {
+  const f = fixture("codex");
+  const connection = await f.start();
+  const remote = new Track();
+  f.peer.receiveTrack(remote);
+  expect(remote.enabled).toBe(true);
+  f.channel.receive({ type: "session.context_window.approaching" });
+  f.channel.receive({ type: "session.context_window.rolled_over" });
+  f.channel.receive({ type: "output_transcript.added", item: { text: "Mango." } });
+  expect(remote.enabled).toBe(true);
+  expect(f.callbacks.onUntimedTranscript).toHaveBeenCalledWith({
+    id: "codex-bot-0",
+    speaker: "bot",
+    text: "Mango.",
+    final: false,
+  });
+  f.channel.receive({
+    type: "delegation.created",
+    item: {
+      id: "lookup",
+      type: "delegation",
+      target: "client",
+      content: [{ type: "input_text", text: "Find the recipe" }],
+    },
+  });
+  expect(f.callbacks.onDelegation).toHaveBeenCalledWith({
+    id: "lookup",
+    offsetMs: 0,
+    text: "Find the recipe",
+  });
+  const closed = connection.close();
+  expect(remote.enabled).toBe(false);
+  f.channel.receive({ type: "session.closed", reason: "close_requested" });
+  await closed;
 });

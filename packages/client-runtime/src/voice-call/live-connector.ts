@@ -253,6 +253,7 @@ export function createLiveVoiceConnector(input: {
       };
       const append = async (text: string, delegationId?: string, speak = false) => {
         if (closed || media === null) return;
+        if (!speak && !media.session.supportsQuietContext) return;
         try {
           await media.session.appendContext({
             text: boundLiveContext(text),
@@ -299,6 +300,7 @@ export function createLiveVoiceConnector(input: {
       }) => {
         if (closed || seenRequests.has(request.id)) return;
         seenRequests.add(request.id);
+        if (request.text?.trim()) callerHasSpoken = true;
         const fragments = recent
           .filter((fragment) => fragment.startMs <= request.offsetMs)
           .sort((a, b) => a.startMs - b.startMs);
@@ -434,6 +436,11 @@ export function createLiveVoiceConnector(input: {
           input.backend.watchContext?.(
             call,
             (update) => {
+              if (
+                !media?.session.supportsQuietContext &&
+                (update.kind === "instructions" || !update.speak)
+              )
+                return;
               contextTail = contextTail
                 .then(async () => {
                   if (closed || media === null) return;
@@ -469,8 +476,10 @@ export function createLiveVoiceConnector(input: {
                 });
             },
           ) ?? null;
-        detachView = input.view.subscribe(() => void updateView());
-        void updateView();
+        if (media.session.supportsQuietContext) {
+          detachView = input.view.subscribe(() => void updateView());
+          void updateView();
+        }
         for (const request of queuedDelegations) void delegate(request);
         const connected = media;
         return {

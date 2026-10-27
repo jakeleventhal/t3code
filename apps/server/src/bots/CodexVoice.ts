@@ -155,7 +155,7 @@ const make = Effect.gen(function* () {
         HttpClientRequest.bodyJson({
           sdp: input.sdp,
           session: {
-            instructions: input.instructions,
+            instructions: `${input.instructions}\nLive device and memory updates are unavailable on this connection. When the caller asks about the current screen, current work, or updated memory, delegate to the work agent for fresh context. Do not treat an earlier snapshot as current.`,
             audio: { output: { voice: input.voice } },
             delegation: { type: "client" },
             initial_items: [
