@@ -76,7 +76,7 @@ import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSi
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useAndroidWorkspaceBack } from "../layout/workspace/useAndroidWorkspaceNavigation";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { Tabs } from "../../components/ui/Tabs";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { RelativeTime } from "../../components/RelativeTime";
@@ -189,8 +189,7 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
       : null;
   return {
     rows,
-    targetKey,
-    targetThread,
+    count: result.data ? result.data.commentCount + result.data.reviewThreads.length : undefined,
     hiddenCount: filtered?.hiddenCount ?? 0,
     pending: result.isPending && !result.data,
     error: result.error,
@@ -897,21 +896,22 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                           }}
                         >
                           <PullRequestIdentity pr={identity} params={params} />
-                          {/* UIKit draws the tapped control's glass lens outside the hidden
-                              tab's opacity, so only the visible tab mounts the control. */}
                           {Platform.OS !== "ios" || section === tab ? (
-                            <SegmentedControl
+                            <Tabs
                               options={[
                                 { value: "overview", label: "Overview" },
                                 ...(guidesEnabled
                                   ? [{ value: "guide" as const, label: "Guide" }]
                                   : []),
-                                { value: "activity", label: "Activity" },
+                                {
+                                  value: "activity",
+                                  label: "Activity",
+                                  count: activityContent.count,
+                                },
                               ]}
                               selected={section}
                               onSelect={selectSection}
-                              role="tab"
-                              size="compact"
+                              className="-mx-3.5"
                             />
                           ) : (
                             <View style={{ height: 32 }} />
