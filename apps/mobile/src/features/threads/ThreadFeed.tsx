@@ -134,12 +134,12 @@ import { FilePreviewModal, type FilePreviewSource } from "../../components/FileP
 import { inlineFilePreviewKind, isPdfFile } from "../../lib/filePreview";
 import { ThreadInlineFilePreview } from "./ThreadInlineFilePreview";
 import { flattenThemeColor } from "../../lib/mobileTheme";
-import { getMobileReplyTypography, getMobileUserTypography } from "../../lib/typography";
+import { getMobileUserTypography } from "../../lib/typography";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInUp, type SharedValue } from "react-native-reanimated";
-import { useUniwindTheme, useThemeFontFamilies } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -942,14 +942,15 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 });
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance, themeId } = useAppearancePreferences();
-  const replyTypography = useMemo(
-    () => getMobileReplyTypography(themeId, appearance.baseFontSize),
-    [themeId, appearance.baseFontSize],
-  );
+  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
+    useAppearancePreferences();
   const userTypography = useMemo(
     () => getMobileUserTypography(themeId, appearance.baseFontSize),
     [themeId, appearance.baseFontSize],
+  );
+  const replyTypography = useMemo(
+    () => resolveNativeMarkdownTypography(replyFontSize),
+    [replyFontSize],
   );
   const nativeMarkdownTypography = useMemo(
     () => resolveNativeMarkdownTypography(appearance.baseFontSize),
@@ -974,11 +975,8 @@ function useMarkdownStyles(): MarkdownStyleSets {
   const markdownUserCodeText = theme["--color-md-user-code-text"];
   const markdownUserInlineCodeText = theme["--color-user-bubble-foreground-muted"];
   const markdownUserFenceBg = theme["--color-md-user-fence-bg"];
-  const {
-    regular: regularFontFamily,
-    bold: boldFontFamily,
-    code: codeFontFamily,
-  } = useThemeFontFamilies();
+  const regularFontFamily = fonts.interface.regular;
+  const boldFontFamily = fonts.interface.bold;
 
   return useMemo(() => {
     return {
@@ -999,11 +997,10 @@ function useMarkdownStyles(): MarkdownStyleSets {
           fontSize: nativeMarkdownTypography.fontSize,
           lineHeight: nativeMarkdownTypography.lineHeight,
           headingFontSizes: nativeMarkdownTypography.headingFontSizes,
+          codeFontFamily: fonts.code.regular,
           fontFamily: regularFontFamily,
           headingFontFamily: boldFontFamily,
           boldFontFamily,
-          codeFontFamily,
-          ...userTypography,
         },
       },
       assistant: {
@@ -1020,20 +1017,22 @@ function useMarkdownStyles(): MarkdownStyleSets {
           quoteMarkerColor: markdownBlockquoteBorder,
           dividerColor: markdownHrColor,
           contextChipBorderColor,
-          fontSize: nativeMarkdownTypography.fontSize,
-          lineHeight: nativeMarkdownTypography.lineHeight,
-          headingFontSizes: nativeMarkdownTypography.headingFontSizes,
-          fontFamily: regularFontFamily,
-          headingFontFamily: boldFontFamily,
-          boldFontFamily,
-          codeFontFamily,
-          ...replyTypography,
+          fontSize: replyTypography.fontSize,
+          lineHeight: replyTypography.lineHeight,
+          headingFontSizes: replyTypography.headingFontSizes,
+          codeFontFamily: fonts.code.regular,
+          fontFamily: fonts.reply.regular,
+          headingFontFamily: fonts.reply.bold,
+          boldFontFamily: replyEmphasisFontFamily,
         },
       },
     };
   }, [
+    fonts.reply,
+    replyEmphasisFontFamily,
+    fonts.code.regular,
+    replyTypography,
     boldFontFamily,
-    codeFontFamily,
     contextChipBorderColor,
     markdownBlockquoteBorder,
     markdownBodyColor,
@@ -1050,8 +1049,6 @@ function useMarkdownStyles(): MarkdownStyleSets {
     markdownUserInlineCodeText,
     nativeMarkdownTypography,
     regularFontFamily,
-    replyTypography,
-    userTypography,
   ]);
 }
 
@@ -2227,11 +2224,17 @@ export const ThreadFeed = memo(function ThreadFeed({
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance } = useAppearancePreferences();
+  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
+    useAppearancePreferences();
+  const userTypography = useMemo(
+    () => getMobileUserTypography(themeId, appearance.baseFontSize),
+    [themeId, appearance.baseFontSize],
+  );
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,
   });
+  const textLayoutKey = `${workRowSizing.textSizeKey}:${replyFontSize}:${fonts.interface.regular}:${fonts.interface.bold}:${fonts.reply.regular}:${fonts.reply.bold}:${replyEmphasisFontFamily}:${fonts.code.regular}`;
   const settledPaneWidth = useWorkspaceSettledContentWidth();
   const [measuredViewportWidth, setViewportWidth] = useState(() =>
     props.layoutVariant === "split" ? 0 : windowWidth,
@@ -3152,7 +3155,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   // reads getFixedItemSize only when it renders, so its size cache is cleared
   // after the commit that hands it rows at the new geometry; clearing earlier
   // re-caches old sizes.
-  const { textSizeKey } = workRowSizing;
+  const textSizeKey = textLayoutKey;
   const hasHtmlRenders = presentedFeed.some((entry) => entry.type === "html-render");
   const previousRowGeometry = useRef({ textSizeKey, contentWidth });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears LegendList size caches and starts a reflow after the commit that brings new row geometry

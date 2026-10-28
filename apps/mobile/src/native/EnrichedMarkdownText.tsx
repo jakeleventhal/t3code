@@ -60,6 +60,8 @@ function enrichedStyle(
       ...body,
       color: style.strongColor,
       fontFamily: style.headingFontFamily,
+      fontWeight:
+        style.headingFontFamily === style.fontFamily ? ("bold" as const) : ("normal" as const),
       fontSize,
       lineHeight: fontSize * (style.headingLineHeightMultiplier ?? 1.35),
       marginTop: 8,
@@ -85,7 +87,7 @@ function enrichedStyle(
     strong: {
       color: style.strongColor,
       fontFamily: style.boldFontFamily,
-      fontWeight: "normal",
+      fontWeight: style.boldFontFamily === style.fontFamily ? "bold" : "normal",
     },
     link: { color: style.linkColor, underline: false },
     code: {

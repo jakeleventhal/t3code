@@ -5,19 +5,19 @@ import { useAppearancePreferences } from "../features/settings/appearance/Appear
 import { useUniwindTheme, useThemeFontFamilies } from "./useUniwindTheme";
 
 export function useMobileNavigationTheme(surface: "screen" | "sidebar" = "screen"): Theme {
-  const { themeAppearance: appearance } = useAppearancePreferences();
+  const { themeAppearance: appearance, fonts, fontSelections } = useAppearancePreferences();
   const variables = useUniwindTheme();
   const fonts = useThemeFontFamilies();
   return useMemo(() => {
     const base = appearance === "dark" ? DarkTheme : DefaultTheme;
     return {
       ...base,
-      fonts: fonts.code
+      fonts: fontSelections.interface
         ? {
-            regular: { fontFamily: fonts.regular, fontWeight: "normal" },
-            medium: { fontFamily: fonts.medium, fontWeight: "normal" },
-            bold: { fontFamily: fonts.bold, fontWeight: "normal" },
-            heavy: { fontFamily: fonts.bold, fontWeight: "normal" },
+            regular: { fontFamily: fonts.interface.regular, fontWeight: "400" },
+            medium: { fontFamily: fonts.interface.medium, fontWeight: "500" },
+            bold: { fontFamily: fonts.interface.bold, fontWeight: "700" },
+            heavy: { fontFamily: fonts.interface.bold, fontWeight: "800" },
           }
         : base.fonts,
       colors: {
@@ -33,5 +33,5 @@ export function useMobileNavigationTheme(surface: "screen" | "sidebar" = "screen
         notification: variables["--color-danger-foreground"],
       },
     };
-  }, [appearance, surface, variables, fonts]);
+  }, [appearance, fonts.interface, fontSelections.interface, surface, variables]);
 }
