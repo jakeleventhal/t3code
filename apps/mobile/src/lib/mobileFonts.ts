@@ -1,5 +1,5 @@
 import { getMobileReplyTypography } from "./typography";
-import { FONT_FAMILIES, getMobileFontFamilies } from "./fontFamilies";
+import { getMobileFontFamilies } from "./fontFamilies";
 
 export const MOBILE_FONT_ROLES = ["interface", "reply", "composer", "code"] as const;
 export type MobileFontRole = (typeof MOBILE_FONT_ROLES)[number];

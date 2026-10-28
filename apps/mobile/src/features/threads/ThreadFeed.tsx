@@ -134,7 +134,6 @@ import { FilePreviewModal, type FilePreviewSource } from "../../components/FileP
 import { inlineFilePreviewKind, isPdfFile } from "../../lib/filePreview";
 import { ThreadInlineFilePreview } from "./ThreadInlineFilePreview";
 import { flattenThemeColor } from "../../lib/mobileTheme";
-import { getMobileUserTypography } from "../../lib/typography";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -944,12 +943,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 });
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
-    useAppearancePreferences();
-  const userTypography = useMemo(
-    () => getMobileUserTypography(themeId, appearance.baseFontSize),
-    [themeId, appearance.baseFontSize],
-  );
+  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
   const replyTypography = useMemo(
     () => resolveNativeMarkdownTypography(replyFontSize),
     [replyFontSize],
@@ -2231,12 +2225,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
-    useAppearancePreferences();
-  const userTypography = useMemo(
-    () => getMobileUserTypography(themeId, appearance.baseFontSize),
-    [themeId, appearance.baseFontSize],
-  );
+  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,

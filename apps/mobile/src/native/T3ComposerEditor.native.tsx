@@ -26,7 +26,7 @@ import {
 import { contextChipIconUri } from "../lib/contextChipIconSource";
 import { useNativePaste } from "../lib/useNativePaste";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme, useThemeFontFamilies } from "../lib/useUniwindTheme";
+import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
 import {
   acknowledgeComposerNativeEvent,

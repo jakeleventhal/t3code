@@ -2,12 +2,11 @@ import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
 import { useMemo } from "react";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme, useThemeFontFamilies } from "./useUniwindTheme";
+import { useUniwindTheme } from "./useUniwindTheme";
 
 export function useMobileNavigationTheme(surface: "screen" | "sidebar" = "screen"): Theme {
   const { themeAppearance: appearance, fonts, fontSelections } = useAppearancePreferences();
   const variables = useUniwindTheme();
-  const fonts = useThemeFontFamilies();
   return useMemo(() => {
     const base = appearance === "dark" ? DarkTheme : DefaultTheme;
     return {
