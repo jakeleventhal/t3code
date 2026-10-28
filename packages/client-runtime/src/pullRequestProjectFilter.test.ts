@@ -42,6 +42,15 @@ describe("pull request project filter choices", () => {
     ]);
     expect(choices[1]?.workspaceRoot).toBe("/work/main");
     expect(choices[1]?.faviconPath).toBe("main/favicon.png");
+    expect(
+      pullRequestFilterProjects(
+        [
+          { ...projects[0]!, title: "Server checkout" },
+          { ...projects[3]!, title: "Laptop checkout" },
+        ],
+        labels,
+      ).map((choice) => choice.title),
+    ).toEqual(["Laptop checkout · cups", "Server checkout · nucbox-1"]);
   });
 
   it("keeps a saved worktree selection as the repository's only choice", () => {
