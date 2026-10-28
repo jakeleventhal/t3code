@@ -1,3 +1,4 @@
+import { orderReviewFiles } from "@t3tools/client-runtime/review-workspace";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type {
@@ -19,11 +20,6 @@ import {
 import { reviewEnvironment } from "~/state/review";
 
 const EMPTY_RETAINED_FILES: ReadonlyMap<string, FileDiffMetadata> = new Map();
-
-const filePathCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
 const PAGE_SIZE = 4;
 
 export function useReviewFilePatches({
@@ -36,6 +32,7 @@ export function useReviewFilePatches({
   theme,
   previewInput,
   preview,
+  workingTreeScope,
 }: {
   reviewKey: string | null;
   environmentId: EnvironmentId | undefined;
@@ -47,6 +44,7 @@ export function useReviewFilePatches({
   /** The preview the file list came from; a newer revision of it refreshes loaded patches. */
   previewInput: ReviewDiffPreviewInput | undefined;
   preview: RenderablePatch | null;
+  workingTreeScope?: "staged" | "unstaged" | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const family = JSON.stringify([
@@ -59,6 +57,7 @@ export function useReviewFilePatches({
     baseRef,
     source?.headRef,
     ignoreWhitespace,
+    workingTreeScope,
   ]);
   const scope = JSON.stringify([family, source?.diffHash]);
   const lazy = source?.truncated === true && source.files !== undefined;
@@ -94,9 +93,10 @@ export function useReviewFilePatches({
     scope,
     files,
     requestedPaths,
+    workingTreeScope,
   });
   const queriedPatchesAtom = reviewPatchesAtom(
-    JSON.stringify([theme, queries.map(({ index, target }) => [index, target])]),
+    JSON.stringify([theme, ignoreWhitespace, queries.map(({ index, target }) => [index, target])]),
   );
   const patches = useAtomValue(queriedPatchesAtom);
   const retry = useStableCallback((path: string) => {
@@ -134,7 +134,14 @@ export function useReviewFilePatches({
           placeholder: {
             name: file.path,
             ...(file.previousPath ? { prevName: file.previousPath } : {}),
-            type: file.previousPath ? "rename-changed" : "change",
+            type:
+              file.status === "added"
+                ? "new"
+                : file.status === "deleted"
+                  ? "deleted"
+                  : file.previousPath || file.status === "renamed"
+                    ? "rename-changed"
+                    : "change",
             hunks: [],
             additionLines: [],
             deletionLines: [],
@@ -147,9 +154,7 @@ export function useReviewFilePatches({
           },
         });
       })
-    : (preview?.kind === "files" ? preview.files : []).toSorted((a, b) =>
-        filePathCollator.compare(resolveFileDiffPath(a), resolveFileDiffPath(b)),
-      );
+    : orderReviewFiles(preview?.kind === "files" ? preview.files : [], resolveFileDiffPath);
   const nextRetained = !source
     ? EMPTY_RETAINED_FILES
     : !lazy && retained.family === family && retained.source === source
@@ -198,7 +203,11 @@ export function useReviewFilePatches({
       ] as const;
     }),
   );
+  const rawPatches = [...patches.values()].flatMap((result) =>
+    result._tag === "Success" ? [result.value.source.diff] : [],
+  );
   return {
+    rawPatches,
     scope,
     family,
     fileStates,
@@ -221,11 +230,11 @@ function reviewFileQueries({
   cwd,
   source,
   baseRef,
-  ignoreWhitespace,
   previewInput,
   scope,
   files,
   requestedPaths,
+  workingTreeScope,
 }: {
   environmentId: EnvironmentId | undefined;
   cwd: string | undefined;
@@ -233,6 +242,7 @@ function reviewFileQueries({
   baseRef: string | null;
   ignoreWhitespace: boolean;
   previewInput: ReviewDiffPreviewInput | undefined;
+  workingTreeScope?: "staged" | "unstaged" | undefined;
   scope: string;
   files: ReturnType<typeof sortedReviewFiles>;
   requestedPaths: ReadonlySet<string>;
@@ -252,7 +262,8 @@ function reviewFileQueries({
                 request: {
                   cwd,
                   ...(baseRef ? { baseRef } : {}),
-                  ignoreWhitespace,
+                  ignoreWhitespace: false,
+                  ...(workingTreeScope ? { workingTreeScope } : {}),
                   file: {
                     path: file.path,
                     previousPath: file.previousPath,
@@ -267,18 +278,23 @@ function reviewFileQueries({
 }
 
 function sortedReviewFiles(source: ReviewDiffPreviewSource | null) {
-  return source?.files?.toSorted((a, b) => filePathCollator.compare(a.path, b.path)) ?? [];
+  return orderReviewFiles(source?.files ?? [], (file) => file.path);
 }
 
 type ReviewPatchTarget = Parameters<typeof reviewEnvironment.diffFilePatch>[0];
 
 // Derived atoms parse each query result once, even when another file finishes loading.
 const parsedPatchAtom = Atom.family((key: string) => {
-  const [theme, target] = JSON.parse(key) as ["light" | "dark", ReviewPatchTarget];
+  const [theme, ignoreWhitespace, target] = JSON.parse(key) as [
+    "light" | "dark",
+    boolean,
+    ReviewPatchTarget,
+  ];
   return Atom.map(reviewEnvironment.diffFilePatch(target), (result) =>
     AsyncResult.map(result, (source) => {
       let patch = getRenderablePatch(source.diff, `diff-panel:${theme}`, {
         compactPartialHunkOffsets: true,
+        ignoreWhitespace,
       });
       if (patch?.kind === "files" && patch.files.length === 1 && source.files?.length === 1) {
         const stat = source.files[0]!;
@@ -294,12 +310,14 @@ const parsedPatchAtom = Atom.family((key: string) => {
 
 // Keyed by theme and query targets so every render with the same files reads the same atom.
 const reviewPatchesAtom = Atom.family((key: string) => {
-  const [theme, entries] = JSON.parse(key) as [
+  const [theme, ignoreWhitespace, entries] = JSON.parse(key) as [
     "light" | "dark",
+    boolean,
     ReadonlyArray<readonly [number, ReviewPatchTarget]>,
   ];
   const parsed = entries.map(
-    ([index, target]) => [index, parsedPatchAtom(JSON.stringify([theme, target]))] as const,
+    ([index, target]) =>
+      [index, parsedPatchAtom(JSON.stringify([theme, ignoreWhitespace, target]))] as const,
   );
   return Atom.make((get) => new Map(parsed.map(([index, atom]) => [index, get(atom)])));
 });
