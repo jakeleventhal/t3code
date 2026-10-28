@@ -155,7 +155,10 @@ function parsePreferences(value: string): RelayAgentAwarenessPreferences | null 
 
 function aggregateNeedsAttention(aggregate: RelayAgentActivityAggregateState): boolean {
   return aggregate.activities.some(
-    (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
+    (row) =>
+      row.phase === "waiting_for_approval" ||
+      row.phase === "waiting_for_input" ||
+      row.phase === "woke",
   );
 }
 
@@ -171,7 +174,12 @@ function shouldUpdateLiveActivity(input: {
   if (JSON.stringify(input.previousAggregate) === JSON.stringify(input.nextAggregate)) {
     return false;
   }
-  if (input.previousAggregate.activeCount !== input.nextAggregate.activeCount) {
+  if (
+    input.previousAggregate.activeCount !== input.nextAggregate.activeCount ||
+    input.previousAggregate.unreadCount !== input.nextAggregate.unreadCount ||
+    input.previousAggregate.pendingCount !== input.nextAggregate.pendingCount ||
+    input.previousAggregate.totalCount !== input.nextAggregate.totalCount
+  ) {
     return true;
   }
   if (aggregateNeedsAttention(input.nextAggregate)) {
@@ -239,7 +247,7 @@ function chooseLiveActivityDelivery(input: {
   if (!input.target.activity_push_token) {
     return null;
   }
-  if (input.aggregate === null) {
+  if (input.aggregate === null || input.aggregate.pendingCount === 0) {
     // Registration replay can precede a new thread's first publish; preserve a freshly armed card until state arrives.
     const armedAtMs = Option.match(
       input.target.remote_started_at === null
@@ -247,7 +255,11 @@ function chooseLiveActivityDelivery(input: {
         : DateTime.make(input.target.remote_started_at),
       { onNone: () => null, onSome: (dt) => dt.epochMilliseconds },
     );
-    if (armedAtMs !== null && input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS) {
+    if (
+      (input.aggregate === null || input.replay) &&
+      armedAtMs !== null &&
+      input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS
+    ) {
       return null;
     }
     return {
@@ -531,14 +543,14 @@ const make = Effect.gen(function* () {
   const userHasContentToShow = Effect.fnUntraced(function* (userId: string) {
     const now = yield* DateTime.now;
     return yield* activityRows.listForUser({ userId }).pipe(
-      Effect.map(
-        (activeStates) =>
-          makeAggregateState({
-            activeStates,
-            terminalState: null,
-            nowMs: now.epochMilliseconds,
-          }) !== null,
-      ),
+      Effect.map((activeStates) => {
+        const aggregate = makeAggregateState({
+          activeStates,
+          terminalState: null,
+          nowMs: now.epochMilliseconds,
+        });
+        return aggregate !== null && aggregate.pendingCount !== 0;
+      }),
       // Keep the card on persistence failures; a later sweep can retry.
       Effect.catch((error) =>
         Effect.logWarning("Content recheck failed; keeping the card", { error }).pipe(
@@ -566,6 +578,8 @@ const make = Effect.gen(function* () {
           (current) =>
             current !== null &&
             current.phase === input.phase &&
+            (!(current.phase === "completed" || current.phase === "failed") ||
+              current.unread !== false) &&
             current.updatedAt === input.updatedAt,
         ),
         Effect.catchCause((cause) =>
@@ -595,6 +609,7 @@ const make = Effect.gen(function* () {
           return (
             current !== undefined &&
             current.phase === row.phase &&
+            current.unread === row.unread &&
             current.updatedAt === row.updatedAt
           );
         });

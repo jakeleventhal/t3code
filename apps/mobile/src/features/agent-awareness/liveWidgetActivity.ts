@@ -23,6 +23,7 @@ const statusByPhase = {
   completed: "Done",
   failed: "Failed",
   stale: "Waiting",
+  woke: "Woke",
 } satisfies Record<AgentActivityRowProps["phase"], string>;
 
 function isActive(row: AgentActivityRowProps): boolean {
@@ -56,6 +57,8 @@ export function createLiveWidgetActivitiesAtom(input: {
           threadTitle: state.threadTitle,
           modelTitle: state.modelTitle,
           phase: state.phase,
+          unread: state.unread,
+          ...(state.completedAt === undefined ? {} : { completedAt: state.completedAt }),
           status: statusByPhase[state.phase],
           updatedAt: state.updatedAt,
           deepLink: state.deepLink,
@@ -71,7 +74,12 @@ export function createLiveWidgetActivitiesAtom(input: {
 }
 
 function rowPriority(row: AgentActivityRowProps): number {
-  if (row.phase === "waiting_for_approval" || row.phase === "waiting_for_input") return 0;
+  if (
+    row.phase === "waiting_for_approval" ||
+    row.phase === "waiting_for_input" ||
+    row.phase === "woke"
+  )
+    return 0;
   if (row.phase === "failed") return 1;
   return isActive(row) ? 2 : 3;
 }
@@ -156,7 +164,7 @@ export function reconcileWidgetActivity(
   }
   const allRows = [...localRows, ...remoteRows];
   const mergedCount = (
-    key: "workingCount" | "attentionCount" | "totalCount",
+    key: "workingCount" | "attentionCount" | "totalCount" | "unreadCount" | "pendingCount",
     matches: (row: AgentActivityRowProps) => boolean,
   ): number | null => {
     const localCount = localRows.filter(matches).length;
@@ -167,7 +175,7 @@ export function reconcileWidgetActivity(
     if (globalScope && live.size === 0 && remoteCount !== undefined) return remoteCount;
     if (globalScope && (aggregate == null || aggregate.totalCount === relayRows.length))
       return allRows.filter(matches).length;
-    if (key !== "totalCount" && globalScope && relayCountIsComplete)
+    if ((key === "workingCount" || key === "attentionCount") && globalScope && relayCountIsComplete)
       return allRows.filter(matches).length;
     return null;
   };
@@ -177,14 +185,30 @@ export function reconcileWidgetActivity(
   );
   const attentionCount = mergedCount(
     "attentionCount",
-    (row) => row.phase === "waiting_for_input" || row.phase === "waiting_for_approval",
+    (row) =>
+      row.phase === "waiting_for_input" ||
+      row.phase === "waiting_for_approval" ||
+      row.phase === "woke",
   );
   const totalCount = mergedCount("totalCount", () => true);
+  const unreadCount = mergedCount(
+    "unreadCount",
+    (row) => row.phase === "completed" && row.unread !== false,
+  );
+  const pendingCount = mergedCount("pendingCount", (row) => isActive(row) || row.unread !== false);
   const activities = allRows
     .sort(
       (left, right) =>
         rowPriority(left) - rowPriority(right) || right.updatedAt.localeCompare(left.updatedAt),
     )
     .slice(0, MAX_WIDGET_ROWS);
-  return { activeCount, workingCount, attentionCount, totalCount, activities };
+  return {
+    activeCount,
+    workingCount,
+    attentionCount,
+    totalCount,
+    unreadCount,
+    pendingCount,
+    activities,
+  };
 }

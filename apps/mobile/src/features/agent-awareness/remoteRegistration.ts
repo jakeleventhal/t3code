@@ -491,6 +491,11 @@ function widgetPropsFromAggregate(
     title: aggregate.title,
     subtitle: aggregate.subtitle,
     activeCount: aggregate.activeCount,
+    workingCount: aggregate.workingCount ?? null,
+    attentionCount: aggregate.attentionCount ?? null,
+    totalCount: aggregate.totalCount ?? null,
+    unreadCount: aggregate.unreadCount ?? null,
+    pendingCount: aggregate.pendingCount ?? null,
     updatedAt: aggregate.updatedAt,
     activities: aggregate.activities,
   };
@@ -513,6 +518,8 @@ function publishRegularWidget(props: AgentActivityProps): void {
     workingCount: props.workingCount,
     attentionCount: props.attentionCount,
     totalCount: props.totalCount,
+    unreadCount: props.unreadCount,
+    pendingCount: props.pendingCount,
     isStale: props.isStale,
     expiresAt: props.expiresAt === undefined ? undefined : Math.floor(props.expiresAt / 60_000),
     activities: props.activities.map(({ updatedAt: _updatedAt, ...row }) => row),
@@ -547,6 +554,8 @@ function publishReconciledWidget(): void {
     workingCount: result.workingCount,
     attentionCount: result.attentionCount,
     totalCount: result.totalCount,
+    unreadCount: result.unreadCount,
+    pendingCount: result.pendingCount,
     isStale: [...observedWidgetActivities.keys()].some((id) => !liveWidgetActivities.has(id)),
     expiresAt: confirmedAt + AGENT_ACTIVITY_FRESHNESS_MS,
     updatedAt: new Date().toISOString(),
@@ -1263,7 +1272,11 @@ export const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
       snapshot && "liveActivityAggregate" in snapshot
         ? snapshot.liveActivityAggregate
         : snapshot?.aggregate;
-    if (activities.length === 0 && aggregate && aggregate.activeCount > 0) {
+    if (
+      activities.length === 0 &&
+      aggregate &&
+      (aggregate.pendingCount ?? aggregate.activeCount) > 0
+    ) {
       const primed = yield* Effect.try({
         try: () =>
           startAgentLiveActivity(widgetPropsFromAggregate(aggregate), liveActivityStaleDate()),

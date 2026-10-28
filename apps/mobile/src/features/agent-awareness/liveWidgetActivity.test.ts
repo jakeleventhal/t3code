@@ -139,7 +139,16 @@ describe("live widget activity", () => {
   it("retains completed rows until settlement rather than timing them out", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_MS);
-    const h = harness(shell([thread({ status: "completed" })]), Date.now);
+    const h = harness(
+      shell([
+        thread({
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+          lastVisitedAt: DateTime.makeUnsafe(NOW),
+        }),
+      ]),
+      Date.now,
+    );
     const stop = h.registry.mount(h.atom);
     try {
       expect(
@@ -148,6 +157,10 @@ describe("live widget activity", () => {
           .get(ENVIRONMENT)
           ?.map((row) => row.phase),
       ).toEqual(["completed"]);
+      expect(h.registry.get(h.atom).get(ENVIRONMENT)?.[0]).toMatchObject({
+        unread: false,
+        completedAt: NOW,
+      });
       await vi.advanceTimersByTimeAsync(16 * 60_000);
       expect(
         h.registry
@@ -254,6 +267,12 @@ describe("live widget activity", () => {
         }),
         thread({ id: ThreadId.make("failure"), status: "failed" }),
         thread({
+          id: ThreadId.make("wake"),
+          status: "completed",
+          snoozedUntil: DateTime.makeUnsafe("2026-09-05T11:00:00.000Z"),
+          lastVisitedAt: DateTime.makeUnsafe("2026-09-05T10:00:00.000Z"),
+        }),
+        thread({
           id: ThreadId.make("old"),
           status: "completed",
           updatedAt: DateTime.makeUnsafe("2026-09-05T11:00:00.000Z"),
@@ -271,7 +290,7 @@ describe("live widget activity", () => {
           .get(h.atom)
           .get(ENVIRONMENT)
           ?.map((value) => value.status),
-      ).toEqual(["Approval", "Input", "Failed", "Done"]);
+      ).toEqual(["Approval", "Input", "Failed", "Woke", "Done"]);
     } finally {
       h.registry.dispose();
     }
@@ -285,6 +304,8 @@ describe("live widget activity", () => {
       workingCount: 1,
       attentionCount: 0,
       totalCount: null,
+      unreadCount: null,
+      pendingCount: null,
       activities: [row()],
     });
     live.set(ENVIRONMENT, [row(ENVIRONMENT, ThreadId.make("different-task"))]);
@@ -299,18 +320,28 @@ describe("live widget activity", () => {
     const localRows = [
       row(ENVIRONMENT),
       row(ENVIRONMENT, ThreadId.make("input"), "waiting_for_input"),
+      { ...row(ENVIRONMENT, ThreadId.make("done"), "completed"), unread: true },
     ];
     const remote = snapshot([row()], 12);
     const result = reconcileWidgetActivity(new Map([[ENVIRONMENT, localRows]]), {
       ...remote,
       excludedEnvironmentIds: [ENVIRONMENT],
-      aggregate: { ...remote.aggregate!, workingCount: 8, attentionCount: 4, totalCount: 20 },
+      aggregate: {
+        ...remote.aggregate!,
+        workingCount: 8,
+        attentionCount: 4,
+        totalCount: 20,
+        unreadCount: 6,
+        pendingCount: 18,
+      },
     });
     expect(result).toMatchObject({
       activeCount: 14,
       workingCount: 9,
       attentionCount: 5,
-      totalCount: 22,
+      totalCount: 23,
+      unreadCount: 7,
+      pendingCount: 21,
     });
   });
 

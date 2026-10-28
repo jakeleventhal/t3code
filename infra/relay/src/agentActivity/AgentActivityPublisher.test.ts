@@ -307,6 +307,80 @@ describe("AgentActivityPublisher", () => {
       );
     },
   );
+  it.effect("notifies an off-card completion without changing the five display rows", () => {
+    const completed: RelayAgentActivityState = {
+      ...state,
+      phase: "completed",
+      unread: true,
+      retained: true,
+    };
+    const failures = Array.from({ length: 5 }, (_, i) => ({
+      ...state,
+      threadId: `failure-${i}` as RelayAgentActivityState["threadId"],
+      phase: "failed" as const,
+      unread: true,
+      retained: true,
+    }));
+    const cards: Array<Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendForTarget"]>[0]> =
+      [];
+    const notifications: Array<
+      Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendPushNotificationForTarget"]>[0]
+    > = [];
+    return Effect.gen(function* () {
+      const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
+      const input = {
+        environmentId: state.environmentId,
+        environmentPublicKey: "key",
+        threadId: state.threadId,
+        state: completed,
+      };
+      yield* publisher.publish(input);
+      expect(cards[0]?.aggregate?.activities).toHaveLength(5);
+      expect(cards[0]?.aggregate?.activities.some((row) => row.threadId === state.threadId)).toBe(
+        false,
+      );
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]?.aggregate?.activities[0]?.threadId).toBe(state.threadId);
+      yield* publisher.publish({ ...input, replay: true });
+      expect(notifications).toHaveLength(1);
+    }).pipe(
+      Effect.provide(
+        layerPublisher.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                AgentActivityRows.AgentActivityRows,
+                makeAgentActivityRows({
+                  listForUser: () => Effect.succeed([...failures, completed]),
+                }),
+              ),
+              Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
+              Layer.succeed(
+                LiveActivities.LiveActivities,
+                makeLiveActivities({ listTargets: () => Effect.succeed([target("ios")]) }),
+              ),
+              Layer.succeed(
+                ApnsDeliveries.ApnsDeliveries,
+                makeApnsDeliveries({
+                  sendForTarget: (input) =>
+                    Effect.sync(() => {
+                      cards.push(input);
+                      return null;
+                    }),
+                  sendPushNotificationForTarget: (input) =>
+                    Effect.sync(() => {
+                      notifications.push(input);
+                      return null;
+                    }),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
+
   it.effect("routes Android publication and registration replay to FCM alongside iOS", () => {
     const android = { ...target("android"), platform: "android" as const, ios_major_version: null };
     const ios = target("ios");
@@ -638,8 +712,8 @@ describe("makeAggregateState", () => {
     expect(aggregate?.activeCount).toBe(1);
     expect(aggregate?.subtitle).toBe("Agent work in progress");
     expect(aggregate?.activities).toMatchObject([
-      { threadId: "thread-active", phase: "running" },
       { threadId: "thread-done", phase: "completed", status: "Done" },
+      { threadId: "thread-active", phase: "running" },
     ]);
     expect(aggregate?.updatedAt).toBe("1970-01-01T00:59:00.000Z");
   });
@@ -700,14 +774,14 @@ describe("makeAggregateState", () => {
     expect(aggregate?.activities).toHaveLength(5);
     expect(aggregate?.activities.map((row) => row.phase)).toEqual([
       "waiting_for_input",
-      "running",
+      "completed",
       "completed",
       "completed",
       "completed",
     ]);
   });
 
-  it("gives active agents the display slots before finished ones", () => {
+  it("gives unread completions display slots before working agents", () => {
     const mkActive = (id: string): RelayAgentActivityState => ({
       ...state,
       threadId: id as RelayAgentActivityState["threadId"],
@@ -734,11 +808,11 @@ describe("makeAggregateState", () => {
 
     expect(aggregate?.activeCount).toBe(5);
     expect(aggregate?.activities).toMatchObject([
+      { threadId: "thread-done" },
       { threadId: "a-1" },
       { threadId: "a-2" },
       { threadId: "a-3" },
       { threadId: "a-4" },
-      { threadId: "a-5" },
     ]);
   });
 });

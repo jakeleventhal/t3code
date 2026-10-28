@@ -15,7 +15,8 @@ export type AgentAwarenessPhase =
   | "waiting_for_input"
   | "completed"
   | "failed"
-  | "stale";
+  | "stale"
+  | "woke";
 
 export interface AgentAwarenessState {
   readonly environmentId: EnvironmentId;
@@ -25,6 +26,8 @@ export interface AgentAwarenessState {
   readonly phase: AgentAwarenessPhase;
   readonly headline: string;
   readonly retained?: boolean;
+  readonly unread?: boolean;
+  readonly completedAt?: string;
   readonly detail?: string;
   readonly modelTitle: string;
   readonly updatedAt: string;
@@ -45,7 +48,7 @@ export interface ProjectThreadAwarenessV2Input {
   readonly thread: Partial<
     Pick<
       OrchestrationV2ThreadShell,
-      "archivedAt" | "snoozedUntil" | "snoozedAt" | "latestRunCompletedAt"
+      "archivedAt" | "snoozedUntil" | "snoozedAt" | "latestRunCompletedAt" | "lastVisitedAt"
     >
   > &
     Pick<
@@ -68,7 +71,12 @@ export function projectThreadAwarenessV2(
   input: ProjectThreadAwarenessV2Input,
 ): AgentAwarenessState | null {
   const { environmentId, project, thread } = input;
-  if (thread.lineage.relationshipToParent === "subagent" || thread.archivedAt != null) return null;
+  if (
+    thread.lineage.relationshipToParent === "subagent" ||
+    thread.archivedAt != null ||
+    thread.settledOverride === "settled"
+  )
+    return null;
   if (
     input.now !== undefined &&
     thread.snoozedUntil != null &&
@@ -82,19 +90,27 @@ export function projectThreadAwarenessV2(
             DateTime.toEpochMillis(thread.snoozedAt)));
     if (thread.pendingRuntimeRequest == null && !failedAfterSnooze) return null;
   }
-  const phase = resolveThreadAwarenessPhaseV2(thread);
+  const snoozeWakeAt = thread.snoozedUntil;
+  const woke =
+    input.now !== undefined &&
+    snoozeWakeAt != null &&
+    DateTime.toEpochMillis(snoozeWakeAt) <= input.now &&
+    (thread.lastVisitedAt == null ||
+      DateTime.toEpochMillis(thread.lastVisitedAt) < DateTime.toEpochMillis(snoozeWakeAt));
+  const runPhase = resolveThreadAwarenessPhaseV2(thread);
+  const phase = woke && (runPhase === null || runPhase === "completed") ? "woke" : runPhase;
   if (phase === null) {
     return null;
   }
   if (phase === "completed" && thread.latestRunStopRequested === true) return null;
-  // Resolve the phase first so live or waiting work stays visible after settlement.
-  if (
-    thread.settledOverride === "settled" &&
+  const completedAt =
+    phase === "completed" || phase === "failed" ? thread.latestRunCompletedAt : null;
+  const unread =
     (phase === "completed" || phase === "failed") &&
-    !backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
-  ) {
-    return null;
-  }
+    (thread.lastVisitedAt == null
+      ? phase === "failed"
+      : completedAt != null &&
+        DateTime.toEpochMillis(completedAt) > DateTime.toEpochMillis(thread.lastVisitedAt));
   const detail =
     phase === "completed"
       ? "Review the completed task."
@@ -109,9 +125,13 @@ export function projectThreadAwarenessV2(
     phase,
     headline: headlineForPhase(phase),
     retained: true,
+    unread,
+    ...(completedAt == null ? {} : { completedAt: DateTime.formatIso(completedAt) }),
     ...(detail === undefined ? {} : { detail }),
     modelTitle: thread.modelSelection.model,
-    updatedAt: DateTime.formatIso(thread.updatedAt),
+    updatedAt: DateTime.formatIso(
+      phase === "woke" && snoozeWakeAt != null ? snoozeWakeAt : thread.updatedAt,
+    ),
     deepLink: buildAgentAwarenessDeepLink({ environmentId, threadId: thread.id }),
   };
 }
@@ -172,5 +192,7 @@ function headlineForPhase(phase: AgentAwarenessPhase): string {
       return "Agent failed";
     case "stale":
       return "Update delayed";
+    case "woke":
+      return "Snooze ended";
   }
 }
