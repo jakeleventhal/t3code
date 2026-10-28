@@ -194,11 +194,10 @@ export function useThreadDevServers(input: {
       : previewEnvironment.discoveredServers({ environmentId: input.environmentId, input: {} }),
   );
   const servers = query.data?.servers ?? EMPTY_SERVERS;
-  return useMemo(
-    () =>
-      input.threadId === null
-        ? EMPTY_SERVERS
-        : servers.filter((server) => server.terminal?.threadId === input.threadId),
-    [input.threadId, servers],
-  );
+  return input.threadId === null
+    ? EMPTY_SERVERS
+    : servers.filter(
+        (server) =>
+          server.terminal?.threadId === input.threadId || server.agent?.threadId === input.threadId,
+      );
 }
