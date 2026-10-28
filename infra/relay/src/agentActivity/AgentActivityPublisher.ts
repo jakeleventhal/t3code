@@ -78,8 +78,13 @@ const make = Effect.gen(function* () {
     const notificationOnlyAggregate =
       !input.replay &&
       input.deliveryUser.notificationsEnabled &&
-      !input.deliveryUser.liveActivitiesEnabled &&
-      input.state !== null
+      input.state !== null &&
+      (!input.deliveryUser.liveActivitiesEnabled ||
+        !liveActivityAggregate?.activities.some(
+          (row) =>
+            row.environmentId === input.state?.environmentId &&
+            row.threadId === input.state.threadId,
+        ))
         ? makeAggregateState({
             activeStates: yield* rows.listForUser({ userId: input.deliveryUser.userId }),
             terminalState: input.state && isTerminalPhase(input.state) ? input.state : null,
