@@ -1,22 +1,13 @@
 import {
   type TerminalLinkMatch,
   extractTerminalLinks,
-  isAbsolutePath,
   isTerminalUrl,
-  resolvePathLinkTarget,
   type TerminalLinkKind,
 } from "@t3tools/shared/terminalLinks";
 
 import { isMacPlatform } from "./lib/utils";
 
-export {
-  extractTerminalLinks,
-  isAbsolutePath,
-  isTerminalUrl,
-  resolvePathLinkTarget,
-  type TerminalLinkKind,
-  type TerminalLinkMatch,
-};
+export { extractTerminalLinks, isTerminalUrl, type TerminalLinkKind, type TerminalLinkMatch };
 
 export interface TerminalBufferLineLike {
   readonly isWrapped?: boolean;

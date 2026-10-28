@@ -254,7 +254,7 @@ const ReadyTerminalSurface = memo(function ReadyTerminalSurface(props: ReadyTerm
       rows: event.nativeEvent.rows,
     });
   };
-  const handleNativeLinkTap = useCallback((event: NativeSyntheticEvent<TerminalLinkTapEvent>) => {
+  const handleNativeLinkTap = (event: NativeSyntheticEvent<TerminalLinkTapEvent>) => {
     const { uri, lineText, tapIndex } = event.nativeEvent;
     let url = uri;
     if (url === undefined && lineText !== undefined && tapIndex !== undefined) {
@@ -267,9 +267,8 @@ const ReadyTerminalSurface = memo(function ReadyTerminalSurface(props: ReadyTerm
     if (url === undefined || !isTerminalUrl(url)) {
       return;
     }
-    terminalDebugLog("native:onLinkTap", { url });
     void tryOpenExternalUrl(url, "terminal-link");
-  }, []);
+  };
 
   if (NativeTerminalSurfaceView) {
     return (
