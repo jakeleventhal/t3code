@@ -1,3 +1,4 @@
+import * as NodePath from "@effect/platform-node/NodePath";
 // @effect-diagnostics nodeBuiltinImport:off -- the stop test drives real server processes.
 import * as NodeChildProcess from "node:child_process";
 
@@ -20,7 +21,7 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
-import { expect, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { FetchHttpClient } from "effect/http";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -1026,6 +1027,7 @@ effectIt.effect.each(["linux", "darwin"] as const)(
     const layer = PortScanner.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          NodePath.layer,
           FileSystem.layerNoop({
             readFileString: (path) => {
               const content = procEnviron[path];
@@ -1036,6 +1038,7 @@ effectIt.effect.each(["linux", "darwin"] as const)(
           }),
           Layer.succeed(ProcessRunner.ProcessRunner, {
             run: (input) => {
+              if (input.command === "tailscale") return Effect.succeed(processOutput("{}"));
               if (input.command === "lsof") {
                 lsofCalls += 1;
                 return lsofFails
