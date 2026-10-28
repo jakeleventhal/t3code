@@ -41,6 +41,7 @@ import {
   compileResolvedKeybindingRule,
   compileResolvedKeybindingsConfig,
   parseKeybindingShortcut,
+  parseKeybindingWhenExpression,
 } from "@t3tools/shared/keybindings";
 
 export const ResolvedKeybindingFromConfig = KeybindingRule.pipe(
@@ -108,19 +109,21 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
   },
 ];
 
-function keybindingShortcutContext(rule: KeybindingRule): string | null {
+function encodedRuleShortcut(rule: KeybindingRule): string | null {
   const parsed = parseKeybindingShortcut(rule.key);
-  if (!parsed) return null;
-  const encoded = encodeShortcut(parsed);
-  if (!encoded) return null;
-  return `${encoded}\u0000${rule.when ?? ""}`;
+  return parsed ? encodeShortcut(parsed) : null;
 }
 
-function hasSameShortcutContext(left: KeybindingRule, right: KeybindingRule): boolean {
-  const leftContext = keybindingShortcutContext(left);
-  const rightContext = keybindingShortcutContext(right);
-  if (!leftContext || !rightContext) return false;
-  return leftContext === rightContext;
+// Persisted custom rules follow defaults, so a conditional override leaves the default available elsewhere.
+function shadowsShortcut(existing: KeybindingRule, rule: KeybindingRule): boolean {
+  const existingShortcut = encodedRuleShortcut(existing);
+  if (!existingShortcut || existingShortcut !== encodedRuleShortcut(rule)) return false;
+  if (existing.when === undefined) return true;
+  if (rule.when === undefined) return false;
+  return (
+    JSON.stringify(parseKeybindingWhenExpression(existing.when)) ===
+    JSON.stringify(parseKeybindingWhenExpression(rule.when))
+  );
 }
 
 function keybindingRuleFromInput(input: ServerRemoveKeybindingInput): KeybindingRule {
@@ -489,9 +492,7 @@ const make = Effect.gen(function* () {
         if (existingCommands.has(defaultRule.command)) {
           continue;
         }
-        const conflictingEntry = customConfig.find((entry) =>
-          hasSameShortcutContext(entry, defaultRule),
-        );
+        const conflictingEntry = customConfig.find((entry) => shadowsShortcut(entry, defaultRule));
         if (conflictingEntry) {
           shortcutConflictWarnings.push({
             defaultCommand: defaultRule.command,
@@ -506,7 +507,7 @@ const make = Effect.gen(function* () {
       for (const { alongside, rule } of pendingLateDefaults) {
         if (
           customConfig.some((entry) => isSameKeybindingRule(entry, alongside)) &&
-          !customConfig.some((entry) => hasSameShortcutContext(entry, rule))
+          !customConfig.some((entry) => shadowsShortcut(entry, rule))
         ) {
           missingDefaults.push(rule);
         }
