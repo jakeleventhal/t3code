@@ -68,6 +68,9 @@ export interface AgentAwarenessState {
   readonly threadTitle: string;
   readonly phase: AgentAwarenessPhase;
   readonly headline: string;
+  readonly retained?: boolean;
+  readonly unread?: boolean;
+  readonly completedAt?: string;
   readonly detail?: string;
   readonly modelTitle: string;
   readonly updatedAt: string;
@@ -84,47 +87,65 @@ function buildAgentAwarenessDeepLink(input: {
 export interface ProjectThreadAwarenessV2Input {
   readonly environmentId: EnvironmentId;
   readonly project: Pick<Project, "title">;
-  readonly thread: Pick<
-    OrchestrationV2ThreadShell,
-    | "activityRunStatus"
-    | "id"
-    | "lineage"
-    | "latestRunBackgroundWake"
-    | "latestRunStopRequested"
-    | "modelSelection"
-    | "pendingBackgroundTasks"
-    | "pendingRuntimeRequest"
-    | "settledOverride"
-    | "status"
-    | "title"
-    | "updatedAt"
-  >;
-  /** What a live subagent below this thread is waiting on the user for. */
-  readonly pendingSubagentRequest?: SubagentRequestAwareness | null;
+  readonly now?: number;
+  readonly thread: Partial<
+    Pick<
+      OrchestrationV2ThreadShell,
+      "archivedAt" | "snoozedUntil" | "snoozedAt" | "latestRunCompletedAt" | "lastVisitedAt"
+    >
+  > &
+    Pick<
+      OrchestrationV2ThreadShell,
+      | "activityRunStatus"
+      | "id"
+      | "lineage"
+      | "latestRunStopRequested"
+      | "modelSelection"
+      | "pendingBackgroundTasks"
+      | "pendingRuntimeRequest"
+      | "settledOverride"
+      | "status"
+      | "title"
+      | "updatedAt"
+    >;
 }
 
 export function projectThreadAwarenessV2(
   input: ProjectThreadAwarenessV2Input,
 ): AgentAwarenessState | null {
   const { environmentId, project, thread } = input;
-  if (!isListedThreadLineage(thread.lineage)) return null;
-  const subagentRequest = input.pendingSubagentRequest ?? null;
-  const phase = resolveThreadAwarenessPhaseV2(thread, subagentRequest);
+  if (
+    thread.lineage.relationshipToParent === "subagent" ||
+    thread.archivedAt != null ||
+    thread.settledOverride === "settled"
+  )
+    return null;
+  if (
+    input.now !== undefined &&
+    thread.snoozedUntil != null &&
+    DateTime.toEpochMillis(thread.snoozedUntil) > input.now
+  ) {
+    const failedAfterSnooze =
+      (thread.activityRunStatus ?? thread.status) === "failed" &&
+      (thread.snoozedAt == null ||
+        (thread.latestRunCompletedAt != null &&
+          DateTime.toEpochMillis(thread.latestRunCompletedAt) >
+            DateTime.toEpochMillis(thread.snoozedAt)));
+    if (thread.pendingRuntimeRequest == null && !failedAfterSnooze) return null;
+  }
+  const phase = resolveThreadAwarenessPhaseV2(thread);
   if (phase === null) {
     return null;
   }
   if (phase === "completed" && thread.latestRunStopRequested === true) return null;
-  // Resolve the phase first so live or waiting work stays visible after settlement.
-  const runStatus = thread.activityRunStatus ?? thread.status;
-  if (
-    thread.settledOverride === "settled" &&
-    (phase === "completed" ||
-      phase === "failed" ||
-      (phase === "running" && runStatus === "completed")) &&
-    !backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
-  ) {
-    return null;
-  }
+  const completedAt =
+    phase === "completed" || phase === "failed" ? thread.latestRunCompletedAt : null;
+  const unread =
+    (phase === "completed" || phase === "failed") &&
+    (thread.lastVisitedAt == null
+      ? phase === "failed"
+      : completedAt != null &&
+        DateTime.toEpochMillis(completedAt) > DateTime.toEpochMillis(thread.lastVisitedAt));
   const detail =
     phase === "completed"
       ? "Review the completed task."
@@ -138,6 +159,9 @@ export function projectThreadAwarenessV2(
     threadTitle: thread.title,
     phase,
     headline: headlineForPhase(phase),
+    retained: true,
+    unread,
+    ...(completedAt == null ? {} : { completedAt: DateTime.formatIso(completedAt) }),
     ...(detail === undefined ? {} : { detail }),
     modelTitle: thread.modelSelection.model,
     // A child's request leaves the parent's own timestamp alone. Alerts are

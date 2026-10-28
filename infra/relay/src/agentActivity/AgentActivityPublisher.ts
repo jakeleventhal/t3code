@@ -39,6 +39,7 @@ export class AgentActivityPublisher extends Context.Service<
       readonly environmentPublicKey: string;
       readonly threadId: string;
       readonly state: RelayAgentActivityState | null;
+      readonly replay?: boolean;
     }) => Effect.Effect<RelayPublishResponse, AgentActivityPublishError>;
     readonly replayForLiveActivityRegistration: (input: {
       readonly userId: string;
@@ -62,13 +63,23 @@ const make = Effect.gen(function* () {
     readonly deliveryUser: EnvironmentLinks.AgentAwarenessDeliveryUserRecord;
     readonly state: RelayAgentActivityState | null;
     readonly nowMs: number;
+    readonly replay?: boolean;
   }) {
-    const targets = yield* liveActivities.listTargets({ userId: input.deliveryUser.userId });
-    // Only iOS targets with a running Live Activity read the aggregate, and few users have one,
-    // so skip the per-user activity query otherwise.
-    const liveActivityAggregate =
-      input.deliveryUser.liveActivitiesEnabled &&
-      targets.some((target) => target.platform !== "android" && target.activity_push_token)
+    const activeStates = input.deliveryUser.liveActivitiesEnabled
+      ? yield* rows.listForUser({ userId: input.deliveryUser.userId })
+      : [];
+    const liveActivityAggregate = input.deliveryUser.liveActivitiesEnabled
+      ? makeAggregateState({
+          activeStates,
+          terminalState: input.state && isTerminalPhase(input.state) ? input.state : null,
+          nowMs: input.nowMs,
+        })
+      : null;
+    const notificationOnlyAggregate =
+      !input.replay &&
+      input.deliveryUser.notificationsEnabled &&
+      !input.deliveryUser.liveActivitiesEnabled &&
+      input.state !== null
         ? makeAggregateState({
             activeStates: yield* rows.listForUser({ userId: input.deliveryUser.userId }),
             terminalState: input.state && isTerminalPhase(input.state) ? input.state : null,
@@ -79,14 +90,31 @@ const make = Effect.gen(function* () {
       targets,
       Effect.fnUntraced(function* (target) {
         if (target.platform === "android") {
-          return yield* fcmDeliveries.enqueue({ target, state: input.state });
+          return [
+            yield* fcmDeliveries.enqueue({
+              target,
+              state: input.state,
+              replay: input.replay ?? false,
+            }),
+          ];
         }
-        return yield* apnsDeliveries.sendForTarget({
-          target,
-          aggregate: liveActivityAggregate,
-          state: input.deliveryUser.notificationsEnabled ? input.state : null,
-          nowMs: input.nowMs,
-        });
+        return yield* Effect.all(
+          [
+            apnsDeliveries.sendForTarget({
+              target,
+              aggregate: liveActivityAggregate,
+              nowMs: input.nowMs,
+              replay: input.replay ?? false,
+            }),
+            notificationOnlyAggregate === null
+              ? Effect.succeed(null)
+              : apnsDeliveries.sendPushNotificationForTarget({
+                  target,
+                  aggregate: notificationOnlyAggregate,
+                }),
+          ],
+          { concurrency: 2 },
+        );
       }),
       { concurrency: 4 },
     );
@@ -146,7 +174,7 @@ const make = Effect.gen(function* () {
               terminalState: null,
               nowMs: now.epochMilliseconds,
             });
-            if (aggregate !== null) return;
+            if (aggregate !== null && aggregate.pendingCount !== 0) return;
             const targets = yield* liveActivities.listTargets({ userId });
             const idleDeviceIds = new Set(candidates.map((target) => target.device_id));
             yield* Effect.forEach(
@@ -187,7 +215,7 @@ const make = Effect.gen(function* () {
         "relay.agent_activity.phase": input.state?.phase ?? "deleted",
       });
       if (input.state) {
-        // Retain terminal rows until cron pruning so completed threads remain visible alongside active ones.
+        // Inbox rows are removed by settlement or archival, not by elapsed time.
         yield* rows.upsert({
           environmentPublicKey: input.environmentPublicKey,
           state: input.state,
@@ -211,6 +239,7 @@ const make = Effect.gen(function* () {
           publishForDeliveryUser({
             deliveryUser,
             state: input.state,
+            replay: input.replay ?? false,
             nowMs: now.epochMilliseconds,
           }),
         { concurrency: 4 },
