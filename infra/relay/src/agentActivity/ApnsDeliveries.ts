@@ -149,7 +149,10 @@ function parsePreferences(value: string): RelayAgentAwarenessPreferences | null 
 
 function aggregateNeedsAttention(aggregate: RelayAgentActivityAggregateState): boolean {
   return aggregate.activities.some(
-    (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
+    (row) =>
+      row.phase === "waiting_for_approval" ||
+      row.phase === "waiting_for_input" ||
+      row.phase === "woke",
   );
 }
 

@@ -354,8 +354,12 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
   fun waitingCardsIgnoreMutableThreadTimestampsEvenAfterRename() {
     lifecycle.currentState = Lifecycle.State.RESUMED
     val now = System.currentTimeMillis()
-    for (phase in listOf("waiting_for_approval", "waiting_for_input")) {
-      val status = if (phase == "waiting_for_approval") "Approval" else "Input"
+    for (phase in listOf("waiting_for_approval", "waiting_for_input", "woke")) {
+      val status = when (phase) {
+        "waiting_for_approval" -> "Approval"
+        "woke" -> "Woke"
+        else -> "Input"
+      }
       for ((title, updatedAt) in listOf("Original" to now - 1200000L, "Renamed" to now)) {
         AgentNotifications.receive(
           context,
@@ -396,6 +400,7 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
     for (phase in listOf(
       "waiting_for_approval",
       "waiting_for_input",
+      "woke",
       "stale",
       "failed",
       "completed"
