@@ -1,22 +1,24 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
-import type { AssignableProject } from "./pullRequestProjectAssignment.logic";
-
-interface FilterProject extends AssignableProject {
+interface FilterProject {
+  readonly id: ProjectId;
+  readonly environmentId: EnvironmentId;
   readonly title: string;
   readonly workspaceRoot: string;
+  readonly repositoryIdentity?: { readonly canonicalKey?: string | undefined } | null | undefined;
 }
 
 function distinguishTitles<Project extends FilterProject>(
   projects: ReadonlyArray<Project>,
   suffix: (project: Project) => string,
+  needsSuffix: (project: Project) => boolean = () => false,
 ) {
   const counts = new Map<string, number>();
   for (const project of projects) {
     counts.set(project.title, (counts.get(project.title) ?? 0) + 1);
   }
   return projects.map((project) =>
-    (counts.get(project.title) ?? 0) > 1
+    (counts.get(project.title) ?? 0) > 1 || needsSuffix(project)
       ? { ...project, title: `${project.title} · ${suffix(project)}` }
       : project,
   );
@@ -25,7 +27,7 @@ function distinguishTitles<Project extends FilterProject>(
 export function pullRequestFilterProjects<Project extends FilterProject>(
   projects: ReadonlyArray<Project>,
   environmentLabels: ReadonlyMap<EnvironmentId, string>,
-  selectedProject?: Pick<AssignableProject, "id" | "environmentId">,
+  selectedProject?: { readonly id: string; readonly environmentId: string },
 ) {
   const byRepository = new Map<string, Project>();
   for (const project of projects) {
@@ -39,13 +41,24 @@ export function pullRequestFilterProjects<Project extends FilterProject>(
     if (!byRepository.has(key) || selected) byRepository.set(key, project);
   }
 
+  const repositoryEnvironments = new Map<string, Set<EnvironmentId>>();
+  for (const project of byRepository.values()) {
+    const repository = project.repositoryIdentity?.canonicalKey?.toLowerCase();
+    if (!repository) continue;
+    const environments = repositoryEnvironments.get(repository) ?? new Set<EnvironmentId>();
+    environments.add(project.environmentId);
+    repositoryEnvironments.set(repository, environments);
+  }
   const byServer = distinguishTitles(
     [...byRepository.values()],
     (project) => environmentLabels.get(project.environmentId) ?? project.environmentId,
+    (project) =>
+      (repositoryEnvironments.get(project.repositoryIdentity?.canonicalKey?.toLowerCase() ?? "")
+        ?.size ?? 0) > 1,
   );
   const byPath = distinguishTitles(byServer, (project) => project.workspaceRoot);
   const byEnvironment = distinguishTitles(byPath, (project) => project.environmentId);
-  return distinguishTitles(byEnvironment, (project) => project.id).toSorted((left, right) =>
+  return distinguishTitles(byEnvironment, (project) => project.id).sort((left, right) =>
     left.title.localeCompare(right.title),
   );
 }

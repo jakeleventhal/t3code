@@ -491,6 +491,10 @@
       "types": "./src/pullRequestMarkdown.ts",
       "default": "./src/pullRequestMarkdown.ts"
     },
+    "./pull-request-project-filter": {
+      "types": "./src/pullRequestProjectFilter.ts",
+      "default": "./src/pullRequestProjectFilter.ts"
+    },
     "./pull-request-checks": {
       "types": "./src/pullRequestChecks.ts",
       "default": "./src/pullRequestChecks.ts"

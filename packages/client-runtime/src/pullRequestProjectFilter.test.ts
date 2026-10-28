@@ -1,8 +1,7 @@
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { findScopedProject } from "./pullRequestList.logic";
-import { pullRequestFilterProjects } from "./pullRequestProjectFilter.logic";
+import { pullRequestFilterProjects } from "./pullRequestProjectFilter.ts";
 
 const cups = EnvironmentId.make("env-cups");
 const nucbox = EnvironmentId.make("env-nucbox");
@@ -43,20 +42,29 @@ describe("pull request project filter choices", () => {
     ]);
     expect(choices[1]?.workspaceRoot).toBe("/work/main");
     expect(choices[1]?.faviconPath).toBe("main/favicon.png");
+    expect(
+      pullRequestFilterProjects(
+        [
+          { ...projects[0]!, title: "Server checkout" },
+          { ...projects[3]!, title: "Laptop checkout" },
+        ],
+        labels,
+      ).map((choice) => choice.title),
+    ).toEqual(["Laptop checkout · cups", "Server checkout · nucbox-1"]);
   });
 
   it("keeps a saved worktree selection as the repository's only choice", () => {
     const projects = [project("main"), project("worktree"), project("worktree", cups)];
-    const selected = findScopedProject(projects, nucbox, "worktree");
-
-    const choices = pullRequestFilterProjects(projects, labels, selected);
+    const choices = pullRequestFilterProjects(projects, labels, projects[1]);
+    const has = (environmentId: EnvironmentId, id: string) =>
+      choices.some((choice) => choice.environmentId === environmentId && choice.id === id);
 
     expect(choices.filter((choice) => choice.environmentId === nucbox)).toEqual([
       { ...projects[1], title: "t3code · nucbox-1" },
     ]);
-    expect(findScopedProject(choices, nucbox, "worktree")).toBeDefined();
-    expect(findScopedProject(choices, nucbox, "main")).toBeUndefined();
-    expect(findScopedProject(choices, cups, "worktree")).toBeDefined();
+    expect(has(nucbox, "worktree")).toBe(true);
+    expect(has(nucbox, "main")).toBe(false);
+    expect(has(cups, "worktree")).toBe(true);
   });
 
   it("distinguishes same-named repositories on one server by checkout path", () => {
