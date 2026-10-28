@@ -437,7 +437,6 @@ const config: ExpoConfig = {
     ...(!isIosPersonalTeamBuild || iosPersonalTeamLiveActivities
       ? ["./plugins/withWidgetLogoAsset.cjs", "./plugins/withAgentWidgetRefresh.cjs", widgetsPlugin]
       : []),
-    "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
     "./plugins/withAndroidInputBackground.cjs",
     "./plugins/withAndroidModernPopupMenu.cjs",
