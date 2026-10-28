@@ -1747,13 +1747,11 @@ function verifyClerkBearerToken(
       }),
     catch: (cause) => new ClerkTokenVerificationFailed({ cause }),
   }).pipe(
-    Effect.flatMap((verified) =>
-      (config.clerkJwtIssuer && verified.iss !== config.clerkJwtIssuer) ||
-      (config.allowedUserIds && !config.allowedUserIds.includes(verified.sub))
-        ? Effect.fail(
-            new ClerkTokenVerificationFailed({ cause: "personal_account_not_authorized" }),
-          )
-        : Effect.succeed(verified),
+    Effect.filterOrFail(
+      (verified) =>
+        (!config.clerkJwtIssuer || verified.iss === config.clerkJwtIssuer) &&
+        (!config.allowedUserIds || config.allowedUserIds.includes(verified.sub)),
+      () => new ClerkTokenVerificationFailed({ cause: "personal_account_not_authorized" }),
     ),
     Effect.withSpan("verify_clerk_bearer_token", {
       attributes: { "relay.auth.token_length": token.length },
