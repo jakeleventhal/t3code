@@ -240,7 +240,7 @@ function chooseLiveActivityDelivery(input: {
       { onNone: () => null, onSome: (dt) => dt.epochMilliseconds },
     );
     if (
-      input.aggregate === null &&
+      (input.aggregate === null || input.replay) &&
       armedAtMs !== null &&
       input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS
     ) {
@@ -249,7 +249,7 @@ function chooseLiveActivityDelivery(input: {
     return {
       kind: "live_activity_end",
       token: input.target.activity_push_token,
-      aggregate: input.aggregate,
+      aggregate: null,
       alert: null,
     };
   }
