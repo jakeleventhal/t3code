@@ -88,7 +88,7 @@ const config = Config.layer({
 const queue = Queue.layer.pipe(
   Layer.provide(
     Layer.succeed(Queue.ApnsDeliveryQueueSender, {
-      send: (body) =>
+      send: Effect.fn("Queue.ApnsDeliveryQueueSender.send")((body) =>
         Effect.tryPromise({
           try: async () => {
             const path = NodePath.join(settings.queueDirectory, `${body.payload.jobId}.json`);
@@ -98,6 +98,7 @@ const queue = Queue.layer.pipe(
           },
           catch: (cause) => new Queue.ApnsDeliveryQueueStorageError({ cause }),
         }),
+      ),
     }),
   ),
 );
@@ -114,14 +115,16 @@ const services = Layer.empty.pipe(
   Layer.provideMerge(Deliveries.layer.pipe(Layer.provideMerge(Widgets.layer))),
   Layer.provideMerge(
     Layer.succeed(Fcm.FcmDeliveries, {
-      enqueue: () =>
+      enqueue: Effect.fn("Fcm.FcmDeliveries.enqueue")(() =>
         Effect.fail(
           new Fcm.FcmDeliveryError({ operation: "enqueue", cause: "iOS-only personal relay" }),
         ),
-      process: () =>
+      ),
+      process: Effect.fn("Fcm.FcmDeliveries.process")(() =>
         Effect.fail(
           new Fcm.FcmDeliveryError({ operation: "decode-job", cause: "iOS-only personal relay" }),
         ),
+      ),
     }),
   ),
   Layer.provideMerge(Apns.layer.pipe(Layer.provideMerge(Tokens.layer))),
@@ -155,7 +158,7 @@ const backgroundApi = HttpApi.make("RelayApi").add(
   RelayApi.groups.server,
 );
 const endpoints = Layer.succeed(Endpoints.ManagedEndpointProvider, {
-  provision: (input) =>
+  provision: Effect.fn("Endpoints.ManagedEndpointProvider.provision")((input) =>
     Effect.fail(
       new Endpoints.ManagedEndpointProvisioningNotConfigured({
         userId: input.userId,
@@ -163,7 +166,8 @@ const endpoints = Layer.succeed(Endpoints.ManagedEndpointProvider, {
         missingSettings: ["managedEndpointBaseDomain", "managedEndpointNamespace"],
       }),
     ),
-  reconcileOrigin: (input) =>
+  ),
+  reconcileOrigin: Effect.fn("Endpoints.ManagedEndpointProvider.reconcileOrigin")((input) =>
     Effect.fail(
       new Endpoints.ManagedEndpointProvisioningNotConfigured({
         userId: input.userId,
@@ -171,9 +175,14 @@ const endpoints = Layer.succeed(Endpoints.ManagedEndpointProvider, {
         missingSettings: ["managedEndpointBaseDomain", "managedEndpointNamespace"],
       }),
     ),
-  prepareDeprovision: () => Effect.succeed(null),
-  deprovision: () => Effect.succeed(false),
-  release: () => Effect.succeed(false),
+  ),
+  prepareDeprovision: Effect.fn("Endpoints.ManagedEndpointProvider.prepareDeprovision")(() =>
+    Effect.succeed(null),
+  ),
+  deprovision: Effect.fn("Endpoints.ManagedEndpointProvider.deprovision")(() =>
+    Effect.succeed(false),
+  ),
+  release: Effect.fn("Endpoints.ManagedEndpointProvider.release")(() => Effect.succeed(false)),
 });
 const api = HttpApiBuilder.layer(backgroundApi).pipe(
   Layer.provide(
@@ -191,9 +200,9 @@ const api = HttpApiBuilder.layer(backgroundApi).pipe(
   // This deployment exposes no managed tunnels or held webhook functionality.
   Layer.provide(
     Layer.succeed(HeldHooks.HeldHooks, {
-      resolveEndpoint: () => Effect.succeed(null),
-      setHoldWhileOffline: () => Effect.void,
-      wake: () => Effect.succeed(false),
+      resolveEndpoint: Effect.fn("HeldHooks.HeldHooks.resolveEndpoint")(() => Effect.succeed(null)),
+      setHoldWhileOffline: Effect.fn("HeldHooks.HeldHooks.setHoldWhileOffline")(() => Effect.void),
+      wake: Effect.fn("HeldHooks.HeldHooks.wake")(() => Effect.succeed(false)),
     }),
   ),
   Layer.provideMerge(Layer.effectContext(runtime.contextEffect)),
