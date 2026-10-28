@@ -9,6 +9,7 @@ import {
   AuthOrchestrationOperateScope,
   DEFAULT_BROWSER_PROFILE_ID,
   FILL_PREVIEW_VIEWPORT,
+  type DiscoveredLocalServerUrlKind,
   type PreviewAnnotationPayload,
   type ScopedThreadRef,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -262,12 +263,16 @@ export function PreviewView({
     } catch {}
   };
 
-  const handleOpenServerUrl = async (next: string) => {
+  const handleOpenServerUrl = async (
+    next: string,
+    targetPort?: number,
+    urlKind?: DiscoveredLocalServerUrlKind,
+  ) => {
     try {
       const resolved =
         isServerTab || !previewBridge
           ? normalizePreviewUrl(next)
-          : resolveDiscoveredServerUrl(threadRef.environmentId, next);
+          : resolveDiscoveredServerUrl(threadRef.environmentId, next, targetPort, urlKind);
       if (await navigateToResolvedUrl(resolved)) {
         recordVisitForThread(threadRef, next);
       }
@@ -985,7 +990,9 @@ export function PreviewView({
             configuredUrls={configuredUrls}
             recentEntries={recentHistoryEntries}
             onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
-            onOpenUrl={(next) => void handleOpenServerUrl(next)}
+            onOpenUrl={(next, targetPort, urlKind) =>
+              void handleOpenServerUrl(next, targetPort, urlKind)
+            }
           />
         ) : null}
         {snapshot && desktopOverlay ? (

@@ -1,4 +1,5 @@
 import type { DiscoveredLocalServer } from "@t3tools/contracts";
+import { normalizeHostname } from "@t3tools/shared/hostClassification";
 import { isLoopbackHost } from "@t3tools/shared/preview";
 
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -24,7 +25,7 @@ export function useDiscoveredLocalServers(
   return mergeServers({
     scanner: scannerState.servers.map((server) => ({
       ...server,
-      url: resolveDiscoveredServerUrl(input.environmentId, server.url),
+      url: resolveDiscoveredServerUrl(input.environmentId, server.url, server.port, server.urlKind),
       requestedUrl: server.url,
     })),
     configuredUrls: input.configuredUrls ?? [],
@@ -73,6 +74,44 @@ export function mergeServers(input: {
 function canonicalKey(host: string, port: number): string {
   const normalizedHost = host.toLowerCase();
   return `${isLoopbackHost(normalizedHost) ? "loopback" : normalizedHost}:${port}`;
+}
+
+export function formatDiscoveredServerHost(
+  server: Pick<DiscoveredLocalServer, "host" | "port" | "url">,
+): string {
+  try {
+    return new URL(server.url).host;
+  } catch {
+    return `${server.host}:${server.port}`;
+  }
+}
+
+export function selectPreferredDiscoveredServer(
+  servers: ReadonlyArray<DiscoveredLocalServer>,
+): DiscoveredLocalServer | null {
+  const publicTunnel = servers.find((server) => server.urlKind === "public-tunnel");
+  if (publicTunnel) return publicTunnel;
+
+  const tailnetTunnel = servers.find((server) => {
+    try {
+      return new URL(server.url).hostname.toLowerCase().endsWith(".ts.net");
+    } catch {
+      return false;
+    }
+  });
+  if (tailnetTunnel) return tailnetTunnel;
+
+  const localProxy = servers.find((server) => server.urlKind === "local-proxy");
+  if (localProxy) return localProxy;
+
+  const legacyNamedServer = servers.find((server) => {
+    try {
+      return normalizeHostname(new URL(server.url).hostname) !== normalizeHostname(server.host);
+    } catch {
+      return false;
+    }
+  });
+  return legacyNamedServer ?? servers[0] ?? null;
 }
 
 function parseLocalUrl(raw: string): { host: string; port: number; url: string } | null {
