@@ -23,6 +23,8 @@ describe("classifyChangedFile", () => {
     ["pkg/testdata/input.txt", "mocks"],
     ["pnpm-lock.yaml", "generated"],
     ["convex/_generated/api.d.ts", "generated"],
+    ["src/agent.eval.ts", "tests"],
+    ["evals/title-generation.ts", "tests"],
     ["README.md", "docs"],
     ["tests/README.md", "tests"],
   ] as const)("%s is %s", (path, kind) => {
