@@ -115,7 +115,7 @@
       "entry": ["src/*NativeComponent.ts!"],
     },
     "infra/relay": {
-      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!"],
+      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "scripts/personal-background.ts!"],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.
