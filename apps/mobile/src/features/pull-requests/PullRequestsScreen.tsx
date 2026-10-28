@@ -8,6 +8,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
 import { use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAtomValue } from "@effect/atom-react";
+import { pullRequestFilterProjects } from "@t3tools/client-runtime/pull-request-project-filter";
 import {
   Keyboard,
   Platform,
@@ -221,9 +222,15 @@ export function PullRequestsScreen(
   }
   const labelColors =
     knownFacets.environmentId === environmentId ? knownFacets.labelColors : facets.labelColors;
-  const projects = allProjects.filter(
-    (project) =>
-      !project.isScratch && (environmentId === null || project.environmentId === environmentId),
+  const projects = pullRequestFilterProjects(
+    allProjects.filter(
+      (project) =>
+        !project.isScratch && (environmentId === null || project.environmentId === environmentId),
+    ),
+    new Map(environments.map((item) => [item.environmentId, item.environmentLabel])),
+    controls.projectId && controls.projectEnvironmentId
+      ? { id: controls.projectId, environmentId: controls.projectEnvironmentId }
+      : undefined,
   );
   const filters = usePullRequestListFilters({
     environments: environments.map((item) => ({
