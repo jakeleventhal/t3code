@@ -19,6 +19,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
+import { devServerDescription, devServerLabel, type ResolvedDevServer } from "../../lib/devServers";
 import { useEnvironmentScope } from "../../state/session";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import {
@@ -80,6 +81,7 @@ type ThreadGitHeaderActionItems = {
   readonly files: HeaderItem;
   readonly git: HeaderItem;
   readonly mergeBack: HeaderItem | null;
+  readonly devServers: HeaderItem | null;
 };
 type QuickActionIcon =
   | "arrow.down.circle"
@@ -111,6 +113,8 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly canOpenFiles: boolean;
   readonly projectScripts: ReadonlyArray<ProjectScript>;
   readonly terminalSessions: ReadonlyArray<TerminalMenuSession>;
+  readonly devServers: ReadonlyArray<ResolvedDevServer>;
+  readonly onOpenDevServer: (server: ResolvedDevServer) => Promise<void>;
   readonly showActionControls?: boolean;
   readonly showDirectFileControl?: boolean;
   readonly onOpenTerminal: (terminalId?: string | null) => void;
@@ -276,6 +280,29 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
   const model = useThreadGitControlModel(props);
 
   return {
+    devServers:
+      props.devServers.length === 0
+        ? null
+        : {
+            accessibilityLabel: "Open dev server",
+            icon: { name: "globe", type: "sfSymbol" },
+            identifier: "thread-right-dev-servers",
+            label: "Dev servers",
+            menu: {
+              items: props.devServers.map((resolved) => ({
+                description: devServerDescription(resolved),
+                disabled: !resolved.reachable,
+                icon: { name: "globe", type: "sfSymbol" as const },
+                label: devServerLabel(resolved.server),
+                onPress: () => void props.onOpenDevServer(resolved),
+                type: "action" as const,
+              })),
+              title: "Dev servers",
+            },
+            sharesBackground: true,
+            type: "menu",
+            variant: "plain",
+          },
     terminal: {
       accessibilityLabel: "Open terminal",
       disabled: !props.canOpenTerminal,
@@ -374,6 +401,7 @@ export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): Hea
   const actionItems = useThreadGitHeaderActionItems(props);
   return [
     ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
+    ...(actionItems.devServers ? [actionItems.devServers] : []),
     actionItems.git,
     actionItems.files,
     actionItems.terminal,
@@ -383,6 +411,7 @@ export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): Hea
 export function useThreadGitCenterHeaderItems(props: ThreadGitControlsProps): HeaderItems {
   const actionItems = useThreadGitHeaderActionItems(props);
   return [
+    ...(actionItems.devServers ? [actionItems.devServers] : []),
     actionItems.files,
     actionItems.git,
     ...(actionItems.mergeBack ? [actionItems.mergeBack] : []),
@@ -407,6 +436,21 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
           onPress={props.auxiliaryPaneControl.onPress}
           separateBackground
         />
+      ) : null}
+      {showActionControls && props.devServers.length > 0 ? (
+        <Toolbar.Menu accessibilityLabel="Open dev server" icon="globe" separateBackground>
+          {props.devServers.map((resolved) => (
+            <Toolbar.MenuAction
+              key={`${resolved.server.host}:${resolved.server.port}`}
+              icon="globe"
+              disabled={!resolved.reachable}
+              onPress={() => void props.onOpenDevServer(resolved)}
+              subtitle={devServerDescription(resolved)}
+            >
+              <Toolbar.Label>{devServerLabel(resolved.server)}</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ))}
+        </Toolbar.Menu>
       ) : null}
       {showActionControls ? (
         <Toolbar.Menu
