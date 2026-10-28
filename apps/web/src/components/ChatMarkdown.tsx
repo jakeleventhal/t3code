@@ -133,6 +133,7 @@ import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useRenderedAppearance } from "../hooks/useTheme";
 import { useClientSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
+import { remarkStandaloneMediaLinks } from "../markdown-media-links";
 import {
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
@@ -1373,7 +1374,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const classifiedSrc =
       typeof localSrc === "string" ? srcString.replaceAll("\\", "/") : srcString;
     const altText = alt ?? "";
-    const copyMarkdown = markdownImageCopy(altText, srcString, authoredTitle);
+    const copyMarkdown = markdownImageCopy(
+      altText,
+      srcString,
+      authoredTitle,
+      // Checked for presence: rehype-raw may turn the boolean flag into a string.
+      node?.properties?.dataMarkdownLink !== undefined,
+    );
     const { className, style: _style, width, height, ...imageProps } = props;
     const authoredSizeStyle = authoredImageSizeStyle(width, height);
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
@@ -1433,6 +1440,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           standalone={standalone}
           className={className}
           style={authoredSizeStyle}
@@ -1459,6 +1467,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (kind === "video") {
         return (
           <ChatMarkdownVideo
+            title={authoredTitle}
             src={mediaSrc}
             alt={altText}
             copyMarkdown={copyMarkdown}
@@ -1471,6 +1480,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return (
         <ChatMarkdownImage
           key={mediaSrc}
+          title={authoredTitle}
           src={mediaSrc}
           alt={altText}
           copyMarkdown={copyMarkdown}
@@ -1514,6 +1524,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           srcFragment={markdownImageSourceFragment(classifiedSrc)}
           standalone={standalone}
           style={authoredSizeStyle}
@@ -1636,8 +1647,11 @@ function ChatMarkdown({
   const bindMarkdownRef = (node: HTMLElement | null) => {
     markdownRef.current = node;
   };
-  const remarkPlugins = [
+  const { cwd, imageBaseDir, threadRef } = componentState;
+  const embedLocalPaths = threadRef !== undefined;
+  const remarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+    [remarkStandaloneMediaLinks, { embedLocalPaths, workspaceRoot: imageBaseDir ?? cwd }],
     ...extraRemarkPlugins,
     ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
   ];
