@@ -72,7 +72,10 @@ export function NativeWorkspaceNavigatorPane(props: {
             translucent
           >
             {props.header ? (
-              <ScreenStackHeaderLeftView style={{ flexDirection: "row", alignItems: "center" }}>
+              <ScreenStackHeaderLeftView
+                hidesSharedBackground
+                style={{ flexDirection: "row", alignItems: "center" }}
+              >
                 {props.header}
               </ScreenStackHeaderLeftView>
             ) : null}
