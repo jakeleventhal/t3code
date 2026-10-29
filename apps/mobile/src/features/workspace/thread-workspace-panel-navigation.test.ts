@@ -35,12 +35,13 @@ function selectThread(state: State) {
   );
 }
 
-it.each(["ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"])(
+it.each(["Thread", "ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"])(
   "repeated panel switches in %s keep the selected content and one workspace route",
   (name) => {
     let state = selectThread(base.getInitialState(options));
     const selection = {
       ...thread,
+      inspector: { type: "thread", environmentId: "env", threadId: "preview" },
       path: ["README.md"],
       reviewSectionId: "working",
       reviewFilePath: "src/index.ts",
@@ -49,10 +50,12 @@ it.each(["ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"])(
     const workspaceKey = state.routes.at(-1)!.key;
     for (const panel of ["branches", "workspace", "branches", "workspace", "branches"] as const) {
       state = apply(state, threadWorkspacePanelAction(state.routes.at(-1)!, thread, panel, "git"));
-      expect(state.routes.map((route) => route.name)).toEqual(["Home", "Thread", name]);
+      expect(state.routes.map((route) => route.name)).toEqual(
+        name === "Thread" ? ["Home", "Thread"] : ["Home", "Thread", name],
+      );
       expect(state.routes.at(-1)).toMatchObject({
         key: workspaceKey,
-        params: { ...selection, workspacePanel: panel },
+        params: { ...selection, workspacePanel: panel, inspector: undefined },
       });
     }
     state = selectThread(state);

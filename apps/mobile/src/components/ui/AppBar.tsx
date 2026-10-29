@@ -45,6 +45,7 @@ export function AppBar(props: AppBarProps) {
     useAdaptiveWorkspaceLayout();
   const { themeVariables } = useAppearancePreferences();
   const usesNativeMailSearchToolbar = useNativeMailSearchToolbar();
+  const backInSplitView = panes.primarySidebarVisible ? undefined : props.backInSplitView;
   const { search, menus } = props;
   const menu = menus?.[0];
   const compactSearch =
@@ -117,12 +118,12 @@ export function AppBar(props: AppBarProps) {
           ...props.options,
         }}
       />
-      {layout.usesSplitView && (props.sidebar !== false || props.backInSplitView) ? (
+      {layout.usesSplitView && (props.sidebar !== false || backInSplitView) ? (
         <Toolbar placement="left">
-          {props.backInSplitView && (props.backInSplitView.onPress || props.onBack) ? (
+          {backInSplitView && (backInSplitView.onPress || props.onBack) ? (
             <ScreenHeaderButton
-              {...props.backInSplitView}
-              onPress={props.backInSplitView.onPress ?? props.onBack}
+              {...backInSplitView}
+              onPress={backInSplitView.onPress ?? props.onBack}
             />
           ) : null}
           {props.sidebar !== false &&
@@ -140,9 +141,7 @@ export function AppBar(props: AppBarProps) {
                 panes.primarySidebarVisible ? "arrow.up.left.and.arrow.down.right" : "sidebar.left"
               }
               onPress={togglePrimarySidebar}
-              separateBackground={
-                props.backInSplitView ? props.backInSplitView.separateBackground : true
-              }
+              separateBackground={backInSplitView ? backInSplitView.separateBackground : true}
             />
           ) : null}
         </Toolbar>

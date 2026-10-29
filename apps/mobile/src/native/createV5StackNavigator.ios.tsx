@@ -53,6 +53,7 @@ export function modalEnvelopeOptions(options: NativeStackNavigationOptions) {
 /** Keep outgoing screens until UIKit completes its pop, as required by v5. */
 export function V5CardStackView(
   props: V5StackViewProps & {
+    readonly column?: "primary" | "detail";
     readonly onRootVisibilityChange?: (visible: boolean) => void;
     /** The card native Back is popping, which the router still shows until the pop finishes. */
     readonly onNativePopChange?: (key: string | null) => void;
@@ -236,6 +237,7 @@ export function V5CardStackView(
                 <NavigationRouteContext value={descriptor.route}>
                   <V5StackHeader
                     options={options}
+                    column={props.column}
                     canGoBack={
                       attached
                         ? props.state.routes.findIndex((current) => current.key === route.key) > 0

@@ -28,7 +28,7 @@ export function useThreadHeaderOptions(props: {
   const deviceType = useDeviceType();
   const usesDuoHeader = usesNativeWorkspaceColumns && isDuoDevice(deviceType);
   const navigation = useNavigation();
-  const { layout, startNewTask } = useAdaptiveWorkspaceLayout();
+  const { layout, panes, startNewTask } = useAdaptiveWorkspaceLayout();
   const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
@@ -41,7 +41,7 @@ export function useThreadHeaderOptions(props: {
           },
         ]
       : []),
-    ...(props.onReturnToThread
+    ...(props.onReturnToThread && !panes.primarySidebarVisible
       ? [
           withNativeGlassHeaderItem({
             accessibilityLabel: "Back to thread sidebar",
