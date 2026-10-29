@@ -46,6 +46,8 @@ export function Tabs<Value extends string>(props: TabsProps<Value>) {
           {NATIVE_LIQUID_GLASS_SUPPORTED ? (
             <TabGlass
               className="flex-1 rounded-full"
+              glassEffectStyle="regular"
+              isInteractive
               colorScheme={themeAppearance === "dark" ? "dark" : "light"}
             />
           ) : (
