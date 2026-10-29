@@ -44,7 +44,7 @@ export function useThreadHeaderOptions(props: {
     ...(props.onReturnToThread
       ? [
           withNativeGlassHeaderItem({
-            accessibilityLabel: "Return to chat",
+            accessibilityLabel: "Back to thread sidebar",
             icon: { name: "chevron.left", type: "sfSymbol" as const },
             identifier: "thread-left-return",
             onPress: props.onReturnToThread,

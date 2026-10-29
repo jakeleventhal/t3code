@@ -179,10 +179,12 @@ function WorkspaceColumns(
   const nativeMetrics = useNativeLayoutMetrics();
   const viewportWidth = nativeMetrics?.width ?? windowDimensions.width;
   const primaryColumnWidth = layout.listPaneWidth ?? 320;
-  const [inspectorWidthFraction, setInspectorWidthFraction] = useState(0.4);
+  const contentWidth =
+    viewportWidth - (nativeMetrics?.safeArea.left ?? 0) - (nativeMetrics?.safeArea.right ?? 0);
+  const [inspectorWidthFraction, setInspectorWidthFraction] = useState(1 / 3);
   const inspectorWidth = Math.max(
     260,
-    Math.min(viewportWidth * 0.6, viewportWidth * inspectorWidthFraction),
+    Math.min(viewportWidth * 0.6, contentWidth * inspectorWidthFraction),
   );
   const resizeStartWidth = useRef(inspectorWidth);
   const settingsDetailIn = (detail: readonly Route[]) =>
@@ -467,7 +469,7 @@ function WorkspaceColumns(
                             260,
                             Math.min(viewportWidth * 0.6, resizeStartWidth.current + delta),
                           );
-                          setInspectorWidthFraction(width / viewportWidth);
+                          setInspectorWidthFraction(width / contentWidth);
                         }}
                       />
                     </View>

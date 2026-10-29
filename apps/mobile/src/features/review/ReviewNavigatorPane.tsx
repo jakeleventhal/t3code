@@ -29,7 +29,6 @@ export function ReviewNavigatorPane(props: {
         screenId="thread-review-navigator-native"
         title="Changes"
         subtitle={props.subtitle}
-        closeLabel="Close changes"
         insetBelowHeader
       >
         {navigator}

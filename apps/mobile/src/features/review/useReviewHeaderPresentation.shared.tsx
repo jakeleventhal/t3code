@@ -7,6 +7,7 @@ import {
   useThreadGitControlModel,
   threadGitMenuDefinition,
   THREAD_GIT_GLYPH,
+  THREAD_WORKSPACE_GLYPH,
 } from "../threads/threadGitActions";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ReviewSectionItem } from "./reviewModel";
@@ -18,6 +19,7 @@ interface ReviewHeaderPresentation {
   readonly subtitle: string;
   readonly gitMenu: AppBarMenu | null;
   readonly branchAction: AppBarAction | null;
+  readonly workspaceAction: AppBarAction | null;
   readonly menuIcon: AppSymbolName;
   readonly refreshAction?: AppBarMenuItem;
 }
@@ -63,6 +65,13 @@ export function useReviewHeaderPresentation(props: {
     subtitle: props.subtitle,
     menuIcon: "ellipsis",
     gitMenu: gitMenuAvailable ? gitMenu : null,
+    workspaceAction: gitMenuAvailable
+      ? {
+          accessibilityLabel: "Open workspace",
+          icon: THREAD_WORKSPACE_GLYPH,
+          onPress: gitModel.openWorkspace,
+        }
+      : null,
     branchAction: gitMenuAvailable
       ? {
           accessibilityLabel: "Branches & worktrees",

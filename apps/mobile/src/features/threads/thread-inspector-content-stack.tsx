@@ -57,6 +57,7 @@ export function ThreadInspectorContentStack(props: {
     () => new Set([props.mode]),
   );
 
+  const defaultMode = props.renderRoute ? "route" : "files";
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps opened UIKit inspector views mounted and prewarms the alternate inspector after a timer
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Keeps opened inspector views mounted so UIKit keeps their focus and scroll.
@@ -67,12 +68,12 @@ export function ThreadInspectorContentStack(props: {
       return new Set([...current, props.mode]);
     });
 
-    if (props.mode === "route" || props.mode === "preview") {
+    if (props.mode === "preview") {
       return;
     }
 
     // Keep both inspectors alive after opening; detaching the file tree makes UIKit rebuild its expensive focus graph.
-    const alternateMode = props.mode === "files" ? "git" : "files";
+    const alternateMode = props.mode === "git" ? defaultMode : "git";
     const timeout = setTimeout(() => {
       setMountedModes((current) => {
         if (current.has(alternateMode)) {
@@ -83,7 +84,7 @@ export function ThreadInspectorContentStack(props: {
     }, INSPECTOR_PREWARM_DELAY_MS);
 
     return () => clearTimeout(timeout);
-  }, [props.mode]);
+  }, [props.mode, defaultMode]);
 
   return (
     <View className="flex-1">

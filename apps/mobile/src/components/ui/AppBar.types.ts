@@ -9,6 +9,7 @@ export interface AppBarAction {
   readonly onPress: () => void;
   readonly disabled?: boolean;
   readonly loading?: boolean;
+  readonly axisBehavior?: "horizontalOnly";
   readonly selected?: boolean;
   readonly tintColor?: ColorValue;
 }
