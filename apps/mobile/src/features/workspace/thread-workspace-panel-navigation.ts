@@ -1,5 +1,13 @@
 import type { WorkspacePane } from "./workspacePaneMemory";
 
+export const closedThreadWorkspaceFileParams = {
+  path: undefined,
+  line: undefined,
+  reviewSectionId: undefined,
+  reviewFilePath: undefined,
+  reviewWorkingTreeScope: undefined,
+};
+
 export type ThreadWorkspacePanel = "workspace" | "branches";
 
 export function threadWorkspacePanelAction(

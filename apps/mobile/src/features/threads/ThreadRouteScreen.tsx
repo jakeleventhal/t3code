@@ -658,7 +658,9 @@ function ThreadRouteContent(
     );
   };
   const activeInspectorRenderer =
-    props.active === false || props.inspectorPresentation || inspectorMode === null
+    (props.active === false && props.renderInspector === undefined) ||
+    props.inspectorPresentation ||
+    inspectorMode === null
       ? undefined
       : renderInspectorStack;
   useRegisterWorkspaceInspector(activeInspectorRenderer);

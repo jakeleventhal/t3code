@@ -195,6 +195,16 @@ export function NativeStackScreenOptions(props: {
   const latestOptionFunctionsRef = useRef(new Map<string, (...args: unknown[]) => unknown>());
   const optionFunctionWrappersRef = useRef(new Map<string, (...args: unknown[]) => unknown>());
 
+  // Activity preserves refs while hiding a pane, but its native toolbar is cleared on hide.
+  // Reapply even unchanged options when that pane's layout effects become active again.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- invalidates the native header registration when Activity clears its toolbar on hide
+  useLayoutEffect(
+    () => () => {
+      lastAppliedOptionsSignatureRef.current = undefined;
+    },
+    [],
+  );
+
   // Stabilizing records each factory's latest closure, so it runs in the commit
   // phase: a render React discards must not leak its closures into the header.
   // It runs before the tab check so wrappers already installed in an inactive

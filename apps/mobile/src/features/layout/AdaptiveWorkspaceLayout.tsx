@@ -17,6 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
 import {
   Fragment,
+  createContext,
   use,
   useDeferredValue,
   useEffect,
@@ -119,26 +120,33 @@ import { SettingsWorkspaceLayout } from "../settings/SettingsWorkspaceLayout";
 
 export { useAdaptiveWorkspaceLayout };
 
+// Embedded file/diff screens and inspector contents share their workspace owner.
+export const WorkspacePaneOwnerContext = createContext(true);
+
 export function useAdaptiveWorkspacePaneRole(role: WorkspaceAuxiliaryPaneRole) {
+  const ownsPanes = use(WorkspacePaneOwnerContext);
   const { activateAuxiliaryPaneRole } = useAdaptiveWorkspaceLayout();
 
-  useFocusEffect(() => activateAuxiliaryPaneRole(role));
+  useFocusEffect(() => (ownsPanes ? activateAuxiliaryPaneRole(role) : undefined));
 }
 
 /** Capture inspector navigation contexts. Register on focus events because frozen blurred screens may never clean up. */
 export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefined) {
+  const ownsPanes = use(WorkspacePaneOwnerContext);
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
   const navigation = use(NavigationContext);
   const route = use(NavigationRouteContext);
 
   const wrappedRender = (() => {
-    if (render === undefined) {
+    if (!ownsPanes || render === undefined) {
       return undefined;
     }
     return () => (
       <NavigationContext.Provider value={navigation}>
         <NavigationRouteContext.Provider value={route}>
-          <Fragment key={route?.key}>{render()}</Fragment>
+          <WorkspacePaneOwnerContext value={false}>
+            <Fragment key={route?.key}>{render()}</Fragment>
+          </WorkspacePaneOwnerContext>
         </NavigationRouteContext.Provider>
       </NavigationContext.Provider>
     );

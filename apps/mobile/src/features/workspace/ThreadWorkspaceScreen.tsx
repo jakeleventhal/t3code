@@ -1,7 +1,7 @@
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useState, type ReactNode } from "react";
+import { Activity, useState, type ReactNode } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -29,6 +29,7 @@ import { ReviewNavigatorPane } from "../review/ReviewNavigatorPane";
 import {
   useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
+  WorkspacePaneOwnerContext,
 } from "../layout/AdaptiveWorkspaceLayout";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
 import { ThreadFileNavigatorPane } from "../files/thread-file-navigator-pane";
@@ -37,7 +38,10 @@ import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 
 import { ThreadInspectorContentStack } from "../threads/thread-inspector-content-stack";
 import { GitOverviewSheet } from "../threads/git/GitOverviewSheet";
-import type { ThreadWorkspacePanel } from "./thread-workspace-panel-navigation";
+import {
+  closedThreadWorkspaceFileParams,
+  type ThreadWorkspacePanel,
+} from "./thread-workspace-panel-navigation";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
@@ -166,23 +170,30 @@ function ThreadWorkspaceScreen(
       route={{ params: { environmentId, threadId } }}
     />
   );
-  const renderWorkspacePanel = (headerInset: number, renderNavigator: () => ReactNode) => (
+  const renderWorkspacePanel = (
+    headerInset: number,
+    renderNavigator: () => ReactNode,
+    renderFiles: () => ReactNode = () => null,
+  ) => (
     <ThreadInspectorContentStack
-      mode={props.route.params.workspacePanel === "branches" ? "git" : "route"}
+      mode={
+        props.route.params.workspacePanel === "branches"
+          ? "git"
+          : selectedTab === "files"
+            ? "files"
+            : "route"
+      }
       resetKeys={[paneKey, cwd]}
-      renderFiles={() => null}
+      renderFiles={renderFiles}
       renderGit={() => renderBranches(headerInset)}
       renderRoute={renderNavigator}
     />
   );
-  const closeFile = () =>
-    navigation.setParams({
-      path: undefined,
-      line: undefined,
-      reviewSectionId: undefined,
-      reviewFilePath: undefined,
-      reviewWorkingTreeScope: undefined,
-    });
+  const closeFile = () => navigation.setParams(closedThreadWorkspaceFileParams);
+  const returnToThread = () => {
+    closeFile();
+    pinPrimarySidebar();
+  };
   const workspaceHeader = (
     <ReviewHeader
       environmentId={environmentId}
@@ -194,7 +205,7 @@ function ThreadWorkspaceScreen(
       selectedSection={null}
       showBranchControl={false}
       onRefresh={async () => status.refresh()}
-      onReturnToThread={fileInspector.supported ? pinPrimarySidebar : () => navigation.goBack()}
+      onReturnToThread={fileInspector.supported ? returnToThread : () => navigation.goBack()}
     />
   );
   if (selectedTab === null && !fileInspector.supported && !props.threadEntry)
@@ -217,8 +228,8 @@ function ThreadWorkspaceScreen(
         }
       : undefined;
   if (fileInspector.supported || props.threadEntry) {
-    const renderNavigator = (headerInset: number) => {
-      if (selectedTab === "files" && cwd !== null)
+    const renderFiles = (headerInset: number) => {
+      if (cwd !== null)
         return (
           <ThreadFileNavigatorPane
             cwd={cwd}
@@ -232,25 +243,28 @@ function ThreadWorkspaceScreen(
             }
           />
         );
-      if (selectedTab === "git")
-        return (
-          <ReviewNavigatorPane
-            environmentId={environmentId}
-            threadId={threadId}
-            headerInset={headerInset}
-            subtitle={selectedThread?.branch ?? ""}
-            toolbar={tabs}
-            onSectionSelected={openedReviewFile ? closeFile : undefined}
-          />
-        );
       return (
         <View className="flex-1 items-center justify-center">
           <AppActivityIndicator accessibilityLabel="Loading workspace" />
         </View>
       );
     };
+    const renderChanges = (headerInset: number) => (
+      <ReviewNavigatorPane
+        environmentId={environmentId}
+        threadId={threadId}
+        headerInset={headerInset}
+        subtitle={selectedThread?.branch ?? ""}
+        toolbar={tabs}
+        onSectionSelected={openedReviewFile ? closeFile : undefined}
+      />
+    );
     const renderInspector = (headerInset: number) =>
-      renderWorkspacePanel(headerInset, () => renderNavigator(headerInset));
+      renderWorkspacePanel(
+        headerInset,
+        () => renderChanges(headerInset),
+        () => renderFiles(headerInset),
+      );
     const showFile = selectedTab === "files" && props.route.params.path !== undefined;
     const showDiff = selectedTab === "git" && openedReviewFile !== undefined;
     const showThread = !showFile && !showDiff;
@@ -265,28 +279,36 @@ function ThreadWorkspaceScreen(
           <ThreadRouteScreen
             active={showThread}
             route={{ params: props.route.params }}
-            onReturnToThread={pinPrimarySidebar}
+            onReturnToThread={returnToThread}
             renderInspector={renderInspector}
           />
         </View>
-        {showFile && props.route.params.path ? (
-          <ThreadFileScreen
-            route={{ params: { ...props.route.params, path: props.route.params.path } }}
-            workspaceTabs={tabs}
-            renderInspector={(headerInset) => renderInspector(headerInset)}
-            onReturnToThread={pinPrimarySidebar}
-            onCloseFile={closeFile}
-          />
-        ) : null}
-        {showDiff && openedReviewFile ? (
-          <ReviewSheet
-            route={{ params: { environmentId, threadId } }}
-            openedFile={openedReviewFile}
-            onReturnToThread={pinPrimarySidebar}
-            onCloseFile={closeFile}
-            renderInspector={() => renderInspector(Platform.OS === "ios" ? 0 : safeAreaInsets.top)}
-          />
-        ) : null}
+        <WorkspacePaneOwnerContext value={false}>
+          <Activity mode={showFile ? "visible" : "hidden"}>
+            {props.route.params.path ? (
+              <ThreadFileScreen
+                route={{ params: { ...props.route.params, path: props.route.params.path } }}
+                workspaceTabs={tabs}
+                renderInspector={(headerInset) => renderInspector(headerInset)}
+                onReturnToThread={returnToThread}
+                onCloseFile={closeFile}
+              />
+            ) : null}
+          </Activity>
+          <Activity mode={showDiff ? "visible" : "hidden"}>
+            {openedReviewFile ? (
+              <ReviewSheet
+                route={{ params: { environmentId, threadId } }}
+                openedFile={openedReviewFile}
+                onReturnToThread={returnToThread}
+                onCloseFile={closeFile}
+                renderInspector={() =>
+                  renderInspector(Platform.OS === "ios" ? 0 : safeAreaInsets.top)
+                }
+              />
+            ) : null}
+          </Activity>
+        </WorkspacePaneOwnerContext>
       </View>
     );
   }
@@ -296,7 +318,7 @@ function ThreadWorkspaceScreen(
         route={{ params: { ...props.route.params, path: props.route.params.path } }}
         workspaceTabs={tabs}
         renderInspector={renderWorkspacePanel}
-        onReturnToThread={pinPrimarySidebar}
+        onReturnToThread={returnToThread}
         onCloseFile={closeFile}
       />
     ) : (
@@ -305,7 +327,7 @@ function ThreadWorkspaceScreen(
         workspaceTabs={tabs}
         workspaceHeader={workspaceHeader}
         renderInspector={renderWorkspacePanel}
-        onReturnToThread={pinPrimarySidebar}
+        onReturnToThread={returnToThread}
       />
     )
   ) : (
