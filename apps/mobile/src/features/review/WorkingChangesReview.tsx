@@ -576,7 +576,7 @@ function WorkingChangesReader(props: Props & { readonly memoryKey: string }) {
             ? "Committed and pushed"
             : "Committed",
         result.value.pushStatus === "failed"
-          ? "Your commit is saved locally. Check the remote connection and retry pushing from the Git menu."
+          ? "Your commit is saved locally. Check the remote connection and retry from Git actions in Changes."
           : result.value.commitSha.slice(0, 7),
       );
     }

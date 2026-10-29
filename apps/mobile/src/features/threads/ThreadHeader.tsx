@@ -6,8 +6,7 @@ import type { AppBarAction } from "../../components/ui/AppBar.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
-import { useThreadGitMenuDefinition } from "./ThreadGitControls";
-import { THREAD_WORKSPACE_GLYPH } from "./threadGitActions";
+import { THREAD_GIT_GLYPH, THREAD_WORKSPACE_GLYPH } from "./threadGitActions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
 import { readWorkspacePane, workspaceThreadMemoryKey } from "../workspace/workspacePaneMemory";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -28,7 +27,6 @@ export function ThreadHeader(
   const navigation = useNavigation();
   const { devServers, onOpenDevServer, onOpenTerminal, onMergeBack } = props.gitControls;
   const native = useThreadHeaderOptions(props);
-  const gitMenu = useThreadGitMenuDefinition(props.gitControls);
   const androidHeaderActions = useMemo<ReadonlyArray<AppBarAction>>(() => {
     const actions: AppBarAction[] = [];
     const environmentId = String(props.gitControls.environmentId);
@@ -41,6 +39,12 @@ export function ThreadHeader(
       });
     }
     if (props.hasThreadCwd) {
+      actions.push({
+        accessibilityLabel: "Branches & worktrees",
+        icon: THREAD_GIT_GLYPH,
+        onPress: props.onOpenGitInspector,
+        disabled: props.gitControls.hasThread === false,
+      });
       actions.push({
         accessibilityLabel: "Open workspace",
         icon: THREAD_WORKSPACE_GLYPH,
@@ -80,6 +84,8 @@ export function ThreadHeader(
     onOpenTerminal,
     onMergeBack,
     props.onReturnToThread,
+    props.onOpenGitInspector,
+    props.gitControls.hasThread,
     props.hasThreadCwd,
     props.hasWorkspaceRoot,
     props.gitControls.canOpenTerminal,
@@ -112,7 +118,6 @@ export function ThreadHeader(
         }
         onBack={layout.usesSplitView ? undefined : goBack}
         actions={androidHeaderActions}
-        menus={gitMenu ? [gitMenu] : undefined}
         hideBottomBorder
         compact={composerKeyboardActive}
       />

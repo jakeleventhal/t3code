@@ -72,12 +72,18 @@ import {
 } from "../workspace/workspacePaneMemory";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { ThreadGitActionsMenu } from "../threads/threadGitActions";
+
+function ReviewGitActions(props: Parameters<typeof useReviewHeaderPresentation>[0]) {
+  const { gitMenu } = useReviewHeaderPresentation(props);
+  return gitMenu ? <ThreadGitActionsMenu menu={gitMenu} /> : null;
+}
 
 export function ReviewHeader(
   props: Parameters<typeof useReviewHeaderPresentation>[0] & {
     readonly iconColor?: string;
     readonly onReturnToThread: () => void;
-    readonly showGitMenu?: boolean;
+    readonly showBranchControl?: boolean;
     /** Shows the button that hides and reveals the Changes navigator beside a split-view diff. */
     readonly navigatorToggle?: boolean;
   },
@@ -93,32 +99,34 @@ export function ReviewHeader(
       hideBottomBorder
       options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
-      actions={
-        props.navigatorToggle
+      actions={[
+        ...(presentation.branchAction && props.showBranchControl !== false
+          ? [presentation.branchAction]
+          : []),
+        ...(props.navigatorToggle
           ? [
               {
                 accessibilityLabel: panes.auxiliaryPaneVisible
                   ? "Hide changes navigator"
                   : "Show changes navigator",
-                icon: "sidebar.right",
+                icon: "sidebar.right" as const,
                 selected: panes.auxiliaryPaneVisible,
                 onPress: toggleAuxiliaryPane,
               },
             ]
-          : undefined
-      }
-      menus={[
-        ...(presentation.gitMenu && props.showGitMenu !== false ? [presentation.gitMenu] : []),
-        ...(presentation.refreshAction
+          : []),
+      ]}
+      menus={
+        presentation.refreshAction
           ? [
               {
-                title: "Git actions",
+                title: "Diff options",
                 icon: "ellipsis" as const,
                 items: [presentation.refreshAction],
               },
             ]
-          : []),
-      ]}
+          : undefined
+      }
     />
   );
 }
@@ -514,6 +522,18 @@ export function ReviewSheet(
             {/* A split-view diff leaves the comparison to the navigator beside it. */}
             {showSectionToolbar && !props.renderInspector ? (
               <ReviewComparisonPicker
+                trailing={
+                  <ReviewGitActions
+                    environmentId={environmentId}
+                    threadId={threadId}
+                    title=""
+                    subtitle=""
+                    androidSubtitle=""
+                    selectedThreadCwd={selectedThreadCwd}
+                    selectedSection={selectedSection}
+                    onRefresh={handlePullToRefresh}
+                  />
+                }
                 sections={reviewSections}
                 selected={selectedSection}
                 onSelect={(sectionId) => {

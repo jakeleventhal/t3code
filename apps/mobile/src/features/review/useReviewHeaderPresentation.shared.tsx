@@ -3,16 +3,21 @@ import { useSelectedThreadGitActions } from "../../state/use-selected-thread-git
 import { useSelectedThreadGitState } from "../../state/use-selected-thread-git-state";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { vcsEnvironment } from "../../state/vcs";
-import { useThreadGitMenuDefinition } from "../threads/threadGitActions";
+import {
+  useThreadGitControlModel,
+  threadGitMenuDefinition,
+  THREAD_GIT_GLYPH,
+} from "../threads/threadGitActions";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ReviewSectionItem } from "./reviewModel";
-import type { AppBarMenuItem, AppBarMenu } from "../../components/ui/AppBar.types";
+import type { AppBarMenuItem, AppBarMenu, AppBarAction } from "../../components/ui/AppBar.types";
 import type { AppSymbolName } from "../../components/ui/AppSymbol";
 
 interface ReviewHeaderPresentation {
   readonly title: string;
   readonly subtitle: string;
   readonly gitMenu: AppBarMenu | null;
+  readonly branchAction: AppBarAction | null;
   readonly menuIcon: AppSymbolName;
   readonly refreshAction?: AppBarMenuItem;
 }
@@ -42,7 +47,7 @@ export function useReviewHeaderPresentation(props: {
   // selected thread (it always does when reached from the thread's toolbar).
   const gitMenuAvailable =
     selectedThread !== null && String(selectedThread.id) === String(props.threadId);
-  const gitMenu = useThreadGitMenuDefinition({
+  const gitProps = {
     environmentId: props.environmentId,
     threadId: props.threadId,
     currentBranch: selectedThread?.branch ?? null,
@@ -50,11 +55,20 @@ export function useReviewHeaderPresentation(props: {
     gitOperationLabel: gitState.gitOperationLabel,
     onPull: gitActions.onPullSelectedThreadBranch,
     onRunAction: gitActions.onRunSelectedThreadGitAction,
-  });
+  };
+  const gitModel = useThreadGitControlModel(gitProps);
+  const gitMenu = threadGitMenuDefinition(gitProps, gitModel);
   return {
     title: props.title,
     subtitle: props.subtitle,
     menuIcon: "ellipsis",
     gitMenu: gitMenuAvailable ? gitMenu : null,
+    branchAction: gitMenuAvailable
+      ? {
+          accessibilityLabel: "Branches & worktrees",
+          icon: THREAD_GIT_GLYPH,
+          onPress: gitModel.openGitInspector,
+        }
+      : null,
   };
 }

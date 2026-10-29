@@ -156,7 +156,7 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       androidSubtitle=""
       selectedThreadCwd={cwd}
       selectedSection={null}
-      showGitMenu={false}
+      showBranchControl={false}
       onRefresh={async () => status.refresh()}
       onReturnToThread={() => navigation.goBack()}
     />

@@ -1,14 +1,6 @@
-import * as Dialog from "../../../components/ui/Dialog";
 import { SheetHeader } from "../../../components/ui/SheetHeader";
 import { useOpenPullRequest } from "../../../native/useOpenPullRequest";
-import {
-  type GitActionRequestInput,
-  buildMenuItems,
-  getGitActionDisabledReason,
-  requiresDefaultBranchConfirmation,
-} from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { SymbolView } from "../../../components/ui/AppSymbol";
 import { useEffect, useState } from "react";
@@ -38,7 +30,7 @@ import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
-import { menuItemIconName, statusSummary } from "./gitSheetComponents";
+import { statusSummary } from "./gitSheetComponents";
 import {
   LinkedPullRequestRow,
   linkedPullRequestKey,
@@ -91,7 +83,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   });
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
-  const { canWriteSourceControl, canChangeThreadBranch } = gitActions;
+  const { canChangeThreadBranch } = gitActions;
 
   const gitStatus = useEnvironmentQuery(
     selectedThread !== null && selectedThreadCwd !== null
@@ -108,118 +100,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const gitOperationLabel = gitState.gitOperationLabel;
   const busy = gitOperationLabel !== null;
   const isRepo = gitStatus.data?.isRepo ?? true;
-  const hasPrimaryRemote = gitStatus.data?.hasPrimaryRemote ?? false;
-  const isDefaultRef = gitStatus.data?.isDefaultRef ?? false;
-
-  const menuItems = isRepo ? buildMenuItems(gitStatus.data, busy, hasPrimaryRemote) : [];
-
-  const sheetMenuItems = menuItems.map((item) => ({
-    item: {
-      ...item,
-      disabled: item.disabled || (!canWriteSourceControl && item.kind !== "open_pr"),
-    },
-    disabledReason:
-      !canWriteSourceControl && item.kind !== "open_pr"
-        ? "This connection cannot change source control."
-        : getGitActionDisabledReason({
-            item,
-            gitStatus: gitStatus.data,
-            isBusy: busy,
-            hasOriginRemote: hasPrimaryRemote,
-          }),
-  }));
-
-  const { shortLabel, singular } = sourceControlClients.get(
-    gitStatus.data?.sourceControlProvider?.kind,
-  ).changeRequest;
-
-  const openExistingPr = async () => {
-    const prUrl = gitStatus.data?.pr?.state === "open" ? gitStatus.data.pr.url : null;
-    if (!prUrl) {
-      Dialog.alert(`No open ${shortLabel}`, `This branch does not have an open ${singular}.`);
-      return;
-    }
-    if (!(await openPullRequest(prUrl))) {
-      Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
-    }
-  };
-
-  const runActionWithPrompt = async (input: GitActionRequestInput) => {
-    if (!canWriteSourceControl) return;
-    const confirmableAction =
-      input.action === "push" ||
-      input.action === "create_pr" ||
-      input.action === "commit_push" ||
-      input.action === "commit_push_pr"
-        ? input.action
-        : null;
-    const branchName = gitStatus.data?.refName;
-    if (
-      branchName &&
-      confirmableAction &&
-      !input.featureBranch &&
-      requiresDefaultBranchConfirmation(input.action, isDefaultRef)
-    ) {
-      navigation.navigate("GitConfirm", {
-        environmentId: String(environmentId),
-        threadId: String(threadId),
-        confirmAction: confirmableAction,
-        branchName,
-        includesCommit: String(input.action === "commit_push" || input.action === "commit_push_pr"),
-      });
-      return;
-    }
-
-    if (!isInspector) {
-      navigation.goBack();
-    }
-    await gitActions.onRunSelectedThreadGitAction(input);
-  };
-
-  const onPressMenuItem = async (item: (typeof menuItems)[number]) => {
-    if (item.disabled) return;
-    if (item.kind === "open_pr") {
-      await openExistingPr();
-      return;
-    }
-    if (!canWriteSourceControl) return;
-    if (item.dialogAction === "commit") {
-      navigation.navigate("GitCommit", {
-        environmentId: String(environmentId),
-        threadId: String(threadId),
-      });
-      return;
-    }
-    if (item.dialogAction === "push") {
-      await runActionWithPrompt({ action: "push" });
-      return;
-    }
-    if (item.dialogAction === "create_pr") {
-      await runActionWithPrompt({ action: "create_pr" });
-    }
-  };
-
-  const rowStatusDetail = (item: (typeof menuItems)[number]): string | undefined => {
-    const status = gitStatus.data;
-    if (status == null) {
-      return undefined;
-    }
-    if (item.dialogAction === "commit" && status.hasWorkingTreeChanges) {
-      const fileCount = status.workingTree?.files.length ?? 0;
-      return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
-    }
-    if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
-      const ahead = status.aheadCount ?? 0;
-      return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
-    }
-    if (item.kind === "open_pr" && status.pr?.number != null) {
-      return `${shortLabel} #${status.pr.number} ${status.pr.state ?? "open"}`;
-    }
-    return undefined;
-  };
-
-  const behindCount = gitStatus.data?.behindCount ?? 0;
-
   // Background refreshes also report pending; using that query flag would stick the RefreshControl spinner.
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -248,29 +128,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       }
     >
       <ListSection>
-        {sheetMenuItems.map(({ item, disabledReason }) => (
-          <ListRow
-            key={`${item.id}-${item.label}`}
-            icon={menuItemIconName(item.icon)}
-            label={item.label}
-            description={disabledReason ?? rowStatusDetail(item)}
-            disabled={item.disabled}
-            onPress={() => void onPressMenuItem(item)}
-          />
-        ))}
-        {behindCount > 0 ? (
-          <ListRow
-            icon="arrow.down.circle"
-            label="Pull latest"
-            description={
-              canWriteSourceControl
-                ? `${behindCount} commit${behindCount === 1 ? "" : "s"} behind upstream`
-                : "This connection cannot change source control."
-            }
-            disabled={!canWriteSourceControl || busy || !isRepo}
-            onPress={() => void gitActions.onPullSelectedThreadBranch()}
-          />
-        ) : null}
         <ListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label="Branches & worktrees"
