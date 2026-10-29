@@ -19,6 +19,8 @@ interface AdaptiveWorkspaceContextValue {
   readonly panes: WorkspacePaneLayout;
   readonly fileInspector: FileInspectorPaneLayout;
   readonly primarySidebarSearchQuery: string;
+  readonly primarySidebarDrawerVisible: boolean;
+  readonly setPrimarySidebarDrawerVisible: (visible: boolean) => void;
   readonly startNewTask: () => void;
   /** Use `useSelectWorkspaceDetail`, which also works outside the layout. */
   readonly selectDetail?: (detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) => void;
@@ -69,6 +71,8 @@ export const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextVa
   panes: compactPanes,
   fileInspector: compactFileInspector,
   primarySidebarSearchQuery: "",
+  primarySidebarDrawerVisible: false,
+  setPrimarySidebarDrawerVisible: () => undefined,
   startNewTask: () => undefined,
   activateAuxiliaryPaneRole: () => () => undefined,
   registerWorkspaceInspector: () => () => undefined,

@@ -210,6 +210,7 @@ function AdaptiveWorkspaceLayoutContent(
   useRememberThreadWorkspaceLocation();
   const activeRoleOwner = useRef<symbol | null>(null);
   const [primarySidebarPreferredVisible, setPrimarySidebarPreferredVisible] = useState(true);
+  const [primarySidebarDrawerVisible, setPrimarySidebarDrawerVisible] = useState(false);
   const [supplementaryPanePreferredVisible, setSupplementaryPanePreferredVisible] = useState(true);
   const [supplementaryPanePreferredWidth, setSupplementaryPanePreferredWidth] = useState<
     number | null
@@ -453,14 +454,15 @@ function AdaptiveWorkspaceLayoutContent(
     }
   };
   const showThreadWithSidebar = () => {
+    setPrimarySidebarDrawerVisible(false);
     setFileInspectorPreferredVisible(false);
     setPrimarySidebarVisible(true);
     if (activeThread !== null)
       navigation.dispatch(selectWorkspaceDetail({ name: "Thread", params: activeThread }));
   };
   const togglePrimarySidebar = () => {
-    if (auxiliaryPaneRole === "inspector" && fileInspectorPreferredVisible) {
-      showThreadWithSidebar();
+    if (nativeWorkspace && layout.usesSplitView && !panes.primarySidebarVisible) {
+      setPrimarySidebarDrawerVisible((current) => !current);
       return;
     }
     if (primarySidebarPinned) {
@@ -493,6 +495,7 @@ function AdaptiveWorkspaceLayoutContent(
   const sidebarCommands = primarySidebarPinned ? [] : (["toggleSidebar"] as const);
   useHardwareKeyboardCommand(sidebarCommands, handleToggleSidebarCommand);
   const showAuxiliaryPane = (role: WorkspaceAuxiliaryPaneRole) => {
+    setPrimarySidebarDrawerVisible(false);
     if (role === "inspector") {
       setFocusedAuxiliaryPaneRole("inspector");
       setFileInspectorPreferredVisible(true);
@@ -538,6 +541,7 @@ function AdaptiveWorkspaceLayoutContent(
     tab: WorkspaceTab | "settings",
     options?: { readonly columns?: boolean },
   ) => {
+    setPrimarySidebarDrawerVisible(false);
     const state = rootStackState(navigation);
     if (!state) return;
     const { workspace, overlays } = workspaceRoutesOf(state.routes.slice(0, state.index + 1));
@@ -563,6 +567,7 @@ function AdaptiveWorkspaceLayoutContent(
   function handleSelectDetail(detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) {
     threadSelectionDeferral.run(() => {
       if (Platform.OS === "android") Keyboard.dismiss();
+      setPrimarySidebarDrawerVisible(false);
       setFileInspectorPreferredVisible(false);
       if (nativeWorkspace && layout.usesSplitView) setPrimarySidebarVisible(true);
       if (layout.primarySidebarOverlaysContent) setPrimarySidebarVisible(false);
@@ -599,6 +604,7 @@ function AdaptiveWorkspaceLayoutContent(
     Platform.OS === "android" && androidSettingsOpen && !layout.usesSplitView;
   // Reads the open page when pressed, so the layout context doesn't change on every navigation.
   const handleStartNewTask = () => {
+    setPrimarySidebarDrawerVisible(false);
     const state = rootStackState(navigation);
     const currentRoute = workspaceRoutesOf(
       state?.routes.slice(0, state.index + 1) ?? [],
@@ -864,6 +870,8 @@ function AdaptiveWorkspaceLayoutContent(
     panes,
     fileInspector,
     primarySidebarSearchQuery,
+    primarySidebarDrawerVisible,
+    setPrimarySidebarDrawerVisible,
     startNewTask: handleStartNewTask,
     selectDetail: handleSelectDetail,
     activateAuxiliaryPaneRole,

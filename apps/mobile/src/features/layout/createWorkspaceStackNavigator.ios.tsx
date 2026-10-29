@@ -173,6 +173,8 @@ function WorkspaceColumns(
     startNewTask,
     openWorkspaceTab,
     sidebarByOrientation,
+    primarySidebarDrawerVisible,
+    setPrimarySidebarDrawerVisible,
   } = useAdaptiveWorkspaceLayout();
   const deviceType = useDeviceType();
   const windowDimensions = useWindowDimensions();
@@ -304,11 +306,16 @@ function WorkspaceColumns(
       ref={hostRef}
       testID="adaptive-workspace-layout"
       preferredSplitBehavior={
-        !sidebarByOrientation && layout.primarySidebarOverlaysContent ? "overlay" : "tile"
+        primarySidebarDrawerVisible ||
+        (!sidebarByOrientation && layout.primarySidebarOverlaysContent)
+          ? "overlay"
+          : "tile"
       }
       portraitPreferredSplitBehavior={sidebarByOrientation ? "overlay" : undefined}
       portraitPreferredDisplayMode={
-        sidebarByOrientation ? sidebarDisplayMode(sidebarByOrientation.portrait, true) : undefined
+        sidebarByOrientation
+          ? sidebarDisplayMode(sidebarByOrientation.portrait, true, primarySidebarDrawerVisible)
+          : undefined
       }
       primaryBackgroundStyle={deviceType === "pad" ? "none" : "default"}
       topColumnForCollapsing={compactColumn}
@@ -334,7 +341,7 @@ function WorkspaceColumns(
       }}
       preferredDisplayMode={
         sidebarByOrientation
-          ? sidebarDisplayMode(sidebarByOrientation.landscape, false)
+          ? sidebarDisplayMode(sidebarByOrientation.landscape, false, primarySidebarDrawerVisible)
           : sidebarDisplayMode(
               // UIKit applies the mode as a collapsed split expands, before the new width reaches
               // JS, so a collapsed split already carries the sidebar the expanded one will show.
@@ -343,18 +350,24 @@ function WorkspaceColumns(
                 : panes.primarySidebarWhenExpanded) ||
                 (!layout.usesSplitView && !activeDetailKey),
               layout.primarySidebarOverlaysContent,
+              primarySidebarDrawerVisible,
             )
       }
       onDisplayModeWillChange={({ nativeEvent }) => {
-        if (!layout.primarySidebarOverlaysContent) return;
+        if (!layout.primarySidebarOverlaysContent) {
+          setPrimarySidebarDrawerVisible(nativeEvent.nextDisplayMode === "oneOverSecondary");
+          return;
+        }
+        if (nativeEvent.nextDisplayMode !== "oneOverSecondary")
+          setPrimarySidebarDrawerVisible(false);
         if (nativeEvent.nextDisplayMode === "oneOverSecondary") setPrimarySidebarVisible(true);
         else if (nativeEvent.nextDisplayMode === "secondaryOnly") setPrimarySidebarVisible(false);
       }}
       displayModeButtonVisibility="never"
       presentsWithGesture
-      showInspector={inspector.visible}
+      showInspector={inspector.visible && !primarySidebarDrawerVisible}
       onInspectorHide={() => {
-        if (inspector.visible) toggleAuxiliaryPane();
+        if (inspector.visible && !primarySidebarDrawerVisible) toggleAuxiliaryPane();
       }}
       columnMetrics={{
         minimumPrimaryColumnWidth: layout.primarySidebarOverlaysContent ? primaryColumnWidth : 280,
@@ -667,7 +680,8 @@ export function createWorkspaceStackNavigator<
   return createNavigatorFactory(WorkspaceStackNavigator)(config);
 }
 
-function sidebarDisplayMode(visible: boolean, overlay: boolean) {
+function sidebarDisplayMode(visible: boolean, overlay: boolean, drawer = false) {
+  if (drawer) return "oneOverSecondary";
   if (!visible) return "secondaryOnly";
   return overlay ? "oneOverSecondary" : "oneBesideSecondary";
 }
