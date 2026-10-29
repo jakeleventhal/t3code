@@ -28,6 +28,8 @@ import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { useEnvironmentScope } from "../../state/session";
 import { readWorkspacePane, workspaceThreadMemoryKey } from "../workspace/workspacePaneMemory";
 
+import { useThreadWorkspacePanelNavigation } from "../workspace/useThreadWorkspacePanelNavigation";
+
 export const THREAD_GIT_GLYPH = "arrow.triangle.branch";
 export const THREAD_WORKSPACE_GLYPH = "point.topleft.down.curvedto.point.bottomright.up";
 
@@ -105,6 +107,10 @@ export function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const navigation = useNavigation();
   const openPullRequest = useOpenPullRequest();
   const environmentId = props.environmentId;
+  const { supported: splitWorkspaceSupported, openPanel } = useThreadWorkspacePanelNavigation(
+    String(environmentId),
+    String(props.threadId),
+  );
   const canWriteSourceControl = useEnvironmentScope(
     environmentId ? EnvironmentId.make(String(environmentId)) : null,
     AuthSourceControlWriteScope,
@@ -248,6 +254,10 @@ export function useThreadGitControlModel(props: ThreadGitMenuProps) {
   };
 
   const openWorkspace = () => {
+    if (splitWorkspaceSupported) {
+      openPanel("workspace");
+      return;
+    }
     const pane = readWorkspacePane(
       workspaceThreadMemoryKey(String(environmentId), String(threadId)),
     );
@@ -256,6 +266,10 @@ export function useThreadGitControlModel(props: ThreadGitMenuProps) {
   };
 
   const openGitInspector = () => {
+    if (splitWorkspaceSupported) {
+      openPanel("branches");
+      return;
+    }
     if (props.onOpenGitInspector) {
       props.onOpenGitInspector();
       return;

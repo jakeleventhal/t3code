@@ -95,7 +95,6 @@ export function ThreadFileNavigatorPane(props: {
         screenId="thread-file-navigator-native"
         title="Files"
         subtitle={props.projectName}
-        closeLabel="Close files"
         searchBar={
           <ScreenStackHeaderSearchBarView>
             <SearchBar

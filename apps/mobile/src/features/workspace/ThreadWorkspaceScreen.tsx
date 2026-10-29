@@ -1,7 +1,7 @@
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -32,10 +32,15 @@ import {
 } from "../layout/AdaptiveWorkspaceLayout";
 import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 
+import { ThreadInspectorContentStack } from "../threads/thread-inspector-content-stack";
+import { GitOverviewSheet } from "../threads/git/GitOverviewSheet";
+import type { ThreadWorkspacePanel } from "./thread-workspace-panel-navigation";
+
 type Props = StaticScreenProps<{
   readonly environmentId: string;
   readonly threadId: string;
   readonly path?: string[];
+  readonly workspacePanel?: ThreadWorkspacePanel;
   readonly line?: string;
   readonly cwd?: string;
   readonly projectName?: string;
@@ -47,7 +52,7 @@ type Props = StaticScreenProps<{
 function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: WorkspacePane }) {
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
-  const { fileInspector } = useAdaptiveWorkspaceLayout();
+  const { fileInspector, showThreadWithSidebar } = useAdaptiveWorkspaceLayout();
   const safeAreaInsets = useSafeAreaInsets();
   const paneKey = workspaceThreadMemoryKey(
     props.route.params.environmentId,
@@ -147,6 +152,30 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       />
     </View>
   );
+  const renderBranches = (headerInset: number) => (
+    <GitOverviewSheet
+      headerInset={headerInset}
+      presentation="inspector"
+      route={{ params: { environmentId, threadId } }}
+    />
+  );
+  const renderWorkspacePanel = (headerInset: number, renderNavigator: () => ReactNode) => (
+    <ThreadInspectorContentStack
+      mode={props.route.params.workspacePanel === "branches" ? "git" : "route"}
+      resetKeys={[paneKey, cwd]}
+      renderFiles={() => null}
+      renderGit={() => renderBranches(headerInset)}
+      renderRoute={renderNavigator}
+    />
+  );
+  const closeFile = () =>
+    navigation.setParams({
+      path: undefined,
+      line: undefined,
+      reviewSectionId: undefined,
+      reviewFilePath: undefined,
+      reviewWorkingTreeScope: undefined,
+    });
   const workspaceHeader = (
     <ReviewHeader
       environmentId={environmentId}
@@ -158,7 +187,7 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       selectedSection={null}
       showBranchControl={false}
       onRefresh={async () => status.refresh()}
-      onReturnToThread={() => navigation.goBack()}
+      onReturnToThread={fileInspector.supported ? showThreadWithSidebar : () => navigation.goBack()}
     />
   );
   if (selectedTab === null)
@@ -210,16 +239,24 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       return (
         <ThreadRouteScreen
           route={{ params: threadParams }}
-          onReturnToThread={() => navigation.goBack()}
-          renderInspector={renderChangesNavigator}
+          onReturnToThread={
+            fileInspector.supported ? showThreadWithSidebar : () => navigation.goBack()
+          }
+          renderInspector={(headerInset) =>
+            renderWorkspacePanel(headerInset, () => renderChangesNavigator(headerInset))
+          }
         />
       );
     return (
       <ReviewSheet
         route={{ params: { environmentId, threadId } }}
         openedFile={openedReviewFile}
+        onReturnToThread={showThreadWithSidebar}
+        onCloseFile={closeFile}
         renderInspector={() =>
-          renderChangesNavigator(Platform.OS === "ios" ? 0 : safeAreaInsets.top)
+          renderWorkspacePanel(Platform.OS === "ios" ? 0 : safeAreaInsets.top, () =>
+            renderChangesNavigator(Platform.OS === "ios" ? 0 : safeAreaInsets.top),
+          )
         }
       />
     );
@@ -229,12 +266,17 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       <ThreadFileScreen
         route={{ params: { ...props.route.params, path: props.route.params.path } }}
         workspaceTabs={tabs}
+        renderInspector={renderWorkspacePanel}
+        onReturnToThread={showThreadWithSidebar}
+        onCloseFile={closeFile}
       />
     ) : (
       <ThreadFilesTreeScreen
         route={props.route}
         workspaceTabs={tabs}
         workspaceHeader={workspaceHeader}
+        renderInspector={renderWorkspacePanel}
+        onReturnToThread={showThreadWithSidebar}
       />
     )
   ) : (

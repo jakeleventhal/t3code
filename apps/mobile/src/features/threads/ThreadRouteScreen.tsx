@@ -335,8 +335,14 @@ function ThreadRouteContent(
 ) {
   const { themeVariables } = useAppearancePreferences();
   const headerColor = themeVariables["--color-header"];
-  const { fileInspector, layout, panes, showAuxiliaryPane, toggleAuxiliaryPane } =
-    useAdaptiveWorkspaceLayout();
+  const {
+    fileInspector,
+    layout,
+    panes,
+    showAuxiliaryPane,
+    toggleAuxiliaryPane,
+    showThreadWithSidebar,
+  } = useAdaptiveWorkspaceLayout();
   const { connectionState } = useRemoteConnectionStatus();
   const { onReconnectEnvironment } = useRemoteConnections();
   const {
@@ -634,8 +640,10 @@ function ThreadRouteContent(
         }}
       />
     ) : null;
-  const renderInspectorStack = () =>
-    inspectorMode === null ? null : (
+  const renderInspectorStack = () => {
+    if (inspectorMode === "route") return renderRouteInspector();
+    if (inspectorMode === null) return null;
+    return (
       <ThreadInspectorContentStack
         renderPreview={renderPreviewInspector}
         renderFiles={renderFilesInspector}
@@ -645,6 +653,7 @@ function ThreadRouteContent(
         renderRoute={props.renderInspector ? renderRouteInspector : undefined}
       />
     );
+  };
   const activeInspectorRenderer =
     props.inspectorPresentation || inspectorMode === null ? undefined : renderInspectorStack;
   useRegisterWorkspaceInspector(activeInspectorRenderer);
@@ -998,7 +1007,12 @@ function ThreadRouteContent(
                 onToggleInspector={handleToggleInspector}
                 onOpenGitInspector={handleOpenGitInspector}
                 onOpenFilesInspector={handleOpenFilesInspector}
-                onReturnToThread={props.onReturnToThread}
+                onReturnToThread={
+                  props.onReturnToThread ??
+                  (inspectorMode !== null && panes.auxiliaryPaneVisible
+                    ? showThreadWithSidebar
+                    : undefined)
+                }
               />
             )
           }

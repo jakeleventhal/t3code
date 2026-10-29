@@ -15,7 +15,16 @@ import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3too
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
 import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
-import { use, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  use,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Keyboard, Platform, useWindowDimensions, View } from "react-native";
 import { KeyboardController, useKeyboardState } from "react-native-keyboard-controller";
 import Animated, {
@@ -128,7 +137,9 @@ export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefi
     }
     return () => (
       <NavigationContext.Provider value={navigation}>
-        <NavigationRouteContext.Provider value={route}>{render()}</NavigationRouteContext.Provider>
+        <NavigationRouteContext.Provider value={route}>
+          <Fragment key={route?.key}>{render()}</Fragment>
+        </NavigationRouteContext.Provider>
       </NavigationContext.Provider>
     );
   })();
@@ -137,7 +148,7 @@ export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefi
   // pane always shows this render's content, and its cleanup deactivates on
   // blur and unmount.
   useFocusEffect(() =>
-    wrappedRender === undefined ? undefined : registerWorkspaceInspector(wrappedRender),
+    wrappedRender === undefined ? undefined : registerWorkspaceInspector(wrappedRender, route?.key),
   );
 }
 
@@ -396,13 +407,16 @@ function AdaptiveWorkspaceLayoutContent(
     setRevealedInspectors(next);
     setFocusedAuxiliaryPaneRole("inspector");
     setFileInspectorPreferredVisible(true);
+    setPrimarySidebarPreferredVisible(false);
   }
   const [workspaceInspector, setWorkspaceInspector] = useState<{
     readonly render: () => ReactNode;
     readonly active: boolean;
   } | null>(null);
   const workspaceInspectorOwner = useRef<symbol | null>(null);
-  const registerWorkspaceInspector = (render: () => ReactNode) => {
+  const registerWorkspaceInspector = (render: () => ReactNode, routeKey: string | undefined) => {
+    // Retained native screens can render after dismissal; their inspector must not replace the focused route's.
+    if (routeKey !== props.workspaceRouteKey) return () => {};
     const owner = Symbol("workspace-inspector");
     workspaceInspectorOwner.current = owner;
     setWorkspaceInspector({ render, active: true });
@@ -438,7 +452,17 @@ function AdaptiveWorkspaceLayoutContent(
       setPrimarySidebarPreferredVisible(visible);
     }
   };
+  const showThreadWithSidebar = () => {
+    setFileInspectorPreferredVisible(false);
+    setPrimarySidebarVisible(true);
+    if (activeThread !== null)
+      navigation.dispatch(selectWorkspaceDetail({ name: "Thread", params: activeThread }));
+  };
   const togglePrimarySidebar = () => {
+    if (auxiliaryPaneRole === "inspector" && fileInspectorPreferredVisible) {
+      showThreadWithSidebar();
+      return;
+    }
     if (primarySidebarPinned) {
       return;
     }
@@ -472,6 +496,7 @@ function AdaptiveWorkspaceLayoutContent(
     if (role === "inspector") {
       setFocusedAuxiliaryPaneRole("inspector");
       setFileInspectorPreferredVisible(true);
+      setPrimarySidebarVisible(false);
       return;
     }
     setFocusedAuxiliaryPaneRole("supplementary");
@@ -539,6 +564,7 @@ function AdaptiveWorkspaceLayoutContent(
     threadSelectionDeferral.run(() => {
       if (Platform.OS === "android") Keyboard.dismiss();
       setFileInspectorPreferredVisible(false);
+      if (nativeWorkspace && layout.usesSplitView) setPrimarySidebarVisible(true);
       if (layout.primarySidebarOverlaysContent) setPrimarySidebarVisible(false);
       workspace?.dispatch({
         type: "select",
@@ -547,7 +573,11 @@ function AdaptiveWorkspaceLayoutContent(
       startOpeningDetail(detail);
       const state = rootStackState(navigation);
       const remembered =
-        detail.name === "Thread" && !sheet && detail.params?.environmentId && detail.params.threadId
+        !nativeWorkspace &&
+        detail.name === "Thread" &&
+        !sheet &&
+        detail.params?.environmentId &&
+        detail.params.threadId
           ? rememberedThreadWorkspaceNavigationState(
               state,
               {
@@ -842,6 +872,7 @@ function AdaptiveWorkspaceLayoutContent(
     showAuxiliaryPane,
     toggleAuxiliaryPane,
     togglePrimarySidebar,
+    showThreadWithSidebar,
     setPrimarySidebarVisible,
     openWorkspaceTab,
     setAuxiliaryPaneWidth,

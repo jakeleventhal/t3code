@@ -42,7 +42,6 @@ import { useThreadDraftForThread } from "../../state/use-thread-composer-state";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
-  useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
   useRegisterWorkspaceInspector,
 } from "../layout/AdaptiveWorkspaceLayout";
@@ -84,13 +83,11 @@ export function ReviewHeader(
     readonly iconColor?: string;
     readonly onReturnToThread: () => void;
     readonly showBranchControl?: boolean;
-    /** Shows the button that hides and reveals the Changes navigator beside a split-view diff. */
-    readonly navigatorToggle?: boolean;
+    readonly onCloseFile?: VoidFunction;
   },
 ) {
   const presentation = useReviewHeaderPresentation(props);
   const iconColor = String(useUniwindTheme()["--color-icon"]);
-  const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   return (
     <AppBar
       title={presentation.title}
@@ -98,22 +95,23 @@ export function ReviewHeader(
       onBack={props.onReturnToThread}
       hideBottomBorder
       options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
-      backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
+      backInSplitView={{ accessibilityLabel: "Back to thread sidebar", icon: "chevron.left" }}
       actions={[
-        ...(presentation.branchAction && props.showBranchControl !== false
-          ? [presentation.branchAction]
-          : []),
-        ...(props.navigatorToggle
+        ...(props.onCloseFile
           ? [
               {
-                accessibilityLabel: panes.auxiliaryPaneVisible
-                  ? "Hide changes navigator"
-                  : "Show changes navigator",
-                icon: "sidebar.right" as const,
-                selected: panes.auxiliaryPaneVisible,
-                onPress: toggleAuxiliaryPane,
+                accessibilityLabel: "Close file",
+                axisBehavior: "horizontalOnly" as const,
+                icon: "xmark" as const,
+                onPress: props.onCloseFile,
               },
             ]
+          : []),
+        ...(props.onCloseFile && presentation.workspaceAction
+          ? [presentation.workspaceAction]
+          : []),
+        ...(presentation.branchAction && props.showBranchControl !== false
+          ? [presentation.branchAction]
           : []),
       ]}
       menus={
@@ -218,6 +216,8 @@ type ReviewSheetProps = StaticScreenProps<{
 export function ReviewSheet(
   props: ReviewSheetProps & {
     readonly workspaceTabs?: ReactNode;
+    readonly onReturnToThread?: VoidFunction;
+    readonly onCloseFile?: VoidFunction;
     readonly workspaceHeader?: ReactNode;
     /**
      * "inspector" renders only the navigator (comparison picker and file tree) for the inspector
@@ -435,6 +435,10 @@ export function ReviewSheet(
     void retryEnvironment(environmentId);
   };
   const handleReturnToThread = () => {
+    if (props.onReturnToThread) {
+      props.onReturnToThread();
+      return;
+    }
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -511,7 +515,7 @@ export function ReviewSheet(
               selectedSection={selectedSection}
               onRefresh={handlePullToRefresh}
               onReturnToThread={handleReturnToThread}
-              navigatorToggle={props.renderInspector !== undefined}
+              onCloseFile={props.onCloseFile}
             />
           ))}
 

@@ -23,11 +23,15 @@ interface AdaptiveWorkspaceContextValue {
   /** Use `useSelectWorkspaceDetail`, which also works outside the layout. */
   readonly selectDetail?: (detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) => void;
   readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
-  readonly registerWorkspaceInspector: (render: () => ReactNode) => () => void;
+  readonly registerWorkspaceInspector: (
+    render: () => ReactNode,
+    routeKey: string | undefined,
+  ) => () => void;
   readonly setPrimarySidebarSearchQuery: (query: string) => void;
   readonly showAuxiliaryPane: (role: WorkspaceAuxiliaryPaneRole) => void;
   readonly toggleAuxiliaryPane: () => void;
   readonly togglePrimarySidebar: () => void;
+  readonly showThreadWithSidebar: () => void;
   readonly setPrimarySidebarVisible: (visible: boolean) => void;
   /** Opens a workspace tab with its list and, with columns, the page it last showed. */
   readonly openWorkspaceTab: (
@@ -72,6 +76,7 @@ export const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextVa
   showAuxiliaryPane: () => undefined,
   toggleAuxiliaryPane: () => undefined,
   togglePrimarySidebar: () => undefined,
+  showThreadWithSidebar: () => undefined,
   setPrimarySidebarVisible: () => undefined,
   openWorkspaceTab: () => undefined,
   setAuxiliaryPaneWidth: () => undefined,

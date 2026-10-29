@@ -1,3 +1,5 @@
+import { useThreadWorkspacePanelNavigation } from "../workspace/useThreadWorkspacePanelNavigation";
+import { THREAD_GIT_GLYPH, THREAD_WORKSPACE_GLYPH } from "../threads/threadGitActions";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
@@ -116,6 +118,8 @@ function FileHeader(props: {
   readonly fileInspectorSupported: boolean;
   readonly onBack: () => void;
   readonly onReturnToThread: () => void;
+  readonly onCloseFile?: VoidFunction;
+  readonly panelActions: ReadonlyArray<import("../../components/ui/AppBar.types").AppBarAction>;
   readonly actions: ReadonlyArray<{
     readonly id: string;
     readonly title: string;
@@ -124,7 +128,6 @@ function FileHeader(props: {
     readonly onPress: () => unknown;
   }>;
 }) {
-  const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const modes = props.actions.filter(({ inline }) => inline);
   return (
     <AppBar
@@ -136,26 +139,25 @@ function FileHeader(props: {
       backInSplitView={
         props.fileInspectorSupported
           ? {
-              accessibilityLabel: "Return to chat",
+              accessibilityLabel: "Back to thread sidebar",
               icon: "chevron.left",
               onPress: props.onReturnToThread,
             }
           : undefined
       }
-      actions={
-        props.fileInspectorSupported
+      actions={[
+        ...(props.fileInspectorSupported && props.onCloseFile
           ? [
               {
-                accessibilityLabel: panes.auxiliaryPaneVisible
-                  ? "Hide file navigator"
-                  : "Show file navigator",
-                icon: "sidebar.right",
-                selected: panes.auxiliaryPaneVisible,
-                onPress: toggleAuxiliaryPane,
+                accessibilityLabel: "Close file",
+                axisBehavior: "horizontalOnly" as const,
+                icon: "xmark" as const,
+                onPress: props.onCloseFile,
               },
             ]
-          : undefined
-      }
+          : []),
+        ...props.panelActions,
+      ]}
       menus={[
         {
           title: "File actions",
@@ -436,6 +438,8 @@ export function ThreadFilesTreeScreen(
   props: ThreadFilesRouteScreenProps & {
     readonly workspaceTabs?: ReactNode;
     readonly workspaceHeader?: ReactNode;
+    readonly renderInspector?: (headerInset: number, renderNavigator: () => ReactNode) => ReactNode;
+    readonly onReturnToThread?: VoidFunction;
   },
 ) {
   useAdaptiveWorkspacePaneRole("inspector");
@@ -464,6 +468,10 @@ export function ThreadFilesTreeScreen(
     searchQuery,
   });
   const handleReturnToThread = () => {
+    if (props.onReturnToThread && fileInspector.supported) {
+      props.onReturnToThread();
+      return;
+    }
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -525,7 +533,11 @@ export function ThreadFilesTreeScreen(
       return (
         <ThreadRouteScreen
           onReturnToThread={handleReturnToThread}
-          renderInspector={renderInspector}
+          renderInspector={(headerInset) =>
+            props.renderInspector
+              ? props.renderInspector(headerInset, () => renderInspector(headerInset))
+              : renderInspector(headerInset)
+          }
           route={props.route}
         />
       );
@@ -549,7 +561,11 @@ export function ThreadFilesTreeScreen(
     return (
       <ThreadRouteScreen
         onReturnToThread={handleReturnToThread}
-        renderInspector={renderInspector}
+        renderInspector={(headerInset) =>
+          props.renderInspector
+            ? props.renderInspector(headerInset, () => renderInspector(headerInset))
+            : renderInspector(headerInset)
+        }
         route={props.route}
       />
     );
@@ -619,7 +635,12 @@ export function ThreadFilesTreeScreen(
 }
 
 export function ThreadFileScreen(
-  props: ThreadFileRouteScreenProps & { readonly workspaceTabs?: ReactNode },
+  props: ThreadFileRouteScreenProps & {
+    readonly workspaceTabs?: ReactNode;
+    readonly renderInspector?: (headerInset: number, renderNavigator: () => ReactNode) => ReactNode;
+    readonly onReturnToThread?: VoidFunction;
+    readonly onCloseFile?: VoidFunction;
+  },
 ) {
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
@@ -632,6 +653,7 @@ export function ThreadFileScreen(
   const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
     props.route.params,
   );
+  const panelNavigation = useThreadWorkspacePanelNavigation(String(environmentId), threadId);
   const fileAccessSession = useEnvironmentQuery(
     environmentId !== null ? environmentSession.sessionStateAtom(environmentId) : null,
   );
@@ -818,7 +840,11 @@ export function ThreadFileScreen(
     <ThreadInspectorContentStack
       mode="files"
       resetKeys={[threadId, cwd]}
-      renderFiles={() => renderInspector(inspectorHeaderInset)}
+      renderFiles={() =>
+        props.renderInspector
+          ? props.renderInspector(inspectorHeaderInset, () => renderInspector(inspectorHeaderInset))
+          : renderInspector(inspectorHeaderInset)
+      }
     />
   );
   useRegisterWorkspaceInspector(fileInspector.supported ? renderWorkspaceInspector : undefined);
@@ -929,6 +955,10 @@ export function ThreadFileScreen(
   })();
 
   const handleReturnToThread = () => {
+    if (props.onReturnToThread && fileInspector.supported) {
+      props.onReturnToThread();
+      return;
+    }
     if (environmentId !== null && threadId !== null) {
       navigation.dispatch(
         StackActions.replace("Thread", {
@@ -1024,6 +1054,23 @@ export function ThreadFileScreen(
         fileInspectorSupported={fileInspector.supported}
         onBack={handleBack}
         onReturnToThread={handleReturnToThread}
+        onCloseFile={props.onCloseFile}
+        panelActions={
+          panelNavigation.supported
+            ? [
+                {
+                  accessibilityLabel: "Open workspace",
+                  icon: THREAD_WORKSPACE_GLYPH,
+                  onPress: () => panelNavigation.openPanel("workspace"),
+                },
+                {
+                  accessibilityLabel: "Branches & worktrees",
+                  icon: THREAD_GIT_GLYPH,
+                  onPress: () => panelNavigation.openPanel("branches"),
+                },
+              ]
+            : []
+        }
         actions={fileMenuActions}
       />
       <ScreenContent>
