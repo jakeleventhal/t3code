@@ -4,12 +4,15 @@ import { withNativeGlassHeaderItem } from "./native-glass-header-items";
 
 export function useWorkspaceSidebarHeaderItem() {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
-  const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
-  const label = panes.primarySidebarVisible
-    ? layout.primarySidebarOverlaysContent
-      ? "Hide thread sidebar"
-      : "Maximize content"
-    : "Show thread sidebar";
+  const { layout, panes, togglePrimarySidebar, primarySidebarDrawerVisible } =
+    useAdaptiveWorkspaceLayout();
+  const label = primarySidebarDrawerVisible
+    ? "Hide thread sidebar"
+    : panes.primarySidebarVisible
+      ? layout.primarySidebarOverlaysContent
+        ? "Hide thread sidebar"
+        : "Maximize content"
+      : "Show thread sidebar";
   return withNativeGlassHeaderItem({
     axisBehavior: usesNativeWorkspaceColumns ? "horizontalOnly" : undefined,
     accessibilityLabel: label,

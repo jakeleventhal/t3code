@@ -41,7 +41,8 @@ export function AppBar(props: AppBarProps) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const deviceType = useDeviceType();
   const headerId = useId();
-  const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
+  const { layout, panes, togglePrimarySidebar, primarySidebarDrawerVisible } =
+    useAdaptiveWorkspaceLayout();
   const { themeVariables } = useAppearancePreferences();
   const usesNativeMailSearchToolbar = useNativeMailSearchToolbar();
   const { search, menus } = props;
@@ -129,9 +130,11 @@ export function AppBar(props: AppBarProps) {
             <ScreenHeaderButton
               axisBehavior={usesNativeWorkspaceColumns ? "horizontalOnly" : undefined}
               accessibilityLabel={
-                panes.primarySidebarVisible
-                  ? `Maximize ${props.title.toLowerCase()}`
-                  : "Show threads"
+                primarySidebarDrawerVisible
+                  ? "Hide threads"
+                  : panes.primarySidebarVisible
+                    ? `Maximize ${props.title.toLowerCase()}`
+                    : "Show threads"
               }
               icon={
                 panes.primarySidebarVisible ? "arrow.up.left.and.arrow.down.right" : "sidebar.left"
