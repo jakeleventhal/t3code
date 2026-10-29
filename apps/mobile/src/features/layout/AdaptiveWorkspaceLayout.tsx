@@ -217,7 +217,16 @@ function AdaptiveWorkspaceLayoutContent(
   const navigation = useNavigation();
   useRememberThreadWorkspaceLocation();
   const activeRoleOwner = useRef<symbol | null>(null);
-  const [primarySidebarPreferredVisible, setPrimarySidebarPreferredVisible] = useState(true);
+  const [fallbackSidebarVisible, setFallbackSidebarVisible] = useState(true);
+  const sidebarTab = workspace?.settingsOpen
+    ? "settings"
+    : (workspace?.state.selectedTab ?? "threads");
+  const primarySidebarPreferredVisible =
+    workspace?.state.tabs[sidebarTab].sidebarVisible ?? fallbackSidebarVisible;
+  const setPrimarySidebarPreferredVisible = (visible: boolean) => {
+    if (workspace) workspace.dispatch({ type: "sidebar", tab: sidebarTab, visible });
+    else setFallbackSidebarVisible(visible);
+  };
   const [primarySidebarDrawerVisible, setPrimarySidebarDrawerVisible] = useState(false);
   const [supplementaryPanePreferredVisible, setSupplementaryPanePreferredVisible] = useState(true);
   const [supplementaryPanePreferredWidth, setSupplementaryPanePreferredWidth] = useState<
@@ -468,6 +477,11 @@ function AdaptiveWorkspaceLayoutContent(
   };
   const togglePrimarySidebar = () => {
     if (nativeWorkspace && layout.usesSplitView && !panes.primarySidebarVisible) {
+      if (sidebarTab === "pullRequests") {
+        setPrimarySidebarDrawerVisible(false);
+        setPrimarySidebarVisible(true);
+        return;
+      }
       setPrimarySidebarDrawerVisible((current) => !current);
       return;
     }
