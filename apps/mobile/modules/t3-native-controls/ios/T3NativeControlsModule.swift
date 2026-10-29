@@ -66,7 +66,10 @@ public final class T3NativeControlsModule: Module {
         }
         let presentation = T3FontPickerPresentation { [weak self] result in
           self?.fontPresentation = nil
-          promise.resolve(result)
+          switch result {
+          case .success(let font): promise.resolve(font)
+          case .failure(let error): promise.reject("ERR_FONT_UNAVAILABLE", error.localizedDescription)
+          }
         }
         self.fontPresentation = presentation
         presentation.present(from: presenter, selectedName: selectedName)
