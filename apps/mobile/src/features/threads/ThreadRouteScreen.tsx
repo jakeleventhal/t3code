@@ -826,7 +826,6 @@ function ThreadRouteContent(
     terminalSessions: terminalMenuSessions,
     devServers,
     onOpenDevServer: handleOpenDevServer,
-    showDirectFileControl: layout.usesSplitView,
     onOpenTerminal: handleOpenTerminal,
     onOpenNewTerminal: handleOpenNewTerminal,
     onRunProjectScript: handleRunProjectScript,
