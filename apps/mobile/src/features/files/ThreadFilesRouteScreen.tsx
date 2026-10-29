@@ -492,7 +492,7 @@ export function ThreadFilesTreeScreen(
       return;
     }
     if (hasFileInspector) {
-      navigation.dispatch(StackActions.replace("ThreadFile", params));
+      navigation.setParams({ ...params, line: undefined });
       return;
     }
     navigation.navigate("ThreadFile", params);
@@ -789,6 +789,10 @@ export function ThreadFileScreen(
       threadId: String(threadId),
       path: segments,
     };
+    if (fileInspector.supported) {
+      navigation.setParams({ ...destination, line: undefined });
+      return;
+    }
     if (directoryPath !== null) navigation.dispatch(StackActions.push("ThreadFile", destination));
     else navigation.navigate("ThreadFile", destination);
   };
@@ -804,6 +808,7 @@ export function ThreadFileScreen(
           if (directoryPath !== null) entriesQuery.selectPath(path);
           handleSelectFile(path);
         }}
+        toolbar={props.workspaceTabs}
       />
     ) : undefined;
   const safeAreaInsets = useSafeAreaInsets();
@@ -1022,7 +1027,8 @@ export function ThreadFileScreen(
         actions={fileMenuActions}
       />
       <ScreenContent>
-        {props.workspaceTabs ? (
+        {/* With an inspector column, the workspace tabs head the navigator instead. */}
+        {props.workspaceTabs && !fileInspector.supported ? (
           <View
             style={{
               paddingTop:
@@ -1049,7 +1055,7 @@ export function ThreadFileScreen(
           relativePath={relativePath}
           threadId={threadId}
           truncated={fileData?.truncated ?? false}
-          headerReserved={props.workspaceTabs !== undefined}
+          headerReserved={props.workspaceTabs !== undefined && !fileInspector.supported}
           onRefresh={() => fileQuery.refresh()}
         />
       </ScreenContent>

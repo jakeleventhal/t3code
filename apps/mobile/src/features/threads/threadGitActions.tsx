@@ -14,14 +14,9 @@ import {
   type GitActionRequestInput,
 } from "@t3tools/client-runtime/state/vcs";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { Pressable, View } from "react-native";
 
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
-import { SymbolView } from "../../components/ui/AppSymbol";
-import { AppText as Text } from "../../components/ui/AppText";
 import * as Dialog from "../../components/ui/Dialog";
-import { Menu } from "../../components/ui/Menu";
-import { cn } from "../../lib/cn";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { useEnvironmentScope } from "../../state/session";
 import { readWorkspacePane, workspaceThreadMemoryKey } from "../workspace/workspacePaneMemory";
@@ -334,80 +329,4 @@ export function threadGitMenuDefinition(
 /** Returns menu data because native toolbars serialize direct items rather than rendering component children. */
 export function useThreadGitMenuDefinition(props: ThreadGitMenuProps): AppBarMenu | null {
   return threadGitMenuDefinition(props, useThreadGitControlModel(props));
-}
-
-/** Desktop's git split button: the quick action as the button, the other actions behind the chevron. */
-export function ThreadGitSplitButton(props: ThreadGitMenuProps) {
-  const model = useThreadGitControlModel(props);
-  const disabled = model.quickAction.disabled;
-  const actions = [
-    {
-      id: "status",
-      title: compactMenuBranchLabel(model.currentBranchLabel),
-      subtitle: compactMenuStatus(props.gitStatus),
-      attributes: { disabled: true },
-    },
-    ...model.menuActions.map((item) => ({
-      id: item.id,
-      title: item.label,
-      image: MENU_ACTION_ICONS[item.icon],
-      attributes: { disabled: item.disabled },
-    })),
-    {
-      id: "branches",
-      title: "Branches & worktrees…",
-      image: "arrow.triangle.branch",
-      subtitle:
-        props.hasThread === false
-          ? "Available after the first message"
-          : "Switch branch, link a pull request",
-      attributes: { disabled: props.hasThread === false },
-    },
-  ];
-  return (
-    <View className="h-9 flex-row items-stretch overflow-hidden rounded-full border border-border-subtle bg-grouped-card">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={model.quickAction.label}
-        accessibilityHint={model.quickActionHint ?? undefined}
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPress={() => void model.runQuickAction()}
-        className="min-w-0 shrink justify-center pl-3.5 pr-3 active:opacity-70"
-      >
-        <Text
-          numberOfLines={1}
-          className={cn(
-            "text-xs font-t3-semibold",
-            disabled ? "text-foreground-muted" : "text-foreground",
-          )}
-        >
-          {model.quickAction.label}
-        </Text>
-      </Pressable>
-      <Menu
-        title="Git"
-        actions={actions}
-        style={{ alignSelf: "stretch" }}
-        onPressAction={({ nativeEvent }) => {
-          if (nativeEvent.event === "branches") model.openGitInspector();
-          const item = model.menuActions.find((candidate) => candidate.id === nativeEvent.event);
-          if (item) void model.runMenuAction(item);
-        }}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="More git actions"
-          className="h-full w-11 items-center justify-center border-l border-border-subtle active:opacity-70"
-        >
-          <SymbolView
-            name="chevron.down"
-            size={11}
-            tintColorClassName="accent-icon-muted"
-            type="monochrome"
-          />
-        </Pressable>
-      </Menu>
-    </View>
-  );
 }

@@ -2,7 +2,8 @@ import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/files
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import {
   readWorkspacePane,
@@ -11,6 +12,7 @@ import {
   rememberThreadWorkspaceLocation,
   readThreadReviewSelection,
   workspaceThreadMemoryKey,
+  workspacePaneForLocation,
   type WorkspacePane,
 } from "./workspacePaneMemory";
 import { Tabs } from "../../components/ui/Tabs";
@@ -18,14 +20,17 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { vcsEnvironment } from "../../state/vcs";
 import { environmentSession } from "../../state/session";
-import { useSelectedThreadGitActions } from "../../state/use-selected-thread-git-actions";
-import { useSelectedThreadGitState } from "../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "../files/ThreadFilesRouteScreen";
 import { PullRequestDiffStats } from "../pull-requests/PullRequestPresentation";
-import { ThreadGitSplitButton } from "../threads/threadGitActions";
 import { ReviewHeader, ReviewSheet } from "../review/ReviewSheet";
+import { ReviewNavigatorPane } from "../review/ReviewNavigatorPane";
+import {
+  useAdaptiveWorkspaceLayout,
+  useAdaptiveWorkspacePaneRole,
+} from "../layout/AdaptiveWorkspaceLayout";
+import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
@@ -40,17 +45,19 @@ type Props = StaticScreenProps<{
 }>;
 
 function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: WorkspacePane }) {
+  useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
+  const { fileInspector } = useAdaptiveWorkspaceLayout();
+  const safeAreaInsets = useSafeAreaInsets();
   const paneKey = workspaceThreadMemoryKey(
     props.route.params.environmentId,
     props.route.params.threadId,
   );
   const [tab, setTab] = useState<WorkspacePane | null>(() =>
-    props.route.params.path
-      ? "files"
-      : props.route.params.reviewSectionId
-        ? "git"
-        : (props.defaultPane ?? readWorkspacePane(paneKey)),
+    workspacePaneForLocation(
+      props.route.params,
+      readWorkspacePane(paneKey) ?? props.defaultPane ?? null,
+    ),
   );
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
@@ -115,13 +122,9 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
   };
   const workingTree = status.data?.workingTree;
   const { selectedThread } = useThreadSelection();
-  const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions();
-  // The selection-based git hooks only apply when this workspace belongs to the selected thread.
-  const gitActionsAvailable =
-    selectedThread !== null && String(selectedThread.id) === String(threadId);
+  // Git actions live on the thread's Git button, and Changes has its own commit controls.
   const tabs = (
-    <View className="w-full flex-row items-center gap-2 bg-sheet pb-1 pl-2 pr-3">
+    <View className="w-full flex-row items-center bg-sheet pb-1 pl-2 pr-3">
       <Tabs
         className="min-w-0 shrink"
         options={[
@@ -142,18 +145,6 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
         selected={selectedTab ?? "files"}
         onSelect={selectTab}
       />
-      <View className="flex-1" />
-      {gitActionsAvailable ? (
-        <ThreadGitSplitButton
-          environmentId={environmentId}
-          threadId={threadId}
-          currentBranch={selectedThread.branch ?? null}
-          gitStatus={status.data}
-          gitOperationLabel={gitState.gitOperationLabel}
-          onPull={gitActions.onPullSelectedThreadBranch}
-          onRunAction={gitActions.onRunSelectedThreadGitAction}
-        />
-      ) : null}
     </View>
   );
   const workspaceHeader = (
@@ -180,6 +171,59 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
         </View>
       </View>
     );
+  const openedReviewFile =
+    props.route.params.reviewSectionId &&
+    (props.route.params.reviewFilePath || props.route.params.reviewWorkingTreeScope)
+      ? {
+          path: props.route.params.reviewFilePath,
+          sectionId: props.route.params.reviewSectionId,
+          scope: props.route.params.reviewWorkingTreeScope,
+        }
+      : undefined;
+  // With an inspector column, Changes works like Files: the navigator sits beside the chat, and
+  // the diff it opens takes the content column.
+  if (selectedTab === "git" && fileInspector.supported) {
+    const threadParams = {
+      environmentId: props.route.params.environmentId,
+      threadId: props.route.params.threadId,
+    };
+    const renderChangesNavigator = (headerInset: number) => (
+      <ReviewNavigatorPane
+        environmentId={environmentId}
+        threadId={threadId}
+        headerInset={headerInset}
+        subtitle={selectedThread?.branch ?? ""}
+        toolbar={tabs}
+        onSectionSelected={
+          openedReviewFile
+            ? () =>
+                navigation.setParams({
+                  reviewSectionId: undefined,
+                  reviewFilePath: undefined,
+                  reviewWorkingTreeScope: undefined,
+                })
+            : undefined
+        }
+      />
+    );
+    if (!openedReviewFile)
+      return (
+        <ThreadRouteScreen
+          route={{ params: threadParams }}
+          onReturnToThread={() => navigation.goBack()}
+          renderInspector={renderChangesNavigator}
+        />
+      );
+    return (
+      <ReviewSheet
+        route={{ params: { environmentId, threadId } }}
+        openedFile={openedReviewFile}
+        renderInspector={() =>
+          renderChangesNavigator(Platform.OS === "ios" ? 0 : safeAreaInsets.top)
+        }
+      />
+    );
+  }
   return selectedTab === "files" ? (
     props.route.params.path ? (
       <ThreadFileScreen
@@ -198,16 +242,7 @@ function ThreadWorkspaceScreen(props: Props & { readonly defaultPane?: Workspace
       route={{ params: { environmentId, threadId } }}
       workspaceTabs={tabs}
       workspaceHeader={props.route.params.reviewSectionId ? undefined : workspaceHeader}
-      openedFile={
-        props.route.params.reviewSectionId &&
-        (props.route.params.reviewFilePath || props.route.params.reviewWorkingTreeScope)
-          ? {
-              path: props.route.params.reviewFilePath,
-              sectionId: props.route.params.reviewSectionId,
-              scope: props.route.params.reviewWorkingTreeScope,
-            }
-          : undefined
-      }
+      openedFile={openedReviewFile}
     />
   );
 }

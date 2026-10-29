@@ -554,7 +554,7 @@ function AdaptiveWorkspaceLayoutContent(
                 environmentId: detail.params.environmentId,
                 threadId: detail.params.threadId,
               },
-              true,
+              { peer: true, columns: layout.usesSplitView },
             )
           : null;
       if (state && remembered) dispatchRootStackReset(navigation, state, remembered);
