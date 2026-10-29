@@ -25,6 +25,7 @@ import { Split, type SplitHostCommands } from "react-native-screens";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { isDuoDevice } from "../../lib/device-type";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { WorkspaceTabsProvider, useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { WorkspaceNativeTabs } from "../workspace/WorkspaceNativeTabs.ios";
@@ -181,6 +182,9 @@ function WorkspaceColumns(
   const nativeMetrics = useNativeLayoutMetrics();
   const viewportWidth = nativeMetrics?.width ?? windowDimensions.width;
   const primaryColumnWidth = layout.listPaneWidth ?? 320;
+  const drawerWidth = isDuoDevice(deviceType)
+    ? Math.min(420, viewportWidth - 56)
+    : primaryColumnWidth;
   const contentWidth =
     viewportWidth - (nativeMetrics?.safeArea.left ?? 0) - (nativeMetrics?.safeArea.right ?? 0);
   const [inspectorWidthFraction, setInspectorWidthFraction] = useState(1 / 3);
@@ -500,7 +504,7 @@ function WorkspaceColumns(
       </Split.Host>
       <WorkspaceSidebarDrawer
         visible={primarySidebarDrawerVisible}
-        width={primaryColumnWidth}
+        width={drawerWidth}
         onDismiss={() => setPrimarySidebarDrawerVisible(false)}
       >
         <V5CardStackView
