@@ -56,6 +56,7 @@ import {
   ThreadFileWorkspaceScreen,
 } from "./features/workspace/ThreadWorkspaceScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
+import { threadWorkspaceFileIsFullscreen } from "./features/workspace/thread-workspace-panel-navigation";
 import { selectedPullRequestKey } from "./features/pull-requests/pullRequestSelection";
 import {
   HardwareKeyboardCommandOverlay,
@@ -492,6 +493,7 @@ export function workspaceLocationFromState(state: NavigationState) {
     routeKey: route?.key,
     routeName: route?.name,
     routeKeys: effectiveState.routes.map((stackRoute) => stackRoute.key),
+    fileFullscreen: threadWorkspaceFileIsFullscreen(route),
   };
 }
 
@@ -540,6 +542,7 @@ function RootStackLayout(props: {
                 workspaceRouteKey={workspaceLocation.routeKey}
                 workspaceRouteName={workspaceLocation.routeName}
                 workspaceRouteKeys={workspaceLocation.routeKeys}
+                fileFullscreen={workspaceLocation.fileFullscreen}
                 selectedPullRequestKey={selectedPullRequestKey(props.state)}
               >
                 {props.children}

@@ -1,3 +1,4 @@
+import { useSelectedFileHeaderActions } from "../workspace/useSelectedFileHeaderActions";
 import { useThreadWorkspacePanelNavigation } from "../workspace/useThreadWorkspacePanelNavigation";
 import { THREAD_GIT_GLYPH, THREAD_WORKSPACE_GLYPH } from "../threads/threadGitActions";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
@@ -128,6 +129,7 @@ function FileHeader(props: {
     readonly onPress: () => unknown;
   }>;
 }) {
+  const fileActions = useSelectedFileHeaderActions(props.onCloseFile);
   const modes = props.actions.filter(({ inline }) => inline);
   return (
     <AppBar
@@ -145,19 +147,7 @@ function FileHeader(props: {
             }
           : undefined
       }
-      actions={[
-        ...(props.onCloseFile
-          ? [
-              {
-                accessibilityLabel: "Close file",
-                axisBehavior: "horizontalOnly" as const,
-                icon: "xmark" as const,
-                onPress: props.onCloseFile,
-              },
-            ]
-          : []),
-        ...props.panelActions,
-      ]}
+      actions={[...fileActions, ...props.panelActions]}
       menus={[
         {
           title: "File actions",
@@ -535,7 +525,12 @@ export function ThreadFilesTreeScreen(
           onReturnToThread={handleReturnToThread}
           onOpenWorkspacePanel={
             props.renderInspector
-              ? (workspacePanel) => navigation.setParams({ workspacePanel, inspector: undefined })
+              ? (workspacePanel) =>
+                  navigation.setParams({
+                    workspacePanel,
+                    inspector: undefined,
+                    fileFullscreen: undefined,
+                  })
               : undefined
           }
           renderInspector={(headerInset) =>
@@ -568,7 +563,12 @@ export function ThreadFilesTreeScreen(
         onReturnToThread={handleReturnToThread}
         onOpenWorkspacePanel={
           props.renderInspector
-            ? (workspacePanel) => navigation.setParams({ workspacePanel, inspector: undefined })
+            ? (workspacePanel) =>
+                navigation.setParams({
+                  workspacePanel,
+                  inspector: undefined,
+                  fileFullscreen: undefined,
+                })
             : undefined
         }
         renderInspector={(headerInset) =>

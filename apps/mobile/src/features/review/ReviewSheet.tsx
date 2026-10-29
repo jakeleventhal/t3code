@@ -1,3 +1,4 @@
+import { useSelectedFileHeaderActions } from "../workspace/useSelectedFileHeaderActions";
 import { WorkingChangesReview } from "./WorkingChangesReview";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
@@ -86,6 +87,7 @@ export function ReviewHeader(
     readonly onCloseFile?: VoidFunction;
   },
 ) {
+  const fileActions = useSelectedFileHeaderActions(props.onCloseFile);
   const presentation = useReviewHeaderPresentation(props);
   const iconColor = String(useUniwindTheme()["--color-icon"]);
   return (
@@ -97,16 +99,7 @@ export function ReviewHeader(
       options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to thread sidebar", icon: "chevron.left" }}
       actions={[
-        ...(props.onCloseFile
-          ? [
-              {
-                accessibilityLabel: "Close file",
-                axisBehavior: "horizontalOnly" as const,
-                icon: "xmark" as const,
-                onPress: props.onCloseFile,
-              },
-            ]
-          : []),
+        ...fileActions,
         ...(props.onCloseFile && presentation.workspaceAction
           ? [presentation.workspaceAction]
           : []),
