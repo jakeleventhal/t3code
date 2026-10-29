@@ -22,6 +22,7 @@ export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
 }
 
 export interface WorkspaceTabState {
+  readonly sidebarVisible: boolean;
   readonly query: string;
   readonly searchMode: WorkspaceSearchMode;
   readonly scrollOffset: number;
@@ -35,7 +36,13 @@ export interface WorkspaceTabsState {
 }
 
 function emptyTab(): WorkspaceTabState {
-  return { query: "", searchMode: "resting", scrollOffset: 0, searchEntryOffset: 0 };
+  return {
+    sidebarVisible: true,
+    query: "",
+    searchMode: "resting",
+    scrollOffset: 0,
+    searchEntryOffset: 0,
+  };
 }
 
 export function initialWorkspaceTabsState(): WorkspaceTabsState {
@@ -53,6 +60,7 @@ export function initialWorkspaceTabsState(): WorkspaceTabsState {
 
 export type WorkspaceTabsAction =
   | { readonly type: "select"; readonly tab: WorkspaceTab }
+  | { readonly type: "sidebar"; readonly visible: boolean; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "search"; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "query"; readonly query: string; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "expand"; readonly tab?: WorkspaceSearchTab }
@@ -63,19 +71,34 @@ export function workspaceTabsReducer(
   state: WorkspaceTabsState,
   action: WorkspaceTabsAction,
 ): WorkspaceTabsState {
-  if (action.type === "select")
+  if (action.type === "select") {
+    const selected =
+      action.tab === "pullRequests" && !state.tabs.pullRequests.sidebarVisible
+        ? {
+            ...state,
+            tabs: {
+              ...state.tabs,
+              pullRequests: { ...state.tabs.pullRequests, sidebarVisible: true },
+            },
+          }
+        : state;
     return action.tab === state.selectedTab
-      ? state
+      ? selected
       : {
-          ...state,
+          ...selected,
           selectedTab: action.tab,
           selectionRevision: state.selectionRevision + 1,
         };
+  }
   const tab = action.tab ?? state.selectedTab;
   if (tab !== "threads" && tab !== "pullRequests" && tab !== "settings") return state;
   const current = state.tabs[tab];
   let next: WorkspaceTabState;
   switch (action.type) {
+    case "sidebar":
+      if (current.sidebarVisible === action.visible) return state;
+      next = { ...current, sidebarVisible: action.visible };
+      break;
     case "search":
       next = {
         ...current,

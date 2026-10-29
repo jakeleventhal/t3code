@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { Platform, View } from "react-native";
-import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
+import {
+  Screen,
+  ScreenStack,
+  ScreenStackHeaderConfig,
+  ScreenStackHeaderLeftView,
+  ScreenStackHeaderRightView,
+} from "react-native-screens";
 
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { NativeInspectorContent } from "../../native/NativeInspectorContent";
@@ -13,6 +19,8 @@ export function NativeWorkspaceNavigatorPane(props: {
   readonly screenId: string;
   readonly title: string;
   readonly subtitle: string;
+  readonly header?: ReactNode;
+  readonly trailing?: ReactNode;
   /** A `ScreenStackHeaderSearchBarView` for the header. */
   readonly searchBar?: ReactNode;
   /**
@@ -52,18 +60,25 @@ export function NativeWorkspaceNavigatorPane(props: {
             )}
           </NativeInspectorContent>
           <ScreenStackHeaderConfig
-            backgroundColor="rgba(0,0,0,0)"
             color={foregroundColor}
             hideBackButton
             hideShadow={false}
             navigationItemStyle="editor"
-            subtitle={props.subtitle}
-            title={props.title}
+            subtitle={props.header ? undefined : props.subtitle}
+            title={props.header ? "" : props.title}
             titleColor={foregroundColor}
             titleFontSize={17}
             titleFontWeight="700"
             translucent
           >
+            {props.header ? (
+              <ScreenStackHeaderLeftView style={{ flexDirection: "row", alignItems: "center" }}>
+                {props.header}
+              </ScreenStackHeaderLeftView>
+            ) : null}
+            {props.trailing ? (
+              <ScreenStackHeaderRightView>{props.trailing}</ScreenStackHeaderRightView>
+            ) : null}
             {props.searchBar}
           </ScreenStackHeaderConfig>
         </Screen>

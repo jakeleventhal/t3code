@@ -301,7 +301,7 @@ export function FileTreeBrowser(props: {
   );
   return props.pinnedToolbar ? (
     <View className="flex-1">
-      <View style={{ paddingTop: headerInset }}>{props.toolbar}</View>
+      {props.toolbar ? <View style={{ paddingTop: headerInset }}>{props.toolbar}</View> : null}
       {list}
     </View>
   ) : (

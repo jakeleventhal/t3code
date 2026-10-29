@@ -504,6 +504,7 @@ function PullRequestRouteContent({ route }: StaticScreenProps<PullRequestParams>
             unstable_headerSubtitle: connected
               ? params.repository
               : `${params.repository} · Offline`,
+            headerBackVisible: !layout.usesSplitView,
             unstable_headerLeftItems: layout.usesSplitView ? () => [sidebarHeaderItem] : undefined,
           }}
           optionsVersion={[layout.usesSplitView, sidebarHeaderItem]}
@@ -997,6 +998,7 @@ export function PullRequestDiffContent({
   onlyPaths?: ReadonlyArray<string>;
 }) {
   const { layout } = useAdaptiveWorkspaceLayout();
+  const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [toolbarHeight, setToolbarHeight] = usePullRequestToolbarHeight(insets.bottom);
@@ -1500,7 +1502,10 @@ export function PullRequestDiffContent({
     <View className={Platform.OS === "android" ? "flex-1 bg-header" : "flex-1 bg-screen"}>
       {!embedded ? (
         <NativeStackScreenOptions
+          optionsVersion={[layout.usesSplitView, sidebarHeaderItem]}
           options={{
+            headerBackVisible: !layout.usesSplitView,
+            unstable_headerLeftItems: layout.usesSplitView ? () => [sidebarHeaderItem] : undefined,
             title,
             headerTitle: title,
             unstable_headerSubtitle: `${commit ? commit.slice(0, 7) : `#${params.number}`} · ${data.files.length} ${data.files.length === 1 ? "file" : "files"}${filter.hideTestFiles && filter.hiddenCount ? ` · ${filter.hiddenCount} ${filter.hiddenCount === 1 ? "test" : "tests"} hidden` : ""}`,

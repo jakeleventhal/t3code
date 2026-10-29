@@ -416,7 +416,7 @@ function WorkspaceColumns(
                   unstable_headerLeftItems: () => [
                     {
                       type: "button",
-                      label: "",
+                      label: panes.primarySidebarVisible ? "Maximize content" : "Show sidebar",
                       icon: { type: "sfSymbol", name: "sidebar.left" },
                       onPress: togglePrimarySidebar,
                     },
@@ -669,8 +669,8 @@ function WorkspaceStackNavigator({
   );
   return (
     <NativeWorkspaceModeContext value={usesNativeWorkspaceColumns}>
-      <NavigationContent>
-        <WorkspaceTabsProvider settingsOpen={settingsOpen}>
+      <WorkspaceTabsProvider settingsOpen={settingsOpen}>
+        <NavigationContent>
           <WorkspaceStackView
             nativeColumns={usesNativeWorkspaceColumns}
             {...rest}
@@ -679,8 +679,8 @@ function WorkspaceStackNavigator({
             descriptors={descriptors}
             navigation={navigation}
           />
-        </WorkspaceTabsProvider>
-      </NavigationContent>
+        </NavigationContent>
+      </WorkspaceTabsProvider>
     </NativeWorkspaceModeContext>
   );
 }

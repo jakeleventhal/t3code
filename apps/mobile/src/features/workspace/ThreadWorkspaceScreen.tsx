@@ -140,7 +140,7 @@ function ThreadWorkspaceScreen(
   const { selectedThread, selectedThreadProject } = useThreadSelection();
   // Git actions live on the thread's Git button, and Changes has its own commit controls.
   const tabs = (
-    <View className="w-full flex-row items-center bg-sheet pb-1 pl-2 pr-3">
+    <View className="flex-row items-center">
       <Tabs
         className="min-w-0 shrink"
         options={[
@@ -232,6 +232,7 @@ function ThreadWorkspaceScreen(
       if (cwd !== null)
         return (
           <ThreadFileNavigatorPane
+            active={selectedTab === "files" && props.route.params.workspacePanel !== "branches"}
             cwd={cwd}
             environmentId={environmentId}
             headerInset={headerInset}

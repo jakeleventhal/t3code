@@ -63,6 +63,26 @@ describe("workspace root navigation", () => {
     );
   });
 
+  it("restores the pull request sidebar without changing a full-screen thread", () => {
+    const initial = initialWorkspaceTabsState();
+    const threadFull = workspaceTabsReducer(initial, {
+      type: "sidebar",
+      tab: "threads",
+      visible: false,
+    });
+    const pullRequests = workspaceTabsReducer(threadFull, { type: "select", tab: "pullRequests" });
+    expect(pullRequests.tabs.pullRequests.sidebarVisible).toBe(true);
+    expect(pullRequests.tabs.threads.sidebarVisible).toBe(false);
+    const prFull = workspaceTabsReducer(pullRequests, { type: "sidebar", visible: false });
+    expect(prFull.tabs.pullRequests.sidebarVisible).toBe(false);
+    const exitedFull = workspaceTabsReducer(prFull, { type: "sidebar", visible: true });
+    expect(exitedFull.tabs.pullRequests.sidebarVisible).toBe(true);
+    const returned = workspaceTabsReducer(prFull, { type: "select", tab: "threads" });
+    expect(returned.tabs.threads.sidebarVisible).toBe(false);
+    const reopened = workspaceTabsReducer(returned, { type: "select", tab: "pullRequests" });
+    expect(reopened.tabs.pullRequests.sidebarVisible).toBe(true);
+  });
+
   it("retains separate queries and positions across tabs, and cancels only the current search", () => {
     let state = initialWorkspaceTabsState();
     state = workspaceTabsReducer(state, { type: "scroll", tab: "threads", offset: 640 });
@@ -132,6 +152,7 @@ describe("workspace root navigation", () => {
     state = workspaceTabsReducer(state, { type: "scroll", tab: "pullRequests", offset: 80 });
     state = workspaceTabsReducer(state, { type: "cancel", tab: "pullRequests", scrollToTop: true });
     expect(state.tabs.pullRequests).toEqual({
+      sidebarVisible: true,
       query: "",
       searchMode: "resting",
       scrollOffset: 0,

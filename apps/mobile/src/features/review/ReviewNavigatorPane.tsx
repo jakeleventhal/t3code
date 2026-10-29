@@ -18,7 +18,7 @@ export function ReviewNavigatorPane(props: {
     <ReviewSheet
       route={{ params: { environmentId: props.environmentId, threadId: props.threadId } }}
       placement="inspector"
-      workspaceTabs={props.toolbar}
+      workspaceTabs={Platform.OS === "ios" ? undefined : props.toolbar}
       onSectionSelected={props.onSectionSelected}
     />
   );
@@ -28,6 +28,7 @@ export function ReviewNavigatorPane(props: {
       <NativeWorkspaceNavigatorPane
         screenId="thread-review-navigator-native"
         title="Changes"
+        header={props.toolbar}
         subtitle={props.subtitle}
         insetBelowHeader
       >

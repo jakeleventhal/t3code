@@ -3,9 +3,13 @@ import { environmentSession } from "../../state/session";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ScreenContent } from "../../components/ui/ScreenContent";
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";
-import { ScreenStackHeaderSearchBarView, SearchBar } from "react-native-screens";
+import {
+  ScreenStackHeaderSearchBarView,
+  SearchBar,
+  type SearchBarCommands,
+} from "react-native-screens";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { FilesHeader } from "./FilesHeader";
@@ -16,6 +20,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { FileTreeBrowser } from "./FileTreeBrowser";
 import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
+import { IconButton } from "../../components/ui/IconButton";
 import { NativeWorkspaceNavigatorPane } from "../layout/workspace-navigator-pane";
 
 export function ThreadFileNavigatorPane(props: {
@@ -26,12 +31,25 @@ export function ThreadFileNavigatorPane(props: {
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
   readonly toolbar?: ReactNode;
+  readonly active?: boolean;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef<SearchBarCommands>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchVisible = searchOpen && props.active !== false;
+  const focusSearch = useCallback(() => {
+    searchRef.current?.setActive(true);
+    searchRef.current?.focus();
+  }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the native search controller after its field has mounted in the header
+  useEffect(() => {
+    if (!searchVisible) return;
+    const frame = requestAnimationFrame(focusSearch);
+    return () => cancelAnimationFrame(frame);
+  }, [searchVisible, focusSearch]);
   const { themeAppearance: highlightTheme } = useAppearancePreferences();
   const theme = useUniwindTheme();
   const foregroundColor = theme["--color-foreground"];
-  const sheetColor = theme["--color-sheet"];
   const fileAccessSession = useEnvironmentQuery(
     environmentSession.sessionStateAtom(props.environmentId),
   );
@@ -85,7 +103,8 @@ export function ThreadFileNavigatorPane(props: {
         entriesQuery.selectPath(path);
         props.onSelectFile(path);
       }}
-      toolbar={props.toolbar}
+      toolbar={Platform.OS === "ios" ? undefined : props.toolbar}
+      pinnedToolbar={Platform.OS === "ios"}
     />
   );
 
@@ -94,28 +113,43 @@ export function ThreadFileNavigatorPane(props: {
       <NativeWorkspaceNavigatorPane
         screenId="thread-file-navigator-native"
         title="Files"
+        header={props.toolbar}
+        insetBelowHeader
+        trailing={
+          <IconButton
+            accessibilityLabel="Search files"
+            icon="magnifyingglass"
+            onPress={() => {
+              setSearchOpen(true);
+              if (searchVisible) focusSearch();
+            }}
+          />
+        }
         subtitle={props.projectName}
         searchBar={
-          <ScreenStackHeaderSearchBarView>
-            <SearchBar
-              allowToolbarIntegration
-              autoCapitalize="none"
-              barTintColor={sheetColor}
-              hideNavigationBar={false}
-              hideWhenScrolling={false}
-              obscureBackground={false}
-              onCancelButtonPress={() => {
-                setSearchQuery("");
-              }}
-              onChangeText={(event: NativeSyntheticEvent<{ readonly text?: string }>) => {
-                setSearchQuery(event.nativeEvent.text ?? "");
-              }}
-              placement="integratedButton"
-              placeholder="Search files"
-              textColor={foregroundColor}
-              tintColor={foregroundColor}
-            />
-          </ScreenStackHeaderSearchBarView>
+          searchVisible ? (
+            <ScreenStackHeaderSearchBarView>
+              <SearchBar
+                ref={searchRef}
+                allowToolbarIntegration={false}
+                autoCapitalize="none"
+                hideNavigationBar={false}
+                hideWhenScrolling={false}
+                obscureBackground={false}
+                onCancelButtonPress={() => {
+                  setSearchQuery("");
+                  setSearchOpen(false);
+                }}
+                onChangeText={(event: NativeSyntheticEvent<{ readonly text?: string }>) => {
+                  setSearchQuery(event.nativeEvent.text ?? "");
+                }}
+                placement="stacked"
+                placeholder="Search files"
+                textColor={foregroundColor}
+                tintColor={foregroundColor}
+              />
+            </ScreenStackHeaderSearchBarView>
+          ) : undefined
         }
       >
         {fileTree}
