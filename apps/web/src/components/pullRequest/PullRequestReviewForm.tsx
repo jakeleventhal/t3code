@@ -1,5 +1,6 @@
 import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
 import { PullRequestAttachments } from "./PullRequestAttachments";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { capitalizeTerm } from "@t3tools/client-runtime/source-control-clients";
 /**
@@ -118,7 +119,13 @@ export function PullRequestReviewForm({
     });
     onPendingChange(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "The review could not be submitted" });
+      const error = squashAtomCommandFailure(result);
+      toastManager.add({
+        type: "error",
+        title: "The review could not be submitted",
+        description:
+          error instanceof Error ? error.message : "Your review draft is kept. Try again.",
+      });
       return;
     }
     // Preserve comments and summary edits made during submission.

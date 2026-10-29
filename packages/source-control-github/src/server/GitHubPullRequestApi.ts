@@ -133,6 +133,15 @@ export class GitHubPullRequestReadError extends Schema.TaggedError<GitHubPullReq
   }
 }
 
+export class GitHubReviewConflictError extends Schema.TaggedError<GitHubReviewConflictError>()(
+  "GitHubReviewConflictError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 export class GitHubViewerLoginUnavailableError extends Schema.TaggedError<GitHubViewerLoginUnavailableError>()(
   "GitHubViewerLoginUnavailableError",
   {
@@ -299,6 +308,7 @@ export type GitHubPullRequestApiError =
   | GitHubStackActionError
   | GitHubRequestPolicy.GitHubApiError
   | GitHubPullRequestReadError
+  | GitHubReviewConflictError
   | GitHubDiffCursorError
   | GitHubDiffCommitError
   | GitHubDiffRevisionsUnavailableError
@@ -1437,13 +1447,18 @@ export const make = Effect.gen(function* () {
   ) => {
     const position = buildReviewSubmission({ verdict: "comment", body: "", comments: [comment] })
       .comments[0]!;
+    // GitHub can give a single-line thread its end line as startLine, with no start side.
+    // Match the canonical range we submit rather than mistaking that response for an edit.
+    const startLine = saved.start_line ?? saved.line;
+    const startSide = saved.start_side ?? saved.side;
+    const ranged = startLine !== saved.line || startSide !== saved.side;
     return (
       saved.body === comment.body &&
       saved.path === comment.path &&
       saved.line === position.line &&
       saved.side === position.side &&
-      (saved.start_line ?? undefined) === position.start_line &&
-      (saved.start_side ?? undefined) === position.start_side
+      (ranged ? startLine : undefined) === position.start_line &&
+      (ranged ? startSide : undefined) === position.start_side
     );
   };
   const addDraftThread = Effect.fn("GitHubPullRequestApi.addDraftThread")(function* (
@@ -3088,17 +3103,13 @@ export const make = Effect.gen(function* () {
             const pending = yield* readPendingReview(input);
             const review = pending.review;
             if (!review)
-              return yield* readError(
-                input.cwd,
-                "submitReview",
-                new Error("The saved review is no longer pending. Refresh the pull request."),
-              );
+              return yield* new GitHubReviewConflictError({
+                detail: "The saved review is no longer pending. Refresh the pull request.",
+              });
             if (input.pendingReviewId !== undefined && input.pendingReviewId !== review.id)
-              return yield* readError(
-                input.cwd,
-                "submitReview",
-                new Error("The pending review changed on GitHub. Refresh before submitting."),
-              );
+              return yield* new GitHubReviewConflictError({
+                detail: "The pending review changed on GitHub. Refresh before submitting.",
+              });
             const consumed = new Set<string>();
             for (const comment of input.comments) {
               if (comment.hostedComment) {
@@ -3110,19 +3121,13 @@ export const make = Effect.gen(function* () {
                   !saved ||
                   !sameDraftComment(saved, comment)
                 )
-                  return yield* readError(
-                    input.cwd,
-                    "submitReview",
-                    new Error(
-                      "A saved review comment changed on GitHub. Refresh before submitting.",
-                    ),
-                  );
+                  return yield* new GitHubReviewConflictError({
+                    detail: "A saved review comment changed on GitHub. Refresh before submitting.",
+                  });
                 if (consumed.has(saved.node_id))
-                  return yield* readError(
-                    input.cwd,
-                    "submitReview",
-                    new Error("The review contains the same saved comment more than once."),
-                  );
+                  return yield* new GitHubReviewConflictError({
+                    detail: "The review contains the same saved comment more than once.",
+                  });
                 consumed.add(saved.node_id);
               }
             }

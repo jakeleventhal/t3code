@@ -3711,73 +3711,114 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
-  it.effect("submits the saved review without duplicating its hosted comment", () =>
-    Effect.gen(function* () {
-      mockedExecute.mockReturnValueOnce(
-        Effect.succeed(
-          output(
-            encodeJson({
-              data: {
-                repository: {
-                  pullRequest: {
-                    id: "PR_7",
-                    reviews: {
-                      nodes: [
-                        { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
-                      ],
+  it.effect.each([
+    { positionsFromGraphQL: false, changed: false },
+    { positionsFromGraphQL: true, changed: false },
+    { positionsFromGraphQL: true, changed: true },
+  ])(
+    "submits an unchanged saved review without duplicating comments: %j",
+    ({ positionsFromGraphQL, changed }) =>
+      Effect.gen(function* () {
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson({
+                data: {
+                  repository: {
+                    pullRequest: {
+                      id: "PR_7",
+                      reviews: {
+                        nodes: [
+                          { id: "PRR_1", fullDatabaseId: "81", body: "", viewerDidAuthor: true },
+                        ],
+                      },
                     },
                   },
                 },
-              },
-            }),
+              }),
+            ),
           ),
-        ),
-      );
-      mockedExecute.mockReturnValueOnce(
-        Effect.succeed(
-          output(
-            encodeJson([
-              {
-                id: 91,
-                node_id: "PRRC_1",
-                html_url: "https://github.com/acme/web/pull/7#discussion_r91",
-                body: "nit",
-                path: "src/a.ts",
-                line: 4,
-                side: "RIGHT",
-              },
-            ]),
+        );
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson([
+                {
+                  id: 91,
+                  node_id: "PRRC_1",
+                  html_url: "https://github.com/acme/web/pull/7#discussion_r91",
+                  body: changed ? "edited on GitHub" : "nit",
+                  path: "src/a.ts",
+                  ...(positionsFromGraphQL ? {} : { line: 4, side: "RIGHT" }),
+                },
+              ]),
+            ),
           ),
-        ),
-      );
-      mockedExecute.mockReturnValueOnce(Effect.succeed(output("{}")));
-      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
-      yield* cli.submitReview({
-        cwd: "/w",
-        repository: "acme/web",
-        host: "github.com",
-        number: 7,
-        verdict: "comment",
-        body: "Review complete",
-        comments: [
-          {
-            path: "src/a.ts",
-            body: "nit",
-            position: { kind: "added", newLine: 4 },
-            hostedComment: {
-              reviewId: "PRR_1",
-              commentId: "PRRC_1",
-              url: "https://github.com/acme/web/pull/7#discussion_r91",
+        );
+        if (positionsFromGraphQL)
+          mockedExecute.mockReturnValueOnce(
+            Effect.succeed(
+              output(
+                encodeJson({
+                  data: {
+                    repository: {
+                      pullRequest: {
+                        reviewThreads: {
+                          pageInfo: { hasNextPage: false, endCursor: null },
+                          nodes: [
+                            {
+                              line: 4,
+                              diffSide: "RIGHT",
+                              startLine: 4,
+                              startDiffSide: null,
+                              comments: { nodes: [{ id: "PRRC_1" }] },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                }),
+              ),
+            ),
+          );
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output("{}")));
+        const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+        const submission = cli.submitReview({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+          verdict: "comment",
+          body: "Review complete",
+          comments: [
+            {
+              path: "src/a.ts",
+              body: "nit",
+              position: { kind: "added", newLine: 4 },
+              hostedComment: {
+                reviewId: "PRR_1",
+                commentId: "PRRC_1",
+                url: "https://github.com/acme/web/pull/7#discussion_r91",
+              },
             },
-          },
-        ],
-      });
-      expect(variablesOf("addPullRequestReviewThread(")).toEqual([]);
-      expect(restCallsTo("/reviews").filter((call) => call.method === "POST")).toEqual([]);
-      expect(variablesOf("submitPullRequestReview(")).toEqual([
-        { input: { pullRequestReviewId: "PRR_1", body: "Review complete", event: "COMMENT" } },
-      ]);
-    }),
+          ],
+        });
+        if (changed) {
+          const error = yield* submission.pipe(Effect.flip);
+          expect(error.message).toBe(
+            "A saved review comment changed on GitHub. Refresh before submitting.",
+          );
+          expect(variablesOf("submitPullRequestReview(")).toEqual([]);
+          return;
+        }
+        yield* submission;
+        expect(variablesOf("addPullRequestReviewThread(")).toEqual([]);
+        expect(restCallsTo("/reviews").filter((call) => call.method === "POST")).toEqual([]);
+        expect(variablesOf("submitPullRequestReview(")).toEqual([
+          { input: { pullRequestReviewId: "PRR_1", body: "Review complete", event: "COMMENT" } },
+        ]);
+      }),
   );
 
   it.effect("keeps replies to pending comments in the private review", () =>
