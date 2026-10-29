@@ -1,4 +1,5 @@
 import { Pressable, View } from "react-native";
+import type { ReactNode } from "react";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Menu } from "../../components/ui/Menu";
@@ -9,10 +10,12 @@ export function ReviewComparisonPicker({
   sections,
   selected,
   onSelect,
+  trailing,
 }: {
   readonly sections: ReadonlyArray<ReviewSectionItem>;
   readonly selected: ReviewSectionItem | null;
   readonly onSelect: (sectionId: string) => void;
+  readonly trailing?: ReactNode;
 }) {
   const menu = buildReviewSectionMenu(sections);
   const action = (section: ReviewSectionItem | null, title: string) => ({
@@ -63,6 +66,7 @@ export function ReviewComparisonPicker({
           </Pressable>
         </Menu>
       </View>
+      {trailing}
     </View>
   );
 }

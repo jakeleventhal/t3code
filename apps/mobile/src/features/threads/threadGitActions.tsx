@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { Pressable } from "react-native";
 import {
   AuthSourceControlWriteScope,
   EnvironmentId,
@@ -16,6 +17,12 @@ import {
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
+import { Menu } from "../../components/ui/Menu";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import {
+  androidHeaderMenuActions,
+  findHeaderMenuAction,
+} from "../../components/ui/headerMenu.android";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { useEnvironmentScope } from "../../state/session";
@@ -280,8 +287,8 @@ export function threadGitMenuDefinition(
   model: ReturnType<typeof useThreadGitControlModel>,
 ): AppBarMenu {
   return {
-    title: "Git",
-    icon: THREAD_GIT_GLYPH,
+    title: "Git actions",
+    icon: "ellipsis",
     separateBackground: false,
     items: [
       {
@@ -311,22 +318,26 @@ export function threadGitMenuDefinition(
           void model.runMenuAction(item);
         },
       })),
-      {
-        id: "git-branches",
-        title: "Branches & worktrees…",
-        icon: "arrow.triangle.branch",
-        disabled: props.hasThread === false,
-        subtitle:
-          props.hasThread === false
-            ? "Available after the first message"
-            : "Switch branch, link a pull request",
-        onPress: model.openGitInspector,
-      },
     ],
   };
 }
 
-/** Returns menu data because native toolbars serialize direct items rather than rendering component children. */
-export function useThreadGitMenuDefinition(props: ThreadGitMenuProps): AppBarMenu | null {
-  return threadGitMenuDefinition(props, useThreadGitControlModel(props));
+export function ThreadGitActionsMenu({ menu }: { readonly menu: AppBarMenu }) {
+  return (
+    <Menu
+      title={menu.title}
+      actions={androidHeaderMenuActions(menu.items)}
+      onPressAction={({ nativeEvent }) =>
+        findHeaderMenuAction(menu.items, nativeEvent.event)?.onPress()
+      }
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Git actions"
+        className="size-11 items-center justify-center rounded-full active:opacity-70"
+      >
+        <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon" />
+      </Pressable>
+    </Menu>
+  );
 }

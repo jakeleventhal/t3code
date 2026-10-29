@@ -1,6 +1,4 @@
 import { Toolbar } from "../../components/ui/Toolbar";
-import { createNativeHeaderMenu } from "../../components/ui/nativeHeaderMenu.ios";
-import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { ProjectScript } from "@t3tools/contracts";
 import { projectScriptMenuLabel } from "@t3tools/shared/projectScripts";
 
@@ -15,14 +13,11 @@ import {
 import {
   THREAD_GIT_GLYPH,
   THREAD_WORKSPACE_GLYPH,
-  threadGitMenuDefinition,
   useThreadGitControlModel,
-  useThreadGitMenuDefinition,
   type ThreadGitMenuProps,
 } from "./threadGitActions";
 
 export type { ThreadGitMenuProps } from "./threadGitActions";
-export { useThreadGitMenuDefinition } from "./threadGitActions";
 
 type HeaderItem = Record<string, unknown>;
 type HeaderItems = HeaderItem[];
@@ -52,26 +47,8 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly onRunProjectScript: (script: ProjectScript) => Promise<void>;
 };
 
-function nativeMenuItems(items: ReadonlyArray<AppBarMenuItem>): HeaderItems {
-  return items.flatMap((item) =>
-    "items" in item
-      ? nativeMenuItems(item.items)
-      : [
-          {
-            description: item.subtitle,
-            disabled: item.disabled,
-            ...(item.icon ? { icon: { name: item.icon, type: "sfSymbol" as const } } : {}),
-            label: item.title,
-            onPress: item.onPress,
-            type: "action" as const,
-          },
-        ],
-  );
-}
-
 function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGitHeaderActionItems {
   const model = useThreadGitControlModel(props);
-  const gitMenu = threadGitMenuDefinition(props, model);
 
   return {
     devServers:
@@ -167,13 +144,14 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       variant: "plain",
     },
     git: {
-      accessibilityLabel: "Git actions",
+      accessibilityLabel: "Branches & worktrees",
       icon: { name: THREAD_GIT_GLYPH, type: "sfSymbol" },
-      identifier: "thread-right-git",
-      label: "Git",
-      menu: { items: nativeMenuItems(gitMenu.items), title: gitMenu.title },
+      identifier: "thread-right-branches",
+      label: "Branches & worktrees",
+      disabled: props.hasThread === false,
+      onPress: model.openGitInspector,
       sharesBackground: true,
-      type: "menu",
+      type: "button",
       variant: "plain",
     },
     mergeBack: props.onMergeBack
@@ -308,12 +286,13 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
         onPress={model.openWorkspace}
         separateBackground
       />
-      {createNativeHeaderMenu(threadGitMenuDefinition(props, model))}
+      <Toolbar.Button
+        accessibilityLabel="Branches & worktrees"
+        disabled={props.hasThread === false}
+        icon={THREAD_GIT_GLYPH}
+        onPress={model.openGitInspector}
+        separateBackground
+      />
     </Toolbar>
   );
-}
-
-export function ThreadGitMenu(props: ThreadGitMenuProps) {
-  const menu = useThreadGitMenuDefinition(props);
-  return menu ? createNativeHeaderMenu(menu) : null;
 }
