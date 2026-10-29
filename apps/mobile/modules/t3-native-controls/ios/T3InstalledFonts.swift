@@ -3,6 +3,35 @@ import UIKit
 
 @MainActor
 enum T3InstalledFonts {
+  enum SelectionError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+      "iOS could not activate the selected font. Your previous font has been kept."
+    }
+  }
+
+  static func activate(_ descriptor: UIFontDescriptor, completion: @escaping (Result<UIFont, SelectionError>) -> Void) {
+    // A picker descriptor can name a provider font that this process has not activated yet.
+    let requested = CTFontDescriptorCreateWithAttributes(descriptor.fontAttributes as CFDictionary)
+    CTFontManagerRequestFonts([requested] as CFArray) { unresolved in
+      DispatchQueue.main.async {
+        guard CFArrayGetCount(unresolved) == 0 else {
+          completion(.failure(.unavailable))
+          return
+        }
+        let font = UIFont(descriptor: descriptor, size: 16)
+        let name = descriptor.object(forKey: .name) as? String
+        let family = descriptor.object(forKey: .family) as? String
+        guard font.fontName == name || font.familyName == family else {
+          completion(.failure(.unavailable))
+          return
+        }
+        completion(.success(font))
+      }
+    }
+  }
+
   static func describe(_ font: UIFont, name: String? = nil) -> [String: Any] {
     func variant(_ weight: UIFont.Weight) -> String {
       let descriptor = UIFontDescriptor(fontAttributes: [
@@ -50,11 +79,11 @@ enum T3InstalledFonts {
 
 @MainActor
 final class T3FontPickerPresentation: NSObject, UIFontPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
-  private let completion: ([String: Any]?) -> Void
+  private let completion: (Result<[String: Any]?, T3InstalledFonts.SelectionError>) -> Void
   private var picker: UIFontPickerViewController?
   private var finished = false
 
-  init(completion: @escaping ([String: Any]?) -> Void) {
+  init(completion: @escaping (Result<[String: Any]?, T3InstalledFonts.SelectionError>) -> Void) {
     self.completion = completion
   }
 
@@ -73,8 +102,12 @@ final class T3FontPickerPresentation: NSObject, UIFontPickerViewControllerDelega
 
   func fontPickerViewControllerDidPickFont(_ viewController: UIFontPickerViewController) {
     guard let descriptor = viewController.selectedFontDescriptor else { dismiss(); return }
-    let result = T3InstalledFonts.describe(UIFont(descriptor: descriptor, size: 16))
-    viewController.dismiss(animated: true) { self.finish(result) }
+    T3InstalledFonts.activate(descriptor) { [weak self] result in
+      guard let self, !self.finished else { return }
+      viewController.dismiss(animated: true) {
+        self.finish(result.map { T3InstalledFonts.describe($0) })
+      }
+    }
   }
 
   func fontPickerViewControllerDidCancel(_ viewController: UIFontPickerViewController) {
@@ -82,15 +115,15 @@ final class T3FontPickerPresentation: NSObject, UIFontPickerViewControllerDelega
   }
 
   func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-    finish(nil)
+    finish(.success(nil))
   }
 
   func dismiss() {
-    guard let picker else { finish(nil); return }
-    picker.dismiss(animated: true) { self.finish(nil) }
+    guard let picker else { finish(.success(nil)); return }
+    picker.dismiss(animated: true) { self.finish(.success(nil)) }
   }
 
-  private func finish(_ result: [String: Any]?) {
+  private func finish(_ result: Result<[String: Any]?, T3InstalledFonts.SelectionError>) {
     guard !finished else { return }
     finished = true
     picker?.delegate = nil
