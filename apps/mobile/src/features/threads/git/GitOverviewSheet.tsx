@@ -46,6 +46,7 @@ type GitOverviewSheetProps = StaticScreenProps<{
 }> & {
   readonly headerInset?: number;
   readonly presentation?: "sheet" | "inspector";
+  readonly embedded?: boolean;
 };
 
 export function GitOverviewSheet(props: GitOverviewSheetProps) {
@@ -113,7 +114,9 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       nestedScrollEnabled
       alwaysBounceVertical
       className="flex-1 android:bg-sheet-solid ios:bg-screen"
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+      contentInsetAdjustmentBehavior={
+        Platform.OS === "ios" && !props.embedded ? "automatic" : "never"
+      }
       showsVerticalScrollIndicator={false}
       contentInset={{ bottom: Math.max(insets.bottom, 18) + 18 }}
       contentContainerStyle={{
@@ -178,6 +181,8 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       ) : null}
     </ScrollView>
   );
+
+  if (props.embedded) return content;
 
   if (isInspector && Platform.OS === "ios") {
     return (

@@ -33,8 +33,14 @@ export function ThreadFileNavigatorPane(props: {
   readonly onSelectFile: (path: string) => void;
   readonly toolbar?: ReactNode;
   readonly active?: boolean;
-  readonly alternativeContent?: ReactNode;
+  readonly workspace?: {
+    readonly changes: ReactNode;
+    readonly actions: ReactNode;
+    readonly actionsTitle: string;
+    readonly showActions: boolean;
+  };
 }) {
+  const showActions = props.workspace?.showActions === true;
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<SearchBarCommands>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -114,8 +120,8 @@ export function ThreadFileNavigatorPane(props: {
     return (
       <NativeWorkspaceNavigatorPane
         screenId="thread-file-navigator-native"
-        title="Files"
-        header={props.toolbar}
+        title={showActions ? (props.workspace?.actionsTitle ?? "Git") : "Files"}
+        header={showActions ? undefined : props.toolbar}
         insetBelowHeader
         trailing={
           props.active !== false ? (
@@ -129,7 +135,7 @@ export function ThreadFileNavigatorPane(props: {
             />
           ) : undefined
         }
-        subtitle={props.projectName}
+        subtitle={showActions ? "" : props.projectName}
         searchBar={
           searchVisible ? (
             <ScreenStackHeaderSearchBarView>
@@ -156,12 +162,13 @@ export function ThreadFileNavigatorPane(props: {
           ) : undefined
         }
       >
-        {props.alternativeContent !== undefined ? (
+        {props.workspace !== undefined ? (
           <ThreadInspectorContentStack
-            mode={props.active === false ? "route" : "files"}
+            mode={showActions ? "git" : props.active === false ? "route" : "files"}
             resetKeys={[props.environmentId, props.cwd]}
             renderFiles={() => fileTree}
-            renderRoute={() => props.alternativeContent}
+            renderRoute={() => props.workspace?.changes}
+            renderGit={() => props.workspace?.actions}
           />
         ) : (
           fileTree
