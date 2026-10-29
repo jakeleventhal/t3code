@@ -22,6 +22,7 @@ import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { IconButton } from "../../components/ui/IconButton";
 import { NativeWorkspaceNavigatorPane } from "../layout/workspace-navigator-pane";
+import { ThreadInspectorContentStack } from "../threads/thread-inspector-content-stack";
 
 export function ThreadFileNavigatorPane(props: {
   readonly cwd: string;
@@ -32,6 +33,7 @@ export function ThreadFileNavigatorPane(props: {
   readonly onSelectFile: (path: string) => void;
   readonly toolbar?: ReactNode;
   readonly active?: boolean;
+  readonly alternativeContent?: ReactNode;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<SearchBarCommands>(null);
@@ -116,14 +118,16 @@ export function ThreadFileNavigatorPane(props: {
         header={props.toolbar}
         insetBelowHeader
         trailing={
-          <IconButton
-            accessibilityLabel="Search files"
-            icon="magnifyingglass"
-            onPress={() => {
-              setSearchOpen(true);
-              if (searchVisible) focusSearch();
-            }}
-          />
+          props.active !== false ? (
+            <IconButton
+              accessibilityLabel="Search files"
+              icon="magnifyingglass"
+              onPress={() => {
+                setSearchOpen(true);
+                if (searchVisible) focusSearch();
+              }}
+            />
+          ) : undefined
         }
         subtitle={props.projectName}
         searchBar={
@@ -152,7 +156,16 @@ export function ThreadFileNavigatorPane(props: {
           ) : undefined
         }
       >
-        {fileTree}
+        {props.alternativeContent !== undefined ? (
+          <ThreadInspectorContentStack
+            mode={props.active === false ? "route" : "files"}
+            resetKeys={[props.environmentId, props.cwd]}
+            renderFiles={() => fileTree}
+            renderRoute={() => props.alternativeContent}
+          />
+        ) : (
+          fileTree
+        )}
       </NativeWorkspaceNavigatorPane>
     );
   }

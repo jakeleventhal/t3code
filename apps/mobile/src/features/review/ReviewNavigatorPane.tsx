@@ -12,6 +12,7 @@ export function ReviewNavigatorPane(props: {
   readonly headerInset: number;
   readonly subtitle: string;
   readonly toolbar: ReactNode;
+  readonly embedded?: boolean;
   readonly onSectionSelected?: VoidFunction;
 }) {
   const navigator = (
@@ -22,6 +23,8 @@ export function ReviewNavigatorPane(props: {
       onSectionSelected={props.onSectionSelected}
     />
   );
+
+  if (Platform.OS === "ios" && props.embedded) return navigator;
 
   if (Platform.OS === "ios") {
     return (

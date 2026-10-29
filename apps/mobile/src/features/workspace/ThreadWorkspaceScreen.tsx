@@ -228,7 +228,7 @@ function ThreadWorkspaceScreen(
         }
       : undefined;
   if (fileInspector.supported || props.threadEntry) {
-    const renderFiles = (headerInset: number) => {
+    const renderFiles = (headerInset: number, alternativeContent?: ReactNode) => {
       if (cwd !== null)
         return (
           <ThreadFileNavigatorPane
@@ -239,6 +239,7 @@ function ThreadWorkspaceScreen(
             projectName={selectedThreadProject?.title ?? "Files"}
             selectedPath={props.route.params.path?.join("/") ?? null}
             toolbar={tabs}
+            alternativeContent={alternativeContent}
             onSelectFile={(path) =>
               navigation.setParams({ path: path.split("/"), line: undefined })
             }
@@ -250,22 +251,35 @@ function ThreadWorkspaceScreen(
         </View>
       );
     };
-    const renderChanges = (headerInset: number) => (
+    const renderChanges = (headerInset: number, embedded = false) => (
       <ReviewNavigatorPane
         environmentId={environmentId}
         threadId={threadId}
         headerInset={headerInset}
         subtitle={selectedThread?.branch ?? ""}
         toolbar={tabs}
+        embedded={embedded}
         onSectionSelected={openedReviewFile ? closeFile : undefined}
       />
     );
-    const renderInspector = (headerInset: number) =>
-      renderWorkspacePanel(
+    const renderInspector = (headerInset: number) => {
+      // Keep the selected-tab glass attached to one UIKit header while its pane changes.
+      if (Platform.OS === "ios" && cwd !== null)
+        return (
+          <ThreadInspectorContentStack
+            mode={props.route.params.workspacePanel === "branches" ? "git" : "route"}
+            resetKeys={[paneKey, cwd]}
+            renderFiles={() => null}
+            renderGit={() => renderBranches(headerInset)}
+            renderRoute={() => renderFiles(headerInset, renderChanges(headerInset, true))}
+          />
+        );
+      return renderWorkspacePanel(
         headerInset,
         () => renderChanges(headerInset),
         () => renderFiles(headerInset),
       );
+    };
     const showFile = selectedTab === "files" && props.route.params.path !== undefined;
     const showDiff = selectedTab === "git" && openedReviewFile !== undefined;
     const showThread = !showFile && !showDiff;
