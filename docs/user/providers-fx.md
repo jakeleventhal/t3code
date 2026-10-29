@@ -35,7 +35,7 @@ fx threads load the MCP servers from fx's profile config, `~/.fx/mcp.json`, on t
 | --------------- | ----------------------------------------------------------------------------------- |
 | **Supervised**  | fx asks before it changes files or runs commands. Read requests run without asking. |
 | **Auto**        | fx handles routine actions itself. Anything it still asks about reaches you.        |
-| **Full access** | fx runs every action without asking, outside its sandbox. Needs fx 0.0.14 or later. |
+| **Full access** | fx runs every action without asking. Needs fx 0.0.14 or later.                      |
 
 T3 Code offers **Full access** only when the server's fx reports it. After you upgrade fx, refresh the provider in **Settings → Providers** to see it. On an older fx, or before the provider check finishes, a thread set to **Full access** runs in **Supervised**.
 
