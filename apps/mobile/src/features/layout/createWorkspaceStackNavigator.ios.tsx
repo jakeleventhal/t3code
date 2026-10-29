@@ -35,7 +35,7 @@ import { setNativelyPoppingWorkspaceRoute } from "../workspace/workspace-detail-
 import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 
 import { useAdaptiveWorkspaceLayout } from "./AdaptiveWorkspaceLayout";
-import { WorkspaceSidebarDrawer } from "./workspace-sidebar-drawer";
+import { WorkspaceSidebarDrawer, WorkspaceSidebarDrawerContent } from "./workspace-sidebar-drawer";
 import { WorkspacePaneDivider } from "./workspace-pane-divider";
 import { WorkspaceEmptyDetail } from "./WorkspaceEmptyDetail";
 import { NativeColumnContent as ColumnContent } from "../../native/NativeColumnContent.ios";
@@ -311,7 +311,7 @@ function WorkspaceColumns(
           selectedPullRequestKey,
         }}
       >
-        {primary.render()}
+        <WorkspaceSidebarDrawerContent>{primary.render()}</WorkspaceSidebarDrawerContent>
       </NativePrimaryColumnContext>
     ),
   };

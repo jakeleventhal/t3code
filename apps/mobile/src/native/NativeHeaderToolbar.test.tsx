@@ -1,6 +1,6 @@
 import type { NativeStackHeaderItem } from "@react-navigation/native-stack";
 import { NavigationContext } from "@react-navigation/native";
-import { act, createContext, startTransition, Suspense, type ReactElement } from "react";
+import { Activity, act, createContext, startTransition, Suspense, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
@@ -259,3 +259,32 @@ it("isolates toolbar handlers and ignores retained actions after their toolbar u
   second.onPress?.();
   expect(onPress).not.toHaveBeenCalled();
 });
+
+it.each(["left", "right", "bottom"] as const)(
+  "restores unchanged %s controls when returning to a retained pane",
+  (placement) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    root = createRoot(document.createElement("div"));
+    const onPress = vi.fn();
+    const render = (visible: boolean) =>
+      act(() =>
+        root!.render(
+          <Activity mode={visible ? "visible" : "hidden"}>
+            <NativeHeaderToolbar placement={placement}>
+              <NativeHeaderToolbar.Button label="Close file" onPress={onPress} />
+            </NativeHeaderToolbar>
+          </Activity>,
+        ),
+      );
+    render(true);
+    expect(harness.renderedItems).toHaveLength(1);
+    render(false);
+    expect(harness.renderedItems).toEqual([]);
+    render(true);
+    const restored = harness.renderedItems[0];
+    if (restored?.type !== "button") throw new Error("Expected the restored native control");
+    expect(restored.label).toBe("Close file");
+    restored.onPress?.();
+    expect(onPress).toHaveBeenCalledTimes(1);
+  },
+);

@@ -1,6 +1,9 @@
 import * as NodeModule from "node:module";
 import { expect, it } from "vite-plus/test";
-import { threadWorkspacePanelAction } from "./thread-workspace-panel-navigation";
+import {
+  closedThreadWorkspaceFileParams,
+  threadWorkspacePanelAction,
+} from "./thread-workspace-panel-navigation";
 import { selectWorkspaceDetail, workspaceDetailRouter } from "./workspace-detail-selection";
 
 const require = NodeModule.createRequire(import.meta.url);
@@ -58,6 +61,16 @@ it.each(["Thread", "ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFil
         params: { ...selection, workspacePanel: panel, inspector: undefined },
       });
     }
+    state = apply(state, {
+      type: "SET_PARAMS",
+      source: workspaceKey,
+      payload: { params: closedThreadWorkspaceFileParams },
+    });
+    expect(state.routes.at(-1)).toMatchObject({
+      key: workspaceKey,
+      params: { ...thread, workspacePanel: "branches", ...closedThreadWorkspaceFileParams },
+    });
+    expect(state.routes).toHaveLength(name === "Thread" ? 2 : 3);
     state = selectThread(state);
     expect(state.routes.map((route) => route.name)).toEqual(["Home", "Thread"]);
     expect(state.routes.at(-1)?.params).toEqual(thread);

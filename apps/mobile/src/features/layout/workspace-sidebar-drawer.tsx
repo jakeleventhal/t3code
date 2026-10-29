@@ -1,11 +1,36 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Keyboard, Pressable, StyleSheet, View, type NativeSyntheticEvent } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
-import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
+import {
+  useNativeColumnLayoutMetrics,
+  useNativeLayoutMetrics,
+} from "../../native/native-layout-metrics";
 import { useAdaptiveWorkspaceLayout } from "./adaptive-workspace-context";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { WorkspaceSlotOptionsContext } from "../../native/v5-workspace-context";
+
+const DrawerContentWidthContext = createContext<((width: number) => void) | null>(null);
+
+/** The content width excludes whatever rail UIKit reserved in this detached controller. */
+export function WorkspaceSidebarDrawerContent(props: { readonly children: ReactNode }) {
+  const reportWidth = use(DrawerContentWidthContext);
+  const contentWidth = useNativeColumnLayoutMetrics()?.width;
+  const report = useEffectEvent((width: number) => reportWidth?.(width));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the detached controller instead of assuming it reserves the window's rail inset
+  useEffect(() => {
+    if (contentWidth !== undefined && contentWidth > 0) report(contentWidth);
+  }, [contentWidth]);
+  return props.children;
+}
 
 export function WorkspaceSidebarDrawer(props: {
   readonly visible: boolean;
@@ -15,14 +40,16 @@ export function WorkspaceSidebarDrawer(props: {
 }) {
   const { width } = props;
   const metrics = useNativeLayoutMetrics();
+  const [navigationInset, setNavigationInset] = useState(metrics?.safeArea.right ?? 0);
+  const navigationWidth = width + navigationInset;
+  const reportContentWidth = (contentWidth: number) =>
+    setNavigationInset(Math.max(0, navigationWidth - contentWidth));
   const { setPrimarySidebarSearchQuery } = useAdaptiveWorkspaceLayout();
   const workspace = useWorkspaceTabs();
   const setSearchQuery = (query: string) => {
     if (workspace) workspace.dispatch({ type: "query", query, tab: "threads" });
     else setPrimarySidebarSearchQuery(query);
   };
-  // A detached Duo navigation controller reserves a vertical rail; clip that rail outside the sheet.
-  const navigationWidth = props.width + (metrics?.safeArea.right ?? 0);
   const [optionsByRoute, setOptionsByRoute] = useState<ReadonlyMap<string, object>>(new Map());
   const setRouteOptions = (key: string, options: object) =>
     setOptionsByRoute((current) =>
@@ -88,9 +115,11 @@ export function WorkspaceSidebarDrawer(props: {
       >
         <View style={{ width: navigationWidth, flex: 1 }}>
           {mounted ? (
-            <WorkspaceSlotOptionsContext value={slotOptions}>
-              {props.children}
-            </WorkspaceSlotOptionsContext>
+            <DrawerContentWidthContext value={reportContentWidth}>
+              <WorkspaceSlotOptionsContext value={slotOptions}>
+                {props.children}
+              </WorkspaceSlotOptionsContext>
+            </DrawerContentWidthContext>
           ) : null}
         </View>
       </Animated.View>
