@@ -136,7 +136,10 @@ describe("native per-thread workspace restoration", () => {
     expect(isFocusedThreadWorkspace(opened, identity("android-restore-env", "other-thread"))).toBe(
       false,
     );
-    const peer = rememberedThreadWorkspaceNavigationState(opened, current, true);
+    const peer = rememberedThreadWorkspaceNavigationState(opened, current, {
+      peer: true,
+      columns: true,
+    });
     expect(peer?.routes.map((route) => route.name)).toEqual([
       "Home",
       "Thread",
@@ -144,6 +147,36 @@ describe("native per-thread workspace restoration", () => {
       "ThreadReviewFile",
     ]);
   });
+
+  it.each(["ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"])(
+    "does not insert remembered %s pages between a compact chat and its list",
+    (name) => {
+      const params = identity("compact-restore-env", name);
+      const opened = apply(
+        initial(),
+        StackActions.push(name, {
+          ...params,
+          reviewSectionId: "git:working-tree",
+          reviewFilePath: "src/rates.ts",
+          path: ["src", "rates.ts"],
+        }),
+      );
+      rememberFocusedThreadWorkspace(opened);
+      expect(readThreadWorkspaceLocation(params.environmentId, params.threadId)?.name).toBe(name);
+      expect(
+        rememberedThreadWorkspaceNavigationState(initial(), params, {
+          peer: true,
+          columns: false,
+        }),
+      ).toBeNull();
+      expect(
+        rememberedThreadWorkspaceNavigationState(initial(), params, {
+          peer: true,
+          columns: true,
+        })?.routes.at(-1)?.name,
+      ).toBe(name);
+    },
+  );
 
   it("restores all-files scope without turning it into a single-file view", () => {
     const params = identity("scope-restore-env", "all-files-thread");

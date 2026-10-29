@@ -42,6 +42,7 @@ import { useThreadDraftForThread } from "../../state/use-thread-composer-state";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
+  useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
   useRegisterWorkspaceInspector,
 } from "../layout/AdaptiveWorkspaceLayout";
@@ -77,10 +78,13 @@ export function ReviewHeader(
     readonly iconColor?: string;
     readonly onReturnToThread: () => void;
     readonly showGitMenu?: boolean;
+    /** Shows the button that hides and reveals the Changes navigator beside a split-view diff. */
+    readonly navigatorToggle?: boolean;
   },
 ) {
   const presentation = useReviewHeaderPresentation(props);
   const iconColor = String(useUniwindTheme()["--color-icon"]);
+  const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   return (
     <AppBar
       title={presentation.title}
@@ -89,6 +93,20 @@ export function ReviewHeader(
       hideBottomBorder
       options={{ headerTintColor: props.iconColor ?? iconColor, headerTitle: props.title }}
       backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
+      actions={
+        props.navigatorToggle
+          ? [
+              {
+                accessibilityLabel: panes.auxiliaryPaneVisible
+                  ? "Hide changes navigator"
+                  : "Show changes navigator",
+                icon: "sidebar.right",
+                selected: panes.auxiliaryPaneVisible,
+                onPress: toggleAuxiliaryPane,
+              },
+            ]
+          : undefined
+      }
       menus={[
         ...(presentation.gitMenu && props.showGitMenu !== false ? [presentation.gitMenu] : []),
         ...(presentation.refreshAction
@@ -193,6 +211,14 @@ export function ReviewSheet(
   props: ReviewSheetProps & {
     readonly workspaceTabs?: ReactNode;
     readonly workspaceHeader?: ReactNode;
+    /**
+     * "inspector" renders only the navigator (comparison picker and file tree) for the inspector
+     * column, where opening a file replaces the content column with its diff.
+     */
+    readonly placement?: "inspector";
+    /** The navigator a split-view diff shows beside itself. */
+    readonly renderInspector?: (() => ReactNode) | undefined;
+    readonly onSectionSelected?: VoidFunction | undefined;
     readonly openedFile?:
       | {
           readonly sectionId: string;
@@ -218,7 +244,8 @@ export function ReviewSheet(
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const columnMetrics = useNativeColumnLayoutMetrics();
   const safeArea = columnMetrics?.safeArea ?? insets;
-  const toolbarInset = Platform.OS === "ios" ? safeArea.top : 0;
+  const inInspector = props.placement === "inspector";
+  const toolbarInset = Platform.OS === "ios" && !inInspector ? safeArea.top : 0;
   const topContentInset = 0;
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
@@ -351,13 +378,20 @@ export function ReviewSheet(
 
   const openFile = (path: string | undefined, scope?: "staged" | "unstaged") => {
     if (!selectedSection) return;
+    const selection = {
+      reviewSectionId: selectedSection.id,
+      reviewFilePath: path,
+      reviewWorkingTreeScope: scope,
+    };
+    if (inInspector || props.openedFile) {
+      navigation.setParams(selection);
+      return;
+    }
     navigation.dispatch(
       StackActions.push("ThreadReviewFile", {
         environmentId: String(environmentId),
         threadId: String(threadId),
-        reviewSectionId: selectedSection.id,
-        ...(path ? { reviewFilePath: path } : {}),
-        ...(scope ? { reviewWorkingTreeScope: scope } : {}),
+        ...selection,
       }),
     );
   };
@@ -410,7 +444,7 @@ export function ReviewSheet(
     .filter((part): part is string => Boolean(part))
     .join(" · ");
 
-  useRegisterWorkspaceInspector(undefined);
+  useRegisterWorkspaceInspector(props.renderInspector);
 
   const listHeader = (() => {
     const children: ReactElement[] = [];
@@ -455,32 +489,37 @@ export function ReviewSheet(
 
   return (
     <>
-      {props.workspaceHeader ?? (
-        <ReviewHeader
-          environmentId={environmentId}
-          threadId={threadId}
-          title={headerTitleText}
-          subtitle={headerSubtitle}
-          androidSubtitle={androidHeaderSubtitle}
-          iconColor={headerIcon}
-          selectedThreadCwd={selectedThreadCwd}
-          selectedSection={selectedSection}
-          onRefresh={handlePullToRefresh}
-          onReturnToThread={handleReturnToThread}
-        />
-      )}
+      {inInspector
+        ? null
+        : (props.workspaceHeader ?? (
+            <ReviewHeader
+              environmentId={environmentId}
+              threadId={threadId}
+              title={headerTitleText}
+              subtitle={headerSubtitle}
+              androidSubtitle={androidHeaderSubtitle}
+              iconColor={headerIcon}
+              selectedThreadCwd={selectedThreadCwd}
+              selectedSection={selectedSection}
+              onRefresh={handlePullToRefresh}
+              onReturnToThread={handleReturnToThread}
+              navigatorToggle={props.renderInspector !== undefined}
+            />
+          ))}
 
       <ScreenContent>
         <View className="flex-1 bg-sheet android:bg-sheet-solid">
           <View style={{ paddingTop: toolbarInset }}>
             {props.workspaceTabs}
-            {showSectionToolbar ? (
+            {/* A split-view diff leaves the comparison to the navigator beside it. */}
+            {showSectionToolbar && !props.renderInspector ? (
               <ReviewComparisonPicker
                 sections={reviewSections}
                 selected={selectedSection}
                 onSelect={(sectionId) => {
                   selectSection(sectionId);
                   if (props.openedFile) navigation.goBack();
+                  props.onSectionSelected?.();
                 }}
               />
             ) : null}

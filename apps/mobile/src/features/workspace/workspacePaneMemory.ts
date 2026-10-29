@@ -2,6 +2,16 @@ import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../../state/atom-registry";
 
 export type WorkspacePane = "git" | "files";
+
+export function workspacePaneForLocation(
+  params: { readonly path?: readonly string[]; readonly reviewSectionId?: string },
+  fallback: WorkspacePane | null,
+): WorkspacePane | null {
+  if (params.path && !params.reviewSectionId) return "files";
+  if (params.reviewSectionId && !params.path) return "git";
+  return fallback;
+}
+
 const rememberedPane = Atom.family((key: string) =>
   Atom.make<WorkspacePane | null>(null).pipe(
     Atom.keepAlive,

@@ -3,28 +3,20 @@ import { environmentSession } from "../../state/session";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ScreenContent } from "../../components/ui/ScreenContent";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";
-import {
-  Screen,
-  ScreenStack,
-  ScreenStackHeaderConfig,
-  ScreenStackHeaderSearchBarView,
-  SearchBar,
-} from "react-native-screens";
+import { ScreenStackHeaderSearchBarView, SearchBar } from "react-native-screens";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { FilesHeader } from "./FilesHeader";
-import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { FileTreeBrowser } from "./FileTreeBrowser";
-import { NativeInspectorContent } from "../../native/NativeInspectorContent";
 import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { NativeWorkspaceNavigatorPane } from "../layout/workspace-navigator-pane";
 
 export function ThreadFileNavigatorPane(props: {
   readonly cwd: string;
@@ -36,12 +28,10 @@ export function ThreadFileNavigatorPane(props: {
   readonly toolbar?: ReactNode;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const { toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const { themeAppearance: highlightTheme } = useAppearancePreferences();
   const theme = useUniwindTheme();
   const foregroundColor = theme["--color-foreground"];
   const sheetColor = theme["--color-sheet"];
-  const headerScrollEdgeEffects = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
   const fileAccessSession = useEnvironmentQuery(
     environmentSession.sessionStateAtom(props.environmentId),
   );
@@ -66,17 +56,6 @@ export function ThreadFileNavigatorPane(props: {
       theme: highlightTheme,
     });
   };
-  const nativeHeaderRightBarButtonItems = [
-    {
-      accessibilityLabel: "Close files",
-      icon: { name: "xmark", type: "sfSymbol" as const },
-      identifier: "thread-file-navigator-close",
-      onPress: toggleAuxiliaryPane,
-      sharesBackground: false,
-      tintColor: foregroundColor,
-      type: "button" as const,
-    },
-  ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"];
 
   const fileTree = (
     <FileTreeBrowser
@@ -112,55 +91,36 @@ export function ThreadFileNavigatorPane(props: {
 
   if (Platform.OS === "ios") {
     return (
-      <View className="flex-1 border-l border-border bg-sheet">
-        <ScreenStack style={{ flex: 1 }}>
-          <Screen
-            activityState={2}
-            enabled
-            isNativeStack
-            screenId="thread-file-navigator-native"
-            scrollEdgeEffects={headerScrollEdgeEffects}
-            style={{ backgroundColor: sheetColor, flex: 1 }}
-          >
-            <NativeInspectorContent>{fileTree}</NativeInspectorContent>
-            <ScreenStackHeaderConfig
-              backgroundColor="rgba(0,0,0,0)"
-              color={foregroundColor}
-              headerRightBarButtonItems={nativeHeaderRightBarButtonItems}
-              hideBackButton
-              hideShadow={false}
-              navigationItemStyle="editor"
-              subtitle={props.projectName}
-              title="Files"
-              titleColor={foregroundColor}
-              titleFontSize={17}
-              titleFontWeight="700"
-              translucent
-            >
-              <ScreenStackHeaderSearchBarView>
-                <SearchBar
-                  allowToolbarIntegration
-                  autoCapitalize="none"
-                  barTintColor={sheetColor}
-                  hideNavigationBar={false}
-                  hideWhenScrolling={false}
-                  obscureBackground={false}
-                  onCancelButtonPress={() => {
-                    setSearchQuery("");
-                  }}
-                  onChangeText={(event: NativeSyntheticEvent<{ readonly text?: string }>) => {
-                    setSearchQuery(event.nativeEvent.text ?? "");
-                  }}
-                  placement="integratedButton"
-                  placeholder="Search files"
-                  textColor={foregroundColor}
-                  tintColor={foregroundColor}
-                />
-              </ScreenStackHeaderSearchBarView>
-            </ScreenStackHeaderConfig>
-          </Screen>
-        </ScreenStack>
-      </View>
+      <NativeWorkspaceNavigatorPane
+        screenId="thread-file-navigator-native"
+        title="Files"
+        subtitle={props.projectName}
+        closeLabel="Close files"
+        searchBar={
+          <ScreenStackHeaderSearchBarView>
+            <SearchBar
+              allowToolbarIntegration
+              autoCapitalize="none"
+              barTintColor={sheetColor}
+              hideNavigationBar={false}
+              hideWhenScrolling={false}
+              obscureBackground={false}
+              onCancelButtonPress={() => {
+                setSearchQuery("");
+              }}
+              onChangeText={(event: NativeSyntheticEvent<{ readonly text?: string }>) => {
+                setSearchQuery(event.nativeEvent.text ?? "");
+              }}
+              placement="integratedButton"
+              placeholder="Search files"
+              textColor={foregroundColor}
+              tintColor={foregroundColor}
+            />
+          </ScreenStackHeaderSearchBarView>
+        }
+      >
+        {fileTree}
+      </NativeWorkspaceNavigatorPane>
     );
   }
 

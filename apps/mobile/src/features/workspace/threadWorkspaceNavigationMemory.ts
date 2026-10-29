@@ -57,18 +57,18 @@ export function useRememberThreadWorkspaceLocation() {
   }, [navigation]);
 }
 
-/** Restore an inspector above its own chat/tree, keeping ordinary Back navigation intact. */
+/** Restore the workspace beside the sidebar; compact thread selections open only the chat. */
 export function rememberedThreadWorkspaceNavigationState(
   state: NavigationState | undefined,
   params: { readonly environmentId: string; readonly threadId: string },
-  peer = false,
+  options: { readonly peer?: boolean; readonly columns?: boolean } = {},
 ) {
-  if (!state) return null;
+  if (!state || options.columns === false) return null;
   const location = readThreadWorkspaceLocation(params.environmentId, params.threadId);
   if (!location || location.name === "Thread") return null;
   const firstThread = state.routes.findIndex((route) => locationNames.has(route.name));
   const home = state.routes.find((route) => route.name === "Home");
-  const prefix = peer
+  const prefix = options.peer
     ? home
       ? [home]
       : [{ name: "Home" }]
