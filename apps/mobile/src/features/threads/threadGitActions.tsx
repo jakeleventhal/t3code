@@ -267,6 +267,7 @@ export function useThreadGitControlModel(props: ThreadGitMenuProps) {
   };
 
   return {
+    canPull: canWriteSourceControl && !busy && isRepo,
     currentBranchLabel,
     isRepo,
     menuActions,
@@ -309,6 +310,19 @@ export function threadGitMenuDefinition(
           void model.runQuickAction();
         },
       },
+      ...((props.gitStatus?.behindCount ?? 0) > 0 && model.quickAction.kind !== "run_pull"
+        ? [
+            {
+              id: "git-pull",
+              title: "Pull latest",
+              icon: "arrow.down.circle",
+              disabled: !model.canPull,
+              onPress: () => {
+                if (model.canPull) void props.onPull();
+              },
+            },
+          ]
+        : []),
       ...model.menuActions.map((item) => ({
         id: `git-${item.id}`,
         title: item.label,
