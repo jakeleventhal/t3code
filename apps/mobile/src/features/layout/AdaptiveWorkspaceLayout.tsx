@@ -477,7 +477,7 @@ function AdaptiveWorkspaceLayoutContent(
   };
   const togglePrimarySidebar = () => {
     if (nativeWorkspace && layout.usesSplitView && !panes.primarySidebarVisible) {
-      if (sidebarTab === "pullRequests") {
+      if (sidebarTab === "pullRequests" || !panes.auxiliaryPaneVisible) {
         setPrimarySidebarDrawerVisible(false);
         setPrimarySidebarVisible(true);
         return;

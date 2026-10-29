@@ -41,7 +41,7 @@ export function useThreadHeaderOptions(props: {
           },
         ]
       : []),
-    ...(props.onReturnToThread && !panes.primarySidebarVisible
+    ...(props.onReturnToThread && !panes.primarySidebarVisible && panes.auxiliaryPaneVisible
       ? [
           withNativeGlassHeaderItem({
             accessibilityLabel: "Back to thread sidebar",
