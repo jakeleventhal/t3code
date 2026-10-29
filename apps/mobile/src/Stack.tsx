@@ -51,6 +51,7 @@ import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import {
   ThreadFilesWorkspaceScreen,
+  ThreadWorkspaceRouteScreen,
   ThreadGitWorkspaceScreen,
   ThreadFileWorkspaceScreen,
 } from "./features/workspace/ThreadWorkspaceScreen";
@@ -73,10 +74,7 @@ import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
 import { ThreadGuestShareSheet } from "./features/threads/ThreadGuestShareSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
-import {
-  FullscreenThreadRouteScreen,
-  ThreadRouteScreen,
-} from "./features/threads/ThreadRouteScreen";
+import { FullscreenThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -727,7 +725,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     Thread: createNativeStackScreen({
-      screen: ThreadRouteScreen,
+      screen: ThreadWorkspaceRouteScreen,
       linking: { path: "threads/:environmentId?/:threadId?", alias: ["new/draft"] },
       options: THREAD_HEADER_OPTIONS,
     }),

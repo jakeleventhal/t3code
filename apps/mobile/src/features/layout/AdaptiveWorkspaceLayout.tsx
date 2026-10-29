@@ -215,7 +215,7 @@ function AdaptiveWorkspaceLayoutContent(
   const [supplementaryPanePreferredWidth, setSupplementaryPanePreferredWidth] = useState<
     number | null
   >(null);
-  const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(true);
+  const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(false);
   const [fileInspectorPreferredWidth, setFileInspectorPreferredWidth] = useState<number | null>(
     null,
   );
@@ -453,12 +453,10 @@ function AdaptiveWorkspaceLayoutContent(
       setPrimarySidebarPreferredVisible(visible);
     }
   };
-  const showThreadWithSidebar = () => {
+  const pinPrimarySidebar = () => {
     setPrimarySidebarDrawerVisible(false);
     setFileInspectorPreferredVisible(false);
     setPrimarySidebarVisible(true);
-    if (activeThread !== null)
-      navigation.dispatch(selectWorkspaceDetail({ name: "Thread", params: activeThread }));
   };
   const togglePrimarySidebar = () => {
     if (nativeWorkspace && layout.usesSplitView && !panes.primarySidebarVisible) {
@@ -840,7 +838,10 @@ function AdaptiveWorkspaceLayoutContent(
   );
 
   const handleSelectThread = (thread: EnvironmentThreadShell) => {
-    if (scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey) return;
+    if (scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey) {
+      setPrimarySidebarDrawerVisible(false);
+      return;
+    }
     handleSelectThreadRoute({
       environmentId: String(thread.environmentId),
       threadId: String(thread.id),
@@ -880,7 +881,7 @@ function AdaptiveWorkspaceLayoutContent(
     showAuxiliaryPane,
     toggleAuxiliaryPane,
     togglePrimarySidebar,
-    showThreadWithSidebar,
+    pinPrimarySidebar,
     setPrimarySidebarVisible,
     openWorkspaceTab,
     setAuxiliaryPaneWidth,

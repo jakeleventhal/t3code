@@ -10,13 +10,15 @@ export function threadWorkspacePanelAction(
 ) {
   const params = route.params as { environmentId?: string; threadId?: string } | undefined;
   if (
-    ["ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"].includes(route.name) &&
+    ["Thread", "ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFile"].includes(
+      route.name,
+    ) &&
     params?.environmentId === thread.environmentId &&
     params?.threadId === thread.threadId
   ) {
     return {
       type: "SET_PARAMS" as const,
-      payload: { params: { workspacePanel: panel } },
+      payload: { params: { workspacePanel: panel, inspector: undefined } },
       source: route.key,
     };
   }

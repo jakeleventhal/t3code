@@ -166,6 +166,7 @@ type ThreadRouteScreenRouteProps = StaticScreenProps<{
 }>;
 
 interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
+  readonly active?: boolean;
   readonly inspectorPresentation?: ThreadInspectorPresentation;
   readonly onReturnToThread?: () => void;
   readonly renderInspector?: (headerInset: number) => ReactNode;
@@ -341,7 +342,7 @@ function ThreadRouteContent(
     panes,
     showAuxiliaryPane,
     toggleAuxiliaryPane,
-    showThreadWithSidebar,
+    pinPrimarySidebar,
   } = useAdaptiveWorkspaceLayout();
   const { connectionState } = useRemoteConnectionStatus();
   const { onReconnectEnvironment } = useRemoteConnections();
@@ -463,6 +464,7 @@ function ThreadRouteContent(
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the workspace navigator's auxiliary pane when the thread has no cwd for the file inspector
   useEffect(() => {
     if (
+      props.active !== false &&
       props.inspectorPresentation === undefined &&
       fileInspector.supported &&
       selectedThreadCwd === null &&
@@ -476,6 +478,7 @@ function ThreadRouteContent(
     inspectorMode,
     panes.auxiliaryPaneVisible,
     props.inspectorPresentation,
+    props.active,
     selectedThreadCwd,
     toggleAuxiliaryPane,
   ]);
@@ -655,7 +658,9 @@ function ThreadRouteContent(
     );
   };
   const activeInspectorRenderer =
-    props.inspectorPresentation || inspectorMode === null ? undefined : renderInspectorStack;
+    props.active === false || props.inspectorPresentation || inspectorMode === null
+      ? undefined
+      : renderInspectorStack;
   useRegisterWorkspaceInspector(activeInspectorRenderer);
 
   const handleOpenConnectionEditor = () => {
@@ -993,7 +998,7 @@ function ThreadRouteContent(
       <>
         <ThreadScreenBinding
           header={
-            props.inspectorPresentation ? null : (
+            props.active === false || props.inspectorPresentation ? null : (
               <ThreadHeader
                 title={selectedThread.title}
                 subtitle={headerSubtitle}
@@ -1010,7 +1015,7 @@ function ThreadRouteContent(
                 onReturnToThread={
                   props.onReturnToThread ??
                   (inspectorMode !== null && panes.auxiliaryPaneVisible
-                    ? showThreadWithSidebar
+                    ? pinPrimarySidebar
                     : undefined)
                 }
               />

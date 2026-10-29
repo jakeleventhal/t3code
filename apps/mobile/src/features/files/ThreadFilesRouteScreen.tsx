@@ -146,7 +146,7 @@ function FileHeader(props: {
           : undefined
       }
       actions={[
-        ...(props.fileInspectorSupported && props.onCloseFile
+        ...(props.onCloseFile
           ? [
               {
                 accessibilityLabel: "Close file",
