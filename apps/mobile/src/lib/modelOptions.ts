@@ -47,6 +47,7 @@ export type ModelOption = {
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
   readonly providerUpdateRequired?: ProviderUpdateRequired;
+  readonly providerSubProviders?: T3ServerConfig["providers"][number]["subProviders"];
 };
 
 type ProviderUpdateRequired = Pick<
@@ -59,6 +60,7 @@ export type ProviderGroup = {
   readonly providerLabel: string;
   readonly models: ReadonlyArray<ModelOption>;
   readonly updateRequired?: ProviderUpdateRequired;
+  readonly subProviders?: ModelOption["providerSubProviders"];
 };
 
 function providerDisplayLabel(provider: {
@@ -409,6 +411,7 @@ export function buildModelOptions(
         isDefault: model.isDefault === true,
         isLegacy: model.isLegacy === true,
         ...(updateRequired ? { providerUpdateRequired: updateRequired } : {}),
+        ...(provider.subProviders?.length ? { providerSubProviders: provider.subProviders } : {}),
         capabilities: model.capabilities,
         selection: normalizeSelectionOptions(
           {
@@ -492,6 +495,7 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
       providerLabel: string;
       models: ModelOption[];
       updateRequired: ProviderUpdateRequired | undefined;
+      subProviders: ModelOption["providerSubProviders"];
     }
   >();
   for (const option of options) {
@@ -499,11 +503,13 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     if (existing) {
       existing.models.push(option);
       existing.updateRequired ??= option.providerUpdateRequired;
+      existing.subProviders ??= option.providerSubProviders;
     } else {
       groups.set(option.providerKey, {
         providerLabel: option.providerLabel,
         models: [option],
         updateRequired: option.providerUpdateRequired,
+        subProviders: option.providerSubProviders,
       });
     }
   }
@@ -513,5 +519,6 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerLabel: group.providerLabel,
     models: group.models,
     ...(group.updateRequired ? { updateRequired: group.updateRequired } : {}),
+    ...(group.subProviders ? { subProviders: group.subProviders } : {}),
   }));
 }
