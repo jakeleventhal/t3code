@@ -533,6 +533,11 @@ export function ThreadFilesTreeScreen(
       return (
         <ThreadRouteScreen
           onReturnToThread={handleReturnToThread}
+          onOpenWorkspacePanel={
+            props.renderInspector
+              ? (workspacePanel) => navigation.setParams({ workspacePanel, inspector: undefined })
+              : undefined
+          }
           renderInspector={(headerInset) =>
             props.renderInspector
               ? props.renderInspector(headerInset, () => renderInspector(headerInset))
@@ -561,6 +566,11 @@ export function ThreadFilesTreeScreen(
     return (
       <ThreadRouteScreen
         onReturnToThread={handleReturnToThread}
+        onOpenWorkspacePanel={
+          props.renderInspector
+            ? (workspacePanel) => navigation.setParams({ workspacePanel, inspector: undefined })
+            : undefined
+        }
         renderInspector={(headerInset) =>
           props.renderInspector
             ? props.renderInspector(headerInset, () => renderInspector(headerInset))

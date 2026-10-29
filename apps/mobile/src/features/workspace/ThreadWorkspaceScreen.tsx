@@ -163,10 +163,11 @@ function ThreadWorkspaceScreen(
       />
     </View>
   );
-  const renderBranches = (headerInset: number) => (
+  const renderBranches = (headerInset: number, embedded = false) => (
     <GitOverviewSheet
       headerInset={headerInset}
       presentation="inspector"
+      embedded={embedded}
       route={{ params: { environmentId, threadId } }}
     />
   );
@@ -228,7 +229,7 @@ function ThreadWorkspaceScreen(
         }
       : undefined;
   if (fileInspector.supported || props.threadEntry) {
-    const renderFiles = (headerInset: number, alternativeContent?: ReactNode) => {
+    const renderFiles = (headerInset: number, sharedHeader = false) => {
       if (cwd !== null)
         return (
           <ThreadFileNavigatorPane
@@ -239,7 +240,16 @@ function ThreadWorkspaceScreen(
             projectName={selectedThreadProject?.title ?? "Files"}
             selectedPath={props.route.params.path?.join("/") ?? null}
             toolbar={tabs}
-            alternativeContent={alternativeContent}
+            workspace={
+              sharedHeader
+                ? {
+                    changes: renderChanges(headerInset, true),
+                    actions: renderBranches(headerInset, true),
+                    actionsTitle: status.data?.refName ?? selectedThread?.branch ?? "Detached HEAD",
+                    showActions: props.route.params.workspacePanel === "branches",
+                  }
+                : undefined
+            }
             onSelectFile={(path) =>
               navigation.setParams({ path: path.split("/"), line: undefined })
             }
@@ -263,17 +273,8 @@ function ThreadWorkspaceScreen(
       />
     );
     const renderInspector = (headerInset: number) => {
-      // Keep the selected-tab glass attached to one UIKit header while its pane changes.
-      if (Platform.OS === "ios" && cwd !== null)
-        return (
-          <ThreadInspectorContentStack
-            mode={props.route.params.workspacePanel === "branches" ? "git" : "route"}
-            resetKeys={[paneKey, cwd]}
-            renderFiles={() => null}
-            renderGit={() => renderBranches(headerInset)}
-            renderRoute={() => renderFiles(headerInset, renderChanges(headerInset, true))}
-          />
-        );
+      // Keep one UIKit header mounted across Changes, Files, and Git Actions.
+      if (Platform.OS === "ios" && cwd !== null) return renderFiles(headerInset, true);
       return renderWorkspacePanel(
         headerInset,
         () => renderChanges(headerInset),
@@ -296,6 +297,9 @@ function ThreadWorkspaceScreen(
             route={{ params: props.route.params }}
             onReturnToThread={returnToThread}
             renderInspector={renderInspector}
+            onOpenWorkspacePanel={(workspacePanel) =>
+              navigation.setParams({ workspacePanel, inspector: undefined })
+            }
           />
         </View>
         <WorkspacePaneOwnerContext value={false}>

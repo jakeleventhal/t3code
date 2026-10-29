@@ -25,36 +25,12 @@ export interface TabsProps<Value extends string> {
 
 /** Section navigation. Value pickers use SegmentedControl. */
 export function Tabs<Value extends string>(props: TabsProps<Value>) {
-  const { themeAppearance } = useAppearancePreferences();
-  const reduceMotion = useReducedMotion();
   const [frames, setFrames] = useState<Partial<Record<Value, { x: number; width: number }>>>({});
   const frame = frames[props.selected];
-  const duration = reduceMotion ? 0 : 220;
-  const indicatorStyle = useAnimatedStyle(() => ({
-    width: withTiming(frame?.width ?? 0, { duration }),
-    transform: [{ translateX: withTiming(frame?.x ?? 0, { duration }) }],
-  }));
 
   return (
     <View accessibilityRole="tablist" className={cn("flex-row", props.className)}>
-      {frame ? (
-        <Animated.View
-          pointerEvents="none"
-          className="absolute bottom-0 left-0 top-0 rounded-full border border-border-subtle"
-          style={indicatorStyle}
-        >
-          {NATIVE_LIQUID_GLASS_SUPPORTED ? (
-            <TabGlass
-              className="flex-1 rounded-full"
-              glassEffectStyle="regular"
-              isInteractive
-              colorScheme={themeAppearance === "dark" ? "dark" : "light"}
-            />
-          ) : (
-            <View className="flex-1 rounded-full bg-grouped-card" />
-          )}
-        </Animated.View>
-      ) : null}
+      {frame ? <TabIndicator frame={frame} /> : null}
       {props.options.map((option) => {
         const selected = option.value === props.selected;
         return (
@@ -88,5 +64,35 @@ export function Tabs<Value extends string>(props: TabsProps<Value>) {
         );
       })}
     </View>
+  );
+}
+
+// Mount with measured bounds: UIKit can skip glass initialized at zero width.
+function TabIndicator(props: { readonly frame: { x: number; width: number } }) {
+  const { themeAppearance } = useAppearancePreferences();
+  const reduceMotion = useReducedMotion();
+  const duration = reduceMotion ? 0 : 220;
+  const indicatorStyle = useAnimatedStyle(() => ({
+    width: withTiming(props.frame.width, { duration }),
+    transform: [{ translateX: withTiming(props.frame.x, { duration }) }],
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      className="absolute bottom-0 left-0 top-0 rounded-full border border-border-subtle"
+      style={indicatorStyle}
+    >
+      {NATIVE_LIQUID_GLASS_SUPPORTED ? (
+        <TabGlass
+          className="flex-1 rounded-full"
+          glassEffectStyle="regular"
+          isInteractive
+          colorScheme={themeAppearance === "dark" ? "dark" : "light"}
+        />
+      ) : (
+        <View className="flex-1 rounded-full bg-grouped-card" />
+      )}
+    </Animated.View>
   );
 }

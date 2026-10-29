@@ -114,6 +114,7 @@ import {
 } from "./thread-inspector-preview";
 import type { ThreadInspectorTarget } from "./thread-inspector-navigation";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import type { ThreadWorkspacePanel } from "../workspace/thread-workspace-panel-navigation";
 
 function InspectorPaneRoleActivation() {
   useAdaptiveWorkspacePaneRole("inspector");
@@ -170,6 +171,7 @@ interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
   readonly inspectorPresentation?: ThreadInspectorPresentation;
   readonly onReturnToThread?: () => void;
   readonly renderInspector?: (headerInset: number) => ReactNode;
+  readonly onOpenWorkspacePanel?: (panel: ThreadWorkspacePanel) => void;
 }
 
 function ThreadUnavailableScreen(props: {
@@ -562,8 +564,13 @@ function ThreadRouteContent(
       });
       return;
     }
-    navigation.setParams({ inspector: undefined });
-    setChosenInspectorMode("git");
+    if (props.onOpenWorkspacePanel) {
+      props.onOpenWorkspacePanel("branches");
+      setChosenInspectorMode("route");
+    } else {
+      navigation.setParams({ inspector: undefined });
+      setChosenInspectorMode("git");
+    }
     showAuxiliaryPane("inspector");
   };
   const handleOpenFilesInspector = () => {
@@ -577,7 +584,8 @@ function ThreadRouteContent(
       });
       return;
     }
-    navigation.setParams({ inspector: undefined });
+    if (props.onOpenWorkspacePanel) props.onOpenWorkspacePanel("workspace");
+    else navigation.setParams({ inspector: undefined });
     setChosenInspectorMode(props.renderInspector === undefined ? "files" : "route");
     showAuxiliaryPane("inspector");
   };
