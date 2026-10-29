@@ -47,6 +47,7 @@ type Props = StaticScreenProps<{
   readonly environmentId: string;
   readonly threadId: string;
   readonly path?: string[];
+  readonly fileFullscreen?: boolean;
   readonly workspacePanel?: ThreadWorkspacePanel;
   readonly inspector?: ThreadInspectorTarget;
   readonly prompt?: string | string[];
@@ -298,7 +299,11 @@ function ThreadWorkspaceScreen(
             onReturnToThread={returnToThread}
             renderInspector={renderInspector}
             onOpenWorkspacePanel={(workspacePanel) =>
-              navigation.setParams({ workspacePanel, inspector: undefined })
+              navigation.setParams({
+                workspacePanel,
+                inspector: undefined,
+                fileFullscreen: undefined,
+              })
             }
           />
         </View>

@@ -3,6 +3,7 @@ import { expect, it } from "vite-plus/test";
 import {
   closedThreadWorkspaceFileParams,
   threadWorkspacePanelAction,
+  threadWorkspaceFileIsFullscreen,
 } from "./thread-workspace-panel-navigation";
 import { selectWorkspaceDetail, workspaceDetailRouter } from "./workspace-detail-selection";
 
@@ -46,6 +47,7 @@ it.each(["Thread", "ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFil
       ...thread,
       inspector: { type: "thread", environmentId: "env", threadId: "preview" },
       path: ["README.md"],
+      fileFullscreen: true,
       reviewSectionId: "working",
       reviewFilePath: "src/index.ts",
     };
@@ -58,7 +60,12 @@ it.each(["Thread", "ThreadReview", "ThreadReviewFile", "ThreadFiles", "ThreadFil
       );
       expect(state.routes.at(-1)).toMatchObject({
         key: workspaceKey,
-        params: { ...selection, workspacePanel: panel, inspector: undefined },
+        params: {
+          ...selection,
+          workspacePanel: panel,
+          inspector: undefined,
+          fileFullscreen: undefined,
+        },
       });
     }
     state = apply(state, {
@@ -83,4 +90,66 @@ it("opens the remembered workspace pane for the active thread without reusing an
     type: "NAVIGATE",
     payload: { name: "ThreadFiles", params: { ...thread, workspacePanel: "branches" } },
   });
+});
+
+it("expands and restores the selected file without replacing its route or selection", () => {
+  let state = selectThread(base.getInitialState(options));
+  state = apply(state, {
+    type: "NAVIGATE",
+    payload: { name: "ThreadFile", params: { ...thread, path: ["src", "file.ts"], line: 40 } },
+  });
+  const key = state.routes.at(-1)!.key;
+  for (const fileFullscreen of [true, undefined, true]) {
+    state = apply(state, {
+      type: "SET_PARAMS",
+      source: key,
+      payload: { params: { fileFullscreen } },
+    });
+    expect(state.routes.at(-1)).toMatchObject({
+      key,
+      params: { ...thread, path: ["src", "file.ts"], line: 40, fileFullscreen },
+    });
+    expect(threadWorkspaceFileIsFullscreen(state.routes.at(-1))).toBe(fileFullscreen === true);
+    expect(state.routes).toHaveLength(3);
+  }
+  state = apply(state, {
+    type: "SET_PARAMS",
+    source: key,
+    payload: { params: closedThreadWorkspaceFileParams },
+  });
+  expect(threadWorkspaceFileIsFullscreen(state.routes.at(-1))).toBe(false);
+  expect(state.routes.at(-1)?.params).toMatchObject({
+    ...thread,
+    ...closedThreadWorkspaceFileParams,
+  });
+});
+
+it.each([
+  { name: "Thread", params: { fileFullscreen: true, path: ["README.md"] }, expected: true },
+  {
+    name: "ThreadFile",
+    params: { fileFullscreen: true, path: ["src", "file.ts"] },
+    expected: true,
+  },
+  {
+    name: "ThreadReviewFile",
+    params: { fileFullscreen: true, reviewSectionId: "working", reviewFilePath: "src/file.ts" },
+    expected: true,
+  },
+  {
+    name: "ThreadReview",
+    params: { fileFullscreen: true, reviewSectionId: "working", reviewWorkingTreeScope: "staged" },
+    expected: true,
+  },
+  { name: "ThreadFile", params: { fileFullscreen: true }, expected: false },
+  { name: "ThreadFile", params: { fileFullscreen: true, path: [] }, expected: false },
+  { name: "ThreadFile", params: { fileFullscreen: false, path: ["README.md"] }, expected: false },
+  {
+    name: "ThreadFile",
+    params: { fileFullscreen: true, path: ["README.md"], workspacePanel: "branches" },
+    expected: false,
+  },
+  { name: "PullRequest", params: { fileFullscreen: true, path: ["README.md"] }, expected: false },
+])("only focuses a selected thread file or diff: $name $params", ({ expected, ...route }) => {
+  expect(threadWorkspaceFileIsFullscreen(route)).toBe(expected);
 });

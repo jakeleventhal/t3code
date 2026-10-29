@@ -162,6 +162,7 @@ export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefi
 
 export function AdaptiveWorkspaceLayout(props: {
   readonly children: ReactNode;
+  readonly fileFullscreen?: boolean;
   readonly pathname: string;
   readonly workspaceRouteKey: string | undefined;
   readonly workspaceRouteName: string | undefined;
@@ -190,6 +191,7 @@ export function AdaptiveWorkspaceLayout(props: {
 function AdaptiveWorkspaceLayoutContent(
   props: {
     readonly children: ReactNode;
+    readonly fileFullscreen?: boolean;
     readonly pathname: string;
     readonly workspaceRouteKey: string | undefined;
     readonly workspaceRouteName: string | undefined;
@@ -221,6 +223,8 @@ function AdaptiveWorkspaceLayoutContent(
   const sidebarTab = workspace?.settingsOpen
     ? "settings"
     : (workspace?.state.selectedTab ?? "threads");
+  const fileFullscreen =
+    nativeWorkspace && sidebarTab === "threads" && props.fileFullscreen === true;
   const primarySidebarPreferredVisible =
     workspace?.state.tabs[sidebarTab].sidebarVisible ?? fallbackSidebarVisible;
   const setPrimarySidebarPreferredVisible = (visible: boolean) => {
@@ -287,6 +291,7 @@ function AdaptiveWorkspaceLayoutContent(
     Platform.OS === "android" && baseLayout.usesSplitView && composerEditing && softKeyboardVisible,
   );
   const showPrimarySidebar =
+    !fileFullscreen &&
     !workspacePage &&
     (primarySidebarPinned || (preferredSidebarVisible && !composerKeyboardActive));
   const shouldRenderNavigationRail =
@@ -348,6 +353,7 @@ function AdaptiveWorkspaceLayoutContent(
   const auxiliaryPaneRole: WorkspaceAuxiliaryPaneRole =
     focusedAuxiliaryPaneRole ?? (/\/files(?:\/|$)/.test(pathname) ? "inspector" : "supplementary");
   const auxiliaryPanePreferredVisible =
+    !fileFullscreen &&
     !workspacePage &&
     (auxiliaryPaneRole === "inspector"
       ? fileInspectorPreferredVisible
@@ -477,6 +483,10 @@ function AdaptiveWorkspaceLayoutContent(
   };
   const togglePrimarySidebar = () => {
     if (nativeWorkspace && layout.usesSplitView && !panes.primarySidebarVisible) {
+      if (fileFullscreen) {
+        setPrimarySidebarDrawerVisible((current) => !current);
+        return;
+      }
       if (sidebarTab === "pullRequests" || !panes.auxiliaryPaneVisible) {
         setPrimarySidebarDrawerVisible(false);
         setPrimarySidebarVisible(true);
@@ -874,14 +884,17 @@ function AdaptiveWorkspaceLayoutContent(
   const sidebarOverRotates =
     nativeWorkspace && nativeMetrics?.hasHinge === true && layout.usesSplitView;
   // The current orientation's panes already account for an inspector that needs the sidebar's room.
-  const sidebarInLandscape = baseLayout.primarySidebarOverlaysContent
-    ? primarySidebarPinned || primarySidebarPreferredVisible
-    : panes.primarySidebarVisible;
-  const sidebarInPortrait =
-    primarySidebarPinned ||
+  const sidebarInLandscape =
+    !fileFullscreen &&
     (baseLayout.primarySidebarOverlaysContent
-      ? overlaySidebar.visible
-      : isWorkspaceListPath(pathname));
+      ? primarySidebarPinned || primarySidebarPreferredVisible
+      : panes.primarySidebarVisible);
+  const sidebarInPortrait =
+    !fileFullscreen &&
+    (primarySidebarPinned ||
+      (baseLayout.primarySidebarOverlaysContent
+        ? overlaySidebar.visible
+        : isWorkspaceListPath(pathname)));
   const sidebarByOrientation = useMemo(
     () =>
       sidebarOverRotates ? { landscape: sidebarInLandscape, portrait: sidebarInPortrait } : null,
