@@ -17,6 +17,7 @@ import {
   insertRoute,
   entryWithRoutes,
   mergeLearnedRoutes,
+  pendingRouteOrder,
   removedWithRelay,
   routesAfterRemoving,
   sendsTokenInClear,
@@ -97,6 +98,14 @@ describe("connection routes", () => {
   it("preserves a manual preference for Tailscale HTTP when refreshing saved routes", () => {
     const http = direct("tailnet-http", "http://desk.tail1234.ts.net:3773/");
     expect(upsertRoute([http, TAILNET, RELAY], TAILNET)).toEqual([http, TAILNET, RELAY]);
+  });
+
+  it("shows a dragged order only until the saved routes catch up or change", () => {
+    const dragged = ["tailnet", "lan"];
+    expect(pendingRouteOrder(dragged, ["lan", "tailnet"])).toBe(dragged);
+    expect(pendingRouteOrder(dragged, ["tailnet", "lan"])).toBeNull();
+    expect(pendingRouteOrder(dragged, ["lan", "public"])).toBeNull();
+    expect(pendingRouteOrder(dragged, ["lan", "tailnet", "public"])).toBeNull();
   });
 });
 
