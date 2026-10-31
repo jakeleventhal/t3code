@@ -101,6 +101,7 @@ function shouldPublishAgentAwarenessEvent(
     case "thread.settled":
     case "thread.unsettled":
     case "thread.snoozed":
+    case "thread.pinned":
     case "thread.unsnoozed":
     case "thread.visited":
     case "thread.marked-unread":
@@ -114,7 +115,6 @@ function shouldPublishAgentAwarenessEvent(
       return true;
     case "thread.guest-share-updated":
     case "thread.auto-settle-set":
-    case "thread.pinned":
     case "thread.unpinned":
     case "thread.pin-reordered":
     case "thread.active-reordered":

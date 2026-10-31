@@ -38,6 +38,7 @@ import {
   SignedApnsDeliveryJob,
   verifySignedApnsDeliveryJob,
   type ApnsDeliveryJobVerificationError,
+  type ApnsDeliveryJobPayload,
 } from "./apnsDeliveryJobs.ts";
 import * as AgentActivityRows from "./AgentActivityRows.ts";
 import * as DeliveryAttempts from "./DeliveryAttempts.ts";
@@ -438,6 +439,7 @@ interface SendLiveActivityDeliveryInputBase {
   readonly target: LiveActivityDeliveryTarget;
   readonly token: string;
   readonly sourceJobId: string;
+  readonly replayThread?: ApnsDeliveryJobPayload["replayThread"];
 }
 
 export type SendLiveActivityDeliveryInput =
@@ -498,6 +500,7 @@ export class ApnsDeliveries extends Context.Service<
       readonly state?: RelayAgentActivityState | null;
       readonly nowMs: number;
       readonly replay?: boolean;
+      readonly replayThread?: ApnsDeliveryJobPayload["replayThread"];
     }) => Effect.Effect<RelayDeliveryResult | null, ApnsDeliveryError>;
     readonly sendLiveActivity: (
       input: SendLiveActivityDeliveryInput,
@@ -766,11 +769,25 @@ const make = Effect.gen(function* () {
         }),
       );
     if (result.ok) {
+      let deliveryBaseline = aggregate;
+      if (input.replayThread && aggregate) {
+        const matchesReplay = (row: RelayAgentActivityAggregateState["activities"][number]) =>
+          row.environmentId === input.replayThread?.environmentId &&
+          row.threadId === input.replayThread.threadId;
+        const previous = parseAggregate(currentTarget.last_aggregate_json);
+        deliveryBaseline = {
+          ...(previous ?? aggregate),
+          activities: [
+            ...(previous?.activities ?? []).filter((row) => !matchesReplay(row)),
+            ...aggregate.activities.filter(matchesReplay),
+          ],
+        };
+      }
       yield* liveActivities.markDelivery({
         userId: input.target.user_id,
         deviceId: input.target.device_id,
         kind: input.kind,
-        aggregate,
+        aggregate: deliveryBaseline,
         deliveredAt: iso,
       });
     } else if (isPermanentApnsTokenFailure(result)) {
@@ -984,6 +1001,7 @@ const make = Effect.gen(function* () {
             kind: payload.kind,
             aggregate: payload.aggregate,
             alert: payload.alert ?? null,
+            ...(payload.replayThread ? { replayThread: payload.replayThread } : {}),
           });
         case "live_activity_end":
           return sendLiveActivity({
@@ -1092,6 +1110,7 @@ const make = Effect.gen(function* () {
         bundleId: input.target.bundle_id,
         apsEnvironment: input.target.aps_environment,
         aggregate: delivery.aggregate,
+        ...(input.replayThread ? { replayThread: input.replayThread } : {}),
         alert,
       });
       if (delivery.kind === "live_activity_end" && notification && input.target.push_token) {
