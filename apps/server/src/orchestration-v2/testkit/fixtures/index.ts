@@ -233,7 +233,11 @@ import { assertTurnInterruptMidToolClaudeOutput } from "./turn_interrupt_mid_too
 import { assertTurnInterruptMidToolCodexOutput } from "./turn_interrupt_mid_tool/codex_output.ts";
 import { assertTurnInterruptMidToolCursorOutput } from "./turn_interrupt_mid_tool/cursor_output.ts";
 import { assertTurnInterruptMidToolFxOutput } from "./turn_interrupt_mid_tool/fx_output.ts";
-import { turnInterruptMidToolInput } from "./turn_interrupt_mid_tool/input.ts";
+import {
+  turnInterruptMidToolInput,
+  turnInterruptMidToolKiroInput,
+} from "./turn_interrupt_mid_tool/input.ts";
+import { assertTurnInterruptMidToolKiroOutput } from "./turn_interrupt_mid_tool/kiro_output.ts";
 import { assertTurnInterruptMidToolPiOutput } from "./turn_interrupt_mid_tool/pi_output.ts";
 import { assertTurnInterruptRestartClaudeOutput } from "./turn_interrupt_restart/claude_output.ts";
 import { turnInterruptRestartInput } from "./turn_interrupt_restart/input.ts";
