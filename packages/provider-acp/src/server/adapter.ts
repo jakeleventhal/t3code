@@ -3400,7 +3400,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             existing !== undefined &&
             existing.task.status === update.status &&
             updateIsTerminal &&
-            existing.terminalStatusProjected
+            existing.terminalStatusProjected &&
+            (update.result === null || update.result === existing.task.result)
           ) {
             return;
           }
@@ -3453,7 +3454,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             model: update.model?.trim() || existing?.task.model || null,
             status: taskStatus,
             result: update.result ?? existing?.task.result ?? null,
-            completedAt: acpSubagentStatusIsTerminal(taskStatus) ? now : null,
+            completedAt: acpSubagentStatusIsTerminal(taskStatus)
+              ? (existing?.task.completedAt ?? now)
+              : null,
             updatedAt: now,
           };
           const subagent: ActiveAcpSubagent = existing ?? {
@@ -3585,7 +3588,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             ...subagent.task,
             status: taskStatus,
             result,
-            completedAt: acpSubagentStatusIsTerminal(taskStatus) ? now : null,
+            completedAt: acpSubagentStatusIsTerminal(taskStatus)
+              ? (subagent.task.completedAt ?? now)
+              : null,
             updatedAt: now,
           };
           const providerThreadId = subagent.task.providerThreadId;
