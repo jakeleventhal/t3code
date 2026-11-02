@@ -3573,15 +3573,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             );
           }
 
-          yield* flushSubagentAssistant(subagent);
-          // A failed child's result explains the failure; it is not the child's reply.
+          const previousResultMessage = subagent.assistantMessages.get(
+            `${nativeTaskId}:message:result`,
+          );
           if (
             taskStatus !== "running" &&
-            reported.status !== "failed" &&
-            subagent.assistantText.length === 0 &&
-            update.result !== null
+            update.result !== null &&
+            (subagent.assistantText.length === 0 ||
+              (previousResultMessage !== undefined && previousResultMessage !== update.result))
           ) {
-            yield* emitSubagentAssistant(subagent, update.result);
+            yield* emitSubagentAssistant(subagent, update.result, "replace");
           }
           const result = update.result ?? subagent.task.result ?? (subagent.assistantText || null);
           subagent.task = {

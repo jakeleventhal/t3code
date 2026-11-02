@@ -8456,6 +8456,18 @@ describe("AcpAdapterV2", () => {
             results,
           );
           assert.equal(childUpdates[1]?.completedAt, childUpdates[0]?.completedAt);
+          const replies = observed.flatMap((event) =>
+            event.type === "message.updated" &&
+            event.message.threadId === childUpdates[0]?.childThreadId &&
+            event.message.role === "assistant"
+              ? [event.message]
+              : [],
+          );
+          assert.deepEqual(
+            replies.map(({ text }) => text),
+            results,
+          );
+          assert.equal(replies[1]?.id, replies[0]?.id);
           assert.isFalse(
             yield* hasPendingBackgroundWork,
             "finalize-window terminal must clear the carryover pin",
