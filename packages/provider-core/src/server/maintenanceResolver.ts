@@ -255,7 +255,7 @@ function isYarnGlobalCommandPath(commandPath: string): boolean {
  * Paths mise owns. npm globals under mise's own Node belong to npm, which proves their prefix.
  * A command wrapper is a symlink to the `mise` binary, which dispatches on argv[0].
  */
-function isMiseCommandPath(commandPath: string): boolean {
+export function isMiseCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
   return (
     (normalized.includes("/mise/installs/") && !normalized.includes("/mise/installs/node/")) ||
@@ -1067,8 +1067,9 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
   },
 );
 
-/** The command's text when it is small enough to be a wrapper script, else "". */
-const readWrapperScript = Effect.fn("readWrapperScript")(function* (commandPath: string) {
+export const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
+  context: ProviderMaintenanceResolutionContext,
+) {
   const fileSystem = yield* FileSystem.FileSystem;
   const size = yield* fileSystem.stat(commandPath).pipe(
     Effect.map((info) => Number(info.size)),
