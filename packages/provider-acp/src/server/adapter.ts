@@ -1702,6 +1702,7 @@ interface ActiveAcpSubagent {
   readonly parentProviderThreadId: ProviderThreadId;
   childSessionId: string | null;
   assistantText: string;
+  hasSyntheticResultMessage: boolean;
   readonly assistantMessages: Map<string, string>;
   // Messages whose latest text waits for a delayed flush.
   readonly pendingAssistantMessages: Set<string>;
@@ -3166,8 +3167,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ) {
           if (text.length === 0 && mode === "append") return;
           const nativeItemId = `${subagent.task.nativeTaskRef?.nativeId ?? subagent.task.id}:message:${messageId ?? "result"}`;
-          const previous = subagent.assistantMessages.get(nativeItemId);
-          const messageText = mode === "replace" ? text : `${previous ?? ""}${text}`;
+          // Unidentified native chunks share the fallback result slot.
+          if (messageId == null || messageId === "result") {
+            subagent.hasSyntheticResultMessage = false;
+          }
+          const previous = subagent.assistantMessages.get(nativeItemId) ?? "";
+          const messageText = mode === "replace" ? text : `${previous}${text}`;
           subagent.assistantMessages.set(nativeItemId, messageText);
           subagent.assistantText = messageText;
           if (mode === "append" && previous !== undefined) {
@@ -3469,6 +3474,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             parentProviderThreadId: context.input.providerThread.id,
             childSessionId: null,
             assistantText: "",
+            hasSyntheticResultMessage: false,
             assistantMessages: new Map(),
             pendingAssistantMessages: new Set(),
             childItemOrdinals: new Map(),
@@ -3573,9 +3579,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             );
           }
 
-          const previousResultMessage = subagent.assistantMessages.get(
-            `${nativeTaskId}:message:result`,
-          );
+          const previousResultMessage = subagent.hasSyntheticResultMessage
+            ? subagent.assistantMessages.get(`${nativeTaskId}:message:result`)
+            : undefined;
           if (
             taskStatus !== "running" &&
             update.result !== null &&
@@ -3583,6 +3589,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               (previousResultMessage !== undefined && previousResultMessage !== update.result))
           ) {
             yield* emitSubagentAssistant(subagent, update.result, "replace");
+            subagent.hasSyntheticResultMessage = true;
           }
           const result = update.result ?? subagent.task.result ?? (subagent.assistantText || null);
           subagent.task = {
@@ -3699,6 +3706,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             // A new execution replaces its result; live ownership transfers keep their progress.
             child.subagent.task = { ...child.subagent.task, result: null };
             child.subagent.assistantText = "";
+            child.subagent.hasSyntheticResultMessage = false;
             child.subagent.assistantMessages.clear();
             child.subagent.pendingAssistantMessages.clear();
           }
