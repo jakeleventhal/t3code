@@ -16,19 +16,10 @@ export const Architecture = Context.Reference<NodeJS.Architecture>(
   },
 );
 
-export const LinuxLibc = Context.Reference<"gnu" | "musl">(
-  "@t3tools/shared/HostProcess/LinuxLibc",
+export const KernelRelease = Context.Reference<string>(
+  "@t3tools/shared/HostProcess/KernelRelease",
   {
-    defaultValue: () => {
-      try {
-        const report = process.report?.getReport() as
-          | { header?: { glibcVersionRuntime?: unknown } }
-          | undefined;
-        return typeof report?.header?.glibcVersionRuntime === "string" ? "gnu" : "musl";
-      } catch {
-        return "musl";
-      }
-    },
+    defaultValue: () => NodeOS.release(),
   },
 );
 
