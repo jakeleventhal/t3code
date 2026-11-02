@@ -106,8 +106,6 @@ export interface AcpSessionRuntimeOptions {
   readonly interruptPromptOnCancel?: boolean;
   readonly cancelMeta?: EffectAcpSchema.CancelNotification["_meta"];
   readonly initializeMeta?: EffectAcpSchema.InitializeRequest["_meta"];
-  /** Sent on every `session/new`, `session/load` and `session/resume`. */
-  readonly sessionMeta?: EffectAcpSchema.NewSessionRequest["_meta"];
   readonly ownDetachedProcessGroup?: boolean;
   readonly ownDescendantProcessGroups?: boolean;
   readonly processGroupPlatform?: NodeJS.Platform;
@@ -2184,7 +2182,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     }
     return activationOptions?.mcpServers ?? options.mcpServers ?? [];
   };
-  const sessionMeta = options.sessionMeta === undefined ? {} : { _meta: options.sessionMeta };
 
   const sessionSetupFields = (initializeResult: EffectAcpSchema.InitializeResponse) => {
     const meta = options.sessionMeta?.(initializeResult);
@@ -2263,7 +2260,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
             cwd: options.cwd,
             ...additionalDirectories,
             mcpServers: sessionMcpServers(initializeResult),
-            ...sessionMeta,
           } satisfies EffectAcpSchema.LoadSessionRequest;
           sessionSetupResult = yield* runLoadSessionWithReplayIdle(loadPayload, initializeResult);
         } else if (initializeResult.agentCapabilities?.sessionCapabilities?.resume != null) {
@@ -2272,7 +2268,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
             cwd: options.cwd,
             ...additionalDirectories,
             mcpServers: sessionMcpServers(initializeResult),
-            ...sessionMeta,
           } satisfies EffectAcpSchema.ResumeSessionRequest;
           sessionSetupResult = yield* runLoggedRequest(
             "session/resume",
@@ -2290,7 +2285,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           cwd: options.cwd,
           mcpServers: sessionMcpServers(initializeResult),
           ...additionalDirectories,
-          ...sessionMeta,
         } satisfies EffectAcpSchema.NewSessionRequest;
         const created = yield* runLoggedRequest(
           "session/new",
@@ -2512,7 +2506,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
             cwd: options.cwd,
             ...sessionSetupFields(started.initializeResult),
             mcpServers: sessionMcpServers(started.initializeResult, activationOptions),
-            ...sessionMeta,
           } satisfies EffectAcpSchema.LoadSessionRequest;
           return runLoadSessionWithReplayIdle(requestPayload, started.initializeResult);
         }),
@@ -2526,7 +2519,6 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
             cwd: options.cwd,
             ...sessionSetupFields(started.initializeResult),
             mcpServers: sessionMcpServers(started.initializeResult, activationOptions),
-            ...sessionMeta,
           } satisfies EffectAcpSchema.ResumeSessionRequest;
           return runLoggedRequest(
             "session/resume",
