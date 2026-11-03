@@ -1616,7 +1616,11 @@ it.layer(
         nativePackageToolUpdate,
         {
           binaryPath: "native-package-tool",
-          env: { PATH: nativeBinDir },
+          env: {
+            PATH: nativeBinDir,
+            MISE_SHIMS_DIR: nativeBinDir,
+            MISE_SYSTEM_SHIMS_DIR: nativeBinDir,
+          },
         },
       ).pipe(
         Effect.provideService(HostProcess.Platform, "darwin"),
