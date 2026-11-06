@@ -227,6 +227,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
       "dataDarkSrc",
       "dataLightSrc",
       "dataLocalSrc",
+      "dataMarkdownLink",
       "dataMarkdownTitle",
       "dataStandalone",
     ],
