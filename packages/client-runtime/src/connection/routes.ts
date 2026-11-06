@@ -112,16 +112,22 @@ const ROUTE_KIND_RANK: Record<ConnectionRouteKind, number> = {
   relay: 5,
 };
 
+function connectionRouteRank(route: ConnectionRoute): number {
+  const kind = connectionRouteKind(route);
+  const rank = ROUTE_KIND_RANK[kind];
+  return kind === "tailnet" && routeHttpBaseUrl(route)?.startsWith("https:") ? rank - 0.5 : rank;
+}
+
 export function insertRoute(
   routes: ReadonlyArray<ConnectionRoute>,
   route: ConnectionRoute,
   { aheadOfSameKind = false }: { readonly aheadOfSameKind?: boolean } = {},
 ): ReadonlyArray<ConnectionRoute> {
   const kind = connectionRouteKind(route);
-  const rank = ROUTE_KIND_RANK[kind];
+  const rank = connectionRouteRank(route);
   const index = routes.findIndex((existing) => {
     const existingKind = connectionRouteKind(existing);
-    return ROUTE_KIND_RANK[existingKind] > rank || (aheadOfSameKind && existingKind === kind);
+    return connectionRouteRank(existing) > rank || (aheadOfSameKind && existingKind === kind);
   });
   return index === -1
     ? [...routes, route]
