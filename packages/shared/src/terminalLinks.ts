@@ -114,7 +114,7 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
     .filter(
       (match) => match.kind === "url" || !nonPathRanges.some((range) => overlaps(match, range)),
     )
-    .toSorted((a, b) => a.start - b.start);
+    .sort((a, b) => a.start - b.start);
 }
 
 export function isTerminalUrl(value: string): boolean {
