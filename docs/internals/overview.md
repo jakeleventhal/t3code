@@ -72,6 +72,10 @@ receipts stay for idempotency: a retry older than the retained history is still 
 but its replay comes back without the pruned events. Receipts of imported legacy commands are
 removed once their threads are imported.
 
+A worktree handoff commits its workspace binding, continuation and detach effect together.
+The detach can execute immediately after commit; queuing the continuation afterward could let a
+delegated child publish its result before its follow-up work exists.
+
 Retained events must remain decodable on replay. Changing a schema affects old environments at
 startup as well as live RPC traffic. Compatibility work must account for stored history, not just
 what the newest client sends.
