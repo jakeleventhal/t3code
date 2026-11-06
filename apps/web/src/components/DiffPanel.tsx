@@ -414,7 +414,8 @@ export default function DiffPanel({
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
 
-  const selectedGitSource = branchDiffPreview.data?.sources.find(
+  const preview = branchDiffPreview.isSuccess ? branchDiffPreview.data : null;
+  const selectedGitSource = preview?.sources.find(
     (source) =>
       source.kind ===
       (selectedGitScope === "unstaged"
@@ -466,7 +467,6 @@ export default function DiffPanel({
   const refreshPreviewQuery = branchDiffPreview.refresh;
   const refreshDiffFromUserAction = refreshPreviewQuery;
 
-  const preview = branchDiffPreview.data;
   const gitDiff = selectedGitSource?.diff;
 
   const toolCallPreview =
@@ -474,7 +474,9 @@ export default function DiffPanel({
   const selectedPatch = toolCallSelection
     ? toolCallPreview?.patch
     : selectedTurn
-      ? activeCheckpointDiff.data?.diff
+      ? activeCheckpointDiff.error === null
+        ? activeCheckpointDiff.data?.diff
+        : undefined
       : gitDiff;
   const isSelectedPatchTruncated =
     toolCallPreview?.truncated === true ||
@@ -594,6 +596,7 @@ export default function DiffPanel({
     ...matchingBaseRefChoices.map(valueForBaseRefChoice),
   ];
   const {
+    family: filePatchFamily,
     isPending: areFilePatchesPending,
     fileStates,
     retry,
@@ -602,9 +605,10 @@ export default function DiffPanel({
     remainingFileCount,
     loadNextFiles,
   } = useReviewFilePatches({
+    reviewKey: collapseScopeKey,
     environmentId: activeThread?.environmentId,
     cwd: branchDiffPreview.data?.cwd,
-    source: lazySource,
+    source: isGitSelection ? (selectedGitSource ?? null) : null,
     baseRef:
       selectedCommitSha !== null ? selectedBaseRef : (lazySource?.baseRef ?? selectedBaseRef),
     ignoreWhitespace: diffIgnoreWhitespace,
@@ -1428,10 +1432,11 @@ export default function DiffPanel({
                     environmentId={activeThread?.environmentId}
                     projectId={activeThread?.projectId}
                     viewerRef={codeViewReveal.attach}
-                    codeViewKey={codeViewMountKey}
+                    codeViewKey={`${codeViewMountKey}:${filePatchFamily}`}
                     className="h-full min-h-0 overflow-auto"
                     files={codeViewFiles}
                     pendingFiles={pendingFiles}
+                    isRefreshingDiff={isRefreshingDiff}
                     renderCodeViewFooter={renderLoadingBoundary}
                     sectionId={reviewSectionId}
                     sectionTitle={reviewSectionTitle}

@@ -35,6 +35,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
