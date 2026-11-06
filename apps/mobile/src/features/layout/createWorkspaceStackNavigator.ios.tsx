@@ -215,6 +215,7 @@ function WorkspaceColumns(
     setNativeInspectorWidth,
   } = useAdaptiveWorkspaceLayout();
   const deviceType = useDeviceType();
+  const primaryColumnWidth = layout.listPaneWidth ?? 320;
   const inspectorWidth = nativeInspectorWidth;
   const resizeStartWidth = useRef(inspectorWidth);
   const settingsDetailIn = (detail: readonly Route[]) =>
@@ -388,9 +389,10 @@ function WorkspaceColumns(
       showInspector={inspector.visible}
       onInspectorHide={hideInspector}
       columnMetrics={{
-        minimumPrimaryColumnWidth: 280,
-        maximumPrimaryColumnWidth: Math.max(380, layout.listPaneWidth ?? 0),
-        preferredPrimaryColumnWidthOrFraction: layout.listPaneWidth ?? 320,
+        minimumPrimaryColumnWidth: layout.variant === "medium" ? primaryColumnWidth : 280,
+        maximumPrimaryColumnWidth:
+          layout.variant === "medium" ? primaryColumnWidth : Math.max(380, primaryColumnWidth),
+        preferredPrimaryColumnWidthOrFraction: primaryColumnWidth,
         minimumSecondaryColumnWidth: NATIVE_INSPECTOR_MIN_MAIN_WIDTH,
         // UIKit can retain its automatic width despite a new preference; constrain both edges.
         minimumInspectorColumnWidth: inspectorWidth,
