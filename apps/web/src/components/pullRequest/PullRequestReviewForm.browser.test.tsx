@@ -19,6 +19,11 @@ vi.mock(import("~/state/pullRequests"), async (original) => ({
   pullRequestEnvironment: { submitReview: {} } as never,
 }));
 
+vi.mock("./usePendingReviewCommentActions", () => ({
+  usePendingReviewCommentActions: () => ({ busy: false }),
+}));
+vi.mock("./PullRequestAttachments", () => ({ PullRequestAttachments: () => null }));
+
 it("submits only the line comments still in the draft when dictation finishes", async () => {
   mocks.submit.mockClear();
   mocks.queue.mockClear();

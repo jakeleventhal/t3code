@@ -1,3 +1,4 @@
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { usePendingReviewCommentActions } from "./usePendingReviewCommentActions";
 import { PullRequestAttachments } from "./PullRequestAttachments";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -28,6 +29,7 @@ import { toastManager } from "../ui/toast";
 import { readableFailure } from "./pullRequestDetail.logic";
 import {
   pullRequestReviewKey,
+  mergePendingReviewComments,
   usePendingReviewComments,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
@@ -127,8 +129,24 @@ export function PullRequestReviewForm({
   const selectedVerdict =
     offered.find((verdict) => verdict.value === requestedVerdict) ?? offered[0];
 
-  const submit = async (verdict: (typeof VERDICTS)[number], text: string) => {
-    const submittedComments = comments;
+  // Forgejo requires a summary when requesting changes, even with inline comments.
+  const canSubmit = (verdict: PullRequestReviewVerdict, summary: string, commentCount: number) =>
+    verdict === "request-changes" && requestChangesSummaryRequired
+      ? summary.trim().length > 0
+      : verdict === "approve" ||
+        summary.trim().length > 0 ||
+        commentCount > 0 ||
+        pendingReviewId !== undefined;
+
+  const submit = useStableCallback(async (verdict: (typeof VERDICTS)[number], text: string) => {
+    const current = usePullRequestReviewStore.getState();
+    const submittedComments = mergePendingReviewComments(
+      current.drafts[reviewKey] ?? [],
+      reviewThreads,
+      current.removedHostComments[reviewKey] ?? [],
+    );
+    const submittedReviewId = submittedComments.find((comment) => comment.hostedComment)
+      ?.hostedComment?.reviewId;
     if (
       pending ||
       uploading ||
@@ -143,7 +161,7 @@ export function PullRequestReviewForm({
       input: {
         ...reference,
         verdict: verdict.value,
-        ...(pendingReviewId ? { pendingReviewId } : {}),
+        ...(submittedReviewId ? { pendingReviewId: submittedReviewId } : {}),
         body: submittedBody,
         comments: submittedComments,
       },
@@ -171,16 +189,8 @@ export function PullRequestReviewForm({
     clearSummary(reviewKey, submittedBody);
     toastManager.add({ type: "success", title: verdict.sent(term) });
     onSubmitted();
-  };
+  });
 
-  // Forgejo requires a summary when requesting changes, even with inline comments.
-  const canSubmit = (verdict: PullRequestReviewVerdict, summary: string, commentCount: number) =>
-    verdict === "request-changes" && requestChangesSummaryRequired
-      ? summary.trim().length > 0
-      : verdict === "approve" ||
-        summary.trim().length > 0 ||
-        commentCount > 0 ||
-        pendingReviewId !== undefined;
   // The placeholder asks for exactly what the submit button is waiting on.
   const placeholder =
     selectedVerdict === undefined || canSubmit(selectedVerdict.value, "", comments.length)

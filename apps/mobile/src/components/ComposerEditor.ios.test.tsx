@@ -99,6 +99,13 @@ function emit(value: string, resetGeneration = native.resetGeneration) {
   });
 }
 
+vi.mock("../features/settings/appearance/AppearancePreferencesProvider", () => ({
+  useAppearancePreferences: () => ({
+    fonts: { composer: { regular: "System" } },
+    composerFontSize: 16,
+  }),
+}));
+vi.mock("./AssistantCitationSheet", () => ({ AssistantCitationSheet: () => null }));
 vi.mock("expo", () => ({ requireNativeView: () => NativeView }));
 // Vite resolves the platform-neutral module; the race lives in the iOS editor.
 vi.mock("../native/T3ComposerEditor", () => import("../native/T3ComposerEditor.ios"));

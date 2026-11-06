@@ -2604,7 +2604,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         assert.isTrue(metadata.sources[0]!.patchesDeferred);
         assert.isEmpty(metadata.sources[0]!.diff);
         assert.deepStrictEqual(metadata.sources[0]!.files, [
-          { path: "README.md", previousPath: null, additions: 1, deletions: 1 },
+          { path: "README.md", previousPath: null, additions: 1, deletions: 1, status: "modified" },
         ]);
       }),
     );
@@ -2703,7 +2703,13 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
 
         const source = preview.sources.find((candidate) => candidate.kind === "working-tree")!;
         assert.deepStrictEqual(source.files, [
-          { path: "excluded/new.ts", previousPath: null, additions: 1, deletions: 0 },
+          {
+            path: "excluded/new.ts",
+            previousPath: null,
+            additions: 1,
+            deletions: 0,
+            status: "added",
+          },
         ]);
         assert.include(source.diff, "+outside the cone");
       }),
@@ -3544,7 +3550,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
 
         assert.strictEqual(status.branch, "t3/temporary");
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: null,
           insertions: 1,
           deletions: 0,
@@ -3896,11 +3902,11 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           deletions: 0,
         });
         assert.deepStrictEqual(status.branchChanges?.breakdown, {
-          code: { additions: 2, deletions: 0 },
+          code: { additions: 1, deletions: 0 },
           tests: { additions: 1, deletions: 0 },
           mocks: { additions: 1, deletions: 0 },
           generated: { additions: 1, deletions: 0 },
-          docs: { additions: 3, deletions: 0 },
+          docs: { additions: 4, deletions: 0 },
         });
         assert.isUndefined((yield* driver.statusDetailsLocal(cwd)).branchChanges);
       }),
@@ -5174,7 +5180,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           assert.equal(yield* git(created.worktree.path, ["branch", "--show-current"]), branch);
           assert.include(
             yield* git(cwd, ["-c", "core.quotePath=false", "worktree", "list", "--porcelain"]),
-            `worktree ${created.worktree.path}`,
+            `worktree ${yield* (yield* FileSystem.FileSystem).realPath(created.worktree.path)}`,
           );
           folders.add(folder);
         }

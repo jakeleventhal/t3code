@@ -32,6 +32,8 @@ const fixture = vi.hoisted(() => ({
   list: { entries: [], data: { viewers: {}, localSearchHosts: new Set(), errors: [] } },
 }));
 
+vi.mock("../../components/ui/Pane", () => ({ usePaneRole: () => "primary" }));
+vi.mock("../../components/ui/useBarInset", () => ({ useContentTopInset: () => 24 }));
 vi.mock("@legendapp/list/react-native", async () => {
   const { useImperativeHandle } = await import("react");
   return {
@@ -65,6 +67,7 @@ vi.mock("react-native", () => ({
 }));
 vi.mock("../../native/NativeScrollViewMarker", () => ({
   NativeScrollViewMarker: "ScrollViewMarker",
+  NativeScrollView: "ScrollView",
 }));
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 0 }),
