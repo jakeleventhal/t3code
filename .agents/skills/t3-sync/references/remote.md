@@ -3,10 +3,10 @@
 Two remote servers run the personal build. Rebuild and redeploy both every run,
 from the same integrated.sha and frozen Nightly version:
 
-| Target | SSH alias | Platform | Builder | Service |
-| --- | --- | --- | --- | --- |
-| R2-D2 | `r2d2` | darwin-arm64 | Jakebook | LaunchAgent `com.t3tools.t3code.service` |
-| C-3PO | `c3po` | linux-x64 | C-3PO, isolated checkout | systemd user unit `t3code.service` |
+| Target | SSH alias | Platform     | Builder                  | Service                                  |
+| ------ | --------- | ------------ | ------------------------ | ---------------------------------------- |
+| R2-D2  | `r2d2`    | darwin-arm64 | Jakebook                 | LaunchAgent `com.t3tools.t3code.service` |
+| C-3PO  | `c3po`    | linux-x64    | C-3PO, isolated checkout | systemd user unit `t3code.service`       |
 
 Each target is independent: a blocked target does not block the other one or
 the desktop and iPhone builds. Keep a separate archive, checksum, activation log
@@ -198,7 +198,7 @@ it back on needs Jake's sudo. Access matches R2-D2: T3 Connect
 is on and signed in to Jake's T3 account (relay client: `~/.t3/tools/cloudflared`),
 and LAN/tailnet access is on with pairing codes. The server listens on plain
 HTTP on port 3773 at `c-3po.tail732053.ts.net`. There is no Tailscale Serve
-HTTPS, so the desktop's bare-host *Remote link* (which assumes `https://`) fails.
+HTTPS, so the desktop's bare-host _Remote link_ (which assumes `https://`) fails.
 Jakebook's desktop finds C-3PO through T3 Connect.
 
 1. Check the archive with `sha256sum -c archive.sha256`, unpack it in SYNC_RUN,

@@ -70,7 +70,7 @@ entitlement adaptation after that PR, preserving the current plugin's behavior.
 
 Always freeze `origin/personal-background-delivery-fix`, even though it has no
 upstream PR. Its product patch range starts after
-`eea318998f30d074cfc7d3755f3af76f961b649b`; that base contains the prepared widget and
+`7199c0eff1ec79b3b5a2fabeefae9aa2decfb166`; that base contains the prepared widget and
 background-routing dependencies, so do not merge the entire branch or rebase
 all its ancestors. Record
 the frozen head and inspect `git log --reverse --no-merges <base>..<head>`.
