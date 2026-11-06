@@ -3,6 +3,7 @@
 import * as NodeHttp from "node:http";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
@@ -38,6 +39,8 @@ import * as Endpoints from "../src/environments/ManagedEndpointProvider.ts";
 import * as Credentials from "../src/environments/EnvironmentCredentials.ts";
 import * as Signatures from "../src/environments/EnvironmentPublishSignatures.ts";
 import * as Dpop from "../src/auth/DpopProofs.ts";
+import * as CloudMintSigner from "../src/auth/CloudMintSigner.ts";
+import { SignedApnsDeliveryJob } from "../src/agentActivity/apnsDeliveryJobs.ts";
 import * as RelayTokens from "../src/auth/RelayTokens.ts";
 import * as HeldHooks from "../src/hooks/HeldHooks.ts";
 import * as Schema from "effect/Schema";
@@ -55,6 +58,9 @@ const Settings = Schema.Struct({
   apnsKeyPath: Schema.String,
   apnsKeyId: Schema.String,
 });
+const encodeSignedApnsDeliveryJob = Schema.encodeEffect(
+  Schema.fromJsonString(SignedApnsDeliveryJob),
+);
 const settingsPath = process.argv[2];
 if (!settingsPath) throw new Error("Usage: personal-background.ts <private-settings.json>");
 const settings = Schema.decodeSync(Schema.fromJsonString(Settings))(
@@ -88,17 +94,20 @@ const config = Config.layer({
 const queue = Queue.layer.pipe(
   Layer.provide(
     Layer.succeed(Queue.ApnsDeliveryQueueSender, {
-      send: Effect.fn("Queue.ApnsDeliveryQueueSender.send")((body) =>
-        Effect.tryPromise({
+      send: Effect.fn("Queue.ApnsDeliveryQueueSender.send")(function* (body) {
+        const serialized = yield* encodeSignedApnsDeliveryJob(body).pipe(
+          Effect.mapError((cause) => new Queue.ApnsDeliveryQueueStorageError({ cause })),
+        );
+        yield* Effect.tryPromise({
           try: async () => {
             const path = NodePath.join(settings.queueDirectory, `${body.payload.jobId}.json`);
             const temporary = `${path}.tmp`;
-            await NodeFSP.writeFile(temporary, JSON.stringify(body), { mode: 0o600 });
+            await NodeFSP.writeFile(temporary, serialized, { mode: 0o600 });
             await NodeFSP.rename(temporary, path);
           },
           catch: (cause) => new Queue.ApnsDeliveryQueueStorageError({ cause }),
-        }),
-      ),
+        });
+      }),
     }),
   ),
 );
@@ -139,7 +148,7 @@ const services = Layer.empty.pipe(
       Credentials.layer,
       Signatures.layer,
       Allocations.layer,
-      RelayTokens.layer,
+      RelayTokens.layer.pipe(Layer.provideMerge(CloudMintSigner.layer)),
     ),
   ),
   Layer.provideMerge(Dpop.layer),
@@ -147,6 +156,7 @@ const services = Layer.empty.pipe(
   Layer.provideMerge(config),
   Layer.provideMerge(http),
   Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(NodeCrypto.layer),
 );
 const runtime = ManagedRuntime.make(services);
 const backgroundApi = HttpApi.make("RelayApi").add(
