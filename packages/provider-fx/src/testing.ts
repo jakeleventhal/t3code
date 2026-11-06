@@ -9,3 +9,4 @@ export {
   FX_SUPPORTED_RUNTIME_MODES,
   makeFxAcpRuntime,
 } from "./server/acpSupport.ts";
+export { FX_HOOKS_SESSION_META } from "./server/subagents.ts";
