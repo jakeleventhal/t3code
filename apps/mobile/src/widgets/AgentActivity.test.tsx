@@ -1,7 +1,12 @@
+import type { LiveActivityComponent } from "expo-widgets";
 import { isValidElement } from "react";
 import { expect, it, vi } from "vite-plus/test";
 
-import { AgentActivity, type AgentActivityProps } from "./AgentActivity";
+import {
+  AgentActivity,
+  type AgentActivityRowProps,
+  type AgentActivityProps,
+} from "./AgentActivity";
 
 vi.mock("expo-widgets", () => ({
   createLiveActivity: () => ({}),
@@ -65,3 +70,51 @@ it.each([-1, 0, 1])(
     expect(compact.props.children).toBe(activeCount === 0 ? "Done" : "Out of date");
   },
 );
+
+it("targets the first displayed attention thread when incoming rows are unordered", () => {
+  const render = AgentActivity as unknown as LiveActivityComponent<AgentActivityProps>;
+  const older: AgentActivityRowProps = {
+    environmentId: "environment",
+    threadId: "older",
+    projectTitle: "Project",
+    threadTitle: "Older request",
+    modelTitle: "Codex",
+    phase: "waiting_for_approval",
+    status: "Approval needed",
+    updatedAt: "2026-10-28T09:00:00Z",
+    deepLink: "/threads/environment/older",
+  };
+  const newer = {
+    ...older,
+    threadId: "newer",
+    phase: "woke" as const,
+    updatedAt: "2026-10-28T10:00:00Z",
+    deepLink: "/threads/environment/newer",
+  };
+  const layout = render(
+    {
+      title: "Agents",
+      subtitle: "",
+      activeCount: 2,
+      updatedAt: newer.updatedAt,
+      activities: [older, newer],
+    },
+    { colorScheme: "dark" },
+  );
+  const compact = layout.compactTrailing;
+  expect(isValidElement(compact)).toBe(true);
+  if (!isValidElement<{ children: string; modifiers: unknown[] }>(compact)) return;
+  expect(compact.props.children).toBe("Woke");
+  expect(compact.props.modifiers).toContainEqual({
+    name: "widgetURL",
+    value: "t3code://threads/environment/newer",
+  });
+  expect(layout.minimal).toMatchObject({
+    props: {
+      children: { props: { systemName: "alarm.fill" } },
+      modifiers: expect.arrayContaining([
+        { name: "widgetURL", value: "t3code://threads/environment/newer" },
+      ]),
+    },
+  });
+});

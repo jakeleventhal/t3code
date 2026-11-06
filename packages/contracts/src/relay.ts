@@ -27,6 +27,7 @@ export const RelayAgentAwarenessPhase = Schema.Literals([
   "completed",
   "failed",
   "stale",
+  "woke",
 ]);
 export type RelayAgentAwarenessPhase = typeof RelayAgentAwarenessPhase.Type;
 
@@ -125,6 +126,8 @@ export const RelayAgentActivityState = Schema.Struct({
   projectTitle: TrimmedNonEmptyString,
   threadTitle: TrimmedNonEmptyString,
   phase: RelayAgentAwarenessPhase,
+  unread: Schema.optional(Schema.Boolean),
+  completedAt: Schema.optional(TrimmedNonEmptyString),
   headline: TrimmedNonEmptyString,
   retained: Schema.optional(Schema.Boolean),
   detail: Schema.optional(TrimmedNonEmptyString),
@@ -141,6 +144,8 @@ export const RelayAgentActivityAggregateRow = Schema.Struct({
   threadTitle: TrimmedNonEmptyString,
   modelTitle: TrimmedNonEmptyString,
   phase: RelayAgentAwarenessPhase,
+  unread: Schema.optional(Schema.Boolean),
+  completedAt: Schema.optional(TrimmedNonEmptyString),
   status: TrimmedNonEmptyString,
   updatedAt: TrimmedNonEmptyString,
   deepLink: TrimmedNonEmptyString,
@@ -154,6 +159,8 @@ export const RelayAgentActivityAggregateState = Schema.Struct({
   workingCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   attentionCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   totalCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  unreadCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  pendingCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   updatedAt: TrimmedNonEmptyString,
   activities: Schema.Array(RelayAgentActivityAggregateRow),
 });

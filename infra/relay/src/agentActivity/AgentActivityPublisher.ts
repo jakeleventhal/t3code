@@ -89,8 +89,13 @@ const make = Effect.gen(function* () {
     const notificationOnlyAggregate =
       !input.replay &&
       input.deliveryUser.notificationsEnabled &&
-      !input.deliveryUser.liveActivitiesEnabled &&
-      input.state !== null
+      input.state !== null &&
+      (!input.deliveryUser.liveActivitiesEnabled ||
+        !liveActivityAggregate?.activities.some(
+          (row) =>
+            row.environmentId === input.state?.environmentId &&
+            row.threadId === input.state.threadId,
+        ))
         ? makeAggregateState({
             activeStates: isTerminalPhase(input.state) ? [] : [input.state],
             terminalState: isTerminalPhase(input.state) ? input.state : null,
@@ -115,6 +120,14 @@ const make = Effect.gen(function* () {
             apnsDeliveries.sendForTarget({
               target,
               aggregate: liveActivityAggregate,
+              ...(input.replay && input.state
+                ? {
+                    replayThread: {
+                      environmentId: input.state.environmentId,
+                      threadId: input.state.threadId,
+                    },
+                  }
+                : {}),
               nowMs: input.nowMs,
               replay: input.replay ?? false,
             }),
@@ -187,7 +200,7 @@ const make = Effect.gen(function* () {
               terminalState: null,
               nowMs: now.epochMilliseconds,
             });
-            if (aggregate !== null) return;
+            if (aggregate !== null && aggregate.pendingCount !== 0) return;
             const targets = yield* liveActivities.listTargets({ userId });
             const idleDeviceIds = new Set(candidates.map((target) => target.device_id));
             yield* Effect.forEach(

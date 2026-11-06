@@ -12,6 +12,7 @@ import {
   layoutPriority,
   lineLimit,
   minimumScaleFactor,
+  multilineTextAlignment,
   padding,
   resizable,
   widgetURL,
@@ -31,7 +32,8 @@ export type AgentActivityPhase =
   | "waiting_for_input"
   | "completed"
   | "failed"
-  | "stale";
+  | "stale"
+  | "woke";
 
 export interface AgentActivityRowProps {
   readonly environmentId: string;
@@ -40,6 +42,8 @@ export interface AgentActivityRowProps {
   readonly threadTitle: string;
   readonly modelTitle: string;
   readonly phase: AgentActivityPhase;
+  readonly unread?: boolean;
+  readonly completedAt?: string;
   readonly status: string;
   readonly updatedAt: string;
   readonly deepLink: string;
@@ -55,6 +59,8 @@ export interface AgentActivityProps {
   readonly isStale?: boolean;
   readonly isExpired?: boolean;
   readonly expiresAt?: number;
+  readonly unreadCount?: number | null;
+  readonly pendingCount?: number | null;
   readonly updatedAt: string;
   readonly activities: ReadonlyArray<AgentActivityRowProps>;
 }
@@ -105,7 +111,10 @@ export function AgentActivity(
       ? props.attentionCount
       : countsComplete
         ? receivedActivities.filter(
-            (row) => row.phase === "waiting_for_input" || row.phase === "waiting_for_approval",
+            (row) =>
+              row.phase === "waiting_for_input" ||
+              row.phase === "waiting_for_approval" ||
+              row.phase === "woke",
           ).length
         : null;
   const totalCount =
@@ -113,6 +122,13 @@ export function AgentActivity(
       ? props.totalCount
       : null;
   const widgetFamily = "widgetFamily" in environment ? environment.widgetFamily : undefined;
+  const unreadCount =
+    typeof props.unreadCount === "number" && props.unreadCount >= 0
+      ? props.unreadCount
+      : totalCount === receivedActivities.length
+        ? receivedActivities.filter((row) => row.phase === "completed" && row.unread !== false)
+            .length
+        : null;
 
   // Hierarchical foregrounds inherit system tint and vibrancy.
   type Foreground = Parameters<typeof foregroundStyle>[0];
@@ -132,9 +148,9 @@ export function AgentActivity(
     }
     switch (phase) {
       case "waiting_for_approval":
-        return isLightScheme ? "#d97706" : "#fcd34d"; // amber-600 / amber-300
       case "waiting_for_input":
-        return isLightScheme ? "#4f46e5" : "#a5b4fc"; // indigo-600 / indigo-300
+      case "woke":
+        return isLightScheme ? "#d97706" : "#fcd34d"; // amber-600 / amber-300
       case "failed":
         return isLightScheme ? "#dc2626" : "#fca5a5"; // red-600 / red-300
       case "completed":
@@ -148,13 +164,17 @@ export function AgentActivity(
     }
   };
 
-  // Order attention-first so whatever needs the user floats to the top of every
-  // presentation, then failures, then in-flight work, then finished/stale.
-  const phasePriority = (phase: AgentActivityPhase): number => {
-    if (phase === "waiting_for_approval" || phase === "waiting_for_input") return 0;
-    if (phase === "failed") return 1;
-    if (phase === "running" || phase === "starting") return 2;
-    return 3;
+  const phasePriority = (row: AgentActivityRowProps): number => {
+    if (
+      row.phase === "waiting_for_approval" ||
+      row.phase === "waiting_for_input" ||
+      row.phase === "woke"
+    )
+      return 0;
+    if (row.phase === "failed") return 1;
+    if (row.phase === "completed" && row.unread !== false) return 2;
+    if (row.phase === "running" || row.phase === "starting") return 3;
+    return 4;
   };
   // Past a Live Activity's stale date the system stops vouching for the
   // content, so every in-flight row degrades to "stale" rather than claiming
@@ -162,25 +182,36 @@ export function AgentActivity(
   const isSystemStale = "isStale" in environment && environment.isStale === true;
   const activities: ReadonlyArray<AgentActivityRowProps> = isSystemStale
     ? receivedActivities.map((row) =>
-        row.phase === "completed" || row.phase === "failed"
+        row.phase === "completed" || row.phase === "failed" || row.phase === "woke"
           ? row
           : { ...row, phase: "stale", status: "Out of date" },
       )
     : receivedActivities;
-  const ordered = [...activities].sort((a, b) => phasePriority(a.phase) - phasePriority(b.phase));
+  const ordered = [...activities].sort(
+    (a, b) =>
+      phasePriority(a) - phasePriority(b) ||
+      b.updatedAt.localeCompare(a.updatedAt) ||
+      a.environmentId.localeCompare(b.environmentId) ||
+      a.threadId.localeCompare(b.threadId),
+  );
   const row0 = ordered[0];
   const row1 = ordered[1];
   const row2 = ordered[2];
   const row3 = ordered[3];
   const row4 = ordered[4];
 
-  const attentionRows = activities.filter(
-    (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
+  const attentionRow = ordered.find(
+    (row) =>
+      row.phase === "waiting_for_approval" ||
+      row.phase === "waiting_for_input" ||
+      row.phase === "woke",
   );
-  const attentionRow = attentionRows[0];
   const failedRow = activities.find((row) => row.phase === "failed");
   const heroRow = attentionRow ?? failedRow ?? row0;
-  const tint = phaseTint(heroRow?.phase);
+  const tint =
+    heroRow?.phase === "completed" && heroRow.unread === false
+      ? secondaryForeground
+      : phaseTint(heroRow?.phase);
   // Headline count leans on the accent when a human is actually blocked.
   const headerTint = attentionRow
     ? phaseTint(attentionRow.phase)
@@ -189,13 +220,16 @@ export function AgentActivity(
       : tint;
 
   // Derive terminal outcomes from all rows so a failure dominates a newer success in every presentation.
-  const allDone = activeCount === 0;
+  const allDone =
+    typeof props.pendingCount === "number" && props.pendingCount >= 0
+      ? props.pendingCount === 0
+      : activeCount === 0 && (unreadCount === 0 || unreadCount === null);
   const hasRows = activities.length > 0;
   const doneLabel = failedRow ? "Failed" : hasRows ? "Done" : "Idle";
   const outcomeLabel = failedRow
     ? "Agent work failed"
     : hasRows
-      ? "Agent work completed"
+      ? "All caught up"
       : "No active agents";
 
   const countLabel = allDone
@@ -204,27 +238,40 @@ export function AgentActivity(
       ? "Agent status out of date"
       : workingCount === null
         ? "Working count unavailable"
-        : `${workingCount} working`;
+        : workingCount > 0
+          ? `${workingCount} working`
+          : failedRow
+            ? "Agent work failed"
+            : "";
   const agentsLabel =
     props.isStale && !props.isExpired ? `Last observed: ${countLabel}` : countLabel;
   const attentionSuffix =
     !props.isExpired && !isSystemStale && attentionCount !== null && attentionCount > 0
-      ? `${attentionCount} need${attentionCount === 1 ? "s" : ""} attention`
+      ? `${attentionCount} need${attentionCount === 1 ? "s" : ""} you`
       : "";
+  const doneSuffix = unreadCount !== null && unreadCount > 0 ? `${unreadCount} done` : "";
   const currentLabel = allDone
     ? doneLabel
     : props.isExpired || isSystemStale
       ? "Out of date"
       : workingCount === null
         ? "Count unavailable"
-        : `${workingCount} working`;
+        : workingCount > 0
+          ? `${workingCount} working`
+          : failedRow
+            ? "Failed"
+            : "";
   const activeLabel =
     props.isStale && !props.isExpired ? `Last observed: ${currentLabel}` : currentLabel;
-  // A retained observation keeps its "Last observed" label instead of a glyph
-  // that would claim agents are still working.
   const showCompactGlyph =
-    !attentionRow && !failedRow && !allDone && !isSystemStale && !props.isExpired && !props.isStale;
-  const summary = attentionSuffix || activeLabel;
+    !attentionRow &&
+    !failedRow &&
+    !doneSuffix &&
+    !allDone &&
+    !isSystemStale &&
+    !props.isExpired &&
+    !props.isStale;
+  const summary = attentionSuffix || doneSuffix || activeLabel;
 
   // Widget taps target the containing app, so its production scheme is safe in every build.
   const deepLinkRow = attentionRow ?? row0;
@@ -244,6 +291,8 @@ export function AgentActivity(
         return "exclamationmark.circle.fill";
       case "waiting_for_input":
         return "questionmark.circle.fill";
+      case "woke":
+        return "alarm.fill";
       case "failed":
         return "xmark.octagon.fill";
       case "completed":
@@ -278,13 +327,49 @@ export function AgentActivity(
     </HStack>
   );
 
+  const isRead = (row: AgentActivityRowProps) => row.phase === "completed" && row.unread === false;
+  const isEmphasized = (row: AgentActivityRowProps) =>
+    row.phase === "woke" ||
+    row.phase === "waiting_for_input" ||
+    row.phase === "waiting_for_approval" ||
+    (row.phase === "completed" && row.unread !== false);
+  const renderRowStatus = (row: AgentActivityRowProps) =>
+    isRead(row) ? (
+      <Text
+        date={new Date(row.completedAt ?? row.updatedAt)}
+        dateStyle="relativeMinutes"
+        modifiers={[
+          font({ size: 11 }),
+          foregroundStyle(secondaryForeground),
+          lineLimit(1),
+          minimumScaleFactor(0.7),
+          multilineTextAlignment("trailing"),
+          // Relative dates accept all proposed width; bound them so they cannot erase the titles.
+          frame({ maxWidth: 136, alignment: "trailing" }),
+        ]}
+      />
+    ) : (
+      <Text
+        modifiers={[
+          font({ weight: "semibold", size: 11 }),
+          foregroundStyle(phaseTint(row.phase)),
+          layoutPriority(1),
+        ]}
+      >
+        {row.status}
+      </Text>
+    );
+
   // Single-line rows fit the expanded island height budget; protect project and status from truncation.
   const renderCompactRow = (row: AgentActivityRowProps) => (
     <HStack spacing={7} alignment="center">
+      {row.phase === "completed" && row.unread !== false ? (
+        <Text modifiers={[font({ size: 8 }), foregroundStyle(phaseTint("completed"))]}>●</Text>
+      ) : null}
       <Text
         modifiers={[
-          font({ weight: "semibold", size: 13 }),
-          foregroundStyle(primaryForeground),
+          font({ weight: isEmphasized(row) ? "semibold" : "regular", size: 13 }),
+          foregroundStyle(isRead(row) ? secondaryForeground : primaryForeground),
           lineLimit(1),
         ]}
       >
@@ -295,15 +380,7 @@ export function AgentActivity(
         {row.projectTitle}
       </Text>
       <Spacer minLength={8} />
-      <Text
-        modifiers={[
-          font({ weight: "semibold", size: 11 }),
-          foregroundStyle(phaseTint(row.phase)),
-          layoutPriority(1),
-        ]}
-      >
-        {row.status}
-      </Text>
+      {renderRowStatus(row)}
     </HStack>
   );
 
@@ -577,6 +654,17 @@ export function AgentActivity(
               {attentionSuffix}
             </Text>
           ) : null}
+          {doneSuffix ? (
+            <Text
+              modifiers={[
+                font({ weight: "semibold", size: 13 }),
+                foregroundStyle(phaseTint("completed")),
+                lineLimit(1),
+              ]}
+            >
+              {`${agentsLabel || attentionSuffix ? "· " : ""}${doneSuffix}`}
+            </Text>
+          ) : null}
           <Spacer minLength={0} />
         </HStack>
       </ZStack>
@@ -625,10 +713,12 @@ export function AgentActivity(
         {attentionRow
           ? attentionRow.phase === "waiting_for_approval"
             ? "Approval"
-            : "Input"
+            : attentionRow.phase === "woke"
+              ? "Woke"
+              : "Input"
           : failedRow
             ? "Failed"
-            : activeLabel}
+            : doneSuffix || activeLabel}
       </Text>
     ),
     minimal: heroRow
@@ -638,11 +728,7 @@ export function AgentActivity(
       <HStack spacing={5} alignment="center" modifiers={[padding({ leading: 4, vertical: 4 })]}>
         {renderLogo(15, tint)}
         <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(tint)]}>
-          {allDone
-            ? doneLabel
-            : workingCount === null || isSystemStale || props.isExpired
-              ? "?"
-              : `${workingCount}`}
+          {isSystemStale ? "Out of date" : allDone ? doneLabel : summary}
         </Text>
       </HStack>
     ),
