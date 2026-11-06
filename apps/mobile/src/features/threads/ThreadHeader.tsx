@@ -43,7 +43,9 @@ export function ThreadHeader(props: {
         },
       ]
     : [];
-  const menus = [devServerMenu, gitMenu, terminalMenu].filter((menu): menu is AppBarMenu => menu !== null);
+  const menus = [devServerMenu, gitMenu, terminalMenu].filter(
+    (menu): menu is AppBarMenu => menu !== null,
+  );
 
   return (
     <AppBar
