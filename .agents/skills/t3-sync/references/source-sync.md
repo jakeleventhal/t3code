@@ -91,6 +91,20 @@ on each new run and prepare it using the source-branch procedure below.
 
 Follow [background-delivery.md](background-delivery.md) before deployment.
 
+## Preserve personal migration compatibility
+
+Freeze `origin/personal-migration-compatibility`. Replay only its product commits
+after `70be9bf9e21ef8e3945c9a37a1b04262ded94402`, not its old integration ancestors.
+The November 2 personal build recorded `ThreadFolders` and `ThreadFolderRules`
+at ids 78/79, which current main uses for different migrations. This support
+archives only that recognized ledger in a separate table, preserves folder data,
+and lets the normal application migrator apply main's ids. Keep unknown-history
+rejection and transactional rollback. Do not repair live userdata manually.
+Before deploying a changed compatibility patch, exercise it on read-only backups
+copied into SYNC_RUN, comparing integrity, history counts and retained folder data.
+Retire this source only when upstream supplies an equivalent upgrade path and all
+personal installations have been verified compatible.
+
 ## Preserve the mobile startup repair
 
 Freeze `origin/personal-mobile-startup-fix` while upstream still dynamically imports
