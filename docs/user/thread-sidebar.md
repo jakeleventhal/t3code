@@ -335,3 +335,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
 its agent wakes itself for background work. It comes back early for an approval,
 a new question, a failed run, or a message or answer you send. You can snooze an existing
 question and answer when the thread wakes; the question stays unanswered.
+
+## Dev server shortcuts
+
+When a terminal starts a local dev server, a globe appears on its thread. Select it to open the
+server in T3 Code's browser. T3 Code recognizes Portless routes, Tailscale Serve routes, and active
+ngrok HTTP tunnels. It opens their named or public URL when supported; for Portless routes in remote
+environments, it opens the underlying listener's port instead. When several are available, the
+shortcut prefers ngrok, then Tailscale Serve, then Portless, then the underlying local address.

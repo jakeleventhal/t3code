@@ -8,9 +8,11 @@ import {
   PreviewAutomationStatus,
 } from "./previewAutomation.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { DiscoveredLocalServer } from "./preview.ts";
 
 const decodeAutomationHost = Schema.decodeUnknownSync(PreviewAutomationHost);
 const decodeAutomationStatus = Schema.decodeUnknownSync(PreviewAutomationStatus);
+const decodeDiscoveredLocalServer = Schema.decodeUnknownSync(DiscoveredLocalServer);
 
 describe("PreviewAutomationHost", () => {
   it("accepts legacy hosts and current operation advertisements", () => {
@@ -81,5 +83,21 @@ describe("PreviewAutomationInvalidSelectorError", () => {
     expect(message).toMatch(/CSS/);
     expect(message).toMatch(/\blocator\b/);
     expect(message).toContain("aria-ref=");
+  });
+});
+
+describe("DiscoveredLocalServer", () => {
+  it("keeps the kind of a named or tunneled server URL", () => {
+    const server = decodeDiscoveredLocalServer({
+      host: "localhost",
+      port: 5173,
+      url: "https://feature.ngrok-free.app",
+      urlKind: "public-tunnel",
+      processName: "node",
+      pid: 12345,
+      terminal: null,
+    });
+    expect(server.urlKind).toBe("public-tunnel");
+    expect(() => decodeDiscoveredLocalServer({ ...server, urlKind: "somewhere-else" })).toThrow();
   });
 });
