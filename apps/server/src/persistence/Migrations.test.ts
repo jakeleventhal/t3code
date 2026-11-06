@@ -78,6 +78,75 @@ describe("runMigrations", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
+  it.effect.each([false, true])(
+    "preserves personal folder data while freeing main migration ids (rules: %s)",
+    (withRules) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 77 });
+        yield* sql`CREATE TABLE thread_folders (folder_id TEXT PRIMARY KEY, name TEXT, rule_json TEXT)`;
+        yield* sql`CREATE TABLE thread_folder_members (thread_id TEXT PRIMARY KEY, folder_id TEXT)`;
+        yield* sql`INSERT INTO thread_folders VALUES ('folder-1', 'Personal', '{"project":"keep"}')`;
+        yield* sql`INSERT INTO thread_folder_members VALUES ('thread-1', 'folder-1')`;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES (78, 'ThreadFolders', '2026-11-02 00:00:00')`;
+        if (withRules) {
+          yield* sql`CREATE TABLE thread_folder_explicit_moves (thread_id TEXT PRIMARY KEY)`;
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES (79, 'ThreadFolderRules', '2026-11-02 01:00:00')`;
+        }
+        const before =
+          yield* sql`SELECT * FROM effect_sql_migrations WHERE migration_id >= 78 ORDER BY migration_id`;
+        assert.deepStrictEqual(
+          yield* runMigrations(),
+          migrationManifest.filter(([id]) => id >= 78),
+        );
+        assert.deepStrictEqual(yield* history, migrationManifest);
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM personal_folder_migration_history ORDER BY migration_id`,
+          before,
+        );
+        assert.deepStrictEqual(yield* sql`SELECT * FROM thread_folders`, [
+          { folder_id: "folder-1", name: "Personal", rule_json: '{"project":"keep"}' },
+        ]);
+        assert.deepStrictEqual(yield* sql`SELECT * FROM thread_folder_members`, [
+          { thread_id: "thread-1", folder_id: "folder-1" },
+        ]);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect.each(["later migration", "earlier migration", "archive failure", "missing schema"])(
+    "does not change personal folder history after %s",
+    (failure) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 77 });
+        yield* sql`CREATE TABLE thread_folders (folder_id TEXT PRIMARY KEY, name TEXT)`;
+        yield* sql`INSERT INTO thread_folders VALUES ('folder-1', 'Preserve')`;
+        if (failure !== "missing schema")
+          yield* sql`CREATE TABLE thread_folder_members (thread_id TEXT PRIMARY KEY, folder_id TEXT)`;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (78, 'ThreadFolders')`;
+        if (failure === "later migration")
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (79, 'UnknownFork')`;
+        if (failure === "earlier migration")
+          yield* sql`UPDATE effect_sql_migrations SET name = 'UnknownFork' WHERE migration_id = 55`;
+        if (failure === "archive failure")
+          yield* sql`CREATE TRIGGER fail_personal_archive BEFORE DELETE ON effect_sql_migrations WHEN OLD.migration_id = 78 BEGIN SELECT RAISE(ABORT, 'injected archive failure'); END`;
+        const before = yield* sql`SELECT * FROM effect_sql_migrations ORDER BY migration_id`;
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM effect_sql_migrations ORDER BY migration_id`,
+          before,
+        );
+        assert.deepStrictEqual(
+          yield* sql`SELECT name FROM sqlite_master WHERE name = 'personal_folder_migration_history'`,
+          [],
+        );
+        assert.deepStrictEqual(yield* sql`SELECT * FROM thread_folders`, [
+          { folder_id: "folder-1", name: "Preserve" },
+        ]);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect("drops the unused correlation index and keeps correlation values", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
