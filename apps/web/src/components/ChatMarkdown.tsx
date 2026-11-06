@@ -1668,6 +1668,21 @@ const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
   mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS],
 } satisfies Record<string, PluggableList>;
 
+// Share processors across remounts without retaining every workspace ever opened.
+const mediaPluginSets = new Map<string, PluggableList>();
+function standaloneMediaPlugins(
+  options: Parameters<typeof remarkStandaloneMediaLinks>[0],
+): PluggableList {
+  const key = JSON.stringify([options.embedLocalPaths, options.workspaceRoot ?? null]);
+  const cached = mediaPluginSets.get(key);
+  if (cached) return cached;
+  const plugins: PluggableList = [[remarkStandaloneMediaLinks, options]];
+  const oldest = mediaPluginSets.keys().next().value;
+  if (mediaPluginSets.size >= 64 && oldest !== undefined) mediaPluginSets.delete(oldest);
+  mediaPluginSets.set(key, plugins);
+  return plugins;
+}
+
 const combinedPlugins = new WeakMap<PluggableList, WeakMap<PluggableList, PluggableList>>();
 
 // One combined list per pair, so a stable extra list shares a renderer and its parse cache.
@@ -1761,7 +1776,7 @@ function ChatMarkdown({
   const { cwd, imageBaseDir, threadRef } = componentState;
   const embedLocalPaths = threadRef !== undefined;
   const workspaceRoot = imageBaseDir ?? cwd;
-  const mediaPlugins = useMemo<PluggableList>(() => [[remarkStandaloneMediaLinks, { embedLocalPaths, workspaceRoot }]], [embedLocalPaths, workspaceRoot]);
+  const mediaPlugins = standaloneMediaPlugins({ embedLocalPaths, workspaceRoot });
   const sharedRemarkPlugins =
     CHAT_MARKDOWN_REMARK_PLUGIN_SETS[
       componentState.mathEnabled
