@@ -710,7 +710,6 @@ function mayStartSubagentFollowup(
   );
 }
 
-/** Waiting runs only drain post-terminal output; their agent turn is over and still needs a wake. */
 function isBlockingRun(run: OrchestrationV2Run): boolean {
   return (
     run.status === "preparing" ||
@@ -720,6 +719,7 @@ function isBlockingRun(run: OrchestrationV2Run): boolean {
   );
 }
 
+/** Waiting runs only drain post-terminal output; their agent turn is over and still needs a wake. */
 function isLiveRun(run: OrchestrationV2Run): boolean {
   return run.status === "preparing" || run.status === "starting" || run.status === "running";
 }
