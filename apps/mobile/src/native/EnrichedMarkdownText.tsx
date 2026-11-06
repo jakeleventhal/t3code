@@ -85,7 +85,7 @@ function enrichedStyle(
     strong: {
       color: style.strongColor,
       fontFamily: style.boldFontFamily,
-      fontWeight: "normal",
+      fontWeight: style.boldFontFamily === style.fontFamily ? "bold" : "normal",
     },
     link: { color: style.linkColor, underline: false },
     code: {
