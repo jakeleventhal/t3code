@@ -7,6 +7,7 @@ import {
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
+import { reconcilePersonalFolderMigrations } from "./reconcilePersonalFolderMigrations.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
 import Migration0002 from "./Migrations/002_OrchestrationCommandReceipts.ts";
@@ -296,14 +297,23 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   // The desktop waits past its readiness budget until the finished line follows this one.
   const hasPending = yield* hasPendingMigrations();
   if (hasPending) yield* Effect.log(DATABASE_MIGRATIONS_STARTED_MESSAGE);
+  const sql = yield* SqlClient.SqlClient;
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   // The reconcile takes the write lock; CLI startup must not contend with the server for a no-op.
   const previewMigrations = includesV2 && hasPending ? yield* reconcileV2PreviewMigration() : [];
   if (includesV2) {
-    yield* assertV2MigrationsCanRun(toMigrationInclusive);
+    if (hasPending) {
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* reconcilePersonalFolderMigrations(toMigrationInclusive);
+          yield* assertV2MigrationsCanRun(toMigrationInclusive);
+        }),
+      );
+    } else {
+      yield* assertV2MigrationsCanRun(toMigrationInclusive);
+    }
   }
-  const sql = yield* SqlClient.SqlClient;
   const ledger = yield* sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
   `;
