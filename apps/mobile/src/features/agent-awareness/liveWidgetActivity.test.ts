@@ -180,9 +180,36 @@ describe("live widget activity", () => {
     try {
       h.registry.set(h.shellAtoms(ENVIRONMENT), shell([thread({ status: "starting" })]));
       h.registry.set(h.shellAtoms(ENVIRONMENT), shell([thread({ status: "running" })]));
-      h.registry.set(h.shellAtoms(ENVIRONMENT), shell([thread({ status: "completed" })]));
+      h.registry.set(
+        h.shellAtoms(ENVIRONMENT),
+        shell([
+          thread({
+            status: "completed",
+            latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+            lastVisitedAt: DateTime.makeUnsafe(NOW_MS - 1),
+          }),
+        ]),
+      );
+      expect(h.registry.get(h.atom).get(ENVIRONMENT)?.[0]).toMatchObject({
+        unread: true,
+        completedAt: NOW,
+      });
+      h.registry.set(
+        h.shellAtoms(ENVIRONMENT),
+        shell([
+          thread({
+            status: "idle",
+            snoozedUntil: DateTime.makeUnsafe(NOW),
+            lastVisitedAt: DateTime.makeUnsafe(NOW_MS - 1),
+          }),
+        ]),
+      );
+      expect(h.registry.get(h.atom).get(ENVIRONMENT)?.[0]).toMatchObject({
+        phase: "woke",
+        status: "Snooze ended",
+      });
       h.registry.set(h.shellAtoms(ENVIRONMENT), shell([]));
-      expect(seen).toEqual([[], ["starting"], ["running"], ["completed"], []]);
+      expect(seen).toEqual([[], ["starting"], ["running"], ["completed"], ["woke"], []]);
       expect(h.registry.get(h.atom).has(ENVIRONMENT)).toBe(true);
     } finally {
       stop();

@@ -1,7 +1,12 @@
+import { Button } from "../ui/button";
 import {
   capitalizeTerm,
   sourceControlClients,
 } from "@t3tools/client-runtime/source-control-clients";
+import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewAnnotation";
+import { useReviewThreadActions } from "./useReviewThreadActions";
+import { usePendingReviewComments, type PendingReviewComment } from "./pullRequestReviewStore";
+import { PullRequestCommentActions } from "./PullRequestCommentActions";
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
   EnvironmentId,
@@ -9,12 +14,12 @@ import type {
   PullRequestComment,
   PullRequestDetailView,
   PullRequestRef,
+  PullRequestReviewThread,
+  PullRequestThreadComment,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
-  CircleCheckIcon,
-  ExternalLinkIcon,
   FileCode2Icon,
   GitCommitHorizontalIcon,
   MessageSquareIcon,
@@ -27,7 +32,6 @@ import { readLocalApi } from "~/localApi";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { RelativeTime } from "~/components/RelativeTime";
 
-import { Button } from "../ui/button";
 import { PullRequestEditButton } from "./PullRequestEditButton";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { toastManager } from "../ui/toast";
@@ -42,11 +46,12 @@ import {
   type PullRequestChatSubject,
   type PullRequestReviewOutcome,
   type PullRequestTimelineEvent,
-  type PullRequestTimelineThread,
 } from "./pullRequestDetail.logic";
-import { canEditPullRequestComment } from "@t3tools/client-runtime/pull-request-editing";
+import {
+  canEditPullRequestComment,
+  groupPendingReviewComments,
+} from "@t3tools/client-runtime/review-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
-import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import {
@@ -74,6 +79,7 @@ interface ReactionSurface {
   readonly reference: PullRequestRef;
   readonly completionScope: PullRequestCompletionScope | null;
   readonly onRefresh: () => void;
+  readonly onAddCommentToComposer?: ((comment: PullRequestComment) => void) | undefined;
 }
 
 function TimelineBody({
@@ -204,20 +210,6 @@ function AddToChatButton({
   );
 }
 
-function OpenOnHostButton({ url, onOpen }: { url: string | null; onOpen: (url: string) => void }) {
-  return url === null ? null : (
-    <Button
-      size="icon-xs"
-      variant="ghost-muted"
-      className="-mr-1 shrink-0"
-      aria-label="Open activity on host"
-      onClick={() => onOpen(url)}
-    >
-      <ExternalLinkIcon className="size-3" />
-    </Button>
-  );
-}
-
 function ConversationCard({
   event,
   editable,
@@ -259,11 +251,12 @@ function ConversationCard({
   };
 
   return (
-    <article className="group py-2">
-      <div className="px-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <article className="group rounded-xl border border-border/70 bg-background shadow-sm">
+      <div className="px-3 pt-3">
+        <div className="flex min-w-0 flex-wrap items-start gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+              <PullRequestActorAvatar actor={event.actor} className="size-6 text-3xs" />
               <ActorName actor={event.actor} />
               <span className="text-muted-foreground">{event.title}</span>
               {event.reviewState ? <ReviewStateBadge state={event.reviewState} /> : null}
@@ -280,6 +273,18 @@ function ConversationCard({
               ) : null}
             </PullRequestMetaLine>
           </div>
+          <PullRequestCommentActions
+            body={event.body ?? ""}
+            url={event.url}
+            onOpen={onOpen}
+            onAddToComposer={
+              event.comment && reactions.onAddCommentToComposer
+                ? () => {
+                    if (event.comment) reactions.onAddCommentToComposer?.(event.comment);
+                  }
+                : undefined
+            }
+          />
           {editable !== null && !editing ? (
             <PullRequestEditButton aria-label="Edit comment" onClick={() => setEditing(true)} />
           ) : null}
@@ -297,11 +302,10 @@ function ConversationCard({
               onRefresh={reactions.onRefresh}
             />
           ) : null}
-          <OpenOnHostButton url={event.url} onOpen={onOpen} />
         </div>
       </div>
       {editing && editable !== null ? (
-        <div className="px-2 pb-2 pt-3">
+        <div className="px-3 pb-3 pt-3">
           <PullRequestMarkdownEditor
             value={editable.body}
             cwd={cwd}
@@ -315,7 +319,7 @@ function ConversationCard({
           />
         </div>
       ) : event.body ? (
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-3">
           <TimelineBody
             body={event.body}
             markdown={event.markdown}
@@ -351,7 +355,7 @@ function ConversationGroup({
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const actors = uniqueConversationActors(events);
   const first = events[0];
   if (first === undefined) return null;
@@ -408,104 +412,6 @@ function ConversationGroup({
           </CollapsiblePanel>
         </div>
       </Collapsible>
-    </div>
-  );
-}
-
-function ReviewThreadEvent({
-  event,
-  thread,
-  editable,
-  cwd,
-  onOpen,
-  reactions,
-}: {
-  event: PullRequestTimelineEvent;
-  thread: PullRequestTimelineThread;
-  editable: ReadonlyMap<string, PullRequestComment>;
-  cwd: string;
-  onOpen: (url: string) => void;
-  reactions: ReactionSurface;
-}) {
-  const dismissed = pullRequestReviewOutcome(event.reviewState) === "dismissed";
-  const [expanded, setExpanded] = useState(!thread.isResolved && !dismissed);
-  const replyCount = thread.replies.length + thread.moreReplies;
-
-  return (
-    <div className="group relative mb-5 pl-12 [contain-intrinsic-block-size:48px] [content-visibility:auto]">
-      <ActorTimelineMarker
-        actors={event.actor ? [event.actor] : []}
-        className="top-4"
-        fallback={<MessageSquareIcon className="size-3.5" />}
-        muted={!expanded}
-      />
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center gap-2 px-2 py-2 text-left text-2xs text-muted-foreground hover:text-foreground"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <FileCode2Icon aria-hidden className="size-3 shrink-0" />
-        <span className="min-w-0 truncate font-mono">
-          {thread.line === null ? thread.path : `${thread.path}:${thread.line}`}
-        </span>
-        {thread.isResolved ? (
-          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-success-foreground">
-            <CircleCheckIcon aria-hidden className="size-3" />
-            Resolved
-          </span>
-        ) : null}
-        {dismissed ? <span className="shrink-0 font-medium">Review dismissed</span> : null}
-        {thread.isOutdated ? <span className="shrink-0 font-medium">Outdated</span> : null}
-        {expanded ? null : (
-          <span className="shrink-0">
-            · {event.actor?.login ?? "ghost"}
-            {replyCount > 0 ? (
-              <>
-                {" "}
-                · {replyCount.toLocaleString()} {replyCount === 1 ? "reply" : "replies"}
-              </>
-            ) : null}
-          </span>
-        )}
-        <ChevronDownIcon
-          aria-hidden
-          className={cn("ml-auto size-3.5 shrink-0 transition-transform", expanded && "rotate-180")}
-        />
-      </button>
-      {expanded ? (
-        <>
-          <ConversationCard
-            event={event}
-            editable={editable.get(event.id) ?? null}
-            cwd={cwd}
-            onOpen={onOpen}
-            reactions={reactions}
-            showPath={false}
-          />
-          {thread.replies.length > 0 ? (
-            <div className="ml-2 space-y-1 border-l border-border/60 pl-3">
-              {thread.replies.map((reply) => (
-                <ConversationCard
-                  key={reply.id}
-                  event={reply}
-                  editable={editable.get(reply.id) ?? null}
-                  cwd={cwd}
-                  onOpen={onOpen}
-                  reactions={reactions}
-                  showPath={false}
-                  reply
-                />
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {thread.hasMoreReplies ? (
-        <div className="px-2">
-          <PullRequestMoreReplies {...thread} />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -659,7 +565,7 @@ function ReviewVerdictEvent({
             onRefresh={reactions.onRefresh}
           />
         ) : null}
-        <OpenOnHostButton url={event.url} onOpen={onOpen} />
+        <PullRequestCommentActions body={event.body ?? ""} url={event.url} onOpen={onOpen} />
       </div>
       {event.body ? (
         <TimelineBody
@@ -684,6 +590,10 @@ export function PullRequestTimelineTab({
   onOpenCommit,
   onAddToChat,
   onRefresh,
+  embedded = false,
+  onAddCommentToComposer,
+  onAddThreadCommentToComposer,
+  onAddPendingToComposer,
 }: {
   scrollerRef: (node: HTMLElement | null) => void;
   detail: PullRequestDetailView;
@@ -694,8 +604,32 @@ export function PullRequestTimelineTab({
   onOpenCommit: (oid: string) => void;
   onAddToChat?: (subject: PullRequestChatSubject) => void;
   onRefresh: () => void;
+  embedded?: boolean;
+  onAddCommentToComposer?: (comment: PullRequestComment) => void;
+  onAddPendingToComposer?: ((comment: PendingReviewComment) => void) | undefined;
+  onAddThreadCommentToComposer?: (
+    thread: PullRequestReviewThread,
+    comment: PullRequestThreadComment,
+  ) => void;
 }) {
-  const events = buildPullRequestTimeline(detail);
+  const pending = usePendingReviewComments(reference, detail.reviewThreads);
+  const { threads: conversations, pendingComments } = groupPendingReviewComments(
+    detail.reviewThreads,
+    pending,
+  );
+  // Private host drafts use the merged list, including its successful-removal tombstones.
+  // Keeping them in the ordinary discussion would duplicate cards or resurrect a discarded draft.
+  const hostedPendingIds = new Set(
+    detail.reviewThreads.flatMap((thread) =>
+      thread.comments.flatMap((comment) => (comment.pendingReviewId ? [comment.id] : [])),
+    ),
+  );
+  const events = buildPullRequestTimeline({
+    ...detail,
+    comments: detail.comments.filter((comment) => !hostedPendingIds.has(comment.id)),
+    reviewThreads: conversations,
+  });
+  const threadActions = useReviewThreadActions(environmentId, reference, detail, onRefresh);
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
   const reactions: ReactionSurface = {
@@ -706,10 +640,10 @@ export function PullRequestTimelineTab({
     reference,
     completionScope: pullRequestCompletionScope(detail, environmentId, reference),
     onRefresh,
+    onAddCommentToComposer,
   };
   const editable = new Map(
     events
-      .flatMap((event) => [event, ...(event.thread?.replies ?? [])])
       .flatMap((event) => (event.comment ? [event.comment] : []))
       .filter((comment) => canEditPullRequestComment(detail, comment))
       .map((comment) => [comment.id, comment] as const),
@@ -720,13 +654,41 @@ export function PullRequestTimelineTab({
     void readLocalApi()?.shell.openExternal(url);
   };
 
+  const pendingCards = pendingComments.length ? (
+    <div className="relative mb-5 pl-12">
+      <IconMarker className="top-6" icon={<MessageSquareIcon className="size-3.5" />} />
+      <div className="mb-1 px-3 text-xs font-medium text-muted-foreground">
+        Pending review · {pendingComments.length}
+      </div>
+      {pendingComments.map((comment) => (
+        <div key={comment.id}>
+          <div className="flex min-w-0 items-center gap-1.5 px-3 text-2xs text-muted-foreground">
+            <FileCode2Icon aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{comment.path}</span>
+          </div>
+          <PendingReviewCommentCard
+            comment={comment}
+            environmentId={environmentId}
+            reference={reference}
+            canCopyLink={
+              detail.capabilities.review.draftComment === true && detail.viewerPermissions.comment
+            }
+            onAddToComposer={
+              onAddPendingToComposer ? () => onAddPendingToComposer(comment) : undefined
+            }
+          />
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   const rowKey = (row: PullRequestTimelineRow) => {
     if (row.kind === "comments") return `comments:${row.events[0]?.id ?? "empty"}`;
     const event = row.event;
     // A thread's resolution or dismissal remounts it, so its disclosure starts in the new state.
-    return event.thread === undefined
+    return event.reviewThread === undefined
       ? event.id
-      : `thread:${event.id}:${event.thread.isResolved}:${pullRequestReviewOutcome(event.reviewState) === "dismissed"}`;
+      : `thread:${event.id}:${event.reviewThread.isResolved}:${pullRequestReviewOutcome(event.reviewState) === "dismissed"}`;
   };
   const renderRow = ({ item: row }: { item: PullRequestTimelineRow }) => {
     if (row.kind === "comments") {
@@ -741,16 +703,39 @@ export function PullRequestTimelineTab({
       );
     }
     const event = row.event;
-    if (event.thread !== undefined) {
+    if (event.kind === "thread" && event.reviewThread) {
+      const thread = event.reviewThread;
       return (
-        <ReviewThreadEvent
-          event={event}
-          thread={event.thread}
-          editable={editable}
-          cwd={detail.workspaceRoot}
-          onOpen={openOnHost}
-          reactions={reactions}
-        />
+        <div key={event.id} className="relative mb-5 pl-12">
+          <ActorTimelineMarker
+            actors={thread.comments.flatMap((comment) => (comment.author ? [comment.author] : []))}
+            className="top-6"
+            fallback={<MessageSquareIcon className="size-3.5" />}
+            muted={thread.isResolved}
+          />
+          <div className="mb-1 flex min-w-0 items-center gap-1.5 px-3 text-2xs text-muted-foreground">
+            <FileCode2Icon aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">
+              {thread.path}
+              {thread.line === null ? "" : `:${thread.line}`}
+            </span>
+            {thread.isOutdated ? <span className="shrink-0">Outdated</span> : null}
+          </div>
+          <ReviewThreadCard
+            {...threadActions(thread)}
+            thread={thread}
+            workspaceRoot={detail.workspaceRoot}
+            environmentId={environmentId}
+            reference={reference}
+            canReact={reactions.canReact}
+            onReacted={onRefresh}
+            onAddToComposer={
+              onAddThreadCommentToComposer
+                ? (comment) => onAddThreadCommentToComposer(thread, comment)
+                : undefined
+            }
+          />
+        </div>
       );
     }
     if (event.kind === "commit") return <CommitEvent event={event} onOpen={onOpenCommit} />;
@@ -770,7 +755,7 @@ export function PullRequestTimelineTab({
     return <LifecycleEvent event={event} term={term} />;
   };
 
-  if (events.length === 0) {
+  if (events.length === 0 && pendingComments.length === 0) {
     return (
       <div ref={scrollerRef} className="scrollbar-gutter-both h-full overflow-y-auto px-4 py-5">
         <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
@@ -791,10 +776,10 @@ export function PullRequestTimelineTab({
       keyExtractor={rowKey}
       renderItem={renderRow}
       estimatedItemSize={140}
-      className="scrollbar-gutter-both h-full px-4"
+      className={cn("scrollbar-gutter-both px-4", embedded ? "h-[min(60vh,40rem)] py-2" : "h-full")}
       contentContainerClassName="relative mx-auto w-full max-w-3xl before:absolute before:bottom-10 before:left-[15px] before:top-6 before:w-px before:bg-border/45"
-      ListHeaderComponent={<div className="h-5" />}
-      ListFooterComponent={<div className="h-5" />}
+      ListHeaderComponent={<div className="pt-5">{order === "newest" ? pendingCards : null}</div>}
+      ListFooterComponent={<div className="pb-5">{order === "oldest" ? pendingCards : null}</div>}
     />
   );
 }

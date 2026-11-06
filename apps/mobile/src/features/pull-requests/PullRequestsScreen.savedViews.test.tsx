@@ -5,8 +5,8 @@ import type {
   PullRequestListControls,
   PullRequestSavedView,
 } from "../../persistence/mobile-preferences";
-import type { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import type { ListFilterMenu } from "../workspace/ListFilterMenu";
+import type { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+import type { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
 
 const fixture = vi.hoisted(() => ({
   controls: {
@@ -91,7 +91,7 @@ vi.mock("./PullRequestListFilters", () => ({
   usePullRequestListFilters: () => ({ headerMenu: null }),
   PullRequestListFilters: ({ savedViewsMenu }: { savedViewsMenu: ReactNode }) => savedViewsMenu,
 }));
-vi.mock("../workspace/ListFilterMenu", () => ({
+vi.mock("../layout/workspace/ListFilterMenu", () => ({
   ListFilterMenu: (props: Parameters<typeof ListFilterMenu>[0]) => (
     <div>
       <button
@@ -118,11 +118,11 @@ vi.mock("../workspace/ListFilterMenu", () => ({
 vi.mock("./usePullRequestList", () => ({ usePullRequestList: () => fixture.list }));
 vi.mock("./usePullRequestListActions", () => ({ usePullRequestListActions: () => ({}) }));
 // Navigation tab preferences come from native storage; the default order is enough here.
-vi.mock("../workspace/navigation-tabs", async () => {
-  const { NAVIGATION_TAB_ORDER } = await import("../workspace/navigation-tab-order");
+vi.mock("../layout/workspace/navigation-tabs", async () => {
+  const { NAVIGATION_TAB_ORDER } = await import("../layout/workspace/navigation-tab-order");
   return { useNavigationTabOrder: () => NAVIGATION_TAB_ORDER, useHiddenNavigationTabs: () => [] };
 });
-vi.mock("../workspace/useSelectWorkspaceDetail", () => ({
+vi.mock("../layout/workspace/useSelectWorkspaceDetail", () => ({
   useSelectWorkspaceDetail: () => vi.fn(),
 }));
 vi.mock("../../components/ui/Dialog", () => ({ prompt: vi.fn() }));
@@ -144,7 +144,7 @@ import { PullRequestsScreen } from "./PullRequestsScreen";
 import {
   useWorkspaceTabs as readWorkspace,
   WorkspaceTabsProvider,
-} from "../workspace/WorkspaceTabsContext";
+} from "../layout/workspace/WorkspaceTabsContext";
 
 let renderer: Root;
 let container: HTMLDivElement;

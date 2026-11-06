@@ -1715,8 +1715,8 @@ it.effect(
           modelSelection,
           runtimePolicy,
         });
-        const firstClient = yield* runtime.subscribeEvents!;
-        const secondClient = yield* runtime.subscribeEvents!;
+        const firstClient = yield* runtime.subscribeEvents!();
+        const secondClient = yield* runtime.subscribeEvents!();
         const oldQueue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
         assert.isDefined(oldQueue);
         const statuses = [{ key: "watch", text: "Watching 4 files" }];
@@ -1771,7 +1771,7 @@ it.effect(
           modelSelection,
           runtimePolicy,
         });
-        const replacementClient = yield* replacement.subscribeEvents!;
+        const replacementClient = yield* replacement.subscribeEvents!();
         const newQueue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
         assert.isDefined(newQueue);
         yield* Queue.offer(oldQueue!, {
@@ -1836,7 +1836,7 @@ it.effect.each(["session metadata", "session status changes", "provider work"] a
           modelSelection,
           runtimePolicy,
         });
-        const subscriber = yield* runtime.subscribeEvents!;
+        const subscriber = yield* runtime.subscribeEvents!();
         const observed = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         yield* subscriber.events.pipe(
           Stream.runForEach((event) => Queue.offer(observed, event)),

@@ -542,6 +542,10 @@
     "./speech": {
       "types": "./src/speech.ts",
       "import": "./src/speech.ts"
+    },
+    "./reviewFileClassification": {
+      "types": "./src/reviewFileClassification.ts",
+      "import": "./src/reviewFileClassification.ts"
     }
   },
   "scripts": {

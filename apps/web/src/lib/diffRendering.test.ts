@@ -9,12 +9,64 @@ import {
   getDiffLineStat,
   getRenderablePatch,
   retainLoadedReviewFiles,
-  retainedReviewFile,
+  retainedReviewFiles,
   resolveFileDiffPath,
   resolveFileDiffPreviousPath,
 } from "./diffRendering";
 
 describe("getRenderablePatch", () => {
+  it("shows reindented service arguments as context around a new wrapper", () => {
+    const patch = [
+      "diff --git a/services.ts b/services.ts",
+      "--- a/services.ts",
+      "+++ b/services.ts",
+      "@@ -59,5 +71,8 @@",
+      "+const services = {",
+      "+  env,",
+      "-const paymentServices = createPaymentServices({",
+      "-  braintreeClient:",
+      '-    unavailableProvider as PaymentServicesClients["braintreeClient"],',
+      '-  stripeClient: unavailableProvider as PaymentServicesClients["stripeClient"],',
+      "-});",
+      "+  paymentServices: createPaymentServices({",
+      "+    braintreeClient:",
+      '+      unavailableProvider as PaymentServicesClients["braintreeClient"],',
+      '+    stripeClient: unavailableProvider as PaymentServicesClients["stripeClient"],',
+      "+  }),",
+      "+};",
+    ].join("\n");
+    const shown = getRenderablePatch(patch);
+    const hidden = getRenderablePatch(patch, "working", {
+      compactPartialHunkOffsets: true,
+      ignoreWhitespace: true,
+    });
+    expect(shown?.kind).toBe("files");
+    expect(hidden?.kind).toBe("files");
+    if (shown?.kind !== "files" || hidden?.kind !== "files") return;
+
+    expect(getDiffLineStat(hidden.files)).toEqual({ additions: 5, deletions: 2 });
+    expect(getDiffLineStat(hidden.sourceFiles)).toEqual({ additions: 8, deletions: 5 });
+    const file = hidden.files[0]!;
+    expect(file.additionLines).toEqual(shown.files[0]!.additionLines);
+    expect(file.deletionLines).toEqual(shown.files[0]!.deletionLines);
+    expect(file.hunks[0]?.hunkContent).toContainEqual({
+      type: "context",
+      lines: 3,
+      additionLineIndex: 3,
+      deletionLineIndex: 1,
+    });
+    expect(resolveDiffReviewPosition(file, 75, "additions")).toEqual({
+      kind: "context",
+      oldLine: 61,
+      newLine: 75,
+      side: "right",
+    });
+    expect(resolveDiffReviewPosition(hidden.sourceFiles[0]!, 75, "additions")).toEqual({
+      kind: "added",
+      newLine: 75,
+    });
+  });
+
   it("hides indentation changes around inserted JSX without moving review lines", () => {
     const patch = [
       "diff --git a/item.tsx b/item.tsx",
@@ -297,47 +349,49 @@ describe("diff file reconciliation", () => {
 
   it("keeps loaded hunks during a same-review refresh until fresh content arrives", () => {
     const previous = retainLoadedReviewFiles(new Map(), [loaded]);
-    const pending = retainedReviewFile({
-      loaded: null,
+    const pending = retainedReviewFiles({
+      loaded: [],
       previous: previous.get("app.ts"),
       placeholder,
       sameFamily: true,
       pending: true,
     });
-    expect(pending).toBe(loaded);
-    expect(getDiffLineStat([pending])).toEqual({ additions: 1, deletions: 1 });
+    expect(pending).toEqual([loaded]);
+    expect(getDiffLineStat(pending)).toEqual({ additions: 1, deletions: 1 });
 
-    const refreshed = retainedReviewFile({
-      loaded: reviewFile("newer"),
+    const refreshed = retainedReviewFiles({
+      loaded: [reviewFile("newer")],
       previous: pending,
       placeholder,
       sameFamily: true,
       pending: false,
     });
-    expect(refreshed.additionLines.join("")).toBe("newer");
-    expect(buildFileDiffContentVersion(refreshed)).not.toBe(buildFileDiffContentVersion(pending));
+    expect(refreshed[0]!.additionLines.join("")).toBe("newer");
+    expect(buildFileDiffContentVersion(refreshed[0]!)).not.toBe(
+      buildFileDiffContentVersion(pending[0]!),
+    );
   });
 
   it("drops old hunks after a failed refresh or a switch to another review", () => {
-    const failed = retainedReviewFile({
-      loaded: null,
-      previous: loaded,
+    const failed = retainedReviewFiles({
+      loaded: [],
+      previous: [loaded],
       placeholder,
       sameFamily: true,
       pending: false,
     });
-    expect(failed.hunks).toEqual([]);
-    const retained = retainLoadedReviewFiles(new Map([["app.ts", loaded]]), [failed]);
+    expect(failed[0]!.hunks).toEqual([]);
+    const retained = retainLoadedReviewFiles(new Map([["app.ts", [loaded]]]), failed);
     expect(retained.has("app.ts")).toBe(false);
 
-    const switched = retainedReviewFile({
-      loaded: null,
-      previous: loaded,
+    const switched = retainedReviewFiles({
+      loaded: [],
+      previous: [loaded],
       placeholder,
       sameFamily: false,
       pending: true,
     });
-    expect(switched.hunks).toEqual([]);
+    expect(switched[0]!.hunks).toEqual([]);
   });
 
   it("retains repeated blocks and their keys when content changes or other files appear", () => {

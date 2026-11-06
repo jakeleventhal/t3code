@@ -23,6 +23,7 @@ const statusByPhase = {
   completed: "Done",
   failed: "Failed",
   stale: "Waiting",
+  woke: "Snooze ended",
 } satisfies Record<AgentActivityRowProps["phase"], string>;
 
 function isActive(row: AgentActivityRowProps): boolean {
@@ -56,6 +57,8 @@ export function createLiveWidgetActivitiesAtom(input: {
           threadTitle: state.threadTitle,
           modelTitle: state.modelTitle,
           phase: state.phase,
+          unread: state.unread,
+          ...(state.completedAt === undefined ? {} : { completedAt: state.completedAt }),
           status: statusByPhase[state.phase],
           updatedAt: state.updatedAt,
           deepLink: state.deepLink,
@@ -156,7 +159,7 @@ export function reconcileWidgetActivity(
   }
   const allRows = [...localRows, ...remoteRows];
   const mergedCount = (
-    key: "workingCount" | "attentionCount" | "totalCount",
+    key: "workingCount" | "attentionCount" | "totalCount" | "unreadCount" | "pendingCount",
     matches: (row: AgentActivityRowProps) => boolean,
   ): number | null => {
     const localCount = localRows.filter(matches).length;
@@ -177,7 +180,10 @@ export function reconcileWidgetActivity(
   );
   const attentionCount = mergedCount(
     "attentionCount",
-    (row) => row.phase === "waiting_for_input" || row.phase === "waiting_for_approval",
+    (row) =>
+      row.phase === "waiting_for_input" ||
+      row.phase === "waiting_for_approval" ||
+      row.phase === "woke",
   );
   const totalCount = mergedCount("totalCount", () => true);
   const activities = allRows
@@ -186,5 +192,20 @@ export function reconcileWidgetActivity(
         rowPriority(left) - rowPriority(right) || right.updatedAt.localeCompare(left.updatedAt),
     )
     .slice(0, MAX_WIDGET_ROWS);
-  return { activeCount, workingCount, attentionCount, totalCount, activities };
+  const unreadCount = mergedCount(
+    "unreadCount",
+    (row) => row.phase === "completed" && row.unread !== false,
+  );
+  const pendingCount = mergedCount("pendingCount", (row) => isActive(row) || row.unread !== false);
+  return {
+    activeCount,
+    workingCount,
+    attentionCount,
+    totalCount,
+    activities,
+    ...(allRows.some((row) => row.unread === true || row.phase === "woke") ||
+    aggregate?.pendingCount !== undefined
+      ? { unreadCount, pendingCount }
+      : {}),
+  };
 }

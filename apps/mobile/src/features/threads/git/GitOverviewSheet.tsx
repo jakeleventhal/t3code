@@ -1,3 +1,4 @@
+import { NativeScrollView } from "../../../native/NativeScrollViewMarker";
 import * as Dialog from "../../../components/ui/Dialog";
 import { cn } from "../../../lib/cn";
 import { useOpenPullRequest } from "../../../native/useOpenPullRequest";
@@ -9,15 +10,10 @@ import {
 } from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import {
-  CommonActions,
-  StackActions,
-  useNavigation,
-  type StaticScreenProps,
-} from "@react-navigation/native";
+import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+
 import { use, useEffect, useState } from "react";
 import { Platform, RefreshControl, View } from "react-native";
-import { NativeScrollView } from "../../../native/NativeScrollViewMarker";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppBar } from "../../../components/ui/AppBar";
@@ -268,22 +264,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
             onPress={() => void gitActions.onPullSelectedThreadBranch()}
           />
         ) : null}
-        <ListRow
-          icon="text.bubble"
-          label="Review changes"
-          description="Inspect changes, uncommitted edits, and turn diffs"
-          disabled={busy || !isRepo}
-          onPress={() => {
-            const params = { environmentId, threadId };
-            if (presentation === "sheet") {
-              navigation.dispatch(StackActions.replace("ThreadReview", params));
-            } else {
-              presentRoute(() =>
-                navigation.dispatch(CommonActions.navigate("ThreadReview", params)),
-              );
-            }
-          }}
-        />
         <ListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label="Branches & worktrees"
