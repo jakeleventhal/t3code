@@ -1230,6 +1230,7 @@ effectIt.effect.each(["linux", "darwin", "win32"] as const)(
     const layer = layerScanner.pipe(
       Layer.provide(
         Layer.mergeAll(
+          NodePath.layer,
           FileSystem.layerNoop({
             readFileString: (path) => {
               fileReads.push(path);
