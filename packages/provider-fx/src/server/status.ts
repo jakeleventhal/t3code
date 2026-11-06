@@ -122,7 +122,6 @@ const snapshot = (
   fullAccess = false,
 ): ServerProviderDraft => ({
   ...buildServerProvider({
-    // Gives the snapshot its version advisory; fx runs no enrichment pass.
     driver: FX_DRIVER_KIND,
     presentation: fxPresentation(fullAccess),
     enabled: settings.enabled,

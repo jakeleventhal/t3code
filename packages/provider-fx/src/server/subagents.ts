@@ -99,6 +99,17 @@ const decodeFxSubagentResult = Schema.decodeUnknownOption(
     Schema.Struct({ ok: Schema.Boolean, result: Schema.NullOr(Schema.String) }),
   ),
 );
+const decodeFxToolError = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      error: Schema.Struct({
+        message: Schema.optional(Schema.String),
+        code: Schema.optional(Schema.String),
+        details: Schema.optional(Schema.Struct({ error: Schema.optional(Schema.String) })),
+      }),
+    }),
+  ),
+);
 const decodeJsonString = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.String));
 
 /**
@@ -159,6 +170,11 @@ export function extractFxSubagentUpdate(
   const hooks = Option.getOrUndefined(decodeHookStateMeta(tool.data.meta))?.[HOOK_STATE_META_KEY];
   const text = Option.getOrUndefined(decodeFxToolContent(tool.data.content))?.[0]?.content.text;
   const outcome = text === undefined ? undefined : fxSubagentOutcome(text);
+  const failure = Option.getOrUndefined(
+    text === undefined ? Option.none() : decodeFxToolError(text),
+  )?.error;
+  const result =
+    outcome?.result ?? failure?.details?.error ?? failure?.message ?? failure?.code ?? text ?? null;
   if (hooks !== undefined) {
     const status = hookedSubagentStatus(tool, hooks);
     return {
@@ -169,7 +185,7 @@ export function extractFxSubagentUpdate(
         status === "running"
           ? null
           : hooks.output === undefined
-            ? (outcome?.result ?? text ?? null)
+            ? result
             : fxSubagentReply({ ...hooks, output: hooks.output }),
     };
   }
@@ -185,7 +201,7 @@ export function extractFxSubagentUpdate(
     ...update,
     childSessionId: null,
     status,
-    result: status === "running" ? null : (outcome?.result ?? text ?? null),
+    result: status === "running" ? null : result,
   };
 }
 
