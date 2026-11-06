@@ -45,6 +45,7 @@ import { useNowAfter } from "../../lib/clock";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { copyThreadReference } from "../../lib/copyThreadReference";
+import { ThreadDevServerIndicator } from "./thread-dev-server-indicator";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
@@ -1297,6 +1298,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : (
           <View className="flex-1" />
         )}
+        <ThreadDevServerIndicator environmentId={thread.environmentId} threadId={thread.id} />
         {pr ? (
           <Pressable
             // Padding cancelled by negative margin grows the touch target into
@@ -1460,6 +1462,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
+          <ThreadDevServerIndicator environmentId={thread.environmentId} threadId={thread.id} />
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           <Text
             className={cn(
