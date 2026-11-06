@@ -1,3 +1,4 @@
+import { devServerDescription, devServerLabel, type ResolvedDevServer } from "../../lib/devServers";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
@@ -92,6 +93,8 @@ export type ThreadGitMenuProps = {
 };
 
 export type ThreadGitControlsProps = ThreadGitMenuProps & {
+  readonly devServers: ReadonlyArray<ResolvedDevServer>;
+  readonly onOpenDevServer: (server: ResolvedDevServer) => Promise<void>;
   readonly canOpenTerminal: boolean;
   readonly canOperateTerminal: boolean;
   readonly canOpenFiles: boolean;
@@ -361,5 +364,22 @@ export function useThreadGitMenuDefinition(props: ThreadGitMenuProps): AppBarMen
         onPress: model.openGitInspector,
       },
     ],
+  };
+}
+
+export function threadDevServerMenu(props: ThreadGitControlsProps): AppBarMenu | null {
+  if (props.devServers.length === 0) return null;
+  return {
+    title: "Dev servers",
+    icon: "globe",
+    separateBackground: false,
+    items: props.devServers.map((resolved) => ({
+      id: `dev-server-${resolved.server.host}:${resolved.server.port}`,
+      title: devServerLabel(resolved.server),
+      subtitle: devServerDescription(resolved),
+      icon: "globe",
+      disabled: !resolved.reachable,
+      onPress: () => void props.onOpenDevServer(resolved),
+    })),
   };
 }
