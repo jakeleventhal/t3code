@@ -1177,6 +1177,7 @@ function ArtifactTemplateCard(props: {
 
 const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly markdown: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly citationSource?: Pick<AssistantCitation, "threadId" | "messageId">;
   readonly onCiteAssistantText?: (citation: AssistantCitation) => void;
@@ -1223,6 +1224,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
             }
           : undefined
       }
+      workspaceRoot={props.workspaceRoot}
       markdownStyles={props.markdownStyles}
       linkHandlers={linkHandlers}
       onUseArtifactTemplate={props.onUseArtifactTemplate}
@@ -1236,6 +1238,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 function AssistantMarkdownBlocks(props: {
   readonly markdown: string;
   readonly onCiteText?: (text: string) => void;
+  readonly workspaceRoot?: string | null;
   readonly markdownStyles: MarkdownStyleSet;
   readonly linkHandlers: MarkdownLinkHandlers;
   readonly onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
@@ -1279,6 +1282,7 @@ function AssistantMarkdownBlocks(props: {
         <SelectableMarkdownText
           key={`markdown:${offset}`}
           markdown={renderCodexInlineDirectivesAsMarkdown(segment.markdown)}
+          workspaceRoot={props.workspaceRoot}
           skills={props.skills}
           textStyle={props.markdownStyles.nativeTextStyle}
           onCiteText={props.onCiteText}
@@ -2214,6 +2218,7 @@ function renderFeedEntry(
                       value={props.userBubbleMaxWidth - USER_BUBBLE_HORIZONTAL_PADDING * 2}
                     >
                       <UserMessageContent
+                        workspaceRoot={props.workspaceRoot}
                         text={renderedText}
                         environmentId={props.environmentId}
                         context={message.context}
@@ -2321,6 +2326,7 @@ function renderFeedEntry(
         {renderedText.trim().length > 0 ? (
           <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
             <AssistantMarkdownContent
+              workspaceRoot={props.workspaceRoot}
               markdown={renderedText}
               environmentId={props.environmentId}
               citationSource={{ threadId: props.threadId, messageId: message.id }}
@@ -2425,6 +2431,7 @@ function TurnDiffStat(props: {
 
 type UserMessageContentProps = {
   readonly text: string;
+  readonly workspaceRoot?: string | null;
   readonly environmentId: EnvironmentId;
   readonly context?: OrchestrationMessageContext;
   readonly markdownStyles: MarkdownStyleSet;
@@ -2559,6 +2566,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
     return (
       <SelectableMarkdownText
         markdown={text}
+        workspaceRoot={props.workspaceRoot}
         contextClipboardFragment={contextClipboardFragment}
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
@@ -2591,6 +2599,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
           <SelectableMarkdownText
             key={segment.id}
             markdown={text}
+            workspaceRoot={props.workspaceRoot}
             contextClipboardFragment={contextClipboardFragment}
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
