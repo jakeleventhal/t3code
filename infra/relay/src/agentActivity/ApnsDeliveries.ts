@@ -220,6 +220,7 @@ function chooseLiveActivityDelivery(input: {
   readonly aggregate: RelayAgentActivityAggregateState | null;
   readonly nowMs: number;
   readonly replay?: boolean;
+  readonly threadReplay?: boolean;
 }): ChosenLiveActivityDelivery | "suppressed" | null {
   const preferences = parsePreferences(input.target.preferences_json);
   if (preferences?.liveActivitiesEnabled === false) {
@@ -243,8 +244,9 @@ function chooseLiveActivityDelivery(input: {
         : DateTime.make(input.target.remote_started_at),
       { onNone: () => null, onSome: (dt) => dt.epochMilliseconds },
     );
+    // Per-thread replays carry real changes such as a read result, so only registration replays wait.
     if (
-      (input.aggregate === null || input.replay) &&
+      (input.aggregate === null || (input.replay && !input.threadReplay)) &&
       armedAtMs !== null &&
       input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS
     ) {
@@ -293,6 +295,7 @@ function chooseDelivery(input: {
   readonly state?: RelayAgentActivityState | null;
   readonly nowMs: number;
   readonly replay?: boolean;
+  readonly threadReplay?: boolean;
 }): ChosenDelivery | null {
   const liveActivityDelivery = chooseLiveActivityDelivery(input);
   if (liveActivityDelivery === "suppressed") {
@@ -1075,7 +1078,13 @@ const make = Effect.gen(function* () {
     processBatch,
     sendForTarget: Effect.fnUntraced(function* (input) {
       if (!config.apns) return null;
-      const delivery = chooseDelivery(input);
+      const delivery = chooseDelivery({
+        target: input.target,
+        aggregate: input.aggregate,
+        nowMs: input.nowMs,
+        replay: input.replay ?? false,
+        threadReplay: input.replayThread !== undefined,
+      });
       if (!delivery) {
         return null;
       }
