@@ -116,11 +116,12 @@ export function projectThreadAwarenessV2(
 ): AgentAwarenessState | null {
   const { environmentId, project, thread } = input;
   if (
-    thread.lineage.relationshipToParent === "subagent" ||
+    !isListedThreadLineage(thread.lineage) ||
     thread.archivedAt != null ||
     thread.settledOverride === "settled"
   )
     return null;
+  const subagentRequest = input.pendingSubagentRequest ?? null;
   if (
     input.now !== undefined &&
     thread.snoozedUntil != null &&
