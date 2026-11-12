@@ -275,7 +275,6 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
       }),
     );
   }
-  const sql = yield* SqlClient.SqlClient;
   const ledger = yield* sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
   `;

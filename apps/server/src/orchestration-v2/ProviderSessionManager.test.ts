@@ -3663,7 +3663,7 @@ it.effect.each(["detach", "stream failure", "provider stop", "early close"] as c
         const { threadId, providerSessionId, rosters, toolCalls, seededToolCalls, writeToolCall } =
           yield* openSessionWithBackgroundCommand("provider-session-manager-detach-roster");
         const runtime = Option.getOrThrow(yield* manager.get(providerSessionId));
-        const subscription = yield* runtime.subscribeEvents!;
+        const subscription = yield* runtime.subscribeEvents!();
         const consuming = yield* Deferred.make<void>();
         const resume = yield* Deferred.make<void>();
         const consumer = yield* subscription.events.pipe(

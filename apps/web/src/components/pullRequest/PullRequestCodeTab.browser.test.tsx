@@ -2,8 +2,6 @@ import { RegistryContext } from "@effect/atom-react";
 import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex } from "@noble/hashes/utils";
-import { RegistryContext } from "@effect/atom-react";
-import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import {
   EnvironmentId,
   ProjectId,
@@ -535,7 +533,7 @@ it("waits for a pending diff page before answering a conversation reveal", async
   const registry = AtomRegistry.make();
   using _registry = { [Symbol.dispose]: () => registry.dispose() };
   using _pendingPage = { [Symbol.dispose]: registry.mount(pagedDiffAtom("page-2")) };
-  registry.set(pagedDiffAtom("page-2"), AsyncResult.initial(true));
+  registry.set(pageResults("page-2"), AsyncResult.initial(true));
   const container = pagedContainer();
   const ui = (reveal: boolean) => (
     <RegistryContext.Provider value={registry}>
@@ -581,7 +579,7 @@ it("waits for a pending diff page before answering a conversation reveal", async
   await expect
     .element(screen.getByRole("button", { name: /Conversations not on the diff loaded so far/ }))
     .toHaveAttribute("aria-expanded", "false");
-  registry.set(pagedDiffAtom("page-2"), AsyncResult.success(latePage));
+  registry.set(pageResults("page-2"), AsyncResult.success(latePage));
   await expectFileHeaderShown(screen, container, "late.test.ts");
   await expect.element(screen.getByText("Conversation on a later page")).toBeVisible();
 });

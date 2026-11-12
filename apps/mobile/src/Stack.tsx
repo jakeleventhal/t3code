@@ -695,12 +695,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
     }),
     ThreadGuestShare: createNativeStackScreen({
       screen: ThreadGuestShareSheet,
-      options: {
-        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.5),
-        sheetGrabberVisible: true,
-      },
+      options: sheetRoute({ detent: 0.5 }),
     }),
     GitOverview: createNativeStackScreen({
       screen: GitOverviewSheet,

@@ -60,6 +60,17 @@ describe("installed mobile fonts", () => {
       bold: serif.bold,
     });
     expect(fonts.code.regular).toBe("Menlo-Regular");
+    const themed = resolveMobileFonts(DEFAULT_FONT_SELECTIONS, new Map(), "ios", "absolutely");
+    expect(themed.reply.regular).toBe("SourceSerif4-Regular");
+    expect(themed.code.regular).toBe("JetBrainsMono-Regular");
+    const customized = resolveMobileFonts(
+      { ...DEFAULT_FONT_SELECTIONS, reply: "serif", code: "monospace" },
+      new Map(),
+      "ios",
+      "absolutely",
+    );
+    expect(customized.reply.regular).toBe("Georgia");
+    expect(customized.code.regular).toBe("Menlo-Regular");
   });
 
   it("falls back while resolving or after an installed font is removed", () => {

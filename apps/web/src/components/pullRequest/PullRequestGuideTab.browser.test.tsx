@@ -34,9 +34,6 @@ function setup() {
 }
 
 vi.mock(import("./guide/useReviewGuideWriter"), () => ({ useReviewGuideWriter: vi.fn() }));
-vi.mock(import("./guide/useGuideDiffFiles"), () => ({
-  useGuideDiffFiles: () => ({ files: new Map(), loading: false, error: null, retry: () => {} }),
-}));
 
 import { render } from "../../../test/render";
 import type { ChatComposerHandle } from "../chat/ChatComposer";
@@ -186,6 +183,12 @@ it("steps with J and K beside a chat, also after a stop button or while the chat
     canWrite: false,
     write: async () => {},
   });
+  vi.mocked(useGuideDiffFiles).mockReturnValue({
+    files: new Map(),
+    loading: false,
+    error: null,
+    retry: () => {},
+  });
   const composerKeys: string[] = [];
 
   const tree = (maximizedAway: boolean) => (
@@ -196,6 +199,17 @@ it("steps with J and K beside a chat, also after a stop button or while the chat
         reference={reference}
         title="Test pull request"
         workspaceRoot="/workspace"
+        renderFallback={() => null}
+        viewControlsTarget={null}
+        detail={
+          {
+            viewer: "alice",
+            reviewThreads: [],
+            capabilities: { review: { reply: false } },
+            viewerPermissions: { comment: false },
+            headSha: "head",
+          } as never
+        }
         active
         canComment={false}
         rangeComments={false}
@@ -215,7 +229,7 @@ it("steps with J and K beside a chat, also after a stop button or while the chat
   await userEvent.click(screen.getByText("Prose for the second stop."));
   await userEvent.keyboard("k");
   await expect.element(screen.getByText("Prose for the first stop.")).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "Next stop" }));
+  await userEvent.click(screen.getByRole("button", { name: "Next chapter" }));
   await userEvent.keyboard("j");
   await expect.element(screen.getByText("Prose for the third stop.")).toBeVisible();
   await userEvent.keyboard("k");

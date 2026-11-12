@@ -920,7 +920,8 @@ effectIt.effect(
       return Promise.resolve(new Response("hello", { headers: { "content-type": "text/html" } }));
     }) as typeof globalThis.fetch;
     const layer = layerProbeFailure(
-      () => {
+      (input) => {
+        if (input.command !== "lsof") return processProbeFailure(input);
         lsofSpawns += 1;
         return Effect.succeed(processOutput("p4242\ncpython3\nn*:3001\nn*:8765\n"));
       },
@@ -1039,12 +1040,14 @@ effectIt.effect.each([
         }),
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
+            if (input.command !== "lsof") return processProbeFailure(input);
             lsofSpawns += 1;
             if (mode === "fd-budget-no-lsof") return processProbeFailure(input);
             return Effect.succeed(processOutput(`p1234\ncnode\nn*:${LSOF_TEST_PORT}\n`));
           },
         }),
         Layer.succeed(HostProcess.Platform, mode === "darwin" ? "darwin" : "linux"),
+        NodePath.layer,
         FetchHttpClient.layer,
       ),
     ),

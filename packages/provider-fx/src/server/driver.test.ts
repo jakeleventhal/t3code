@@ -1,3 +1,5 @@
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -22,7 +24,14 @@ import { FxDriver } from "./driver.ts";
 const homeRelativeSettings = Schema.decodeSync(FxSettings)({ binaryPath: "~/.local/bin/fx" });
 
 const layerTest = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
-  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  Layer.provideMerge(
+    Layer.mergeAll(
+      NodeServices.layer,
+      NodeCrypto.layer,
+      FetchHttpClient.layer,
+      ProviderLatestVersions.layer,
+    ),
+  ),
   Layer.provideMerge(IdAllocator.layer),
   Layer.provideMerge(McpProviderSessions.layer),
   Layer.provideMerge(

@@ -156,14 +156,13 @@ describe("startup agent activity", () => {
         projects: [{ id: PROJECT_ID, title: "Project" }],
         threads: [shell({ snoozedUntil: DateTime.makeUnsafe(startedAt + 60_000) })],
       };
-      assert.deepEqual(
-        AgentAwarenessRelay.resolveAgentAwarenessRelayActiveThreadIds(input),
-        elapsed < 60_000 ? [] : [THREAD_ID],
-      );
+      assert.deepEqual(AgentAwarenessRelay.resolveAgentAwarenessRelayActiveThreadIds(input), [
+        THREAD_ID,
+      ]);
     },
   );
 
-  it("publishes active work and every result inside the retention window", () => {
+  it("publishes active work and retained results until settled", () => {
     const startedAt = DateTime.toEpochMillis(DateTime.makeUnsafe(NOW));
     const oldCompleted = ThreadId.make("old-completed");
     const newCompleted = ThreadId.make("new-completed");
@@ -224,6 +223,7 @@ describe("startup agent activity", () => {
       newCompleted,
       oldFailed,
       newFailed,
+      ThreadId.make("expired-failed"),
       ThreadId.make("unread-completed"),
       ThreadId.make("settled-completed"),
     ]);
@@ -1134,43 +1134,6 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications[1]?.state, null);
     }),
   );
-  it.effect("restores a snoozed result after startup backfill without an unsnooze event", () =>
-    Effect.gen(function* () {
-      const { relay, publications } = yield* makeTestRelay({
-        backfillThread: shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) }),
-      });
-      yield* relay.start();
-      yield* TestClock.adjust("1 second");
-      yield* relay.drain;
-      assert.equal(publications.length, 0);
-      yield* TestClock.adjust("59 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-      assert.equal(publications.at(-1)?.replay, true);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("reschedules a changed snooze deadline and ignores the old deadline", () =>
-    Effect.gen(function* () {
-      const { relay, currentShell, publications } = yield* makeTestRelay();
-      const completed = shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) });
-      yield* Ref.set(currentShell, completed);
-      yield* relay.publishThread(THREAD_ID);
-      yield* TestClock.adjust("5 seconds");
-      yield* relay.drain;
-      yield* Ref.set(currentShell, { ...completed, snoozedUntil: DateTime.makeUnsafe(120_000) });
-      yield* relay.publishThread(THREAD_ID);
-      yield* TestClock.adjust("5 seconds");
-      yield* relay.drain;
-      const before = publications.length;
-      yield* TestClock.adjust("50 seconds");
-      yield* relay.drain;
-      assert.equal(publications.length, before);
-      yield* TestClock.adjust("60 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-    }),
-  );
 
   it.effect("alerts for a new completion while the snooze wakeup is awaiting its read", () =>
     Effect.gen(function* () {
@@ -1215,7 +1178,7 @@ describe("AgentAwarenessRelay", () => {
     }),
   );
 
-  it.effect("restores a snoozed result at expiry without another domain event or alert", () =>
+  it.effect("wakes a snoozed result at expiry and alerts for a later completion", () =>
     Effect.gen(function* () {
       const { relay, currentShell, publications } = yield* makeTestRelay();
       yield* TestClock.adjust("1 second");
@@ -1239,8 +1202,8 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications.at(-1)?.state, null);
       yield* TestClock.adjust("55 seconds");
       yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-      assert.equal(publications.at(-1)?.replay, true);
+      assert.equal(publications.at(-1)?.state?.phase, "woke");
+      assert.equal(publications.at(-1)?.replay, false);
       yield* Ref.set(currentShell, shell());
       yield* relay.publishThread(THREAD_ID);
       yield* TestClock.adjust("10 seconds");

@@ -1224,7 +1224,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
 
   // Routine polling helpers share operation/probe spans instead of tracing every tick.
   const scanUnlocked = Effect.fnUntraced(function* (configuredUrls: ReadonlyArray<string>) {
-    if (!listenerDiscovery) return yield* probeAndEnrichWebServers([], configuredUrls);
+    if (!listenerDiscovery) return yield* probeWebServers([], configuredUrls);
     const state = yield* Ref.get(stateRef);
     const terminalOwners = new Map<number, ServerOwner>();
     for (const registration of state.terminalProcesses.values()) {

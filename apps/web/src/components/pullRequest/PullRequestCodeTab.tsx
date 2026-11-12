@@ -127,7 +127,7 @@ import { GuideChapterPanel } from "./guide/GuideChapterPanel";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { useHideTestFiles } from "../diffs/useHideTestFiles";
-import { diffFileTreeEntries, orderDiffFilesLikeTree } from "../diffs/diffFileTree.logic";
+import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView, type StyledDiffCodeViewOptions } from "../diffs/StyledDiffCodeView";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -813,7 +813,6 @@ function PullRequestCodeTab({
     groupPendingReviewComments(detail.reviewThreads, pendingComments);
 
   const completionScope = pullRequestCompletionScope(detail, environmentId, reference);
-  const hiddenTestFileCount = loadedFiles.length - files.length;
   const foldsAsViewed = (path: string) =>
     foldOverride === null && filesViewedEnabled && isFileViewed(path) && !isFileViewedStale(path);
   const contentVersions = new Map(
@@ -963,34 +962,10 @@ function PullRequestCodeTab({
     };
   });
 
-  // Keep the sentinel until all pages load; returning raw slices early would stop pagination.
-  const rawSlices =
-    nextCursor === null
-      ? parsedSlices.flatMap((parsed) => (parsed?.kind === "raw" ? [parsed] : []))
-      : [];
-  const rawSlicesView =
-    files.length === 0 && rawSlices.length > 0 ? (
-      <div className="space-y-4 px-4 py-5">
-        {rawSlices.map((slice) => (
-          <div key={`${slice.reason}:${slice.text.slice(0, 64)}`} className="space-y-2">
-            <p className="text-xs text-muted-foreground">{slice.reason}</p>
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{slice.text}</pre>
-          </div>
-        ))}
-      </div>
-    ) : null;
-  const unstructured =
-    rawSlices.length === 0 ? null : (
-      <div className="space-y-4 border-t border-border/60 px-4 py-5">
-        {rawSlices.map((slice) => (
-          <div key={`${slice.reason}:${slice.text.slice(0, 64)}`} className="space-y-2">
-            <p className="text-xs text-muted-foreground">{slice.reason}</p>
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{slice.text}</pre>
-          </div>
-        ))}
-      </div>
-    );
-
+  const nextCursor = loadedSlices.at(-1)?.nextCursor ?? null;
+  const withheldContent =
+    loadedSlices.some((slice) => slice.truncated) ||
+    parsedSlices.some((parsed) => parsed?.kind === "raw");
   const commentCounts = reviewCommentCounts(
     files.map((file) => ({
       path: resolveFileDiffPath(file),
@@ -1165,7 +1140,7 @@ function PullRequestCodeTab({
   const revealFile = (path: string, range?: SelectedLineRange) => {
     const file = filteredFiles.find((candidate) => candidate.path === path);
     if (file && groupByType) setSelectedChapter(reviewFileGroup(path));
-    const item = file ? { id: file.fileKey } : undefined;
+    const item = file ? { id: file.fileKey, fileDiff: file.fileDiff } : undefined;
     if (item === undefined) return;
     // Record the unfold even when already open, so a Viewed mark that loads later cannot fold it.
     setFoldChoices((current) => withFileDiffFold(current, item.id, false));

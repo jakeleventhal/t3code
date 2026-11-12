@@ -574,7 +574,9 @@ export const resolveMiseProviderMaintenance = Effect.fn("resolveMiseProviderMain
     const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
     const isShim = isMiseExecutablePath(context.realCommandPath);
     const looksMise =
-      isShim || commandPaths.some(isMiseCommandPath) || (yield* isMiseWrapperScript(context));
+      isShim ||
+      commandPaths.some((path) => isMiseCommandPath(path, context.env)) ||
+      (yield* isMiseWrapperScript(context));
     const manual = (installPath: string) =>
       makeManualOnlyProviderMaintenanceCapabilities({ ...owner, installPath });
     const notOwned = (installPath: string) => (looksMise ? manual(installPath) : null);

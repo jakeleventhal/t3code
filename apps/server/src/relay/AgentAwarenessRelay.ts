@@ -953,12 +953,6 @@ export const make = Effect.gen(function* () {
       ),
       (thread) => readAwarenessThread(thread.id),
     );
-    const nowMs = (yield* DateTime.now).epochMilliseconds;
-    yield* Effect.forEach(
-      activitySnapshot.threads,
-      (thread) => scheduleSnoozeWakeup(thread, nowMs),
-      { discard: true },
-    );
     const activeThreadIds = resolveAgentAwarenessRelayActiveThreadIds({
       environmentId,
       startedAt,

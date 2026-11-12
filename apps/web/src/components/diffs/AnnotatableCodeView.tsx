@@ -14,7 +14,6 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import {
   buildFileDiffContentVersion,
   fnv1a32,
-  resolveFileDiffPath,
   resolveFileDiffPreviousPath,
 } from "~/lib/diffRendering";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -380,7 +379,17 @@ export function AnnotatableCodeView({
       if (!api) return;
       event.preventDefault();
       event.stopPropagation();
-      setSelectedLines({ id: file.fileKey, range });
+      if (!isCurrentFileRendered(file.fileKey)) return;
+      setSelectedLines({
+        id: file.fileKey,
+        range,
+        anchor: {
+          fileKey: file.fileKey,
+          fileVersion: file.fileVersion,
+          filePath: file.filePath,
+          previousFilePath: resolveFileDiffPreviousPath(file.fileDiff),
+        },
+      });
       const label = stageLinesAction === "stage" ? "Stage" : "Unstage";
       const singleLine = range.start === range.end && (range.endSide ?? range.side) === range.side;
       void api.contextMenu
@@ -411,6 +420,7 @@ export function AnnotatableCodeView({
     return () => container.removeEventListener("contextmenu", onContextMenu);
   }, [
     container,
+    isCurrentFileRendered,
     filesByKey,
     selectedLines,
     onStageLines,

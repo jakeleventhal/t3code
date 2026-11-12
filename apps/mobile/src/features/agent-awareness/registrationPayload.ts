@@ -50,7 +50,9 @@ export function makeRelayDeviceRegistrationRequest(
     ...(input.bundleId ? { bundleId: input.bundleId } : {}),
     ...(input.apsEnvironment ? { apsEnvironment: input.apsEnvironment } : {}),
     ...(input.pushToken ? { pushToken: input.pushToken } : {}),
-    ...(input.pushToStartToken ? { pushToStartToken: input.pushToStartToken } : {}),
+    ...(liveActivitiesEnabled && input.pushToStartToken
+      ? { pushToStartToken: input.pushToStartToken }
+      : {}),
     preferences: {
       liveActivitiesEnabled,
       notificationsEnabled: pushAvailable && input.notificationsEnabled,

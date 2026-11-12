@@ -9,6 +9,7 @@ describe("theme typography", () => {
       medium: "DMSans-Medium",
       bold: "DMSans-Bold",
       code: "JetBrainsMono-Regular",
+      emphasisFaces: { "500": "DMSans-Medium", "700": "DMSans-Bold" },
     });
     expect(getMobileReplyTypography("absolutely")).toEqual({
       fontSize: 15,

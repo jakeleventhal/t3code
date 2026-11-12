@@ -539,16 +539,7 @@ function environmentPublishesAgentActivity(environmentId: EnvironmentId): boolea
 function widgetPropsFromAggregate(
   aggregate: NonNullable<RelayAgentActivitySnapshotResponse["aggregate"]>,
 ): AgentActivityProps {
-  return {
-    title: aggregate.title,
-    subtitle: aggregate.subtitle,
-    activeCount: aggregate.activeCount,
-    workingCount: aggregate.workingCount,
-    attentionCount: aggregate.attentionCount,
-    totalCount: aggregate.totalCount,
-    updatedAt: aggregate.updatedAt,
-    activities: aggregate.activities,
-  };
+  return aggregate;
 }
 
 function idleWidgetProps(): AgentActivityProps {
@@ -1014,7 +1005,12 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
       appVersion: Constants.expoConfig?.version,
       ...(bundleId ? { bundleId } : {}),
       ...(Platform.OS === "ios"
-        ? { apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant, Constants.expoConfig?.extra?.iosPersonalTeamBuild === true) }
+        ? {
+            apsEnvironment: resolveApsEnvironment(
+              Constants.expoConfig?.extra?.appVariant,
+              Constants.expoConfig?.extra?.iosPersonalTeamBuild === true,
+            ),
+          }
         : {}),
       ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
       notificationsEnabled: pushTokenRegistration.notificationsEnabled,
@@ -1341,7 +1337,11 @@ export const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
       snapshot && "liveActivityAggregate" in snapshot
         ? snapshot.liveActivityAggregate
         : snapshot?.aggregate;
-    if (activities.length === 0 && aggregate && aggregate.activeCount > 0) {
+    if (
+      activities.length === 0 &&
+      aggregate &&
+      (aggregate.pendingCount ?? aggregate.activeCount) > 0
+    ) {
       const primed = yield* Effect.try({
         try: () =>
           startAgentLiveActivity(widgetPropsFromAggregate(aggregate), liveActivityStaleDate()),

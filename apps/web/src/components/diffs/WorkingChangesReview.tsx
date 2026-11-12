@@ -145,6 +145,7 @@ function useWorkingChanges(
   const source = query.data?.sources.find((source) => source.kind === "working-tree") ?? null;
   const parsed = source ? getRenderablePatch(source.diff, `${scope}:${source.diffHash}`) : null;
   const patches = useReviewFilePatches({
+    reviewKey: JSON.stringify([environmentId, cwd, scope]),
     environmentId,
     cwd,
     source: source?.files ? source : null,
@@ -699,6 +700,7 @@ export function WorkingChangesReview(props: WorkingReviewProps) {
                 </p>
               ) : (
                 <AnnotatableCodeView
+                  isRefreshingDiff={data.query.isPending}
                   pendingFiles={[]}
                   codeViewKey={`${cwd}:${view}:${view === "git" ? `${scope}:${selectedPath ?? "all"}` : "all"}`}
                   sectionId={view === "git" ? scope : "working-tree"}

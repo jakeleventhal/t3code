@@ -28,6 +28,7 @@ const statusByPhase = {
   completed: "Done",
   failed: "Failed",
   stale: "Waiting",
+  woke: "Snooze ended",
 } satisfies Record<AgentActivityRowProps["phase"], string>;
 
 function isActive(row: AgentActivityRowProps): boolean {

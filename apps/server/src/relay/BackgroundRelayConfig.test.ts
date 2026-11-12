@@ -1,3 +1,5 @@
+import * as FileSystem from "effect/FileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
@@ -10,6 +12,8 @@ const load = (env: Record<string, string>) =>
     Effect.provide(
       BackgroundRelayConfig.layer.pipe(
         Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+        Layer.provide(NodePath.layer),
+        Layer.provide(FileSystem.layerNoop({ exists: () => Effect.succeed(false) })),
       ),
     ),
   );

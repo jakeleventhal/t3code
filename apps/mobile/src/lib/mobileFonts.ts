@@ -1,3 +1,4 @@
+import { getMobileReplyTypography } from "./typography";
 import { getMobileFontFamilies } from "./fontFamilies";
 
 export const MOBILE_FONT_ROLES = ["interface", "reply", "composer", "code"] as const;
@@ -106,9 +107,19 @@ export function resolveMobileFonts(
     return installed.get(selection.slice(10)) ?? fallback;
   };
   const interfaceFont = resolve(selections.interface, defaults);
+  const themedReply = getMobileReplyTypography(themeId);
+  const defaultReply =
+    !selections.interface && themedReply
+      ? {
+          regular: themedReply.fontFamily,
+          medium: themedReply.boldFontFamily,
+          bold: themedReply.boldFontFamily,
+          emphasisFaces: { "600": themedReply.boldFontFamily, "700": themedReply.boldFontFamily },
+        }
+      : interfaceFont;
   return {
     interface: interfaceFont,
-    reply: resolve(selections.reply, interfaceFont),
+    reply: resolve(selections.reply, defaultReply),
     composer: resolve(selections.composer, interfaceFont),
     code: resolve(
       selections.code,

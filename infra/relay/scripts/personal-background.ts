@@ -1,3 +1,5 @@
+import * as Clock from "effect/Clock";
+import * as Ref from "effect/Ref";
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalConsole:off globalTimers:off - Standalone Node transport, disk queue and process lifecycle boundary.
 /** Private background delivery; T3 Connect discovery and tunnels stay on their existing relay. */
 import * as NodeHttp from "node:http";
@@ -121,7 +123,35 @@ const http = NodeHttpClient.layerUndiciNoDispatcher.pipe(
 const services = Layer.empty.pipe(
   Layer.provideMerge(Mobile.layer),
   Layer.provideMerge(Publisher.layer),
-  Layer.provideMerge(Deliveries.layer.pipe(Layer.provideMerge(Widgets.layer))),
+  Layer.provideMerge(
+    Deliveries.layer.pipe(
+      Layer.provideMerge(
+        Widgets.layer.pipe(
+          Layer.provide(
+            Layer.effect(
+              Widgets.WidgetRevocationRateLimiter,
+              Effect.gen(function* () {
+                const window = yield* Ref.make({ start: 0, count: 0 });
+                return {
+                  allow: Clock.currentTimeMillis.pipe(
+                    Effect.flatMap((now) =>
+                      Ref.modify(window, (current) => {
+                        const next =
+                          now - current.start >= 60_000
+                            ? { start: now, count: 1 }
+                            : { ...current, count: current.count + 1 };
+                        return [next.count <= 100, next];
+                      }),
+                    ),
+                  ),
+                };
+              }),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ),
   Layer.provideMerge(
     Layer.succeed(Fcm.FcmDeliveries, {
       enqueue: Effect.fn("Fcm.FcmDeliveries.enqueue")(() =>
