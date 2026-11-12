@@ -166,6 +166,7 @@ export const makeAgentAwarenessPublishWorker = Effect.fnUntraced(function* <R>(
 function agentAwarenessPublishIdentity(
   state: RelayAgentActivityState | null,
   subagentRequest: SubagentRequestAwareness | null = null,
+  completedAt?: number,
 ): string {
   if (state === null) {
     return "null";
@@ -174,7 +175,11 @@ function agentAwarenessPublishIdentity(
   // A child's next request reads the same as its last one, but it is a new
   // wait and must reach the phone.
   return JSON.stringify(
-    subagentRequest === null ? meaningfulState : [meaningfulState, subagentRequest.requestId],
+    subagentRequest !== null
+      ? [meaningfulState, subagentRequest.requestId]
+      : state.phase === "completed" || state.phase === "failed"
+        ? [meaningfulState, completedAt]
+        : meaningfulState,
   );
 }
 
@@ -401,7 +406,7 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
         thread,
         now: input.now,
       });
-      if (state !== null && state.phase !== "completed" && state.phase !== "failed") return true;
+      if (state !== null || (thread.snoozedUntil?.epochMilliseconds ?? 0) > input.now) return true;
       // The relay may still hold a result from before a restart or while publishing was off: re-send
       // it so read results update and settled or hidden ones (null, a tombstone) clear the row.
       return (
@@ -614,10 +619,10 @@ export const make = Effect.gen(function* () {
 
     // Read only this thread; full shell reads would make each activity event scale with all threads.
     const threadShell = yield* readAwarenessThread(threadId);
-    yield* trackSubagentRequest(threadId, threadShell);
     if (threadShell !== null) {
       yield* scheduleSnoozeWakeup(threadShell, (yield* DateTime.now).epochMilliseconds);
     }
+    yield* trackSubagentRequest(threadId, threadShell);
     if (
       threadShell !== null &&
       !isListedThreadLineage(threadShell.lineage) &&
@@ -640,7 +645,12 @@ export const make = Effect.gen(function* () {
       now: (yield* DateTime.now).epochMilliseconds,
       pendingSubagentRequest: yield* currentSubagentRequestFor(threadId),
     });
-    const publishIdentity = agentAwarenessPublishIdentity(snapshot.state, snapshot.subagentWait);
+    const completedAt = threadShell?.latestRunCompletedAt?.epochMilliseconds;
+    const publishIdentity = agentAwarenessPublishIdentity(
+      snapshot.state,
+      snapshot.subagentWait,
+      completedAt,
+    );
     const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
     const previousCompletion = publishedCompletions.get(threadId);
     const sameCompletion =
@@ -655,7 +665,6 @@ export const make = Effect.gen(function* () {
           !terminalWorkSinceStart(thread.value, startedAt)));
     if (
       publishedStateByThread.get(threadId) === publishIdentity &&
-      // A held completion settled after an earlier clear still has to alert.
       !(snapshot.state === null && heldCompletions.has(threadId))
     ) {
       // Clear moot deadlines so later transient nulls cannot skip their deferral window.
@@ -729,7 +738,10 @@ export const make = Effect.gen(function* () {
         heldCompletions.delete(threadId);
         publishConfirmDeadlines.set(threadId, nowMs + 5_000);
         yield* Ref.update(publishedStateByThreadRef, (publishedStates) =>
-          new Map(publishedStates).set(threadId, agentAwarenessPublishIdentity(completion)),
+          new Map(publishedStates).set(
+            threadId,
+            agentAwarenessPublishIdentity(completion, null, completedAt),
+          ),
         );
         yield* schedulePublishConfirm(threadId);
         return;
@@ -926,6 +938,14 @@ export const make = Effect.gen(function* () {
     const environmentId = yield* serverEnvironment.getEnvironmentId;
     const projectSnapshot = yield* projects.snapshot;
     const activitySnapshot = yield* threads.getAgentAwarenessSnapshot();
+    const nowMs = (yield* DateTime.now).epochMilliseconds;
+    yield* Effect.forEach(
+      activitySnapshot.threads,
+      (thread) => scheduleSnoozeWakeup(thread, nowMs),
+      {
+        discard: true,
+      },
+    );
     // Live children aren't listed, but a waiting one makes its top-level thread wait.
     const liveChildren = yield* Effect.forEach(
       (yield* threads.listActiveShellIndex()).filter(

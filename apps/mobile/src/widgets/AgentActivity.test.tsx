@@ -2,12 +2,18 @@ import type { LiveActivityComponent } from "expo-widgets";
 import { isValidElement } from "react";
 import { expect, it, vi } from "vite-plus/test";
 
-import activity, { type AgentActivityProps, type AgentActivityRowProps } from "./AgentActivity.tsx";
+import activity, {
+  AgentActivity,
+  type AgentActivityProps,
+  type AgentActivityRowProps,
+} from "./AgentActivity.tsx";
 
 vi.mock("expo-widgets", () => ({
+  createWidget: () => ({}),
   createLiveActivity: (_name: string, render: LiveActivityComponent) => render,
 }));
 vi.mock("@expo/ui/swift-ui", () => ({
+  Divider: "Divider",
   HStack: "HStack",
   Image: "Image",
   Text: "Text",
@@ -21,6 +27,7 @@ vi.mock("@expo/ui/swift-ui/modifiers", () =>
       "accessibilityElement",
       "accessibilityLabel",
       "activityBackgroundTint",
+      "containerBackground",
       "aspectRatio",
       "font",
       "foregroundStyle",
@@ -83,3 +90,31 @@ it("targets the first displayed attention thread when incoming rows are unordere
     },
   });
 });
+
+it.each([-1, 0, 1])(
+  "does not infer completion from five capped terminal rows: active=%s",
+  (activeCount) => {
+    const activity: AgentActivityProps = {
+      title: "T3 Code",
+      subtitle: "",
+      activeCount,
+      isExpired: true,
+      updatedAt: "2026-10-28T10:00:00Z",
+      activities: Array.from({ length: 5 }, (_, index) => ({
+        environmentId: "environment",
+        threadId: String(index),
+        projectTitle: "Project",
+        threadTitle: "Finished task",
+        modelTitle: "Codex",
+        phase: "completed",
+        status: "Done",
+        updatedAt: "2026-10-28T10:00:00Z",
+        deepLink: "/",
+      })),
+    };
+    const compact = AgentActivity(activity, { colorScheme: "dark" }).compactTrailing;
+    expect(isValidElement(compact)).toBe(true);
+    if (!isValidElement<{ children: string }>(compact)) return;
+    expect(compact.props.children).toBe(activeCount === 0 ? "Done" : "Out of date");
+  },
+);

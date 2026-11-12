@@ -63,12 +63,7 @@ function isRecentTerminalState(state: RelayAgentActivityState, nowMs: number): b
   if (Number.isNaN(updatedAtMs)) {
     return false;
   }
-  return (
-    nowMs - updatedAtMs <=
-    (state.retained === true
-      ? RETAINED_AGENT_ACTIVITY_ROW_TTL_MS
-      : TERMINAL_AGENT_ACTIVITY_DISPLAY_TTL_MS)
-  );
+  return state.retained === true || nowMs - updatedAtMs <= TERMINAL_AGENT_ACTIVITY_DISPLAY_TTL_MS;
 }
 
 export function makeAggregateState(input: {

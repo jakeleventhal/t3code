@@ -1,10 +1,11 @@
-import { HStack, Image, Spacer, Text, VStack, ZStack } from "@expo/ui/swift-ui";
-import type { ComponentProps } from "react";
+import { Divider, HStack, Image, Spacer, Text, VStack, ZStack } from "@expo/ui/swift-ui";
+import type { ComponentProps, JSX } from "react";
 import {
   accessibilityElement,
   accessibilityLabel,
   activityBackgroundTint,
   aspectRatio,
+  containerBackground,
   font,
   foregroundStyle,
   frame,
@@ -18,11 +19,11 @@ import {
 } from "@expo/ui/swift-ui/modifiers";
 import {
   createLiveActivity,
-  type LiveActivityComponent,
+  createWidget,
+  type LiveActivityEnvironment,
   type LiveActivityLayout,
+  type WidgetEnvironment,
 } from "expo-widgets";
-
-type LiveActivityEnvironment = Parameters<LiveActivityComponent<AgentActivityProps>>[1];
 
 export type AgentActivityPhase =
   | "starting"
@@ -51,10 +52,19 @@ export interface AgentActivityRowProps {
 export interface AgentActivityProps {
   readonly title: string;
   readonly subtitle: string;
-  readonly activeCount: number;
+  readonly activeCount: number | null;
   readonly workingCount?: number | null;
   readonly attentionCount?: number | null;
   readonly totalCount?: number | null;
+  // Native reads need source coverage even when the visible rows are capped.
+  readonly observedEnvironmentIds?: ReadonlyArray<string>;
+  readonly observedActivities?: Readonly<
+    Record<string, ReadonlyArray<Pick<AgentActivityRowProps, "threadId" | "phase" | "updatedAt">>>
+  >;
+  readonly isSignedOut?: boolean;
+  readonly isStale?: boolean;
+  readonly isExpired?: boolean;
+  readonly expiresAt?: number;
   readonly unreadCount?: number | null;
   readonly pendingCount?: number | null;
   readonly updatedAt: string;
@@ -62,10 +72,24 @@ export interface AgentActivityProps {
 }
 
 // Widget serialization excludes module helpers; use only imported view/modifier factories.
-function AgentActivity(
-  props: AgentActivityProps,
+export function AgentActivity(
+  props: AgentActivityProps | undefined,
+  environment: WidgetEnvironment,
+): JSX.Element;
+export function AgentActivity(
+  props: AgentActivityProps | undefined,
   environment: LiveActivityEnvironment,
-): LiveActivityLayout {
+): LiveActivityLayout;
+export function AgentActivity(
+  props: AgentActivityProps = {
+    title: "T3 Code",
+    subtitle: "No active agents",
+    activeCount: 0,
+    updatedAt: "",
+    activities: [],
+  },
+  environment: WidgetEnvironment | LiveActivityEnvironment,
+): JSX.Element | LiveActivityLayout {
   "widget";
 
   // Placeholder / first-paint entries arrive with empty props. Treat missing
@@ -110,6 +134,7 @@ function AgentActivity(
         ? receivedActivities.filter((row) => row.phase === "completed" && row.unread !== false)
             .length
         : null;
+  const widgetFamily = "widgetFamily" in environment ? environment.widgetFamily : undefined;
 
   // Hierarchical foregrounds inherit system tint and vibrancy.
   type Foreground = Parameters<typeof foregroundStyle>[0];
@@ -206,16 +231,24 @@ function AgentActivity(
       ? props.pendingCount === 0
       : activeCount === 0 && (unreadCount === 0 || unreadCount === null);
   const hasRows = activities.length > 0;
-  const doneLabel = failedRow ? "Failed" : hasRows ? "Done" : "Idle";
-  const outcomeLabel = failedRow
-    ? "Agent work failed"
-    : hasRows
-      ? "All caught up"
-      : "No active agents";
+  const doneLabel = props.isSignedOut
+    ? "Signed out"
+    : failedRow
+      ? "Failed"
+      : hasRows
+        ? "Done"
+        : "Idle";
+  const outcomeLabel = props.isSignedOut
+    ? "Sign in to see agent activity"
+    : failedRow
+      ? "Agent work failed"
+      : hasRows
+        ? "All caught up"
+        : "No active agents";
 
   const countLabel = allDone
     ? outcomeLabel
-    : isSystemStale
+    : props.isExpired || isSystemStale
       ? "Agent status out of date"
       : workingCount === null
         ? "Working count unavailable"
@@ -224,15 +257,16 @@ function AgentActivity(
           : failedRow
             ? "Agent work failed"
             : "";
-  const agentsLabel = countLabel;
+  const agentsLabel =
+    props.isStale && !props.isExpired ? `Last observed: ${countLabel}` : countLabel;
   const attentionSuffix =
-    !isSystemStale && attentionCount !== null && attentionCount > 0
+    !props.isExpired && !isSystemStale && attentionCount !== null && attentionCount > 0
       ? `${attentionCount} need${attentionCount === 1 ? "s" : ""} you`
       : "";
   const doneSuffix = unreadCount !== null && unreadCount > 0 ? `${unreadCount} done` : "";
   const currentLabel = allDone
     ? doneLabel
-    : isSystemStale
+    : props.isExpired || isSystemStale
       ? "Out of date"
       : workingCount === null
         ? "Count unavailable"
@@ -241,8 +275,16 @@ function AgentActivity(
           : failedRow
             ? "Failed"
             : "";
-  const activeLabel = currentLabel;
-  const showCompactGlyph = !attentionRow && !failedRow && !doneSuffix && !allDone && !isSystemStale;
+  const activeLabel =
+    props.isStale && !props.isExpired ? `Last observed: ${currentLabel}` : currentLabel;
+  const showCompactGlyph =
+    !attentionRow &&
+    !failedRow &&
+    !doneSuffix &&
+    !allDone &&
+    !isSystemStale &&
+    !props.isExpired &&
+    !props.isStale;
   const summary = attentionSuffix || doneSuffix || activeLabel;
 
   // Widget taps target the containing app, so its production scheme is safe in every build.
@@ -371,7 +413,11 @@ function AgentActivity(
     <VStack
       alignment="leading"
       spacing={5}
-      modifiers={[padding({ all: 10 }), ...(deepLink ? [widgetURL(deepLink)] : [])]}
+      modifiers={[
+        padding({ all: 10 }),
+        ...(deepLink ? [widgetURL(deepLink)] : []),
+        ...(widgetFamily ? [containerBackground("clear", "widget")] : []),
+      ]}
     >
       <HStack spacing={7} alignment="center">
         {renderLogo(14, primaryForeground)}
@@ -382,7 +428,7 @@ function AgentActivity(
             lineLimit(1),
           ]}
         >
-          {activeCount === null ? activeLabel : summary}
+          {props.isStale || activeCount === null ? activeLabel : summary}
         </Text>
         <Spacer minLength={6} />
       </HStack>
@@ -395,14 +441,186 @@ function AgentActivity(
               lineLimit(1),
             ]}
           >
-            {row0.threadTitle}
+            {props.isExpired ? "Open T3 to refresh" : row0.threadTitle}
           </Text>
           <Spacer minLength={6} />
-          {renderRowStatus(row0)}
+          <Text modifiers={[font({ size: 11 }), foregroundStyle(phaseTint(row0.phase))]}>
+            {row0.status}
+          </Text>
         </HStack>
+      ) : null}
+      {props.isExpired && !row0 ? (
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground)]}>
+          Open T3 to refresh
+        </Text>
       ) : null}
     </VStack>
   );
+
+  if (
+    widgetFamily === "accessoryCircular" ||
+    widgetFamily === "accessoryInline" ||
+    widgetFamily === "accessoryRectangular"
+  ) {
+    return renderCompactLayout();
+  }
+
+  if (widgetFamily) {
+    // iOS supplies content margins for home-screen widgets, so adding explicit
+    // padding here would double-inset the layout.
+    const widgetModifiers = [
+      ...(deepLink ? [widgetURL(deepLink)] : []),
+      containerBackground("clear", "widget"),
+    ];
+    const homeSummaryTint = allDone && !hasRows ? secondaryForeground : headerTint;
+    const homeSummary =
+      props.isStale || activeCount === null
+        ? agentsLabel
+        : attentionSuffix || doneSuffix || agentsLabel;
+    const renderHomeStatusIcon = (row: AgentActivityRowProps, size: number) =>
+      renderGlyph(phaseSymbol(row.phase), size, phaseTint(row.phase));
+
+    if (widgetFamily === "systemSmall") {
+      return (
+        <VStack alignment="leading" spacing={5} modifiers={widgetModifiers}>
+          <HStack spacing={5} alignment="center" modifiers={[padding({ bottom: 3 })]}>
+            {renderLogo(12, primaryForeground)}
+            <Text
+              modifiers={[
+                font({ weight: "medium", size: 12 }),
+                foregroundStyle(secondaryForeground),
+              ]}
+            >
+              Code
+            </Text>
+            <Spacer minLength={4} />
+            {renderGlyph("arrow.up.right", 10, secondaryForeground)}
+          </HStack>
+          <Text
+            modifiers={[
+              font({ weight: "bold", size: 15 }),
+              foregroundStyle(homeSummaryTint),
+              lineLimit(props.isStale || activeCount === null ? 2 : 1),
+            ]}
+          >
+            {homeSummary}
+          </Text>
+          {heroRow ? (
+            <Text
+              modifiers={[
+                font({ weight: "semibold", size: 12 }),
+                foregroundStyle(primaryForeground),
+                lineLimit(2),
+              ]}
+            >
+              {heroRow.threadTitle}
+            </Text>
+          ) : null}
+          {heroRow ? (
+            <HStack spacing={5} alignment="center">
+              {renderHomeStatusIcon(heroRow, 11)}
+              <Text
+                modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground), lineLimit(1)]}
+              >
+                {heroRow.projectTitle}
+              </Text>
+              <Spacer minLength={4} />
+              <Text
+                modifiers={[
+                  font({ weight: "semibold", size: 11 }),
+                  foregroundStyle(phaseTint(heroRow.phase)),
+                  lineLimit(1),
+                  layoutPriority(1),
+                ]}
+              >
+                {heroRow.status}
+              </Text>
+            </HStack>
+          ) : null}
+          {props.isExpired ? (
+            <Text
+              modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground), lineLimit(1)]}
+            >
+              Open T3 to refresh
+            </Text>
+          ) : null}
+          <Spacer minLength={0} />
+        </VStack>
+      );
+    }
+
+    const renderHomeRow = (row: AgentActivityRowProps) => (
+      <HStack spacing={9} alignment="center">
+        {renderHomeStatusIcon(row, 17)}
+        <VStack alignment="leading" spacing={1}>
+          <Text
+            modifiers={[
+              font({ weight: "semibold", size: 13 }),
+              foregroundStyle(primaryForeground),
+              lineLimit(1),
+            ]}
+          >
+            {row.threadTitle}
+          </Text>
+          <Text
+            modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground), lineLimit(1)]}
+          >
+            {row.projectTitle}
+          </Text>
+        </VStack>
+        <Spacer minLength={8} />
+        <Text
+          modifiers={[
+            font({ weight: "semibold", size: 12 }),
+            foregroundStyle(phaseTint(row.phase)),
+            layoutPriority(1),
+          ]}
+        >
+          {row.status}
+        </Text>
+      </HStack>
+    );
+
+    return (
+      <VStack alignment="leading" spacing={0} modifiers={widgetModifiers}>
+        <HStack spacing={5} alignment="center" modifiers={[padding({ bottom: 10 })]}>
+          {renderLogo(13, primaryForeground)}
+          <Text
+            modifiers={[font({ weight: "medium", size: 13 }), foregroundStyle(secondaryForeground)]}
+          >
+            Code
+          </Text>
+          <Spacer minLength={8} />
+          <Text
+            modifiers={[
+              font({ weight: "semibold", size: 12 }),
+              foregroundStyle(homeSummaryTint),
+              lineLimit(props.isStale || activeCount === null ? 2 : 1),
+              layoutPriority(1),
+            ]}
+          >
+            {homeSummary}
+          </Text>
+          {renderGlyph("arrow.up.right", 10, secondaryForeground)}
+        </HStack>
+        {row0 ? renderHomeRow(row0) : null}
+        {row1 ? <Divider modifiers={[padding({ vertical: 7, leading: 26 })]} /> : null}
+        {row1 ? renderHomeRow(row1) : null}
+        {props.isExpired ? (
+          <Text
+            modifiers={[
+              font({ size: 11 }),
+              foregroundStyle(secondaryForeground),
+              padding({ top: 4 }),
+            ]}
+          >
+            Open T3 to refresh
+          </Text>
+        ) : null}
+        <Spacer minLength={0} />
+      </VStack>
+    );
+  }
 
   const banner = (
     <VStack
@@ -438,7 +656,7 @@ function AgentActivity(
           >
             {agentsLabel}
           </Text>
-          {attentionSuffix && agentsLabel ? (
+          {attentionSuffix ? (
             <Text modifiers={[font({ size: 13 }), foregroundStyle(secondaryForeground)]}>·</Text>
           ) : null}
           {attentionSuffix ? (
@@ -526,7 +744,7 @@ function AgentActivity(
       <HStack spacing={5} alignment="center" modifiers={[padding({ leading: 4, vertical: 4 })]}>
         {renderLogo(15, tint)}
         <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(tint)]}>
-          {isSystemStale ? "Out of date" : allDone ? doneLabel : summary}
+          {isSystemStale || props.isExpired ? "Out of date" : allDone ? doneLabel : summary}
         </Text>
       </HStack>
     ),
@@ -559,5 +777,7 @@ function AgentActivity(
     ),
   };
 }
+
+createWidget<AgentActivityProps>("AgentActivity", AgentActivity);
 
 export default createLiveActivity<AgentActivityProps>("AgentActivity", AgentActivity);

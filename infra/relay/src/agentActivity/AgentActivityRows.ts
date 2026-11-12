@@ -68,6 +68,10 @@ export class AgentActivityRows extends Context.Service<
     readonly upsert: (input: {
       readonly environmentPublicKey: string;
       readonly state: RelayAgentActivityState;
+    }) => Effect.Effect<boolean, AgentActivityRowUpsertPersistenceError>;
+    readonly acknowledgeDelivery: (input: {
+      readonly environmentPublicKey: string;
+      readonly state: RelayAgentActivityState;
     }) => Effect.Effect<void, AgentActivityRowUpsertPersistenceError>;
     readonly pruneTerminal: (input: {
       readonly updatedBefore: string;
@@ -80,6 +84,7 @@ export class AgentActivityRows extends Context.Service<
     }) => Effect.Effect<void, AgentActivityRowDeletePersistenceError>;
     readonly listForUser: (input: {
       readonly userId: string;
+      readonly includeLiveActivitiesDisabled?: boolean;
     }) => Effect.Effect<
       ReadonlyArray<RelayAgentActivityState>,
       AgentActivityRowListPersistenceError
@@ -122,7 +127,7 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-      yield* db
+      const changed = yield* db
         .insert(relayAgentActivityRows)
         .values({
           environmentId: input.state.environmentId,
@@ -141,8 +146,11 @@ const make = Effect.gen(function* () {
           set: {
             stateJson,
             updatedAt: input.state.updatedAt,
+            deliveryPending: true,
           },
+          setWhere: sql`${relayAgentActivityRows.stateJson} is distinct from excluded.state_json OR ${relayAgentActivityRows.deliveryPending} = true`,
         })
+        .returning({ threadId: relayAgentActivityRows.threadId })
         .pipe(
           Effect.mapError(
             (cause) =>
@@ -153,7 +161,34 @@ const make = Effect.gen(function* () {
               }),
           ),
         );
+      return changed.length > 0;
     }),
+
+    acknowledgeDelivery: Effect.fn("relay.agent_activity_rows.acknowledge_delivery")(
+      function* (input) {
+        yield* db
+          .update(relayAgentActivityRows)
+          .set({ deliveryPending: false })
+          .where(
+            and(
+              eq(relayAgentActivityRows.environmentId, input.state.environmentId),
+              eq(relayAgentActivityRows.environmentPublicKey, input.environmentPublicKey),
+              eq(relayAgentActivityRows.threadId, input.state.threadId),
+              eq(relayAgentActivityRows.stateJson, input.state),
+            ),
+          )
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new AgentActivityRowUpsertPersistenceError({
+                  environmentId: input.state.environmentId,
+                  threadId: input.state.threadId,
+                  cause,
+                }),
+            ),
+          );
+      },
+    ),
 
     remove: Effect.fn("relay.agent_activity_rows.remove")(function* (input) {
       yield* Effect.annotateCurrentSpan({
@@ -191,12 +226,10 @@ const make = Effect.gen(function* () {
           and(
             sql`${relayAgentActivityRows.stateJson} ->> 'phase' IN ('completed', 'failed')`,
             or(
-              and(
-                sql`COALESCE(${relayAgentActivityRows.stateJson} ->> 'retained', 'false') != 'true'`,
-                lt(relayAgentActivityRows.updatedAt, input.updatedBefore),
-              ),
-              lt(relayAgentActivityRows.updatedAt, input.retainedBefore),
+              sql`COALESCE(${relayAgentActivityRows.stateJson} ->> 'retained', 'false') != 'true'`,
+              sql`NOT EXISTS (SELECT 1 FROM ${relayEnvironmentLinks} WHERE ${relayEnvironmentLinks.environmentId} = ${relayAgentActivityRows.environmentId} AND ${relayEnvironmentLinks.environmentPublicKey} = ${relayAgentActivityRows.environmentPublicKey} AND ${relayEnvironmentLinks.revokedAt} IS NULL)`,
             ),
+            lt(relayAgentActivityRows.updatedAt, input.updatedBefore),
           ),
         )
         .pipe(
@@ -228,7 +261,9 @@ const make = Effect.gen(function* () {
           and(
             eq(relayEnvironmentLinks.userId, input.userId),
             isNull(relayEnvironmentLinks.revokedAt),
-            eq(relayEnvironmentLinks.liveActivitiesEnabled, true),
+            input.includeLiveActivitiesDisabled
+              ? undefined
+              : eq(relayEnvironmentLinks.liveActivitiesEnabled, true),
           ),
         )
         .orderBy(desc(relayAgentActivityRows.updatedAt))

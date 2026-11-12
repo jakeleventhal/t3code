@@ -21,8 +21,12 @@ import * as EnvironmentLinks from "../environments/EnvironmentLinks.ts";
 import * as LiveActivities from "./LiveActivities.ts";
 import * as ApnsDeliveries from "./ApnsDeliveries.ts";
 import * as FcmDeliveries from "./FcmDeliveries.ts";
+import type * as ApnsDeliveryQueue from "./ApnsDeliveryQueue.ts";
+import * as AgentWidgetRefresh from "./AgentWidgetRefresh.ts";
 
 export type AgentActivityPublishError =
+  | AgentWidgetRefresh.WidgetRefreshPersistenceError
+  | ApnsDeliveryQueue.ApnsDeliveryQueueError
   | FcmDeliveries.FcmDeliveryError
   | AgentActivityRows.AgentActivityRowUpsertPersistenceError
   | AgentActivityRows.AgentActivityRowDeletePersistenceError
@@ -58,6 +62,7 @@ const make = Effect.gen(function* () {
   const liveActivities = yield* LiveActivities.LiveActivities;
   const apnsDeliveries = yield* ApnsDeliveries.ApnsDeliveries;
   const fcmDeliveries = yield* FcmDeliveries.FcmDeliveries;
+  const widgets = yield* AgentWidgetRefresh.AgentWidgetRefresh;
 
   const publishForDeliveryUser = Effect.fnUntraced(function* (input: {
     readonly deliveryUser: EnvironmentLinks.AgentAwarenessDeliveryUserRecord;
@@ -65,6 +70,8 @@ const make = Effect.gen(function* () {
     readonly nowMs: number;
     readonly replay?: boolean;
   }) {
+    if (!input.deliveryUser.notificationsEnabled && !input.deliveryUser.liveActivitiesEnabled)
+      return [];
     const activeStates = input.deliveryUser.liveActivitiesEnabled
       ? yield* rows.listForUser({ userId: input.deliveryUser.userId })
       : [];
@@ -229,9 +236,10 @@ const make = Effect.gen(function* () {
         "relay.thread_id": input.threadId,
         "relay.agent_activity.phase": input.state?.phase ?? "deleted",
       });
+      let changed = true;
       if (input.state) {
         // Inbox rows are removed by settlement or archival, not by elapsed time.
-        yield* rows.upsert({
+        changed = yield* rows.upsert({
           environmentPublicKey: input.environmentPublicKey,
           state: input.state,
         });
@@ -243,10 +251,18 @@ const make = Effect.gen(function* () {
         });
       }
 
+      if (input.replay && !changed) return { ok: true, deliveries: [] };
+
       const deliveryUsers = yield* links.listDeliveryUsersForEnvironment({
         environmentId: input.environmentId,
         environmentPublicKey: input.environmentPublicKey,
+        includeDisabled: true,
       });
+      const widgetDeliveries = yield* Effect.forEach(
+        deliveryUsers,
+        (user) => widgets.notify({ userId: user.userId }),
+        { concurrency: 4 },
+      );
       const now = yield* DateTime.now;
       const deliveriesByUser = yield* Effect.forEach(
         deliveryUsers,
@@ -259,7 +275,12 @@ const make = Effect.gen(function* () {
           }),
         { concurrency: 4 },
       );
-      const deliveries = deliveriesByUser.flat();
+      const deliveries = [...deliveriesByUser.flat(), ...widgetDeliveries.flat()];
+      if (input.state && deliveries.every((delivery) => delivery === null || delivery.ok))
+        yield* rows.acknowledgeDelivery({
+          environmentPublicKey: input.environmentPublicKey,
+          state: input.state,
+        });
       return {
         ok: true,
         deliveries: deliveries.filter(
