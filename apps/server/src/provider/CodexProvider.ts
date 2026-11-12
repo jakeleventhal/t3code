@@ -136,6 +136,7 @@ const CODEX_PRESENTATION = {
   displayName: "Codex",
   showInteractionModeToggle: true,
   reportsContextWindow: true,
+  supportsVoice: true,
 } as const;
 
 export interface CodexAppServerProviderSnapshot {
