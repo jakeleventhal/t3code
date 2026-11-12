@@ -17,7 +17,7 @@ import {
   type SessionGrantInput,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { useRef, useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { readLocalApi } from "../../localApi";
@@ -114,16 +114,20 @@ export function MediaActions({
   source,
   children,
   showTooltip = true,
+  tooltipContent,
 }: {
   source: MediaActionSource;
   children: ReactElement;
   showTooltip?: boolean;
+  tooltipContent?: ReactNode;
 }) {
   const { save, copyImage, canReadMedia, assertCanReadMedia } = useMediaActions(source);
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const menuOpen = useRef(false);
   const reference = source.reference;
-  const tooltip = reference?.kind === "file" ? reference.path : (reference?.url ?? source.name);
+  const tooltip =
+    tooltipContent ??
+    (reference?.kind === "file" ? reference.path : (reference?.url ?? source.name));
 
   const showMenu = async (position: { x: number; y: number }) => {
     const api = readLocalApi();

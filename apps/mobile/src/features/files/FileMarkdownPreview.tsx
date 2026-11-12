@@ -249,6 +249,7 @@ export function FileMarkdownPreview(props: {
               false,
             )
           }
+          workspaceRoot={markdownDirectory}
           onLinkPress={onLinkPress}
           renderImage={renderImage}
           resolveImageSource={resolveImageSource}

@@ -33,11 +33,20 @@ const CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME = cn(
   CHAT_MARKDOWN_MEDIA_BOUNDS_CLASS_NAME,
 );
 
-export function markdownImageCopy(alt: string, src: string, title: string | undefined): string {
-  const escapedAlt = alt.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+/** A standalone link embedded as media copies back as the link its author wrote. */
+export function markdownImageCopy(
+  alt: string,
+  src: string,
+  title: string | undefined,
+  authoredAsLink: boolean,
+): string {
+  // An autolink's text was its URL, so the bare URL is what the author wrote.
+  if (authoredAsLink && alt === "" && title === undefined) return src;
+  const text = authoredAsLink && alt === "" ? src : alt;
+  const escapedAlt = text.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
   const titleSuffix =
     title === undefined ? "" : ` "${title.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-  return `![${escapedAlt}](${src}${titleSuffix})`;
+  return `${authoredAsLink ? "" : "!"}[${escapedAlt}](${src}${titleSuffix})`;
 }
 
 /**
@@ -159,6 +168,7 @@ export function ChatMarkdownImage(props: {
   readonly sourceFailed?: boolean | undefined;
   readonly unavailableDetail?: string | undefined;
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown: string | undefined;
   readonly standalone: boolean;
   readonly className?: string | undefined;
@@ -199,7 +209,7 @@ export function ChatMarkdownImage(props: {
 
   if (settled) {
     return (
-      <MediaActions source={props.actionsSource}>
+      <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
         <img
           {...props.imageProps}
           ref={markLoadedIfComplete}
@@ -240,7 +250,7 @@ export function ChatMarkdownImage(props: {
     );
   }
   return (
-    <MediaActions source={props.actionsSource}>
+    <MediaActions source={props.actionsSource} tooltipContent={props.title || undefined}>
       <span
         id={props.imageProps?.id}
         data-markdown-copy={props.copyMarkdown}
@@ -276,6 +286,7 @@ export function ChatMarkdownImage(props: {
 }
 
 export function ChatMarkdownVideo(props: {
+  readonly title?: string | undefined;
   readonly src: string | null;
   readonly alt: string;
   readonly copyMarkdown: string | undefined;
@@ -292,6 +303,7 @@ export function ChatMarkdownVideo(props: {
       src={props.src}
       sourceFailed={props.sourceFailed}
       label={props.alt}
+      title={props.title}
       originalUrl={props.originalUrl}
       style={props.style}
       copyMarkdown={props.copyMarkdown}
@@ -325,6 +337,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   >;
   readonly kind?: "image" | "video";
   readonly alt: string;
+  readonly title?: string | undefined;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
   readonly standalone?: boolean | undefined;
@@ -406,6 +419,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   if (props.kind === "video") {
     return (
       <ChatMarkdownVideo
+        title={props.title}
         src={src}
         sourceFailed={assetUrl._tag === "Failure" && fallbackSrc === undefined}
         alt={props.alt}
@@ -431,6 +445,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
           ? MISSING_FILE_ACCESS_MESSAGE
           : undefined
       }
+      title={props.title}
       alt={props.alt}
       copyMarkdown={props.copyMarkdown}
       standalone={props.standalone ?? true}

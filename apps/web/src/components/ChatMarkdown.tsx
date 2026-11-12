@@ -137,6 +137,7 @@ import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useRenderedAppearance } from "../hooks/useTheme";
 import { useClientSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
+import { remarkStandaloneMediaLinks } from "../markdown-media-links";
 import {
   isLocalEditorFileHref,
   resolveInlineCodeFileLinkMeta,
@@ -1482,7 +1483,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const classifiedSrc =
       typeof localSrc === "string" ? srcString.replaceAll("\\", "/") : srcString;
     const altText = alt ?? "";
-    const copyMarkdown = markdownImageCopy(altText, srcString, authoredTitle);
+    const copyMarkdown = markdownImageCopy(
+      altText,
+      srcString,
+      authoredTitle,
+      // Checked for presence: rehype-raw may turn the boolean flag into a string.
+      node?.properties?.dataMarkdownLink !== undefined,
+    );
     const { className, style: _style, width, height, ...imageProps } = props;
     const authoredSizeStyle = authoredImageSizeStyle(width, height);
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
@@ -1547,6 +1554,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           standalone={standalone}
           className={className}
           style={authoredSizeStyle}
@@ -1573,6 +1581,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (kind === "video") {
         return (
           <ChatMarkdownVideo
+            title={authoredTitle}
             src={mediaSrc}
             alt={altText}
             copyMarkdown={copyMarkdown}
@@ -1585,6 +1594,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return (
         <ChatMarkdownImage
           key={mediaSrc}
+          title={authoredTitle}
           src={mediaSrc}
           alt={altText}
           copyMarkdown={copyMarkdown}
@@ -1629,6 +1639,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
+          title={authoredTitle}
           srcFragment={markdownImageSourceFragment(classifiedSrc)}
           standalone={standalone}
           style={authoredSizeStyle}
@@ -1740,6 +1751,21 @@ const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
   mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS],
 } satisfies Record<string, PluggableList>;
 
+// Share processors across remounts without retaining every workspace ever opened.
+const mediaPluginSets = new Map<string, PluggableList>();
+function standaloneMediaPlugins(
+  options: Parameters<typeof remarkStandaloneMediaLinks>[0],
+): PluggableList {
+  const key = JSON.stringify([options.embedLocalPaths, options.workspaceRoot ?? null]);
+  const cached = mediaPluginSets.get(key);
+  if (cached) return cached;
+  const plugins: PluggableList = [[remarkStandaloneMediaLinks, options]];
+  const oldest = mediaPluginSets.keys().next().value;
+  if (mediaPluginSets.size >= 64 && oldest !== undefined) mediaPluginSets.delete(oldest);
+  mediaPluginSets.set(key, plugins);
+  return plugins;
+}
+
 const combinedPlugins = new WeakMap<PluggableList, WeakMap<PluggableList, PluggableList>>();
 
 // One combined list per pair, so a stable extra list shares a renderer and its parse cache.
@@ -1835,6 +1861,10 @@ function ChatMarkdown({
   const bindMarkdownRef = (node: HTMLElement | null) => {
     markdownRef.current = node;
   };
+  const { cwd, imageBaseDir, threadRef } = componentState;
+  const embedLocalPaths = threadRef !== undefined;
+  const workspaceRoot = imageBaseDir ?? cwd;
+  const mediaPlugins = standaloneMediaPlugins({ embedLocalPaths, workspaceRoot });
   const sharedRemarkPlugins =
     CHAT_MARKDOWN_REMARK_PLUGIN_SETS[
       componentState.mathEnabled
@@ -1845,14 +1875,15 @@ function ChatMarkdown({
           ? "breaks"
           : "plain"
     ];
+  const mediaRemarkPlugins = withExtraPlugins(sharedRemarkPlugins, mediaPlugins);
   // The incremental parser keeps per-instance state, so its output is not shared.
   const uncachedPlugins = incrementalParsing;
   const remarkPlugins = incrementalParsing
-    ? [...sharedRemarkPlugins, ...extraRemarkPlugins, createIncrementalMarkdownPlugin()]
+    ? [...mediaRemarkPlugins, ...extraRemarkPlugins, createIncrementalMarkdownPlugin()]
     : withExtraPlugins(
         hasInsights
-          ? withExtraPlugins(INSIGHT_REMARK_PLUGINS, sharedRemarkPlugins)
-          : sharedRemarkPlugins,
+          ? withExtraPlugins(INSIGHT_REMARK_PLUGINS, mediaRemarkPlugins)
+          : mediaRemarkPlugins,
         extraRemarkPlugins,
       );
   const blocks = streamingBlocks ?? [text];
