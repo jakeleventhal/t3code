@@ -3578,7 +3578,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         for (const baseRef of ["upstream/main", "canonical/team/main", "release/v2"]) {
           yield* git(cwd, ["config", "branch.feature/configured-base.gh-merge-base", baseRef]);
           const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-          assert.deepStrictEqual(status.branchChanges, { baseRef, insertions: 1, deletions: 0 });
+          assert.deepInclude(status.branchChanges, { baseRef, insertions: 1, deletions: 0 });
           assert.strictEqual(status.aheadCount, 1);
           const preview = yield* driver.getReviewDiffPreview({ cwd });
           const changes = preview.sources.find((source) => source.kind === "branch-range")!;
@@ -3591,7 +3591,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         for (const baseRef of ["origin/main", "upstream/missing", "main"]) {
           yield* git(cwd, ["config", "branch.feature/configured-base.gh-merge-base", baseRef]);
           const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-          assert.deepStrictEqual(status.branchChanges, {
+          assert.deepInclude(status.branchChanges, {
             baseRef: "origin/main",
             insertions: 2,
             deletions: 0,
@@ -3608,7 +3608,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         for (const shadowRef of ["refs/heads/upstream/main", "refs/tags/upstream/main"]) {
           yield* git(cwd, ["update-ref", shadowRef, "HEAD~2"]);
           const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-          assert.deepStrictEqual(status.branchChanges, {
+          assert.deepInclude(status.branchChanges, {
             baseRef: "refs/remotes/upstream/main",
             insertions: 2,
             deletions: 1,
@@ -3695,7 +3695,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
 
         assert.strictEqual(status.branch, "t3/temporary");
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: null,
           insertions: 1,
           deletions: 0,
@@ -3725,7 +3725,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           }
           const baseRef = configuredBase ?? "main";
           const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-          assert.deepStrictEqual(status.branchChanges, { baseRef, insertions: 1, deletions: 0 });
+          assert.deepInclude(status.branchChanges, { baseRef, insertions: 1, deletions: 0 });
           assert.strictEqual(status.aheadCount, 1);
           const preview = yield* driver.getReviewDiffPreview({ cwd });
           const changes = preview.sources.find((source) => source.kind === "branch-range")!;
@@ -3813,7 +3813,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           { path: "new.txt", previousPath: null, additions: 2, deletions: 0 },
         ]);
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: null,
           insertions: 2,
           deletions: 0,
@@ -3923,7 +3923,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         assert.notEqual(defaultStat, minimalStat);
         const [insertions, deletions] = defaultStat.split("\t");
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: initialBranch,
           insertions: Number(insertions),
           deletions: Number(deletions),
@@ -4010,14 +4010,25 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         yield* git(cwd, ["commit", "-am", "commit edit"]);
         yield* writeTextFile(cwd, "nested/untracked.txt", "one\ntwo\n");
         yield* writeTextFile(cwd, "new [1].txt", "literal\n");
+        yield* writeTextFile(cwd, "src/code.ts", "export const value = 1;\n");
+        yield* writeTextFile(cwd, "src/code.test.ts", "test\n");
+        yield* writeTextFile(cwd, "__mocks__/value.ts", "mock\n");
+        yield* writeTextFile(cwd, "pnpm-lock.yaml", "lock\n");
 
         const status = yield* driver.statusDetailsLocal(pathService.join(cwd, "nested"), {
           includeBranchChanges: true,
         });
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: "main",
-          insertions: 4,
+          insertions: 8,
           deletions: 0,
+        });
+        assert.deepStrictEqual(status.branchChanges?.breakdown, {
+          code: { additions: 1, deletions: 0 },
+          tests: { additions: 1, deletions: 0 },
+          mocks: { additions: 1, deletions: 0 },
+          generated: { additions: 1, deletions: 0 },
+          docs: { additions: 4, deletions: 0 },
         });
         assert.isUndefined((yield* driver.statusDetailsLocal(cwd)).branchChanges);
       }),
@@ -4046,7 +4057,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         yield* git(cwd, ["branch", "--set-upstream-to=upstream/main", "main"]);
 
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: "upstream/main",
           insertions: 0,
           deletions: 0,
@@ -4059,7 +4070,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         // Without an upstream the primary remote's copy stays the base.
         yield* git(cwd, ["branch", "--unset-upstream", "main"]);
         const untracked = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-        assert.deepStrictEqual(untracked.branchChanges, {
+        assert.deepInclude(untracked.branchChanges, {
           baseRef: "origin/main",
           insertions: 3,
           deletions: 0,
@@ -4112,7 +4123,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
             yield* git(cwd, ["config", "status.showUntrackedFiles", mode]);
             untrackedScanRoots.length = 0;
             const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
-            assert.deepStrictEqual(status.branchChanges, {
+            assert.deepInclude(status.branchChanges, {
               baseRef: "main",
               insertions: scenario === "long names" ? 2_052 : 2_002,
               deletions: 0,
@@ -4214,7 +4225,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
 
         const status = yield* driver.statusDetailsLocal(cwd, { includeBranchChanges: true });
 
-        assert.deepStrictEqual(status.branchChanges, {
+        assert.deepInclude(status.branchChanges, {
           baseRef: null,
           insertions: 1,
           deletions: 1,
@@ -7841,7 +7852,7 @@ it.layer(layerTest)("branch change totals after a failed untracked listing", (it
       yield* writeTextFile(cwd, "notes.txt", "one\ntwo\n");
       const status = yield* read;
       assert.strictEqual(listings, 3);
-      assert.deepStrictEqual(status.branchChanges, { baseRef: null, insertions: 2, deletions: 0 });
+      assert.deepInclude(status.branchChanges, { baseRef: null, insertions: 2, deletions: 0 });
     }),
   );
 });
