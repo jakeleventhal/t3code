@@ -1,3 +1,6 @@
+import * as NodeOS from "node:os";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -35,7 +38,27 @@ const make = Effect.gen(function* () {
     Option.isNone(config.environmentCredential) &&
     Option.isNone(config.issuer)
   ) {
-    return null;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const publisher = path.join(NodeOS.homedir(), ".config", "t3-personal-relay", "publisher.json");
+    if (!(yield* fs.exists(publisher))) return null;
+    const personal = yield* Schema.decodeEffect(
+      Schema.fromJsonString(
+        Schema.Struct({
+          url: Schema.String,
+          environmentCredential: Schema.NonEmptyString,
+        }),
+      ),
+    )(yield* fs.readFileString(publisher)).pipe(
+      Effect.mapError(() => new BackgroundRelayConfigInvalid()),
+    );
+    const url = normalizeSecureRelayUrl(personal.url);
+    if (!url) return yield* new BackgroundRelayConfigInvalid();
+    return {
+      url,
+      issuer: url,
+      environmentCredential: Redacted.make(personal.environmentCredential),
+    };
   }
   const url = Option.isSome(config.url) ? normalizeSecureRelayUrl(config.url.value) : null;
   const issuer = Option.isSome(config.issuer) ? normalizeSecureRelayUrl(config.issuer.value) : url;
