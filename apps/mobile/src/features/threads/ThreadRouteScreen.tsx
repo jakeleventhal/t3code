@@ -39,6 +39,7 @@ import {
   projectScriptTerminalInput,
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
+import { Alert } from "react-native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useConnectionsReady } from "../../state/workspace";
 import { useEnvironmentShellReadiness } from "../../state/shell";
@@ -50,6 +51,8 @@ import { dismissGitActionResult, useGitActionProgress } from "../../state/use-vc
 import { vcsEnvironment } from "../../state/vcs";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
+import { resolveDevServerUrl, type ResolvedDevServer } from "../../lib/devServers";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useThreadShell } from "../../state/entities";
@@ -60,6 +63,8 @@ import {
   useRemoteConnectionStatus,
   useRemoteEnvironmentRuntime,
 } from "../../state/use-remote-environment-registry";
+import { useThreadDevServers } from "../../state/preview";
+import { usePreparedConnection } from "../../state/session";
 import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { uuidv4 } from "../../lib/uuid";
 import {
@@ -793,6 +798,31 @@ function ThreadRouteContent(
       terminalId: targetTerminalId,
     });
   };
+  const linkedDevServers = useThreadDevServers({
+    environmentId: selectedThread?.environmentId ?? null,
+    threadId: selectedThread?.id ?? null,
+  });
+  const preparedConnection = usePreparedConnection(selectedThread?.environmentId ?? null);
+  const devServers = (() => {
+    const httpBaseUrl = Option.isSome(preparedConnection)
+      ? preparedConnection.value.httpBaseUrl
+      : null;
+    return linkedDevServers.map((server) => resolveDevServerUrl(httpBaseUrl, server));
+  })();
+
+  const handleOpenDevServer = async (resolved: ResolvedDevServer) => {
+    if (!resolved.reachable) {
+      Alert.alert(
+        "Dev server unreachable",
+        "This dev server cannot be reached from this device over the current connection.",
+      );
+      return;
+    }
+    if (!(await tryOpenExternalUrl(resolved.url, "dev-server"))) {
+      Alert.alert("Unable to open dev server", "The dev server URL could not be opened.");
+    }
+  };
+
   const threadGitControlProps = {
     environmentId: environmentIdRaw ?? "",
     threadId: threadId ?? "",
@@ -816,6 +846,8 @@ function ThreadRouteContent(
         )
       : [],
     terminalSessions: terminalMenuSessions,
+    devServers,
+    onOpenDevServer: handleOpenDevServer,
     onOpenTerminal: handleOpenTerminal,
     onOpenNewTerminal: handleOpenNewTerminal,
     onRunProjectScript: handleRunProjectScript,
