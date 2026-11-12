@@ -141,6 +141,7 @@ import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/Fi
 import { inlineFilePreviewKind, isPdfFile } from "../../lib/filePreview";
 import { ThreadInlineFilePreview } from "./ThreadInlineFilePreview";
 import { flattenThemeColor } from "../../lib/mobileTheme";
+import { getMobileReplyTypography, getMobileUserTypography } from "../../lib/typography";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import Animated, { FadeIn, FadeInDown, type SharedValue } from "react-native-reanimated";
@@ -1259,10 +1260,18 @@ function MarkdownDetailsFold(props: {
 }
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
+  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
+    useAppearancePreferences();
   const replyTypography = useMemo(
-    () => resolveNativeMarkdownTypography(replyFontSize),
-    [replyFontSize],
+    () => ({
+      ...resolveNativeMarkdownTypography(replyFontSize),
+      ...getMobileReplyTypography(themeId, replyFontSize),
+    }),
+    [themeId, replyFontSize],
+  );
+  const userTypography = useMemo(
+    () => getMobileUserTypography(themeId, appearance.baseFontSize),
+    [themeId, appearance.baseFontSize],
   );
   const nativeMarkdownTypography = useMemo(
     () => resolveNativeMarkdownTypography(appearance.baseFontSize),
@@ -1309,6 +1318,7 @@ function useMarkdownStyles(): MarkdownStyleSets {
           fontSize: nativeMarkdownTypography.fontSize,
           lineHeight: nativeMarkdownTypography.lineHeight,
           headingFontSizes: nativeMarkdownTypography.headingFontSizes,
+          ...userTypography,
           codeFontFamily: fonts.code.regular,
           fontFamily: regularFontFamily,
           headingFontFamily: boldFontFamily,
@@ -1340,6 +1350,7 @@ function useMarkdownStyles(): MarkdownStyleSets {
       },
     };
   }, [
+    userTypography,
     fonts.reply,
     replyEmphasisFontFamily,
     fonts.code.regular,
@@ -2741,7 +2752,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
+  const { appearance, themeId, fonts, replyFontSize, replyEmphasisFontFamily } =
+    useAppearancePreferences();
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,

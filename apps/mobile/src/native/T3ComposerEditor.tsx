@@ -52,13 +52,13 @@ export function ComposerEditor({
         onContentSizeChange={(event) => onContentSizeChange?.(event.nativeEvent.contentSize)}
         multiline={props.multiline ?? true}
         placeholderTextColorClassName={"accent-placeholder"}
-        className="text-foreground"
+        className="font-sans text-foreground"
         style={[
           {
             flex: 1,
             minHeight: 0,
-            fontFamily,
             ...bodyText,
+            fontFamily,
             fontSize: composerFontSize,
             lineHeight: Math.round((composerFontSize * 23) / 16),
             paddingVertical: contentInsetVertical,

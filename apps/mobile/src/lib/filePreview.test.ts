@@ -277,9 +277,13 @@ vi.mock("../features/settings/appearance/AppearancePreferencesProvider", () => (
     replyEmphasisFontFamily: "DMSans-Bold",
   }),
 }));
-vi.mock("./useUniwindTheme", () => ({
-  useUniwindTheme: () => new Proxy({}, { get: () => "#000000" }),
-}));
+vi.mock("./useUniwindTheme", async () => {
+  const { FONT_FAMILIES } = await import("./fontFamilies");
+  return {
+    useUniwindTheme: () => new Proxy({}, { get: () => "#000000" }),
+    useThemeFontFamilies: () => FONT_FAMILIES,
+  };
+});
 vi.mock("./composerContextClipboard", () => ({}));
 vi.mock("./copyTextWithHaptic", () => ({}));
 vi.mock("./openExternalUrl", () => ({}));
