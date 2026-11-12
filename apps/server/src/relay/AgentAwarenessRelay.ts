@@ -491,6 +491,8 @@ export const make = Effect.gen(function* () {
 
   // Confirm through the same worker so tombstones cannot race live updates; recovery clears the deadline.
   const publishConfirmDeadlines = new Map<ThreadId, number>();
+  // Threads whose confirmation holds a completion, so a thread that settles during the hold still alerts.
+  const heldCompletions = new Set<ThreadId>();
   let schedulePublishConfirm: (threadId: ThreadId) => Effect.Effect<void> = () => Effect.void;
   const publishRetries = new Map<
     ThreadId,
@@ -510,6 +512,7 @@ export const make = Effect.gen(function* () {
     publishedRelayConfig = undefined;
     cachedRelayClient = undefined;
     publishConfirmDeadlines.clear();
+    heldCompletions.clear();
     yield* Ref.set(publishedStateByThreadRef, new Map());
   });
 
@@ -658,9 +661,14 @@ export const make = Effect.gen(function* () {
         (!publishedStateByThread.has(threadId) &&
           Option.isSome(thread) &&
           !terminalWorkSinceStart(thread.value, startedAt)));
-    if (previous?.identity === publishIdentity) {
+    if (
+      publishedStateByThread.get(threadId) === publishIdentity &&
+      // A held completion settled after an earlier clear still has to alert.
+      !(snapshot.state === null && heldCompletions.has(threadId))
+    ) {
       // Clear moot deadlines so later transient nulls cannot skip their deferral window.
       publishConfirmDeadlines.delete(threadId);
+      heldCompletions.delete(threadId);
       yield* Effect.logDebug("agent activity publish skipped; projected state unchanged", {
         environmentId,
         threadId,
@@ -676,6 +684,7 @@ export const make = Effect.gen(function* () {
       (snapshot.state === null && previous?.identity !== agentAwarenessPublishIdentity(null)) ||
       (snapshot.state?.phase === "completed" && !replay);
     if (requiresConfirmation) {
+      if (snapshot.state?.phase === "completed") heldCompletions.add(threadId);
       const nowMs = (yield* DateTime.now).epochMilliseconds;
       const deadline = publishConfirmDeadlines.get(threadId);
       if (deadline === undefined) {
@@ -700,8 +709,43 @@ export const make = Effect.gen(function* () {
         statePhase: snapshot.state?.phase ?? null,
         shell: describeThreadShellForAwareness(thread),
       });
+      // Settled during the hold, not resumed: alert the current completion, then clear the card
+      // on a new window. Only settlement may hide it; queued or silent runs also project to null.
+      const unsettled =
+        snapshot.state === null &&
+        heldCompletions.has(threadId) &&
+        Option.isSome(thread) &&
+        thread.value.settledOverride === "settled"
+          ? resolveAgentAwarenessRelayPublishSnapshot({
+              environmentId,
+              thread: Option.some({ ...thread.value, settledOverride: null }),
+              project,
+              now: nowMs,
+              pendingSubagentRequest: null,
+            })
+          : null;
+      if (unsettled?.state?.phase === "completed") {
+        const completion = unsettled.state;
+        yield* publishState({
+          projectId: unsettled.projectId,
+          state: completion,
+          reason: unsettled.reason,
+        }).pipe(withRelayClientTracing);
+        publishedCompletions.set(threadId, {
+          phase: completion.phase,
+          completedAt: completion.completedAt,
+        });
+        heldCompletions.delete(threadId);
+        publishConfirmDeadlines.set(threadId, nowMs + 5_000);
+        yield* Ref.update(publishedStateByThreadRef, (publishedStates) =>
+          new Map(publishedStates).set(threadId, agentAwarenessPublishIdentity(completion)),
+        );
+        yield* schedulePublishConfirm(threadId);
+        return;
+      }
     } else {
       publishConfirmDeadlines.delete(threadId);
+      heldCompletions.delete(threadId);
     }
 
     if (snapshot.reason === "thread-not-found") {
@@ -738,12 +782,65 @@ export const make = Effect.gen(function* () {
       });
     }
     publishConfirmDeadlines.delete(threadId);
-    yield* Ref.update(publishedStateByThreadRef, (publishedStates) => {
-      const nextPublishedStates = new Map(publishedStates);
-      if (snapshot.state === null) {
-        nextPublishedStates.delete(threadId);
-      } else {
-        nextPublishedStates.set(threadId, { identity: publishIdentity, state: snapshot.state });
+    heldCompletions.delete(threadId);
+    yield* Ref.update(publishedStateByThreadRef, (publishedStates) =>
+      new Map(publishedStates).set(threadId, publishIdentity),
+    );
+  });
+
+  const readAwarenessThread = (threadId: ThreadId) =>
+    threads
+      .getAgentAwarenessSnapshot(threadId)
+      .pipe(Effect.map((snapshot) => snapshot.threads[0] ?? null));
+
+  // The subagent helpers below are untraced: they run per event inside
+  // publishThreadUnsafe, whose span already covers them.
+  const findTopLevelThreadId = Effect.fnUntraced(function* (child: AgentAwarenessThread) {
+    const seen = new Set<ThreadId>([child.id]);
+    let current: AgentAwarenessThread | null = child;
+    while (
+      current?.lineage.relationshipToParent === "subagent" ||
+      current?.lineage.sideChat === true
+    ) {
+      const parentId: ThreadId | null = current.lineage.parentThreadId;
+      if (parentId === null || seen.has(parentId)) return null;
+      seen.add(parentId);
+      current = yield* readAwarenessThread(parentId);
+    }
+    return current?.id ?? null;
+  });
+
+  const trackSubagentRequest = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    threadShell: AgentAwarenessThread | null,
+  ) {
+    const requestId = waitingApprovalId(threadShell);
+    const previous = subagentRequests.get(threadId);
+    // An unchanged wait still republishes its parent: a relink catch-up reaches it only here.
+    if (threadShell === null || requestId === undefined) {
+      if (previous === undefined) return;
+      subagentRequests.delete(threadId);
+      yield* enqueueTopLevelPublish(previous.topLevelThreadId);
+      return;
+    }
+    const topLevelThreadId =
+      previous?.topLevelThreadId ?? (yield* findTopLevelThreadId(threadShell));
+    if (topLevelThreadId === null) return;
+    subagentRequests.set(threadId, { topLevelThreadId, requestId });
+    yield* enqueueTopLevelPublish(topLevelThreadId);
+  });
+
+  // The map can miss a child's update while publishing is off or the relay is
+  // unlinked, so each waiting child is re-read before its parent is published.
+  const currentSubagentRequestFor = Effect.fnUntraced(function* (topLevelThreadId: ThreadId) {
+    let pending: SubagentRequestAwareness | null = null;
+    for (const [childId, entry] of subagentRequests) {
+      if (entry.topLevelThreadId !== topLevelThreadId) continue;
+      const child = yield* readAwarenessThread(childId);
+      const requestId = waitingApprovalId(child);
+      if (child === null || requestId === undefined) {
+        subagentRequests.delete(childId);
+        continue;
       }
       if (requestId !== entry.requestId) subagentRequests.set(childId, { ...entry, requestId });
       // The newest wait is the one to announce.
