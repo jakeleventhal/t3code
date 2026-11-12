@@ -1,5 +1,5 @@
 import { GlassView } from "expo-glass-effect";
-import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Animated, { useAnimatedStyle, useReducedMotion, withTiming } from "react-native-reanimated";
 import { withUniwind } from "uniwind";
@@ -15,6 +15,8 @@ export interface TabsProps<Value extends string> {
   readonly options: readonly {
     readonly value: Value;
     readonly label: string;
+    /** Rendered after the label, such as diff stats or a count. */
+    readonly trailing?: ReactNode;
   }[];
   readonly selected: Value;
   readonly onSelect: (value: Value) => void;
@@ -90,6 +92,7 @@ export function Tabs<Value extends string>(props: TabsProps<Value>) {
               >
                 {option.label}
               </AppText>
+              {option.trailing}
             </Pressable>
           );
         })}
