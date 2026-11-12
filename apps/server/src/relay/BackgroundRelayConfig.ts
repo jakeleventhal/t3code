@@ -20,10 +20,20 @@ export class BackgroundRelayConfigInvalid extends Schema.TaggedError<BackgroundR
 }
 
 export class BackgroundRelayConfig extends Context.Reference<{
+  readonly publishWithoutSharing?: boolean;
   readonly url: string;
   readonly issuer: string;
   readonly environmentCredential: Redacted.Redacted<string>;
 } | null>("t3/relay/BackgroundRelayConfig", { defaultValue: () => null }) {}
+
+const decodePersonalPublisher = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      url: Schema.String,
+      environmentCredential: Schema.NonEmptyString,
+    }),
+  ),
+);
 
 const make = Effect.gen(function* () {
   const config = yield* Config.all({
@@ -42,19 +52,13 @@ const make = Effect.gen(function* () {
     const path = yield* Path.Path;
     const publisher = path.join(NodeOS.homedir(), ".config", "t3-personal-relay", "publisher.json");
     if (!(yield* fs.exists(publisher))) return null;
-    const personal = yield* Schema.decodeEffect(
-      Schema.fromJsonString(
-        Schema.Struct({
-          url: Schema.String,
-          environmentCredential: Schema.NonEmptyString,
-        }),
-      ),
-    )(yield* fs.readFileString(publisher)).pipe(
+    const personal = yield* decodePersonalPublisher(yield* fs.readFileString(publisher)).pipe(
       Effect.mapError(() => new BackgroundRelayConfigInvalid()),
     );
     const url = normalizeSecureRelayUrl(personal.url);
     if (!url) return yield* new BackgroundRelayConfigInvalid();
     return {
+      publishWithoutSharing: true,
       url,
       issuer: url,
       environmentCredential: Redacted.make(personal.environmentCredential),

@@ -514,28 +514,42 @@ describe("AgentAwarenessRelay", () => {
     }),
   );
 
-  it.effect("publishes only to the background relay and still honors the sharing switch", () =>
-    Effect.gen(function* () {
-      const { relay, secrets, publications } = yield* makeTestRelay();
-      yield* relay.publishThread(THREAD_ID);
-      assert.equal(publications.length, 1);
-      assert.isTrue(publications[0]?.url.startsWith("https://background.example.test/") ?? false);
-      assert.equal(publications[0]?.authorization, "Bearer background-credential");
-      const publicCredential = yield* secrets.get(RELAY_ENVIRONMENT_CREDENTIAL_SECRET);
-      assert.equal(
-        Option.getOrNull(Option.map(publicCredential, (bytes) => new TextDecoder().decode(bytes))),
-        "credential-1",
-      );
-      yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, new TextEncoder().encode("false"));
-      yield* relay.publishThread(THREAD_ID);
-      assert.equal(publications.length, 1);
-    }).pipe(
-      Effect.provideService(BackgroundRelayConfig.BackgroundRelayConfig, {
-        url: "https://background.example.test",
-        issuer: "https://background.example.test",
-        environmentCredential: Redacted.make("background-credential"),
-      }),
-    ),
+  it.effect.each([false, true])(
+    "publishes only to the background relay (personal publisher: %s)",
+    (personalPublishing) =>
+      Effect.gen(function* () {
+        const current = yield* Ref.make(shell());
+        const { relay, secrets, publications } = yield* makeTestRelay({
+          readShell: () => Ref.get(current),
+        });
+        yield* relay.publishThread(THREAD_ID);
+        assert.equal(publications.length, 1);
+        assert.isTrue(publications[0]?.url.startsWith("https://background.example.test/") ?? false);
+        assert.equal(publications[0]?.authorization, "Bearer background-credential");
+        const publicCredential = yield* secrets.get(RELAY_ENVIRONMENT_CREDENTIAL_SECRET);
+        assert.equal(
+          Option.getOrNull(
+            Option.map(publicCredential, (bytes) => new TextDecoder().decode(bytes)),
+          ),
+          "credential-1",
+        );
+        yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, new TextEncoder().encode("false"));
+        yield* Ref.set(current, shell({ title: "Updated private thread" }));
+        yield* relay.publishThread(THREAD_ID);
+        assert.equal(publications.length, personalPublishing ? 2 : 1);
+        const sharing = yield* secrets.get(PUBLISH_AGENT_ACTIVITY_SECRET);
+        assert.equal(
+          Option.getOrNull(Option.map(sharing, (bytes) => new TextDecoder().decode(bytes))),
+          "false",
+        );
+      }).pipe(
+        Effect.provideService(BackgroundRelayConfig.BackgroundRelayConfig, {
+          url: "https://background.example.test",
+          issuer: "https://background.example.test",
+          environmentCredential: Redacted.make("background-credential"),
+          publishWithoutSharing: personalPublishing,
+        }),
+      ),
   );
 
   it.effect("coalesces queued updates and reruns a thread dirtied during publishing", () =>

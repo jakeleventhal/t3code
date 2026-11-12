@@ -302,7 +302,10 @@ export const make = Effect.gen(function* () {
   return ServerEnvironment.of({
     getEnvironmentId: Effect.succeed(environmentId),
     // Publishing opt-in and relay links change at runtime; read the capability per request.
-    getDescriptor: readAgentActivityPublishingActive(secrets, backgroundRelay !== null).pipe(
+    getDescriptor: (backgroundRelay?.publishWithoutSharing
+      ? Effect.succeed(true)
+      : readAgentActivityPublishingActive(secrets, backgroundRelay !== null)
+    ).pipe(
       Effect.map((agentActivityPublishing) => ({
         ...descriptor,
         capabilities: { ...descriptor.capabilities, agentActivityPublishing },

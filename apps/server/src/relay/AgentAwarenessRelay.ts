@@ -468,9 +468,11 @@ export const make = Effect.gen(function* () {
       : null;
   });
 
-  const readPublishAgentActivityEnabled = readSecretString(PUBLISH_AGENT_ACTIVITY_SECRET).pipe(
-    Effect.map(isAgentActivityPublishingEnabledValue),
-  );
+  const readPublishAgentActivityEnabled = backgroundRelay?.publishWithoutSharing
+    ? Effect.succeed(true)
+    : readSecretString(PUBLISH_AGENT_ACTIVITY_SECRET).pipe(
+        Effect.map(isAgentActivityPublishingEnabledValue),
+      );
 
   const makeRelayClient = (relayConfig: {
     readonly url: string;

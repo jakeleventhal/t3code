@@ -7,13 +7,18 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as BackgroundRelayConfig from "./BackgroundRelayConfig.ts";
 
-const load = (env: Record<string, string>) =>
+const load = (env: Record<string, string>, publisher?: string) =>
   BackgroundRelayConfig.BackgroundRelayConfig.pipe(
     Effect.provide(
       BackgroundRelayConfig.layer.pipe(
         Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
         Layer.provide(NodePath.layer),
-        Layer.provide(FileSystem.layerNoop({ exists: () => Effect.succeed(false) })),
+        Layer.provide(
+          FileSystem.layerNoop({
+            exists: () => Effect.succeed(publisher !== undefined),
+            readFileString: () => Effect.succeed(publisher ?? ""),
+          }),
+        ),
       ),
     ),
   );
@@ -27,6 +32,16 @@ describe("BackgroundRelayConfig", () => {
   it.effect("leaves existing relay configuration alone when unset", () =>
     Effect.gen(function* () {
       expect(yield* load({})).toBeNull();
+      const personal = yield* load(
+        {},
+        JSON.stringify({
+          url: "https://personal.example.test",
+          environmentCredential: "personal-credential",
+        }),
+      );
+      expect(personal?.publishWithoutSharing).toBe(true);
+      expect(personal?.url).toBe("https://personal.example.test");
+      expect(JSON.stringify(personal)).not.toContain("personal-credential");
     }),
   );
   it.effect("normalizes the origin and keeps the credential redacted", () =>
