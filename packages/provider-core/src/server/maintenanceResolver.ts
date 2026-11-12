@@ -255,12 +255,34 @@ function isYarnGlobalCommandPath(commandPath: string): boolean {
  * Paths mise owns. npm globals under mise's own Node belong to npm, which proves their prefix.
  * A command wrapper is a symlink to the `mise` binary, which dispatches on argv[0].
  */
-function isMiseCommandPath(commandPath: string): boolean {
+export function isMiseCommandPath(commandPath: string, env?: NodeJS.ProcessEnv): boolean {
   const normalized = normalizeCommandPath(commandPath);
+  const dataDirectory = env?.MISE_DATA_DIR;
+  const systemDataDirectory = env?.MISE_SYSTEM_DATA_DIR;
+  const roots = [
+    ...(dataDirectory
+      ? ["installs", "i", "shims", "command-wrappers"].map(
+          (directory) => `${dataDirectory.replace(/[\\/]+$/, "")}/${directory}`,
+        )
+      : []),
+    ...(systemDataDirectory
+      ? ["installs", "shims"].map(
+          (directory) => `${systemDataDirectory.replace(/[\\/]+$/, "")}/${directory}`,
+        )
+      : []),
+    env?.MISE_INSTALLS_DIR,
+    env?.MISE_INSTALL_STORE_DIR,
+    env?.MISE_SYSTEM_INSTALLS_DIR,
+  ];
   return (
     (normalized.includes("/mise/installs/") && !normalized.includes("/mise/installs/node/")) ||
+    normalized.includes("/mise/i/") ||
     normalized.includes("/mise/shims/") ||
-    normalized.includes("/mise/command-wrappers/")
+    normalized.includes("/mise/command-wrappers/") ||
+    /\/mise(?:\.exe)?$/.test(normalized) ||
+    roots.some(
+      (root) => root && normalized.startsWith(`${normalizeCommandPath(root).replace(/\/+$/, "")}/`),
+    )
   );
 }
 
@@ -719,6 +741,9 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     installPath: context.realCommandPath,
   });
   const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
+  const miseManaged = commandPaths.some((commandPath) =>
+    isMiseCommandPath(commandPath, context.env),
+  );
   const packageName = definition.npmPackageName;
   // WinGet-managed claude update exits 0 without updating; T3 does not run winget upgrade.
   if (
@@ -785,7 +810,9 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   if (
     nativeUpdate?.isCommandPath &&
     commandPaths.some(nativeUpdate.isCommandPath) &&
-    !npmGlobalPrefixFromCommandPath(context.realCommandPath, packageName)
+    !npmGlobalPrefixFromCommandPath(context.realCommandPath, packageName) &&
+    !miseManaged &&
+    !(yield* isMiseWrapperScript(context))
   ) {
     return native;
   }
@@ -884,6 +911,14 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   }
 
   const homebrew = homebrewOwnershipFromCommandPath(context.realCommandPath);
+  if (
+    miseManaged ||
+    // Mise shims resolve to the version manager's keg, not the provider's.
+    (homebrew?.kind === "formula" && homebrew.name.toLowerCase() === "mise") ||
+    (yield* isMiseWrapperScript(context))
+  ) {
+    return manual;
+  }
   if (homebrew) {
     return (
       (yield* resolveHomebrewProviderMaintenance(
@@ -952,7 +987,7 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
   },
 );
 
-const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
+export const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
   context: ProviderMaintenanceResolutionContext,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
