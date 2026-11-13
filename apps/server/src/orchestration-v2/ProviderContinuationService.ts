@@ -197,7 +197,7 @@ export const layer = Layer.effectDiscard(
                 attachments: [],
                 dispatchMode: { type: "queue_after_active" },
                 createdBy: "user",
-                creationSource: "server",
+                creationSource: request.delivery === "adapter_buffered" ? "provider" : "server",
               }
             : {
                 type: "message.dispatch",
