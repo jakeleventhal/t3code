@@ -1560,7 +1560,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
   );
 
   it.effect(
-    "resubmits a voice handoff Codex started only once its turn is interrupted or failed",
+    "adopts completed voice handoffs without rerunning them and resubmits interrupted work",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1611,6 +1611,133 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               label: `turn/interrupt/${turnId}`,
               frame: { id, result: {} },
             },
+            ...(turnId === "voice-raced"
+              ? [
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice child spawned",
+                    frame: {
+                      method: "item/completed",
+                      params: {
+                        threadId: nativeThreadId,
+                        turnId,
+                        completedAtMs: 1782622441000,
+                        item: {
+                          type: "collabAgentToolCall",
+                          id: "voice-child-spawn",
+                          tool: "spawnAgent",
+                          status: "completed",
+                          senderThreadId: nativeThreadId,
+                          receiverThreadIds: ["voice-raced-child-thread"],
+                          prompt: "Report the child result.",
+                          model: "gpt-5.4",
+                          reasoningEffort: "low",
+                          agentsStates: {
+                            ["voice-raced-child-thread"]: { status: "running", message: null },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice child turn started",
+                    frame: {
+                      method: "turn/started",
+                      params: {
+                        threadId: "voice-raced-child-thread",
+                        turn: {
+                          ...makeCodexReplayTurn({
+                            id: "voice-raced-child-turn",
+                            status: "inProgress",
+                          }),
+                          startedAt: 1782622441,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice child answer completed",
+                    frame: {
+                      method: "item/completed",
+                      params: {
+                        threadId: "voice-raced-child-thread",
+                        turnId: "voice-raced-child-turn",
+                        completedAtMs: 1782622441500,
+                        item: {
+                          type: "agentMessage",
+                          id: "voice-child-answer",
+                          text: "VOICE_CHILD_DONE",
+                          phase: "final_answer",
+                          memoryCitation: null,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice child turn completed",
+                    frame: {
+                      method: "turn/completed",
+                      params: {
+                        threadId: "voice-raced-child-thread",
+                        turn: {
+                          ...makeCodexReplayTurn({
+                            id: "voice-raced-child-turn",
+                            status: "completed",
+                          }),
+                          startedAt: 1782622441,
+                          completedAt: 1782622442,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice command completed",
+                    frame: {
+                      method: "item/completed",
+                      params: {
+                        threadId: nativeThreadId,
+                        turnId,
+                        completedAtMs: 1782622441000,
+                        item: {
+                          type: "commandExecution",
+                          id: "voice-command",
+                          command: "pwd",
+                          cwd: "/workspace",
+                          processId: "42",
+                          source: "unifiedExecStartup",
+                          status: "completed",
+                          commandActions: [{ type: "unknown", command: "pwd" }],
+                          aggregatedOutput: "/workspace\n",
+                          exitCode: 0,
+                          durationMs: 10,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    label: "voice answer completed",
+                    frame: {
+                      method: "item/completed",
+                      params: {
+                        threadId: nativeThreadId,
+                        turnId,
+                        completedAtMs: 1782622442000,
+                        item: {
+                          type: "agentMessage",
+                          id: "voice-answer",
+                          text: "All green.",
+                          phase: "final_answer",
+                        },
+                      },
+                    },
+                  },
+                ]
+              : []),
             {
               type: "emit_inbound" as const,
               label: `turn/completed/${turnId}`,
@@ -1623,60 +1750,182 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               },
             },
           ];
-          const harness = yield* makeCodexReplayHarness(
-            makeCodexReplayTranscript({
-              scenario: "voice-handoff-resubmit",
-              entries: [
-                // Initialization and thread/start only; Codex, not T3, starts these turns.
-                ...codexReplayPreamble({
-                  nativeThreadId,
-                  nativeTurnId: "unused",
-                  prompt: "",
-                }).slice(0, -3),
-                {
-                  type: "expect_outbound",
-                  label: "thread/realtime/start",
-                  frame: {
-                    id: 3,
-                    method: "thread/realtime/start",
-                    params: {
-                      threadId: nativeThreadId,
-                      outputModality: "audio",
-                      transport: { type: "webrtc", sdp: "v=offer\r\n" },
-                      version: "v3",
-                      clientManagedHandoffs: true,
-                      includeStartupContext: false,
-                    },
+          const handoffTranscript = makeCodexReplayTranscript({
+            scenario: "voice-handoff-resubmit",
+            entries: [
+              // Initialization and thread/start only; Codex, not T3, starts these turns.
+              ...codexReplayPreamble({
+                nativeThreadId,
+                nativeTurnId: "unused",
+                prompt: "",
+              }).slice(0, -3),
+              {
+                type: "expect_outbound",
+                label: "thread/realtime/start",
+                frame: {
+                  id: 3,
+                  method: "thread/realtime/start",
+                  params: {
+                    threadId: nativeThreadId,
+                    outputModality: "audio",
+                    transport: { type: "webrtc", sdp: "v=offer\r\n" },
+                    version: "v3",
+                    clientManagedHandoffs: true,
+                    includeStartupContext: false,
                   },
                 },
-                {
-                  type: "emit_inbound",
-                  label: "thread/realtime/start",
-                  frame: { id: 3, result: {} },
+              },
+              {
+                type: "emit_inbound",
+                label: "thread/realtime/start",
+                frame: { id: 3, result: {} },
+              },
+              // The interrupt lost the race: Codex finished, so it must not run twice.
+              ...voiceTurn("voice-raced", "already done", 4, "completed"),
+              {
+                type: "expect_outbound",
+                label: "speak completed native answer",
+                frame: {
+                  id: 5,
+                  method: "thread/realtime/appendSpeech",
+                  params: { threadId: nativeThreadId, text: "All green." },
                 },
-                // The interrupt lost the race: Codex finished, so it must not run twice.
-                ...voiceTurn("voice-raced", "already done", 4, "completed"),
-                ...voiceTurn("voice-stopped", "run the tests", 5, "interrupted"),
-                // A failed turn never did the work either, so its request is kept.
-                ...voiceTurn("voice-failed", "open a pull request", 6, "failed"),
-              ],
-            }),
-          );
+              },
+              {
+                type: "emit_inbound",
+                label: "speech acknowledged",
+                frame: { id: 5, result: {} },
+              },
+              ...voiceTurn("voice-stopped", "run the tests", 6, "interrupted"),
+              // A failed turn never did the work either, so its request is kept.
+              ...voiceTurn("voice-failed", "open a pull request", 7, "failed"),
+            ],
+          });
+          const harness = yield* makeCodexReplayHarness(handoffTranscript);
           yield* harness.runtime.startVoiceSession!({
             providerThread: harness.providerThread,
             offerSdp: "v=offer\r\n",
           }).pipe(Stream.runDrain, Effect.forkScoped);
 
-          yield* harness.until(() => harness.continuationRequests.length === 2);
+          yield* harness.until(() =>
+            harness.continuationRequests.some((entry) => entry.detail === "open a pull request"),
+          );
           assert.deepEqual(
             harness.continuationRequests.map((entry) => entry.detail),
-            ["run the tests", "open a pull request"],
+            ["already done", "run the tests", "open a pull request"],
           );
-          const request = harness.continuationRequests[0];
+          const completed = harness.continuationRequests[0];
+          assert.equal(completed?.delivery, "adapter_buffered");
+          const completedInput = makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("voice-adopted"),
+            text: completed!.detail!,
+          });
+          yield* harness.runtime.startTurn({
+            ...completedInput,
+            message: { ...completedInput.message, messageId: completed!.messageId! },
+          });
+          yield* harness.firstTerminal;
+          const answer = harness.events.find(
+            (event) => event.type === "message.updated" && event.message.text === "All green.",
+          );
+          assert.equal(answer?.type, "message.updated");
+          if (answer?.type === "message.updated")
+            assert.equal(answer.message.runId, completedInput.runId);
+          assert.isTrue(
+            harness.events.some(
+              (event) =>
+                event.type === "turn_item.updated" &&
+                event.turnItem.type === "command_execution" &&
+                event.turnItem.status === "completed",
+            ),
+          );
+          assert.equal(harness.terminalEvents()[0]?.status, "completed");
+          assert.isTrue(
+            harness.events.some(
+              (event) =>
+                event.type === "message.updated" && event.message.text === "VOICE_CHILD_DONE",
+            ),
+          );
+          const child = harness.subagentUpdates().at(-1)?.subagent;
+          assert.equal(child?.status, "completed");
+          assert.equal(child?.result, "VOICE_CHILD_DONE");
+          assert.isFalse(yield* harness.hasPendingBackgroundWork);
+          const duplicate = yield* Effect.flip(
+            harness.runtime.startTurn({
+              ...completedInput,
+              message: { ...completedInput.message, messageId: completed!.messageId! },
+            }),
+          );
+          assert.include(String(duplicate.cause), "already been claimed");
+          const request = harness.continuationRequests[1];
           assert.equal(request?.origin, "voice");
           assert.equal(request?.delivery, "message_text");
           assert.equal(request?.detail, "run the tests");
           assert.equal(request?.providerThreadId, harness.providerThread.id);
+          const callClosed = yield* Deferred.make<void>();
+          const closedEntries = voiceTurn("voice-raced", "already done", 4, "completed");
+          const terminalEntry = closedEntries.pop()!;
+          const closedHarness = yield* makeCodexReplayHarness(
+            makeCodexReplayTranscript({
+              scenario: "voice-completes-after-call-closed",
+              entries: [
+                ...handoffTranscript.entries.slice(
+                  0,
+                  handoffTranscript.entries.findIndex(
+                    (entry) => "label" in entry && entry.label === "turn/started/voice-raced",
+                  ),
+                ),
+                ...closedEntries,
+                {
+                  type: "emit_inbound",
+                  label: "voice closed before native turn completes",
+                  frame: {
+                    method: "thread/realtime/closed",
+                    params: { threadId: nativeThreadId },
+                  },
+                },
+                terminalEntry,
+              ],
+            }),
+            undefined,
+            undefined,
+            undefined,
+            (entry) =>
+              entry.label === "turn/completed/voice-raced"
+                ? Deferred.await(callClosed)
+                : Effect.void,
+          );
+          yield* closedHarness.runtime.startVoiceSession!({
+            providerThread: closedHarness.providerThread,
+            offerSdp: "v=offer\r\n",
+          }).pipe(
+            Stream.runDrain,
+            Effect.ensuring(Deferred.succeed(callClosed, undefined)),
+            Effect.forkScoped,
+          );
+          yield* closedHarness.until(() => closedHarness.continuationRequests.length === 1);
+          const closedRequest = closedHarness.continuationRequests[0]!;
+          const closedInput = makeCodexTestTurnInput({
+            threadId: closedHarness.threadId,
+            providerThread: closedHarness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("voice-adopted-after-close"),
+            text: closedRequest.detail!,
+          });
+          yield* closedHarness.runtime.startTurn({
+            ...closedInput,
+            message: { ...closedInput.message, messageId: closedRequest.messageId! },
+          });
+          yield* closedHarness.firstTerminal;
+          assert.isTrue(
+            closedHarness.events.some(
+              (event) => event.type === "message.updated" && event.message.text === "All green.",
+            ),
+          );
+          assert.equal(closedHarness.terminalEvents()[0]?.status, "completed");
           const preamble = codexReplayPreamble({
             nativeThreadId,
             nativeTurnId: "active",
@@ -1749,6 +1998,17 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             assert.equal(spoken.message.createdBy, "user");
           }
           assert.equal(activeHarness.continuationRequests.length, 0);
+          const missingHistory = yield* Effect.flip(
+            activeHarness.runtime.startTurn({
+              ...activeInput,
+              message: {
+                ...activeInput.message,
+                messageId: completed!.messageId!,
+                creationSource: "provider",
+              },
+            }),
+          );
+          assert.include(String(missingHistory.cause), "work was not run again");
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
