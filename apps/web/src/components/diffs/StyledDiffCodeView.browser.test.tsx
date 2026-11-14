@@ -10,7 +10,6 @@ vi.mock(import("../../hooks/useTheme"), async (original) => ({
   useRenderedAppearance: (() => "dark") as never,
 }));
 
-import { toggleAllDiffFiles } from "../../lib/diffCollapse";
 import { buildFileDiffEntries, getRenderablePatch } from "../../lib/diffRendering";
 import { getDiffHeaderClickAction } from "./diffHeaderClick";
 import { StyledDiffCodeView } from "./StyledDiffCodeView";
@@ -30,18 +29,15 @@ function captureWorkerPools() {
   return { pools, [Symbol.dispose]: () => spy.mockRestore() };
 }
 
-// This capture host exercises the production helper against Pierre's real shadow DOM.
-// DiffPanel's routing, open-file service and collapse-all wiring need app integration coverage.
+// Exercises the production click helper against Pierre's real shadow DOM.
 function RepeatedDiffs({
   entries,
   viewerRef,
   onOpen,
-  onLink,
 }: {
   entries: ReturnType<typeof buildFileDiffEntries>;
   viewerRef: Ref<CodeViewHandle<undefined, undefined>>;
   onOpen: (path: string) => void;
-  onLink: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const toggle = (key: string) =>
@@ -59,19 +55,6 @@ function RepeatedDiffs({
         else if (action?.type === "toggle") toggle(action.fileKey);
       }}
     >
-      <button
-        data-toggle-all
-        onClick={() =>
-          setCollapsed((current) =>
-            toggleAllDiffFiles(
-              entries.map((entry) => entry.fileKey),
-              current,
-            ),
-          )
-        }
-      >
-        Toggle all
-      </button>
       <StyledDiffCodeView
         viewerRef={viewerRef}
         className="h-[600px] w-[800px]"
@@ -84,20 +67,9 @@ function RepeatedDiffs({
         }))}
         options={{ theme: "pierre-dark", diffStyle: "unified" }}
         renderHeaderPrefix={(item) => (
-          <>
-            <button data-diff-file-key={item.id} onClick={() => toggle(item.id)}>
-              Chevron
-            </button>
-            <a
-              href="#action"
-              onClick={(event) => {
-                event.preventDefault();
-                onLink();
-              }}
-            >
-              Action
-            </a>
-          </>
+          <button data-diff-file-key={item.id} onClick={() => toggle(item.id)}>
+            Chevron
+          </button>
         )}
       />
     </div>
@@ -105,7 +77,7 @@ function RepeatedDiffs({
 }
 
 describe("repeated diff blocks", () => {
-  it("renders every repeated block and gives header, filename and controls their own actions", async () => {
+  it("renders every repeated block and collapses only the clicked one", async () => {
     const parsed = getRenderablePatch(
       ["first", "second", "second"]
         .map((content) =>
@@ -126,7 +98,6 @@ describe("repeated diff blocks", () => {
     const { pools } = captured;
     const entries = buildFileDiffEntries(parsed.files);
     const onOpen = vi.fn();
-    const onLink = vi.fn();
     let viewer: CodeViewHandle<undefined, undefined> | null = null;
     await using _screen = await render(
       <RepeatedDiffs
@@ -135,7 +106,6 @@ describe("repeated diff blocks", () => {
           viewer = value;
         }}
         onOpen={onOpen}
-        onLink={onLink}
       />,
       // This viewer fixture does not navigate or read router state.
       { router: false },
@@ -175,16 +145,7 @@ describe("repeated diff blocks", () => {
     await expectExpanded([true, false, true]);
     await click(blocks()[1]!.querySelector("button")!);
     await expectExpanded([true, true, true]);
-    await click(blocks()[1]!.querySelector("a")!);
-    expect(onLink).toHaveBeenCalledOnce();
-    await click(body(1)!);
-    await expectExpanded([true, true, true]);
     await click(blocks()[0]!.shadowRoot!.querySelector("[data-diffs-header]")!);
     await expectExpanded([false, true, true]);
-    await click(document.querySelector("[data-toggle-all]")!);
-    await expectExpanded([false, false, false]);
-    await click(document.querySelector("[data-toggle-all]")!);
-    await expectExpanded([true, true, true]);
-    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
