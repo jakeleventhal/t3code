@@ -2040,6 +2040,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           input.runtimePolicy;
         const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const activeTurn = yield* Ref.make<ActiveAcpTurn | null>(null);
+        // Keep one settled owner so late full results can enrich its existing child rows.
+        const completedSubagentTurn = yield* Ref.make<ActiveAcpTurn | null>(null);
         // Keyed by the agent's steer id; an injection can arrive before its send returns.
         const steerInjections = new Map<string, Deferred.Deferred<void>>();
         const steerInjection = (steerId: string) => {
@@ -5160,6 +5162,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         let applyFinalizedActiveTurnSubagentTerminal: (
           context: ActiveAcpTurn,
           notification: EffectAcpSchema.SessionNotification,
+          enrichOnly?: boolean,
         ) => Effect.Effect<boolean> = () => Effect.succeed(false);
 
         const projectAgentTerminalUpdate = Effect.fnUntraced(function* (
@@ -5466,6 +5469,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             if (yield* Ref.get(stoppedRunQuarantine)) {
               return;
             }
+            const completed = yield* Ref.get(completedSubagentTurn);
+            if (
+              completed !== null &&
+              completed.nativeThreadId === (yield* Ref.get(activeSessionId)) &&
+              (yield* applyFinalizedActiveTurnSubagentTerminal(completed, notification, true))
+            )
+              return;
             const bufferOutcome = yield* bufferPostSettleWake(notification);
             // Completed roots retain subscribers and can project terminals now; interrupted roots may lack runId ownership.
             const carryover = yield* Ref.get(carryoverSubagents);
@@ -5548,6 +5558,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             if (wakeOutcome.stopProcessing) {
               return;
             }
+            if (completed?.subagentsBySessionId.has(notification.sessionId)) return;
             if (
               notification.sessionId !==
               ((yield* Ref.get(loadingSessionId)) ?? (yield* Ref.get(activeSessionId)))
@@ -6524,6 +6535,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         applyFinalizedActiveTurnSubagentTerminal = Effect.fnUntraced(function* (
           context: ActiveAcpTurn,
           notification: EffectAcpSchema.SessionNotification,
+          enrichOnly = false,
         ) {
           if (flavor.extractSubagentUpdate === undefined) return false;
 
@@ -6532,6 +6544,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             update: AcpAdapterV2SubagentUpdate,
           ) {
             if (!acpSubagentStatusIsTerminal(update.status)) return false;
+            if (enrichOnly && !acpSubagentStatusIsTerminal(subagent.task.status)) return false;
             if (acpSubagentStatusIsTerminal(subagent.task.status)) {
               if (
                 context.finalizedStatus !== "completed" ||
@@ -7546,6 +7559,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* Ref.set(midTurnUnreportedCompletedTaskIds, new Set());
                 yield* Ref.set(handledBackgroundTaskIdsInActiveTurn, new Set());
                 yield* Ref.set(carryoverSubagents, null);
+                yield* Ref.set(completedSubagentTurn, null);
                 yield* Ref.set(suppressPostSettleMonitorPrompt, false);
                 yield* Ref.set(lastTurnRoute, null);
               }),
@@ -7611,17 +7625,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const mcpContext = yield* readMcpContext(threadId);
           const activationOptions = acpMcpActivation(mcpContext);
           prepareTerminalEnvironment(mcpContext, sessionId);
-          yield* Ref.set(loadingSessionId, sessionId);
-          const activated = yield* Effect.gen(function* () {
-            return canLoadSession
-              ? yield* runtime.loadSession(sessionId, activationOptions)
-              : canResumeSession
-                ? yield* runtime.resumeSession(sessionId, activationOptions)
-                : yield* new ProviderAdapter.ProviderAdapterProtocolError({
-                    driver,
-                    detail: `ACP driver cannot load or resume session ${sessionId}`,
-                  });
-          }).pipe(Effect.onError(() => Ref.set(loadingSessionId, null)));
+          yield* Ref.set(completedSubagentTurn, null);
+          const activated = canLoadSession
+            ? yield* runtime.loadSession(sessionId, activationOptions)
+            : canResumeSession
+              ? yield* runtime.resumeSession(sessionId, activationOptions)
+              : yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver,
+                  detail: `ACP driver cannot load or resume session ${sessionId}`,
+                });
           rememberTerminalEnvironment(activated.sessionId, yield* readMcpContext(threadId));
           return activated;
         });
@@ -8057,6 +8069,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               yield* Ref.set(detachedBackgroundCommands, new Map());
               yield* Ref.set(midTurnUnreportedCompletedTaskIds, new Set());
               yield* Ref.set(carryoverSubagents, null);
+              yield* Ref.set(completedSubagentTurn, null);
               yield* Ref.set(lastTurnRoute, null);
             }),
           );
@@ -8238,6 +8251,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               });
             }
           }
+          yield* Ref.set(
+            completedSubagentTurn,
+            settledStatus === "completed" && !directStopQuarantine && context.subagents.size > 0
+              ? context
+              : null,
+          );
           yield* Ref.set(activeTurn, null);
           if (settledStatus === "completed" && !directStopQuarantine) {
             yield* detachBackgroundCommands(context);
@@ -9808,10 +9827,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       snapshotInput.providerThread.appThreadId,
                     );
                     prepareTerminalEnvironment(mcpContext, sessionId);
-                    yield* Ref.set(loadingSessionId, sessionId);
-                    const activated = yield* runtime
-                      .loadSession(sessionId, acpMcpActivation(mcpContext))
-                      .pipe(Effect.onError(() => Ref.set(loadingSessionId, null)));
+                    yield* Ref.set(completedSubagentTurn, null);
+                    const activated = yield* runtime.loadSession(
+                      sessionId,
+                      acpMcpActivation(mcpContext),
+                    );
                     rememberTerminalEnvironment(
                       activated.sessionId,
                       yield* readMcpContext(snapshotInput.providerThread.appThreadId),
