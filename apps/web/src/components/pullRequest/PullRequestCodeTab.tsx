@@ -58,7 +58,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
-import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import {
@@ -138,7 +138,7 @@ import { GuideChapterPanel } from "./guide/GuideChapterPanel";
 import { ReviewChapterHeader, ReviewChapterProgress } from "./ReviewChapterHeader";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { useHideTestFiles } from "../diffs/useHideTestFiles";
-import { diffFileTreeEntries, orderDiffFilesLikeTree } from "../diffs/diffFileTree.logic";
+import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView, type StyledDiffCodeViewOptions } from "../diffs/StyledDiffCodeView";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -685,14 +685,6 @@ function PullRequestCodeTab({
       refreshing: null,
     }));
   }
-  // The refresh button rereads from the first page rather than the page the reader is on:
-  // pages are positions in one snapshot of the diff, and a fresh snapshot starts over.
-  const refreshFirstDiffPage = useAtomRefresh(
-    pullRequestEnvironment.diff({
-      environmentId,
-      input: { ...reference, ...(commit === null ? {} : { commit }) },
-    }),
-  );
   const reviewKey = usePullRequestReviewKey(environmentId, reference);
   const [editingReviewKey, setEditingReviewKey] = useState(reviewKey);
   if (editingReviewKey !== reviewKey) {
@@ -758,74 +750,7 @@ function PullRequestCodeTab({
   const refreshWithheldFiles = useEffectEvent(() => {
     for (const path of withheldPaths) atomRegistry.refresh(withheldFileDiff(path));
   });
-  const appliedRefresh = useRef({ refreshToken, backgroundRefreshToken });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes mounted review pages from the environment query cache
-  useEffect(() => {
-    const previous = appliedRefresh.current;
-    appliedRefresh.current = { refreshToken, backgroundRefreshToken };
-    if (
-      previous.refreshToken === refreshToken &&
-      previous.backgroundRefreshToken === backgroundRefreshToken
-    )
-      return;
-    registry.refresh(
-      pullRequestEnvironment.diff({
-        environmentId,
-        input: { ...reference, ...(commit === null ? {} : { commit }) },
-      }),
-    );
-    setAppliedPage(null);
-    // Stage a fresh walk while all displayed pages keep the reader's scroll geometry.
-    setSliceState((current) => ({
-      ...retainReviewDiffSlices(current, scopeKey),
-      refreshing: [],
-    }));
-    refreshWithheldFiles();
-    refreshFilesViewed();
-  }, [
-    refreshToken,
-    backgroundRefreshToken,
-    environmentId,
-    reference,
-    commit,
-    scopeKey,
-    registry,
-    refreshFilesViewed,
-  ]);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- invalidates the next cached environment diff page before advancing its refresh walk
-  useEffect(() => {
-    const last = sliceState.refreshing?.at(-1);
-    if (
-      !last ||
-      last.cursor !== cursor ||
-      last.nextCursor === null ||
-      diffQuery.isPending ||
-      diffQuery.error !== null
-    )
-      return;
-    registry.refresh(
-      pullRequestEnvironment.diff({
-        environmentId,
-        input: { ...reference, cursor: last.nextCursor, ...(commit === null ? {} : { commit }) },
-      }),
-    );
-    // oxlint-disable-next-line react/set-state-in-effect -- Advance only after invalidating the cached next page.
-    setSliceState((current) =>
-      current.refreshing?.at(-1) === last ? { ...current, cursor: last.nextCursor } : current,
-    );
-  }, [
-    sliceState.refreshing,
-    cursor,
-    diffQuery.isPending,
-    diffQuery.error,
-    registry,
-    environmentId,
-    reference,
-    commit,
-  ]);
-
   const codeViewReveal = useCodeViewFileReveal();
-  const answeredRevealNonce = useRef<number | null>(null);
 
   const {
     parsedSlices,
@@ -934,7 +859,24 @@ function PullRequestCodeTab({
         return path === revealRequest?.path || path === linkPath || !isTestChangedFile(path);
       })
     : loadedFiles;
-  const hiddenTestFileCount = loadedFiles.length - files.length;
+  const filePaths = files.map((file) => resolveFileDiffPath(file));
+  // Offered under a commit scope as well as from the whole change, because reading a change one
+  // commit at a time is what the scope is for. The tick is kept against the change request rather
+  // than the scope it was made in, so clearing a file here clears it everywhere.
+  const viewedFilesStore = detail.capabilities.viewedFiles;
+  const filesViewed = usePullRequestFilesViewed({
+    environmentId,
+    reference,
+    enabled: viewedFilesStore !== undefined,
+    paths: filePaths,
+  });
+  const {
+    setViewed,
+    refresh: refreshFilesViewed,
+    enabled: filesViewedEnabled,
+    isViewed: isFileViewed,
+    isStale: isFileViewedStale,
+  } = filesViewed;
   // A stale mark means the file changed since it was viewed; Fold all and Expand all outrank marks.
   const foldsAsViewed = (path: string) =>
     foldOverride === null && filesViewedEnabled && isFileViewed(path) && !isFileViewedStale(path);
@@ -974,56 +916,73 @@ function PullRequestCodeTab({
   ) {
     setSelectedLines(null);
   }
-  const filePaths = files.map((file) => resolveFileDiffPath(file));
-  // Offered under a commit scope as well as from the whole change, because reading a change one
-  // commit at a time is what the scope is for. The tick is kept against the change request rather
-  // than the scope it was made in, so clearing a file here clears it everywhere.
-  const viewedFilesStore = detail.capabilities.viewedFiles;
-  const filesViewed = usePullRequestFilesViewed({
+  const appliedRefresh = useRef({ refreshToken, backgroundRefreshToken });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes mounted review pages from the environment query cache
+  useEffect(() => {
+    const previous = appliedRefresh.current;
+    appliedRefresh.current = { refreshToken, backgroundRefreshToken };
+    if (
+      previous.refreshToken === refreshToken &&
+      previous.backgroundRefreshToken === backgroundRefreshToken
+    )
+      return;
+    registry.refresh(
+      pullRequestEnvironment.diff({
+        environmentId,
+        input: { ...reference, ...(commit === null ? {} : { commit }) },
+      }),
+    );
+    setAppliedPage(null);
+    // Stage a fresh walk while all displayed pages keep the reader's scroll geometry.
+    setSliceState((current) => ({
+      ...retainReviewDiffSlices(current, scopeKey),
+      refreshing: [],
+    }));
+    refreshWithheldFiles();
+    refreshFilesViewed();
+  }, [
+    refreshToken,
+    backgroundRefreshToken,
     environmentId,
     reference,
-    enabled: viewedFilesStore !== undefined,
-    paths: filePaths,
-  });
-  const {
-    setViewed,
-    refresh: refreshFilesViewed,
-    enabled: filesViewedEnabled,
-    isViewed: isFileViewed,
-    isStale: isFileViewedStale,
-  } = filesViewed;
-  const appliedRefreshToken = useRef(refreshToken);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new refresh token clears loaded slices and refetches the first diff page and viewed files
+    commit,
+    scopeKey,
+    registry,
+    refreshFilesViewed,
+  ]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- invalidates the next cached environment diff page before advancing its refresh walk
   useEffect(() => {
-    if (appliedRefreshToken.current === refreshToken) return;
-    appliedRefreshToken.current = refreshToken;
-    setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
-    // An equal refetch keeps the answer's identity, so the emptied slices refill only if the
-    // applied page is forgotten too.
-    setAppliedPage(null);
-    refreshFirstDiffPage();
-    refreshWithheldFiles();
-    refreshFilesViewed();
-  }, [refreshToken, scopeKey, refreshFirstDiffPage, refreshFilesViewed]);
-  const appliedBackgroundRefreshToken = useRef(backgroundRefreshToken);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a background refresh token refetches the first diff page and viewed files while keeping slices
-  useEffect(() => {
-    if (appliedBackgroundRefreshToken.current === backgroundRefreshToken) return;
-    appliedBackgroundRefreshToken.current = backgroundRefreshToken;
-    // Keeping slices mounted preserves scroll; the page merge invalidates changed pages.
-    setSliceState((previous) => ({ ...previous, cursor: null }));
-    refreshFirstDiffPage();
-    refreshWithheldFiles();
-    refreshFilesViewed();
-  }, [backgroundRefreshToken, refreshFirstDiffPage, refreshFilesViewed]);
-  const nextCursor = loadedSlices.at(-1)?.nextCursor ?? null;
-  // What a slice withheld: the host declining to inline part of it, or a patch the viewer could
-  // not structure and so dropped. Neither says anything about there being more to fetch.
-  const withheldContent =
-    loadedSlices.some((slice) => slice.truncated) ||
-    parsedSlices.some((parsed) => parsed?.kind === "raw");
+    const last = sliceState.refreshing?.at(-1);
+    if (
+      !last ||
+      last.cursor !== cursor ||
+      last.nextCursor === null ||
+      diffQuery.isPending ||
+      diffQuery.error !== null
+    )
+      return;
+    registry.refresh(
+      pullRequestEnvironment.diff({
+        environmentId,
+        input: { ...reference, cursor: last.nextCursor, ...(commit === null ? {} : { commit }) },
+      }),
+    );
+    // oxlint-disable-next-line react/set-state-in-effect -- Advance only after invalidating the cached next page.
+    setSliceState((current) =>
+      current.refreshing?.at(-1) === last ? { ...current, cursor: last.nextCursor } : current,
+    );
+  }, [
+    sliceState.refreshing,
+    cursor,
+    diffQuery.isPending,
+    diffQuery.error,
+    registry,
+    environmentId,
+    reference,
+    commit,
+  ]);
 
-  const codeViewReveal = useCodeViewFileReveal();
+  const nextCursor = loadedSlices.at(-1)?.nextCursor ?? null;
   // Placing a conversation takes more than its file being in the diff: its line has to fall
   // inside a hunk that was rendered. One that does not is drawn nowhere, so it belongs in the
   // off-diff list rather than disappearing between the two.
@@ -1179,34 +1138,6 @@ function PullRequestCodeTab({
   const withheldContent =
     loadedSlices.some((slice) => slice.truncated) ||
     parsedSlices.some((parsed) => parsed?.kind === "raw");
-  // Keep the sentinel until all pages load; returning raw slices early would stop pagination.
-  const rawSlices =
-    nextCursor === null
-      ? parsedSlices.flatMap((parsed) => (parsed?.kind === "raw" ? [parsed] : []))
-      : [];
-  const rawSlicesView =
-    files.length === 0 && rawSlices.length > 0 ? (
-      <div className="space-y-4 px-4 py-5">
-        {rawSlices.map((slice) => (
-          <div key={`${slice.reason}:${slice.text.slice(0, 64)}`} className="space-y-2">
-            <p className="text-xs text-muted-foreground">{slice.reason}</p>
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{slice.text}</pre>
-          </div>
-        ))}
-      </div>
-    ) : null;
-  const unstructured =
-    rawSlices.length === 0 ? null : (
-      <div className="space-y-4 border-t border-border/60 px-4 py-5">
-        {rawSlices.map((slice) => (
-          <div key={`${slice.reason}:${slice.text.slice(0, 64)}`} className="space-y-2">
-            <p className="text-xs text-muted-foreground">{slice.reason}</p>
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{slice.text}</pre>
-          </div>
-        ))}
-      </div>
-    );
-
   const commentCounts = reviewCommentCounts(
     files.map((file) => ({
       path: resolveFileDiffPath(file),
@@ -1273,7 +1204,9 @@ function PullRequestCodeTab({
           fileDiff,
           annotations,
           collapsed,
-          version: fnv1a32(`${fileContentVersion(fileDiff)}:${collapsed ? "1" : "0"}:${viewedMark}:${annotationsVersion}`),
+          version: fnv1a32(
+            `${fileContentVersion(fileDiff)}:${collapsed ? "1" : "0"}:${viewedMark}:${annotationsVersion}`,
+          ),
         };
       },
     ))();
@@ -1383,7 +1316,7 @@ function PullRequestCodeTab({
   const revealFile = (path: string, range?: SelectedLineRange) => {
     const file = filteredFiles.find((candidate) => candidate.path === path);
     if (file && groupByType) setSelectedChapter(reviewFileGroup(path));
-    const item = file ? { id: file.fileKey } : undefined;
+    const item = file ? { id: file.fileKey, fileDiff: file.fileDiff } : undefined;
     if (item === undefined) return;
     // Record the unfold even when already open, so a Viewed mark that loads later cannot fold it.
     setFoldChoices((current) => withFileDiffFold(current, item.id, false));
@@ -2554,17 +2487,6 @@ function PullRequestCodeTab({
                   return;
                 }
               }
-              if (node.hasAttribute("data-viewed-toggle")) return;
-              if (node.hasAttribute("data-diffs-header")) {
-                const filePath = node.querySelector("[data-title]")?.textContent?.trim();
-                if (filePath === undefined || filePath === "") return;
-                const item = items.find(
-                  (candidate) => resolveFileDiffPath(candidate.fileDiff) === filePath,
-                );
-                if (item !== undefined) toggleFile(item.id);
-                return;
-              }
-            }
             }}
           >
             {/* The viewer virtualizes against the element it is told is scrolling and places its
@@ -2582,16 +2504,16 @@ function PullRequestCodeTab({
                 viewerRef={codeViewReveal.attach}
                 items={items}
                 selectedLines={selectedLines}
-              onSelectedLinesChange={(selection) => {
-                if (selection !== null && !isCurrentFileRendered(selection.id)) return;
-                const contentVersion =
-                  selection === null ? undefined : contentVersions.get(selection.id);
-                setSelectedLines(
-                  selection !== null && contentVersion !== undefined
-                    ? { ...selection, contentVersion, scopeKey }
-                    : null,
-                );
-              }}
+                onSelectedLinesChange={(selection) => {
+                  if (selection !== null && !isCurrentFileRendered(selection.id)) return;
+                  const contentVersion =
+                    selection === null ? undefined : contentVersions.get(selection.id);
+                  setSelectedLines(
+                    selection !== null && contentVersion !== undefined
+                      ? { ...selection, contentVersion, scopeKey }
+                      : null,
+                  );
+                }}
                 options={diffViewOptions}
                 // The viewer owns the scroll container, so the sentinel that asks for the next slice
                 // has to live inside it — at the end of the files, where reaching it means the reader

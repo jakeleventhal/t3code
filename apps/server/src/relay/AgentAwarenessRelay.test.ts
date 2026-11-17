@@ -948,68 +948,6 @@ describe("AgentAwarenessRelay", () => {
       }),
   );
 
-  it.effect("restores a snoozed result after startup backfill without an unsnooze event", () =>
-    Effect.gen(function* () {
-      const snoozed = shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) });
-      const { relay, currentShell, publications } = yield* makeTestRelay({
-        catchUpThreads: [snoozed],
-      });
-      yield* Ref.set(currentShell, snoozed);
-      yield* relay.start();
-      yield* TestClock.adjust("1 second");
-      yield* relay.drain;
-      assert.equal(publications.length, 0);
-      yield* TestClock.adjust("59 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "woke");
-      assert.equal(publications.at(-1)?.replay, false);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("reschedules a changed snooze deadline and ignores the old deadline", () =>
-    Effect.gen(function* () {
-      const { relay, currentShell, publications } = yield* makeTestRelay();
-      const completed = shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) });
-      yield* Ref.set(currentShell, completed);
-      yield* relay.publishThread(THREAD_ID);
-      yield* TestClock.adjust("5 seconds");
-      yield* relay.drain;
-      yield* Ref.set(currentShell, { ...completed, snoozedUntil: DateTime.makeUnsafe(120_000) });
-      yield* relay.publishThread(THREAD_ID);
-      yield* TestClock.adjust("5 seconds");
-      yield* relay.drain;
-      const before = publications.length;
-      yield* TestClock.adjust("50 seconds");
-      yield* relay.drain;
-      assert.equal(publications.length, before);
-      yield* TestClock.adjust("60 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "woke");
-    }),
-  );
-
-  it.effect("restores a snoozed result at expiry without another domain event or alert", () =>
-    Effect.gen(function* () {
-      const { relay, currentShell, publications } = yield* makeTestRelay();
-      const completed = shell({ status: "completed" });
-      yield* Ref.set(currentShell, completed);
-      yield* relay.publishThread(THREAD_ID);
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-      yield* Ref.set(currentShell, {
-        ...completed,
-        snoozedUntil: DateTime.makeUnsafe(60_000),
-      });
-      yield* relay.publishThread(THREAD_ID);
-      yield* TestClock.adjust("5 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state, null);
-      yield* TestClock.adjust("55 seconds");
-      yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "woke");
-      assert.equal(publications.at(-1)?.replay, false);
-    }),
-  );
-
   it.effect("does not mistake two untimestamped completions for the same result", () =>
     Effect.gen(function* () {
       const { relay, currentShell, publications } = yield* makeTestRelay();
@@ -1117,7 +1055,7 @@ describe("AgentAwarenessRelay", () => {
         yield* relay.drain;
         assert.deepEqual(
           publications.map((publication) => publication.state?.phase ?? null),
-          [null, "woke"],
+          ["running", null, "woke"],
         );
       }),
   );
@@ -1356,8 +1294,8 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications.length, 0);
       yield* TestClock.adjust("59 seconds");
       yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-      assert.equal(publications.at(-1)?.replay, true);
+      assert.equal(publications.at(-1)?.state?.phase, "woke");
+      assert.equal(publications.at(-1)?.replay, false);
     }).pipe(Effect.scoped),
   );
 
@@ -1379,7 +1317,7 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications.length, before);
       yield* TestClock.adjust("60 seconds");
       yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
+      assert.equal(publications.at(-1)?.state?.phase, "woke");
     }),
   );
 
@@ -1426,7 +1364,7 @@ describe("AgentAwarenessRelay", () => {
     }),
   );
 
-  it.effect("restores a snoozed result at expiry without another domain event or alert", () =>
+  it.effect("publishes the snooze wake once and alerts for a later completion", () =>
     Effect.gen(function* () {
       const { relay, currentShell, publications } = yield* makeTestRelay();
       yield* TestClock.adjust("1 second");
@@ -1451,8 +1389,8 @@ describe("AgentAwarenessRelay", () => {
       assert.equal(publications.at(-1)?.state, null);
       yield* TestClock.adjust("55 seconds");
       yield* relay.drain;
-      assert.equal(publications.at(-1)?.state?.phase, "completed");
-      assert.equal(publications.at(-1)?.replay, true);
+      assert.equal(publications.at(-1)?.state?.phase, "woke");
+      assert.equal(publications.at(-1)?.replay, false);
       yield* Ref.set(currentShell, shell());
       yield* relay.publishThread(THREAD_ID);
       yield* TestClock.adjust("10 seconds");

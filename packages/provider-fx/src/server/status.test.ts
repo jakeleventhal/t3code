@@ -75,6 +75,7 @@ const check = (
   previousFullAccess = false,
   statusCode = 0,
   statusDelay: Duration.Input = 0,
+  statusSpawned?: Deferred.Deferred<void>,
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -102,10 +103,20 @@ const check = (
       return Effect.gen(function* () {
         if (args === "--version" && versionSpawned)
           yield* Deferred.succeed(versionSpawned, undefined);
+        if (args === "status --json" && backend === undefined && statusSpawned)
+          yield* Deferred.succeed(statusSpawned, undefined);
         return processHandle(
           stdout ?? "",
-          stdout === undefined ? 2 : args === "status --json" && backend === undefined ? statusCode : 0,
-          args === "--version" ? Effect.sleep(versionDelay) : args === "status --json" && backend === undefined ? Effect.sleep(statusDelay) : Effect.void,
+          stdout === undefined
+            ? 2
+            : args === "status --json" && backend === undefined
+              ? statusCode
+              : 0,
+          args === "--version"
+            ? Effect.sleep(versionDelay)
+            : args === "status --json" && backend === undefined
+              ? Effect.sleep(statusDelay)
+              : Effect.void,
         );
       });
     });
@@ -301,12 +312,23 @@ describe("checkFxProviderStatus", () => {
         { output: "{}", code: 0, delay: "Infinity", expected: true },
         { output: "{}", code: 0, delay: 0, expected: false },
       ] as const) {
-        const fiber = yield* check({ " status --json": row.output }, [], 0, undefined, "home", true, row.code, row.delay).pipe(Effect.forkChild);
+        const statusSpawned = yield* Deferred.make<void>();
+        const fiber = yield* check(
+          { " status --json": row.output },
+          [],
+          0,
+          undefined,
+          "home",
+          true,
+          row.code,
+          row.delay,
+          statusSpawned,
+        ).pipe(Effect.forkChild);
+        yield* Deferred.await(statusSpawned);
         yield* TestClock.adjust("10 seconds");
         const result = yield* Fiber.join(fiber);
         assert.equal(result.draft.supportedRuntimeModes?.includes("full-access"), row.expected);
       }
-
     }),
   );
 

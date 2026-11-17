@@ -342,6 +342,8 @@ describe("live widget activity", () => {
       workingCount: 1,
       attentionCount: 0,
       totalCount: null,
+      unreadCount: null,
+      pendingCount: null,
       activities: [row()],
     });
     live.set(ENVIRONMENT, [row(ENVIRONMENT, ThreadId.make("different-task"))]);
@@ -378,6 +380,13 @@ describe("live widget activity", () => {
     const result = reconcileWidgetActivity(new Map([[ENVIRONMENT, localRows]]), snapshot([row()]));
     expect(result.activeCount).toBe(9);
     expect(result.activities).toHaveLength(5);
+    const unread = { ...row(ENVIRONMENT, ThreadId.make("unread"), "completed"), unread: true };
+    const read = { ...row(ENVIRONMENT, ThreadId.make("read"), "completed"), unread: false };
+    const mixed = reconcileWidgetActivity(new Map([[ENVIRONMENT, [...localRows, unread, read]]]), {
+      aggregate: null,
+    });
+    expect(mixed).toMatchObject({ unreadCount: 1, pendingCount: 9 });
+    expect(mixed.activities[0]?.threadId).toBe(unread.threadId);
   });
 
   it("does not turn an incomplete legacy count into an exact mixed count", () => {

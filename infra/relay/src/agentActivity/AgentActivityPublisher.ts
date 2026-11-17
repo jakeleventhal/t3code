@@ -98,7 +98,6 @@ const make = Effect.gen(function* () {
           target,
           aggregate: liveActivityAggregate,
           state: input.deliveryUser.notificationsEnabled ? input.state : null,
-          replay: input.replay ?? false,
           ...(input.replay && input.state
             ? {
                 replayThread: {

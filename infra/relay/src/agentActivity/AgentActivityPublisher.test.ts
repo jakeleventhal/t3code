@@ -35,78 +35,6 @@ const widgetLayer = Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
       apnsReason: null,
       apnsId: null,
     }),
-  it.effect(
-    "keeps all five display rows while passing off-card state to notification delivery",
-    () => {
-      const completed: RelayAgentActivityState = {
-        ...state,
-        phase: "completed",
-        unread: true,
-        retained: true,
-      };
-      const failures = Array.from({ length: 5 }, (_, i) => ({
-        ...state,
-        threadId: `failure-${i}` as RelayAgentActivityState["threadId"],
-        phase: "failed" as const,
-        unread: true,
-        retained: true,
-      }));
-      const sent: Array<Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendForTarget"]>[0]> =
-        [];
-      return Effect.gen(function* () {
-        const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
-        const input = {
-          environmentId: state.environmentId,
-          environmentPublicKey: "key",
-          threadId: state.threadId,
-          state: completed,
-        };
-        yield* publisher.publish(input);
-        expect(sent[0]?.aggregate?.activities).toHaveLength(5);
-        expect(sent[0]?.aggregate?.activities.some((row) => row.threadId === state.threadId)).toBe(
-          false,
-        );
-        expect(sent[0]?.state).toBe(completed);
-        expect(sent[0]?.replay).toBe(false);
-        yield* publisher.publish({ ...input, replay: true });
-        expect(sent[1]?.replay).toBe(true);
-      }).pipe(
-        Effect.provide(
-          layerPublisher.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                Layer.succeed(
-                  AgentActivityRows.AgentActivityRows,
-                  makeAgentActivityRows({
-                    listForUser: () => Effect.succeed([...failures, completed]),
-                  }),
-                ),
-                Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
-                Layer.succeed(
-                  LiveActivities.LiveActivities,
-                  makeLiveActivities({
-                    listTargets: () =>
-                      Effect.succeed([{ ...target("ios"), activity_push_token: "token" }]),
-                  }),
-                ),
-                Layer.succeed(
-                  ApnsDeliveries.ApnsDeliveries,
-                  makeApnsDeliveries({
-                    sendForTarget: (input) =>
-                      Effect.sync(() => {
-                        sent.push(input);
-                        return null;
-                      }),
-                  }),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    },
-  );
-
 });
 
 const layerPublisher = AgentActivityPublisher.layer.pipe(
@@ -767,6 +695,77 @@ describe("AgentActivityPublisher", () => {
       }).pipe(
         Effect.provide(
           layerPublisher.pipe(Layer.provide(deliveriesLayer), Layer.provide(dependencies)),
+        ),
+      );
+    },
+  );
+  it.effect(
+    "keeps all five display rows while passing off-card state to notification delivery",
+    () => {
+      const completed: RelayAgentActivityState = {
+        ...state,
+        phase: "completed",
+        unread: true,
+        retained: true,
+      };
+      const failures = Array.from({ length: 5 }, (_, i) => ({
+        ...state,
+        threadId: `failure-${i}` as RelayAgentActivityState["threadId"],
+        phase: "failed" as const,
+        unread: true,
+        retained: true,
+      }));
+      const sent: Array<Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendForTarget"]>[0]> =
+        [];
+      return Effect.gen(function* () {
+        const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
+        const input = {
+          environmentId: state.environmentId,
+          environmentPublicKey: "key",
+          threadId: state.threadId,
+          state: completed,
+        };
+        yield* publisher.publish(input);
+        expect(sent[0]?.aggregate?.activities).toHaveLength(5);
+        expect(sent[0]?.aggregate?.activities.some((row) => row.threadId === state.threadId)).toBe(
+          false,
+        );
+        expect(sent[0]?.state).toBe(completed);
+        expect(sent[0]?.replay).toBe(false);
+        yield* publisher.publish({ ...input, replay: true });
+        expect(sent[1]?.replay).toBe(true);
+      }).pipe(
+        Effect.provide(
+          layerPublisher.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  AgentActivityRows.AgentActivityRows,
+                  makeAgentActivityRows({
+                    listForUser: () => Effect.succeed([...failures, completed]),
+                  }),
+                ),
+                Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
+                Layer.succeed(
+                  LiveActivities.LiveActivities,
+                  makeLiveActivities({
+                    listTargets: () =>
+                      Effect.succeed([{ ...target("ios"), activity_push_token: "token" }]),
+                  }),
+                ),
+                Layer.succeed(
+                  ApnsDeliveries.ApnsDeliveries,
+                  makeApnsDeliveries({
+                    sendForTarget: (input) =>
+                      Effect.sync(() => {
+                        sent.push(input);
+                        return null;
+                      }),
+                  }),
+                ),
+              ),
+            ),
+          ),
         ),
       );
     },

@@ -171,8 +171,11 @@ export function extractFxSubagentUpdate(
   const hooks = Option.getOrUndefined(decodeHookStateMeta(tool.data.meta))?.[HOOK_STATE_META_KEY];
   const text = Option.getOrUndefined(decodeFxToolContent(tool.data.content))?.[0]?.content.text;
   const outcome = text === undefined ? undefined : fxSubagentOutcome(text);
-  const failure = Option.getOrUndefined(text === undefined ? Option.none() : decodeFxToolError(text))?.error;
-  const fallback = outcome?.result ?? failure?.details?.error ?? failure?.message ?? failure?.code ?? text ?? null;
+  const failure = Option.getOrUndefined(
+    text === undefined ? Option.none() : decodeFxToolError(text),
+  )?.error;
+  const fallback =
+    outcome?.result ?? failure?.details?.error ?? failure?.message ?? failure?.code ?? text ?? null;
   if (hooks !== undefined) {
     const status = hookedSubagentStatus(tool, hooks);
     return {

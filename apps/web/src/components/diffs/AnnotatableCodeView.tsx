@@ -14,7 +14,6 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import {
   buildFileDiffContentVersion,
   fnv1a32,
-  resolveFileDiffPath,
   resolveFileDiffPreviousPath,
 } from "~/lib/diffRendering";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -351,6 +350,12 @@ export function AnnotatableCodeView({
     },
   );
 
+  const isCurrentContextFile = useStableCallback(
+    (file: (typeof files)[number]) =>
+      isCurrentFileRendered(file.fileKey) &&
+      filesByKey.get(file.fileKey)?.fileVersion === file.fileVersion,
+  );
+
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Attach the context-menu listener to the mounted diff host.
   useEffect(() => {
     if (!container || (!onStageLines && !onRevertLines)) return;
@@ -363,7 +368,7 @@ export function AnnotatableCodeView({
       );
       const host = path.find((entry) => entry.dataset.t3DiffFileKey !== undefined);
       const file = host ? filesByKey.get(host.dataset.t3DiffFileKey ?? "") : undefined;
-      if (!line || !file) return;
+      if (!line || !file || !isCurrentContextFile(file)) return;
       const point = selectionPoint(line);
       if (!point) return;
       const range =
@@ -380,7 +385,16 @@ export function AnnotatableCodeView({
       if (!api) return;
       event.preventDefault();
       event.stopPropagation();
-      setSelectedLines({ id: file.fileKey, range });
+      setSelectedLines({
+        id: file.fileKey,
+        range,
+        anchor: {
+          fileKey: file.fileKey,
+          fileVersion: file.fileVersion,
+          filePath: file.filePath,
+          previousFilePath: resolveFileDiffPreviousPath(file.fileDiff),
+        },
+      });
       const label = stageLinesAction === "stage" ? "Stage" : "Unstage";
       const singleLine = range.start === range.end && (range.endSide ?? range.side) === range.side;
       void api.contextMenu
@@ -401,7 +415,11 @@ export function AnnotatableCodeView({
           { x: event.clientX, y: event.clientY },
         )
         .then((action) => {
-          if (action !== "stage-lines" && action !== "revert-lines") return;
+          if (
+            (action !== "stage-lines" && action !== "revert-lines") ||
+            !isCurrentContextFile(file)
+          )
+            return;
           setSelectedLines(null);
           if (action === "stage-lines") onStageLines?.(file.fileDiff, range);
           else onRevertLines?.(file.fileDiff, range);
@@ -411,6 +429,7 @@ export function AnnotatableCodeView({
     return () => container.removeEventListener("contextmenu", onContextMenu);
   }, [
     container,
+    isCurrentContextFile,
     filesByKey,
     selectedLines,
     onStageLines,

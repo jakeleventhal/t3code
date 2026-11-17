@@ -569,6 +569,8 @@ function widgetPropsFromAggregate(
     workingCount: aggregate.workingCount,
     attentionCount: aggregate.attentionCount,
     totalCount: aggregate.totalCount,
+    unreadCount: aggregate.unreadCount,
+    pendingCount: aggregate.pendingCount,
     updatedAt: aggregate.updatedAt,
     activities: aggregate.activities,
   };
@@ -588,6 +590,8 @@ function publishRegularWidget(props: AgentActivityProps): void {
   // Streaming text changes shell timestamps without changing widget content.
   const content = JSON.stringify({
     activeCount: props.activeCount,
+    unreadCount: props.unreadCount,
+    pendingCount: props.pendingCount,
     workingCount: props.workingCount,
     attentionCount: props.attentionCount,
     totalCount: props.totalCount,
@@ -1372,7 +1376,11 @@ export const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
       snapshot && "liveActivityAggregate" in snapshot
         ? snapshot.liveActivityAggregate
         : snapshot?.aggregate;
-    if (activities.length === 0 && aggregate && (aggregate.pendingCount ?? aggregate.activeCount) > 0) {
+    if (
+      activities.length === 0 &&
+      aggregate &&
+      (aggregate.pendingCount ?? aggregate.activeCount) > 0
+    ) {
       const primed = yield* Effect.try({
         try: () =>
           startAgentLiveActivity(widgetPropsFromAggregate(aggregate), liveActivityStaleDate()),

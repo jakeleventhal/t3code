@@ -75,7 +75,6 @@ export class AgentActivityRows extends Context.Service<
     }) => Effect.Effect<void, AgentActivityRowUpsertPersistenceError>;
     readonly pruneTerminal: (input: {
       readonly updatedBefore: string;
-      readonly retainedBefore: string;
     }) => Effect.Effect<void, AgentActivityRowPruneTerminalPersistenceError>;
     readonly remove: (input: {
       readonly environmentId: string;
@@ -226,12 +225,10 @@ const make = Effect.gen(function* () {
           and(
             sql`${relayAgentActivityRows.stateJson} ->> 'phase' IN ('completed', 'failed')`,
             or(
-              and(
-                sql`COALESCE(${relayAgentActivityRows.stateJson} ->> 'retained', 'false') != 'true'`,
-                lt(relayAgentActivityRows.updatedAt, input.updatedBefore),
-              ),
-              lt(relayAgentActivityRows.updatedAt, input.retainedBefore),
+              sql`COALESCE(${relayAgentActivityRows.stateJson} ->> 'retained', 'false') != 'true'`,
+              sql`NOT EXISTS (SELECT 1 FROM ${relayEnvironmentLinks} WHERE ${relayEnvironmentLinks.environmentId} = ${relayAgentActivityRows.environmentId} AND ${relayEnvironmentLinks.environmentPublicKey} = ${relayAgentActivityRows.environmentPublicKey} AND ${relayEnvironmentLinks.revokedAt} IS NULL)`,
             ),
+            lt(relayAgentActivityRows.updatedAt, input.updatedBefore),
           ),
         )
         .pipe(

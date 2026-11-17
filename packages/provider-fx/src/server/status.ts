@@ -387,7 +387,9 @@ export const checkFxProviderStatus = Effect.fn("checkFxProviderStatus")(function
     { installed: true, version, auth, ...probe },
     defaultModel,
     backends,
-    status === undefined ? previousFullAccess : status.modes?.some((mode) => mode.id === FX_FULL_ACCESS_MODE_ID) ?? false,
+    status === undefined
+      ? previousFullAccess
+      : (status.modes?.some((mode) => mode.id === FX_FULL_ACCESS_MODE_ID) ?? false),
   );
 });
 

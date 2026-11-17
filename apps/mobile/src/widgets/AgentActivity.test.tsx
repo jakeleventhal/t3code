@@ -2,7 +2,11 @@ import type { LiveActivityComponent } from "expo-widgets";
 import { isValidElement } from "react";
 import { expect, it, vi } from "vite-plus/test";
 
-import activity, { AgentActivity, type AgentActivityProps, type AgentActivityRowProps } from "./AgentActivity.tsx";
+import activity, {
+  AgentActivity,
+  type AgentActivityProps,
+  type AgentActivityRowProps,
+} from "./AgentActivity.tsx";
 
 vi.mock("expo-widgets", () => ({
   createLiveActivity: (_name: string, render: LiveActivityComponent) => render,

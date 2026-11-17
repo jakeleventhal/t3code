@@ -108,9 +108,24 @@ export function resolveMobileFonts(
   const interfaceFont = resolve(selections.interface, defaults);
   return {
     interface: interfaceFont,
-    reply: resolve(selections.reply, !selections.interface && themeId === "absolutely" ? { regular: "SourceSerif4-Regular", medium: "SourceSerif4-Semibold", bold: "SourceSerif4-Semibold", emphasisFaces: { "600": "SourceSerif4-Semibold" } } : interfaceFont),
+    reply: resolve(
+      selections.reply,
+      !selections.interface && themeId === "absolutely"
+        ? {
+            regular: "SourceSerif4-Regular",
+            medium: "SourceSerif4-Semibold",
+            bold: "SourceSerif4-Semibold",
+            emphasisFaces: { "600": "SourceSerif4-Semibold" },
+          }
+        : interfaceFont,
+    ),
     composer: resolve(selections.composer, interfaceFont),
-    code: resolve(selections.code, "code" in defaults && defaults.code ? { regular: defaults.code, medium: defaults.code, bold: defaults.code } : mono),
+    code: resolve(
+      selections.code,
+      "code" in defaults && defaults.code
+        ? { regular: defaults.code, medium: defaults.code, bold: defaults.code }
+        : mono,
+    ),
   };
 }
 

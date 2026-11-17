@@ -105,9 +105,7 @@ function shouldPublishAgentAwarenessEvent(
     case "thread.unsnoozed":
     case "thread.settled":
     case "thread.unsettled":
-    case "thread.snoozed":
     case "thread.pinned":
-    case "thread.unsnoozed":
     case "thread.visited":
     case "thread.marked-unread":
     case "thread.model-selection-updated":
@@ -124,9 +122,7 @@ function shouldPublishAgentAwarenessEvent(
     case "thread.pin-reordered":
     case "thread.active-reordered":
     case "thread.tags-updated":
-    case "thread.visited":
     case "thread.visit-recorded":
-    case "thread.marked-unread":
     case "thread.runtime-mode-updated":
     case "thread.interaction-mode-updated":
     case "run.background-work-cancelled":

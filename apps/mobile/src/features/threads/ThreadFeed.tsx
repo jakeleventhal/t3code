@@ -1515,9 +1515,12 @@ function MarkdownDetailsFold(props: {
 }
 
 function useMarkdownStyles(): MarkdownStyleSets {
-  const { appearance, fonts, themeId, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
+  const { appearance, fonts, themeId, replyFontSize, replyEmphasisFontFamily } =
+    useAppearancePreferences();
   const replyTypography = useMemo(
-    () => getMobileReplyTypography(themeId, replyFontSize) ?? resolveNativeMarkdownTypography(replyFontSize),
+    () =>
+      getMobileReplyTypography(themeId, replyFontSize) ??
+      resolveNativeMarkdownTypography(replyFontSize),
     [themeId, replyFontSize],
   );
   const nativeMarkdownTypography = useMemo(
@@ -3113,7 +3116,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance, fonts, themeId, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
+  const { appearance, fonts, replyFontSize, replyEmphasisFontFamily } = useAppearancePreferences();
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,

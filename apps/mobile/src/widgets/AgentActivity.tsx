@@ -231,12 +231,20 @@ export function AgentActivity(
       ? props.pendingCount === 0
       : activeCount === 0 && (unreadCount === 0 || unreadCount === null);
   const hasRows = activities.length > 0;
-  const doneLabel = props.isSignedOut ? "Signed out" : failedRow ? "Failed" : hasRows ? "Done" : "Idle";
-  const outcomeLabel = props.isSignedOut ? "Sign in to see agent activity" : failedRow
-    ? "Agent work failed"
-    : hasRows
-      ? "All caught up"
-      : "No active agents";
+  const doneLabel = props.isSignedOut
+    ? "Signed out"
+    : failedRow
+      ? "Failed"
+      : hasRows
+        ? "Done"
+        : "Idle";
+  const outcomeLabel = props.isSignedOut
+    ? "Sign in to see agent activity"
+    : failedRow
+      ? "Agent work failed"
+      : hasRows
+        ? "All caught up"
+        : "No active agents";
 
   const countLabel = allDone
     ? outcomeLabel
@@ -249,7 +257,8 @@ export function AgentActivity(
           : failedRow
             ? "Agent work failed"
             : "";
-  const agentsLabel = props.isStale && !props.isExpired ? `Last observed: ${countLabel}` : countLabel;
+  const agentsLabel =
+    props.isStale && !props.isExpired ? `Last observed: ${countLabel}` : countLabel;
   const attentionSuffix =
     !isSystemStale && attentionCount !== null && attentionCount > 0
       ? `${attentionCount} need${attentionCount === 1 ? "s" : ""} you`
@@ -266,8 +275,16 @@ export function AgentActivity(
           : failedRow
             ? "Failed"
             : "";
-  const activeLabel = props.isStale && !props.isExpired ? `Last observed: ${currentLabel}` : currentLabel;
-  const showCompactGlyph = !attentionRow && !failedRow && !doneSuffix && !allDone && !isSystemStale && !props.isExpired && !props.isStale;
+  const activeLabel =
+    props.isStale && !props.isExpired ? `Last observed: ${currentLabel}` : currentLabel;
+  const showCompactGlyph =
+    !attentionRow &&
+    !failedRow &&
+    !doneSuffix &&
+    !allDone &&
+    !isSystemStale &&
+    !props.isExpired &&
+    !props.isStale;
   const summary = attentionSuffix || doneSuffix || activeLabel;
 
   // Widget taps target the containing app, so its production scheme is safe in every build.

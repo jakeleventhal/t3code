@@ -247,7 +247,7 @@ function reviewFileQueries({
   scope,
   files,
   requestedPaths,
-    workingTreeScope,
+  workingTreeScope,
 }: {
   environmentId: EnvironmentId | undefined;
   cwd: string | undefined;
