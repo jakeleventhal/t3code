@@ -51,7 +51,10 @@ const layerForeground = Layer.mock(BackgroundPolicy.BackgroundPolicy)({
   shouldRunOpportunisticWork: Effect.succeed(true),
 });
 
-const layerScanner = PortScanner.layer.pipe(Layer.provide(layerForeground));
+const layerScanner = PortScanner.layer.pipe(
+  Layer.provide(layerForeground),
+  Layer.provide(NodePath.layer),
+);
 
 const layerProbeFailure = (
   run: ProcessRunner.ProcessRunner["Service"]["run"],
@@ -1085,6 +1088,7 @@ effectIt.effect.each([
         }),
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
+            if (input.command !== "lsof") return processProbeFailure(input);
             lsofSpawns += 1;
             if (mode === "fd-budget-no-lsof") return processProbeFailure(input);
             return Effect.succeed(processOutput(`p1234\ncnode\nn*:${LSOF_TEST_PORT}\n`));
