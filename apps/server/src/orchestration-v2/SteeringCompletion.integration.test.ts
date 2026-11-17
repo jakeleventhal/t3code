@@ -15,6 +15,7 @@ import {
   ProviderThreadId,
   ProviderTurnId,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
   type ModelSelection,

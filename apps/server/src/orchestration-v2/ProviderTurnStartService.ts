@@ -628,7 +628,10 @@ export const layer: Layer.Layer<
         });
         return;
       }
-      if (message.attachments.length === 0 && message.text.trimStart().startsWith("/")) {
+      if (
+        providerMessage.attachments.length === 0 &&
+        providerMessage.text.trimStart().startsWith("/")
+      ) {
         const isEmptyCompaction =
           providerMessage.text.trim().toLowerCase() === "/compact" && !projection.hasConversation;
         // Preparation may select a new provider; account commands still target the last native session.

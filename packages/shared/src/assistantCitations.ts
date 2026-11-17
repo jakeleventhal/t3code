@@ -51,10 +51,6 @@ export function formatAssistantCitationHref(citation: AssistantCitation): string
     prefix: citation.prefix,
     suffix: citation.suffix,
   });
-  if (citation.occurrence !== undefined && citation.occurrence.count > 1) {
-    query.set("occurrence", String(citation.occurrence.index));
-    query.set("occurrences", String(citation.occurrence.count));
-  }
   if (citation.comment !== undefined) query.set("comment", citation.comment);
   return `${CITATION_HREF_PREFIX}${path}?${query}`;
 }

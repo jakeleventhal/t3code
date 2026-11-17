@@ -35,7 +35,7 @@ it("offers distinct source choices within a block and maps recursive folds witho
     "0:0",
     "before label after",
   );
-  expect(reference?.text).toBe("before label after");
+  expect(reference?.selector.text).toBe("before label after");
   const sameBlock = collectMobileAssistantTextSelectors(
     "first **quote** then **quote** last",
     "0:0",
