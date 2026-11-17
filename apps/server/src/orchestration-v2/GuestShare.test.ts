@@ -112,6 +112,18 @@ it.effect("redeems a guest link once and sends each guest message once, with its
       text: "Why not keep the old cache?",
     });
     assert.equal((yield* projections.getThreadShell(threadId))?.pendingGuestMessageCount, 1);
+    const replacement = yield* orchestrator
+      .dispatch({
+        type: "thread.guest-share.open",
+        commandId: CommandId.make("replace-with-pending-message"),
+        threadId,
+        shareId: GuestShareId.make("share:replacement"),
+        host: "env.t3.test",
+        expiresAt: DateTime.formatIso(DateTime.add(yield* DateTime.now, { hours: 24 })),
+      })
+      .pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(replacement));
+    assert.equal((yield* projections.getThreadProjection(threadId)).thread.guestShare?.id, shareId);
 
     yield* sendGuestMessage(orchestrator, "send-1");
     const projection = yield* projections.getThreadProjection(threadId);
