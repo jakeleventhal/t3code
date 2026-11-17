@@ -10,4 +10,3 @@ export {
   FX_SESSION_META,
   makeFxAcpRuntime,
 } from "./server/acpSupport.ts";
-export { FX_HOOKS_SESSION_META } from "./server/subagents.ts";
