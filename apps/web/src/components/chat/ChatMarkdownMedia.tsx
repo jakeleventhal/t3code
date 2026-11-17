@@ -38,7 +38,7 @@ export function markdownImageCopy(
   alt: string,
   src: string,
   title: string | undefined,
-  authoredAsLink: boolean,
+  authoredAsLink = false,
 ): string {
   // An autolink's text was its URL, so the bare URL is what the author wrote.
   if (authoredAsLink && alt === "" && title === undefined) return src;
