@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { classifyMarkdownImageSource } from "./markdownImages.js";
+import { classifyMarkdownImageSource, markdownLinkMediaKind } from "./markdownImages.js";
+
+describe("markdownLinkMediaKind", () => {
+  it.each([
+    ["/tmp/shot.png", "image"],
+    ["images/shot.webp", "image"],
+    ["C:\\shots\\shot.png", "image"],
+    ["file:///tmp/recording.mp4", "video"],
+    ["https://cdn.example.com/clip.mov?sig=1", "video"],
+    ["<https://cdn.example.com/login page.png>", "image"],
+    ["//cdn.example.com/shot.png", "image"],
+  ])("classifies %s as %s", (target, kind) => {
+    expect(markdownLinkMediaKind(target)).toBe(kind);
+  });
+
+  it.each([
+    "/tmp/report.pdf",
+    "https://example.com/docs",
+    "vscode://file/tmp/shot.png",
+    "t3-citation://v1/env/thread/msg?quote=shot.png",
+    "mailto:someone@example.com/shot.png",
+  ])("rejects %s", (target) => {
+    expect(markdownLinkMediaKind(target)).toBeNull();
+  });
+});
 
 describe("classifyMarkdownImageSource", () => {
   it.each([
