@@ -5,8 +5,9 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadGuestShare, ThreadId } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
+import * as DateTime from "effect/DateTime";
 import { Platform, ScrollView, Share, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -33,7 +34,7 @@ const PENDING_MESSAGES_NOTICE =
 type CreateState =
   | { readonly status: "idle" }
   | { readonly status: "creating" }
-  | { readonly status: "created"; readonly url: string }
+  | { readonly status: "created"; readonly url: string; readonly share: ThreadGuestShare }
   | { readonly status: "failed"; readonly message: string };
 
 type GuestShareTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
@@ -55,10 +56,8 @@ export function ThreadGuestShareSheet({ route }: StaticScreenProps<GuestShareTar
     guestShare?.messages.some((message) => message.status === "pending") ?? false;
   // From the thread list the detail loads only now; until it does, an active link is unknown and a
   // new link would end it without the warning.
-  const threadLoaded = useAtomValue(
-    environmentThreadDetails.threadAtom(threadRef),
-    (thread) => thread !== null,
-  );
+  const threadProjection = useAtomValue(environmentThreadDetails.threadAtom(threadRef));
+  const threadLoaded = threadProjection !== null;
   const threadDeleted = useAtomValue(
     environmentThreadDetails.statusAtom(threadRef),
     (status) => status === "deleted",
@@ -87,7 +86,7 @@ export function ThreadGuestShareSheet({ route }: StaticScreenProps<GuestShareTar
     setState({ status: "creating" });
     const result = await createGuestShare({ environmentId, input: { threadId } });
     if (result._tag === "Success") {
-      setState({ status: "created", url: result.value.url });
+      setState({ status: "created", url: result.value.url, share: result.value.share });
       return;
     }
     if (isAtomCommandInterrupted(result)) {
@@ -117,6 +116,21 @@ export function ThreadGuestShareSheet({ route }: StaticScreenProps<GuestShareTar
     });
   };
 
+  const createdExpired = useDeadlinePassed(
+    state.status === "created" ? Date.parse(state.share.expiresAt) : null,
+  );
+  const createdProjectionReady =
+    state.status === "created" &&
+    threadProjection !== null &&
+    DateTime.toEpochMillis(threadProjection.projection.thread.updatedAt) >=
+      Date.parse(state.share.createdAt);
+  const showCreated =
+    state.status === "created" &&
+    !threadDeleted &&
+    !createdExpired &&
+    (!createdProjectionReady ||
+      (activeShare?.id === state.share.id && activeShare.guestName === null));
+
   const content = (
     <ScrollView
       nestedScrollEnabled
@@ -125,7 +139,7 @@ export function ThreadGuestShareSheet({ route }: StaticScreenProps<GuestShareTar
       contentContainerClassName="gap-5 px-5 pt-4"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
     >
-      {state.status === "created" ? (
+      {showCreated ? (
         <>
           <View className="gap-2">
             <View className="rounded-2xl border border-input-border bg-input px-3.5 py-3">
