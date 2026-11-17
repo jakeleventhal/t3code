@@ -254,7 +254,7 @@ function SendActionButton(props: {
 
 export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps) {
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
-  const { themeVariables: materialTheme } = useAppearancePreferences();
+  const { themeVariables: materialTheme, fonts } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
   const navigation = useNavigation();
   const foregroundColor = useUniwindTheme()["--color-foreground"];
@@ -975,6 +975,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   {...compactEditor.editorProps}
                   textStyle={{
                     ...bodyText,
+                    fontFamily: fonts.composer.regular,
                     color: foregroundColor,
                   }}
                 />
