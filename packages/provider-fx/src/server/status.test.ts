@@ -53,6 +53,9 @@ const check = (
   statusJson: string,
   versionDelay: Duration.Input = 0,
   modelsJson: string = FX_MODELS_JSON,
+  previousFullAccess = false,
+  statusCode = 0,
+  statusDelay: Duration.Input = 0,
 ) =>
   Effect.gen(function* () {
     const outputs: Record<string, string> = {
@@ -68,12 +71,14 @@ const check = (
       return Effect.succeed(
         processHandle(
           stdout ?? "",
-          stdout === undefined ? 2 : 0,
-          args === "--version" ? Effect.sleep(versionDelay) : Effect.void,
+          stdout === undefined ? 2 : args === "status --json" ? statusCode : 0,
+          Effect.sleep(
+            args === "--version" ? versionDelay : args === "status --json" ? statusDelay : 0,
+          ),
         ),
       );
     });
-    const draft = yield* checkFxProviderStatus(settings, {}).pipe(
+    const draft = yield* checkFxProviderStatus(settings, {}, previousFullAccess).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     return { draft, invoked };
@@ -135,6 +140,37 @@ describe("checkFxProviderStatus", () => {
       // "Default" carries the model `fx status` reports, which the adapter selects for it.
       assert.deepEqual(signedIn.draft.models[0]?.aliases, ["anthropic/claude-opus-5.5"]);
       assert.isDefined(signedIn.draft.versionAdvisory);
+      // fx 0.0.13 lists no modes and has no full-access mode.
+      assert.deepEqual(signedIn.draft.supportedRuntimeModes, ["approval-required", "auto"]);
+
+      // fx 0.0.14 lists the ACP session modes (src/core/output/output_contracts.zig).
+      const withModes = yield* check(
+        JSON.stringify({
+          kind: "status",
+          model: "anthropic/claude-opus-5.5",
+          auth: "fx login",
+          permission_mode: "ask",
+          mode: "ask",
+          modes: [
+            {
+              id: "auto",
+              name: "Auto",
+              description: "Check actions with an automatic safety review instead of asking",
+            },
+            { id: "ask", name: "Ask", description: "Request permission before making any changes" },
+            {
+              id: "full-access",
+              name: "Full access",
+              description: "Run every action without asking, outside the sandbox",
+            },
+          ],
+        }),
+      );
+      assert.deepEqual(withModes.draft.supportedRuntimeModes, [
+        "approval-required",
+        "auto",
+        "full-access",
+      ]);
 
       const signedOut = yield* check(
         JSON.stringify({
@@ -154,6 +190,19 @@ describe("checkFxProviderStatus", () => {
       const unknown = yield* check("not json");
       assert.equal(unknown.draft.status, "warning");
       assert.equal(unknown.draft.auth.status, "unknown");
+      for (const row of [
+        { output: "not json", code: 0, delay: 0, expected: true },
+        { output: "{}", code: 1, delay: 0, expected: true },
+        { output: "{}", code: 0, delay: "Infinity", expected: true },
+        { output: "{}", code: 0, delay: 0, expected: false },
+      ] as const) {
+        const fiber = yield* check(row.output, 0, FX_MODELS_JSON, true, row.code, row.delay).pipe(
+          Effect.forkChild,
+        );
+        yield* TestClock.adjust("10 seconds");
+        const result = yield* Fiber.join(fiber);
+        assert.equal(result.draft.supportedRuntimeModes?.includes("full-access"), row.expected);
+      }
     }),
   );
 

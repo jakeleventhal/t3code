@@ -5,6 +5,7 @@ import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -110,6 +111,7 @@ export const FxDriver: ProviderDriver<FxSettings, FxDriverEnv> = {
       binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
     } satisfies FxSettings;
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const fullAccess = yield* Ref.make(false);
     const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<FxSettings>>({
       resolveMaintenance: () => Effect.succeed(MAINTENANCE),
       getSettings: snapshotSettings.getSettings,
@@ -117,7 +119,11 @@ export const FxDriver: ProviderDriver<FxSettings, FxDriverEnv> = {
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: (settings) =>
         buildInitialFxProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
-      checkProvider: checkFxProviderStatus(effectiveConfig, processEnv).pipe(
+      checkProvider: Ref.get(fullAccess).pipe(
+        Effect.flatMap((previous) => checkFxProviderStatus(effectiveConfig, processEnv, previous)),
+        Effect.tap((draft) =>
+          Ref.set(fullAccess, draft.supportedRuntimeModes?.includes("full-access") === true),
+        ),
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       ),
