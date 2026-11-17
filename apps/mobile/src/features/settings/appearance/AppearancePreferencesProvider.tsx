@@ -314,8 +314,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     };
   }, [selectedFontNames]);
   const fonts = useMemo(
-    () => resolveMobileFonts(fontSelections, installedFonts, Platform.OS),
-    [fontSelections, installedFonts],
+    () => resolveMobileFonts(fontSelections, installedFonts, Platform.OS, themeId),
+    [fontSelections, installedFonts, themeId],
   );
   const replyEmphasisWeight = normalizeReplyEmphasisWeights(
     storedPreferences?.replyEmphasisWeights,

@@ -69,7 +69,7 @@ function enrichedStyle(
       color: style.strongColor,
       fontFamily: style.headingFontFamily,
       fontSize,
-      lineHeight: fontSize * 1.35,
+      lineHeight: fontSize * (style.headingLineHeightMultiplier ?? 1.35),
       marginTop: 8,
     };
   };
@@ -108,7 +108,8 @@ function enrichedStyle(
       color: style.codeColor,
       backgroundColor: style.codeBlockBackgroundColor,
       fontFamily: monospace,
-      fontSize: style.fontSize * 0.9,
+      fontSize: style.codeBlockFontSize ?? style.fontSize * 0.9,
+      lineHeight: style.codeBlockLineHeight ?? style.lineHeight,
       ...block,
       padding: 12,
       syntaxColors: dark

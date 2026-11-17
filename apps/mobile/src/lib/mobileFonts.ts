@@ -1,4 +1,4 @@
-import { FONT_FAMILIES } from "./fontFamilies";
+import { getMobileFontFamilies } from "./fontFamilies";
 
 export const MOBILE_FONT_ROLES = ["interface", "reply", "composer", "code"] as const;
 export type MobileFontRole = (typeof MOBILE_FONT_ROLES)[number];
@@ -94,8 +94,9 @@ export function resolveMobileFonts(
   selections: MobileFontSelections,
   installed: ReadonlyMap<string, InstalledMobileFont>,
   platform: string,
+  themeId = "",
 ): Readonly<Record<MobileFontRole, MobileFontFamily>> {
-  const defaults = FONT_FAMILIES;
+  const defaults = getMobileFontFamilies(themeId);
   const { system, serif, mono } = BUILT_IN_FAMILIES[platform === "ios" ? "ios" : "android"];
   const resolve = (selection: string, fallback: MobileFontFamily): MobileFontFamily => {
     if (selection === "system") return system;
@@ -107,9 +108,9 @@ export function resolveMobileFonts(
   const interfaceFont = resolve(selections.interface, defaults);
   return {
     interface: interfaceFont,
-    reply: resolve(selections.reply, interfaceFont),
+    reply: resolve(selections.reply, !selections.interface && themeId === "absolutely" ? { regular: "SourceSerif4-Regular", medium: "SourceSerif4-Semibold", bold: "SourceSerif4-Semibold", emphasisFaces: { "600": "SourceSerif4-Semibold" } } : interfaceFont),
     composer: resolve(selections.composer, interfaceFont),
-    code: resolve(selections.code, mono),
+    code: resolve(selections.code, "code" in defaults && defaults.code ? { regular: defaults.code, medium: defaults.code, bold: defaults.code } : mono),
   };
 }
 
