@@ -1308,7 +1308,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   } | null>(null);
   if (quoteSelection !== null && quoteSelection.markdown !== liveMarkdown) setQuoteSelection(null);
   const quoteChoices = quoteSelection?.selectors ?? [];
-  const cite = (selector: (typeof quoteChoices)[number]) => {
+  const cite = ({ selector }: (typeof quoteChoices)[number]) => {
     if (!props.citationSource || !props.onCiteAssistantText) return;
     setQuoteSelection(null);
     props.onCiteAssistantText({
@@ -1374,12 +1374,12 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
             contentContainerStyle={{ padding: 20 }}
           >
             <ListSection title="This text appears more than once. Choose the passage you selected.">
-              {quoteChoices.map((selector) => (
+              {quoteChoices.map((choice) => (
                 <ListActionRow
-                  key={selector.start}
-                  label={`Occurrence ${selector.occurrence.index + 1} of ${selector.occurrence.count}`}
-                  description={`${selector.prefix}${selector.text}${selector.suffix}`}
-                  onPress={() => cite(selector)}
+                  key={choice.selector.start}
+                  label={`Occurrence ${choice.index + 1} of ${choice.count}`}
+                  description={`${choice.selector.prefix}${choice.selector.text}${choice.selector.suffix}`}
+                  onPress={() => cite(choice)}
                 />
               ))}
             </ListSection>
