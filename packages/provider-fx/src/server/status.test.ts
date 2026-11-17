@@ -53,6 +53,9 @@ const check = (
   statusJson: string,
   versionDelay: Duration.Input = 0,
   modelsJson: string = FX_MODELS_JSON,
+  previousFullAccess = false,
+  statusCode = 0,
+  statusDelay: Duration.Input = 0,
 ) =>
   Effect.gen(function* () {
     const outputs: Record<string, string> = {
@@ -68,12 +71,14 @@ const check = (
       return Effect.succeed(
         processHandle(
           stdout ?? "",
-          stdout === undefined ? 2 : 0,
-          args === "--version" ? Effect.sleep(versionDelay) : Effect.void,
+          stdout === undefined ? 2 : args === "status --json" ? statusCode : 0,
+          Effect.sleep(
+            args === "--version" ? versionDelay : args === "status --json" ? statusDelay : 0,
+          ),
         ),
       );
     });
-    const draft = yield* checkFxProviderStatus(settings, {}).pipe(
+    const draft = yield* checkFxProviderStatus(settings, {}, previousFullAccess).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     return { draft, invoked };
@@ -185,6 +190,19 @@ describe("checkFxProviderStatus", () => {
       const unknown = yield* check("not json");
       assert.equal(unknown.draft.status, "warning");
       assert.equal(unknown.draft.auth.status, "unknown");
+      for (const row of [
+        { output: "not json", code: 0, delay: 0, expected: true },
+        { output: "{}", code: 1, delay: 0, expected: true },
+        { output: "{}", code: 0, delay: "Infinity", expected: true },
+        { output: "{}", code: 0, delay: 0, expected: false },
+      ] as const) {
+        const fiber = yield* check(row.output, 0, FX_MODELS_JSON, true, row.code, row.delay).pipe(
+          Effect.forkChild,
+        );
+        yield* TestClock.adjust("10 seconds");
+        const result = yield* Fiber.join(fiber);
+        assert.equal(result.draft.supportedRuntimeModes?.includes("full-access"), row.expected);
+      }
     }),
   );
 

@@ -161,6 +161,7 @@ function fxAuth(auth: string | undefined): ServerProviderAuth {
 export const checkFxProviderStatus = Effect.fn("checkFxProviderStatus")(function* (
   settings: FxSettings,
   environment: NodeJS.ProcessEnv,
+  previousFullAccess = false,
 ): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   if (!settings.enabled) {
@@ -236,9 +237,11 @@ export const checkFxProviderStatus = Effect.fn("checkFxProviderStatus")(function
     {
       defaultModel,
       listed: Option.getOrUndefined(listed),
-      fullAccess:
-        Option.getOrUndefined(status)?.modes?.some((mode) => mode.id === FX_FULL_ACCESS_MODE_ID) ??
-        false,
+      fullAccess: Option.match(status, {
+        onNone: () => previousFullAccess,
+        onSome: (current) =>
+          current.modes?.some((mode) => mode.id === FX_FULL_ACCESS_MODE_ID) ?? false,
+      }),
     },
   );
 });
