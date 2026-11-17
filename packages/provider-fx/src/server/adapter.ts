@@ -21,6 +21,7 @@ import {
   FX_DRIVER_KIND,
   FX_SESSION_META,
   fxPermissionDisposition,
+  FX_MODE_CONFIG_ID,
   fxToolCallWasCancelled,
   fxSessionModeForPolicy,
   makeFxAcpRuntime,

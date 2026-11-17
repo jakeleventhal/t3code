@@ -275,13 +275,16 @@ export function isMiseCommandPath(commandPath: string, env?: NodeJS.ProcessEnv):
     env?.MISE_SYSTEM_INSTALLS_DIR,
   ];
   return (
-    normalized.includes("/mise/installs/") ||
+    (normalized.includes("/mise/installs/") && !normalized.includes("/mise/installs/node/")) ||
     normalized.includes("/mise/i/") ||
     normalized.includes("/mise/shims/") ||
     normalized.includes("/mise/command-wrappers/") ||
     /\/mise(?:\.exe)?$/.test(normalized) ||
     roots.some(
-      (root) => root && normalized.startsWith(`${normalizeCommandPath(root).replace(/\/+$/, "")}/`),
+      (root) =>
+        root &&
+        !normalized.includes("/installs/node/") &&
+        normalized.startsWith(`${normalizeCommandPath(root).replace(/\/+$/, "")}/`),
     )
   );
 }
@@ -648,7 +651,9 @@ export const resolveMiseProviderMaintenance = Effect.fn("resolveMiseProviderMain
     const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
     const isShim = isMiseExecutablePath(context.realCommandPath);
     const looksMise =
-      isShim || commandPaths.some(isMiseCommandPath) || (yield* isMiseWrapperScript(context));
+      isShim ||
+      commandPaths.some((commandPath) => isMiseCommandPath(commandPath, context.env)) ||
+      (yield* isMiseWrapperScript(context));
     const manual = (installPath: string) =>
       makeManualOnlyProviderMaintenanceCapabilities({ ...owner, installPath });
     const notOwned = (installPath: string) => (looksMise ? manual(installPath) : null);
@@ -895,6 +900,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   if (
     nativeUpdate?.isCommandPath &&
     commandPaths.some(nativeUpdate.isCommandPath) &&
+    !npmGlobalPrefixFromCommandPath(context.realCommandPath, packageName) &&
     !miseManaged &&
     !(yield* isMiseWrapperScript(context))
   ) {
@@ -1101,9 +1107,8 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
   },
 );
 
-export const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
-  context: ProviderMaintenanceResolutionContext,
-) {
+/** The command's text when it is small enough to be a wrapper script, else "". */
+const readWrapperScript = Effect.fn("readWrapperScript")(function* (commandPath: string) {
   const fileSystem = yield* FileSystem.FileSystem;
   const size = yield* fileSystem.stat(commandPath).pipe(
     Effect.map((info) => Number(info.size)),
@@ -1113,7 +1118,7 @@ export const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
   return yield* fileSystem.readFileString(commandPath).pipe(Effect.orElseSucceed(() => ""));
 });
 
-const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
+export const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
   context: ProviderMaintenanceResolutionContext,
 ) {
   const script = yield* readWrapperScript(context.realCommandPath);
