@@ -71,7 +71,7 @@ public class T3TerminalModule: Module {
       Prop("sharedGrid") { (view: T3TerminalView, sharedGrid: [Int]) in
         view.sharedGrid = sharedGrid
       }
-      Events("onInput", "onResize", "onCapture", "onPaste")
+      Events("onInput", "onResize", "onCapture", "onPaste", "onLinkTap")
 
       OnViewDidUpdateProps { (view: T3TerminalView) in
         view.applyPendingBuffer()

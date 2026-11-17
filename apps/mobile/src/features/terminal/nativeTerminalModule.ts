@@ -25,6 +25,17 @@ interface TerminalResizeEvent {
   readonly rows: number;
 }
 
+/**
+ * Emitted when a tap lands on a non-blank cell. Carries either an explicit
+ * OSC 8 hyperlink `uri`, or the tapped logical line (soft wraps joined) plus
+ * the tapped character index for JS-side link detection.
+ */
+export interface TerminalLinkTapEvent {
+  readonly uri?: string;
+  readonly lineText?: string;
+  readonly tapIndex?: number;
+}
+
 export interface NativeTerminalSurfaceProps extends ViewProps {
   readonly ref?: Ref<NativeTerminalSurfaceHandle>;
   readonly appearanceScheme?: "light" | "dark";
@@ -46,6 +57,7 @@ export interface NativeTerminalSurfaceProps extends ViewProps {
   /** iOS only: clipboard text from a system paste (edit menu, ⌘V, shortcut bar). */
   readonly onPaste?: (event: NativeSyntheticEvent<TerminalPasteEvent>) => void;
   readonly onResize?: (event: NativeSyntheticEvent<TerminalResizeEvent>) => void;
+  readonly onLinkTap?: (event: NativeSyntheticEvent<TerminalLinkTapEvent>) => void;
 }
 
 export interface NativeTerminalSurfaceHandle {
