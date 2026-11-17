@@ -64,6 +64,56 @@ describe("browser target resolver", () => {
     }
   });
 
+  it("opens a Portless URL directly for a local environment", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://127.0.0.1:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://feature.artelo.localhost/dashboard",
+        4058,
+      ),
+    ).toBe("https://feature.artelo.localhost/dashboard");
+  });
+
+  it("preserves the target-port fallback for a remote Portless server", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://100.65.180.100:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://current.test/dashboard?mode=test#results",
+        4058,
+        "local-proxy",
+      ),
+    ).toBe("http://100.65.180.100:4058/dashboard?mode=test#results");
+  });
+
+  it("opens an ngrok URL directly for a remote environment", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://100.65.180.100:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://feature.ngrok-free.app/dashboard?mode=test#results",
+        4058,
+        "public-tunnel",
+      ),
+    ).toBe("https://feature.ngrok-free.app/dashboard?mode=test#results");
+  });
+
+  it("opens a Tailscale Serve URL directly for a remote environment", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://100.65.180.100:3773" });
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(
+      resolveDiscoveredServerUrl(
+        EnvironmentId.make("environment-1"),
+        "https://desktop.example-tailnet.ts.net/dashboard",
+        4058,
+      ),
+    ).toBe("https://desktop.example-tailnet.ts.net/dashboard");
+  });
+
   it("classifies exact private IPv4 and IPv6 boundaries", async () => {
     const privateHosts = [
       "0.0.0.0",
