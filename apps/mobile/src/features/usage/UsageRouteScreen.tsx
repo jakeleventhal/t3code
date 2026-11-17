@@ -221,62 +221,29 @@ function UsageScreen(props: {
       menus={showEnvironmentFilter ? [environmentMenu] : undefined}
       workspaceRoot={props.workspace}
     >
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={false}
-        className="flex-1"
-        contentContainerClassName="px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
-        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-        refreshControl={
-          showingLimits || canReadDiagnostics ? (
-            <RefreshControl
-              refreshing={showingLimits ? limits.refreshing : refreshingUsage}
-              onRefresh={showingLimits ? () => void limits.refresh() : refreshWindow}
-            />
-          ) : undefined
-        }
-      >
-        <View className="w-full gap-6 self-center" style={{ maxWidth: MAX_CONTENT_WIDTH }}>
-          {wide ? (
-            <View className="flex-row items-center gap-3">
-              <Tabs options={VIEW_OPTIONS} selected={view} onSelect={setView} className="-ms-3.5" />
-              {showingLimits ? null : (
-                <SegmentedControl
-                  options={WINDOW_OPTIONS}
-                  selected={windowDays}
-                  onSelect={selectWindow}
-                  size="compact"
-                  className="flex-1"
-                />
-              )}
-            </View>
-          ) : (
-            <Tabs options={VIEW_OPTIONS} selected={view} onSelect={setView} className="-mx-3.5" />
-          )}
-          <Animated.View
-            key={showingLimits ? "limits" : "usage"}
-            entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System)}
-            className="gap-6"
-          >
-            {showingLimits ? (
-              <UsageLimitsSection
-                now={limits.now}
-                failedLabels={limits.failedLabels}
-                selectedEnvironmentIds={selectedEnvironmentIds}
-                wide={wide}
-                cursorPrompt={
-                  cursorAccessEnvironments.length > 0 ? (
-                    <CursorEnableLimits
-                      environments={cursorAccessEnvironments}
-                      onEnabled={refreshAfterCursorEnable}
-                    />
-                  ) : null
-                }
+      {headerOnly ? null : (
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+          className="flex-1"
+          contentContainerClassName="px-5 pt-4"
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+          onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+          refreshControl={
+            showingLimits || canReadDiagnostics ? (
+              <RefreshControl
+                refreshing={showingLimits ? limits.refreshing : refreshingUsage}
+                onRefresh={showingLimits ? () => void limits.refresh() : refreshWindow}
               />
-            ) : (
-              <>
-                {wide ? null : (
+            ) : undefined
+          }
+        >
+          <View className="w-full gap-6 self-center" style={{ maxWidth: MAX_CONTENT_WIDTH }}>
+            {wide ? (
+              <View className="flex-row items-center gap-3">
+                {showingLimits ? (
+                  <View className="flex-1" />
+                ) : (
                   <SegmentedControl
                     options={WINDOW_OPTIONS}
                     selected={windowDays}
@@ -285,22 +252,15 @@ function UsageScreen(props: {
                     className="flex-1"
                   />
                 )}
-                <SegmentedControl
+                <Tabs
                   options={VIEW_OPTIONS}
                   selected={view}
                   onSelect={setView}
-                  size="compact"
-                  role="tab"
                   className="flex-1"
                 />
               </View>
             ) : (
-              <SegmentedControl
-                options={VIEW_OPTIONS}
-                selected={view}
-                onSelect={setView}
-                role="tab"
-              />
+              <Tabs options={VIEW_OPTIONS} selected={view} onSelect={setView} />
             )}
             <Animated.View
               key={showingLimits ? "limits" : "usage"}

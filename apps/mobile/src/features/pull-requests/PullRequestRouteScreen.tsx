@@ -189,6 +189,8 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
       : null;
   return {
     rows,
+    targetKey,
+    targetThread,
     hiddenCount: filtered?.hiddenCount ?? 0,
     pending: result.isPending && !result.data,
     error: result.error,
