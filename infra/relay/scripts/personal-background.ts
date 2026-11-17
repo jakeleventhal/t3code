@@ -32,6 +32,7 @@ import * as Tokens from "../src/agentActivity/ApnsProviderTokens.ts";
 import * as Deliveries from "../src/agentActivity/ApnsDeliveries.ts";
 import * as Queue from "../src/agentActivity/ApnsDeliveryQueue.ts";
 import * as Widgets from "../src/agentActivity/AgentWidgetRefresh.ts";
+import * as NodeWidgetRevocationRateLimiter from "../src/agentActivity/NodeWidgetRevocationRateLimiter.ts";
 import * as Fcm from "../src/agentActivity/FcmDeliveries.ts";
 import * as Links from "../src/environments/EnvironmentLinks.ts";
 import * as Allocations from "../src/environments/ManagedEndpointAllocations.ts";
@@ -121,7 +122,11 @@ const http = NodeHttpClient.layerUndiciNoDispatcher.pipe(
 const services = Layer.empty.pipe(
   Layer.provideMerge(Mobile.layer),
   Layer.provideMerge(Publisher.layer),
-  Layer.provideMerge(Deliveries.layer.pipe(Layer.provideMerge(Widgets.layer))),
+  Layer.provideMerge(
+    Deliveries.layer.pipe(
+      Layer.provideMerge(Widgets.layer.pipe(Layer.provide(NodeWidgetRevocationRateLimiter.layer))),
+    ),
+  ),
   Layer.provideMerge(
     Layer.succeed(Fcm.FcmDeliveries, {
       enqueue: Effect.fn("Fcm.FcmDeliveries.enqueue")(() =>
