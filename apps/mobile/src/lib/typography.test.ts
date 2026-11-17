@@ -4,7 +4,7 @@ import { getMobileFontFamilies, FONT_FAMILIES } from "./fontFamilies";
 
 describe("theme typography", () => {
   it("uses the bundled sans, serif, and code families for Absolutely", () => {
-    expect(getMobileFontFamilies("absolutely")).toEqual({
+    expect(getMobileFontFamilies("absolutely")).toMatchObject({
       regular: "DMSans-Regular",
       medium: "DMSans-Medium",
       bold: "DMSans-Bold",

@@ -321,7 +321,11 @@ const make = Effect.gen(function* () {
           alert = androidAlertForState(state, preferences.value, now.epochMilliseconds);
         }
       }
-      let deliveryBaseline = aggregate;
+      let deliveryBaseline = job.replay && aggregate !== null ? previousAggregate : aggregate;
+      if (job.replay && job.state === null && aggregate !== null) {
+        acknowledgeAggregate = previousAggregate === null && job.replayBaseline !== undefined;
+        if (acknowledgeAggregate) deliveryBaseline = job.replayBaseline ?? null;
+      }
       if (job.replay && job.state) {
         const replayedAggregate = makeAggregateState({
           activeStates: states.filter(
