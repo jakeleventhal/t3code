@@ -1,3 +1,4 @@
+import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
 import {
   type ServerProviderAuth,
   type ServerProviderModel,
@@ -174,7 +175,7 @@ const readFxCli = (
   cwd?: string,
 ) =>
   runFxCli(settings, args, environment, cwd).pipe(
-    Effect.timeoutOption(AUTH_PROBE_TIMEOUT_MS),
+    Effect.timeoutOption(resolveProviderProbeTimeoutMs("fx", AUTH_PROBE_TIMEOUT_MS, environment)),
     Effect.map(Option.filter((output) => output.code === 0)),
     Effect.map(Option.map((output) => output.stdout)),
     Effect.orElseSucceed(() => Option.none<string>()),
@@ -223,12 +224,15 @@ const fxStatusBackend = (modelSource: string | undefined) => {
 const readFxConfiguredBackends = Effect.fn("readFxConfiguredBackends")(function* (
   environment: NodeJS.ProcessEnv,
 ) {
+  const fxHome = environment.FX_HOME?.trim();
   const home = environment.HOME?.trim();
-  if (!home) return [];
+  if (!fxHome && !home) return [];
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const directory = fxHome || (home ? path.join(home, ".fx") : undefined);
+  if (!directory) return [];
   const text = yield* fileSystem
-    .readFileString(path.join(home, ".fx", "settings.json"))
+    .readFileString(path.join(directory, "settings.json"))
     .pipe(Effect.orElseSucceed(() => ""));
   const providers = Option.getOrUndefined(decodeFxProfileSettings(text))?.providers ?? {};
   // fx's own id rule; the built-in names are reserved.
@@ -326,21 +330,26 @@ export const checkFxProviderStatus = Effect.fn("checkFxProviderStatus")(function
   }
 
   const status = Option.getOrUndefined(
-    Option.flatMap(yield* readFxCli(settings, ["status", "--json"], environment), decodeFxStatus),
+    Option.flatMap(
+      yield* readFxCli(settings, ["status", "--json"], probeEnvironment),
+      decodeFxStatus,
+    ),
   );
   const backends = yield* Effect.forEach(
     [
       ...FX_BUILT_IN_BACKENDS,
       ...(yield* readFxConfiguredBackends(environment)).map((id) => ({ id, name: id })),
     ],
-    (backend) => probeFxBackend(settings, environment, backend),
+    (backend) => probeFxBackend(settings, probeEnvironment, backend),
     { concurrency: "unbounded" },
   );
   const defaultModel = nonEmptyTrimmed(status?.model);
   const defaultBackend = backends.find(
     (backend) => backend.id === fxStatusBackend(status?.model_source),
   );
-  const usable = backends.find((backend) => backend.signedIn !== false && backend.models?.length);
+  const listed = backends.some(
+    (backend) => backend.signedIn !== false && backend.models !== undefined,
+  );
   const signedIn = backends.find((backend) => backend.signedIn === true);
   const statusAuth = fxAuth(status?.auth);
   const auth: ServerProviderAuth =
@@ -360,7 +369,7 @@ export const checkFxProviderStatus = Effect.fn("checkFxProviderStatus")(function
               status: "warning" as const,
               message: `fx's default backend, ${defaultBackend.name}, is signed out. Pick a model on another backend or sign in.`,
             }
-          : usable === undefined
+          : !listed
             ? {
                 status: "warning" as const,
                 message:

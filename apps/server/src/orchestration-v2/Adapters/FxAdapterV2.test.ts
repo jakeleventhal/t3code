@@ -155,6 +155,7 @@ const openFxSession = Effect.fn("openFxSession")(function* (input: {
   readonly frames: ReadonlyArray<Frame>;
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
+  readonly modeOptions?: ReadonlyArray<{ readonly id: string; readonly value: string }>;
   readonly defaultBackend?: string;
   /** Loads this fx session instead of creating one. */
   readonly loadSessionId?: string;
@@ -342,7 +343,12 @@ describe("FxAdapterV2", () => {
           loadSessionId: SESSION_ID,
           frames: [
             ...initialize,
-            outbound("session/load"),
+            outbound("session/load", {
+              sessionId: SESSION_ID,
+              cwd: "<workspace>",
+              mcpServers: "<any>",
+              _meta: { fx: { profileMcpServers: true } },
+            }),
             answer("session/load", {
               ...fxSession({ model: NAMED_MODEL, modes: FX_0_0_13_MODES }),
               configOptions: fxConfig({ model: NAMED_MODEL, modes: FX_0_0_13_MODES }).filter(
@@ -379,7 +385,12 @@ describe("FxAdapterV2", () => {
           loadSessionId: SESSION_ID,
           frames: [
             ...initialize,
-            outbound("session/load"),
+            outbound("session/load", {
+              sessionId: SESSION_ID,
+              cwd: "<workspace>",
+              mcpServers: "<any>",
+              _meta: { fx: { profileMcpServers: true } },
+            }),
             answer(
               "session/load",
               fxSession({

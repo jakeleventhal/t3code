@@ -71,14 +71,16 @@ const check = (
   profileProviders: ReadonlyArray<string> = [],
   versionDelay: Duration.Input = 0,
   versionSpawned?: Deferred.Deferred<void>,
+  profileSource: "home" | "fx-home" | "fx-home-only" = "home",
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-fx-status-" });
-    yield* fileSystem.makeDirectory(path.join(home, ".fx"));
+    const profile = path.join(home, profileSource === "home" ? ".fx" : "custom-profile");
+    yield* fileSystem.makeDirectory(profile);
     yield* fileSystem.writeFileString(
-      path.join(home, ".fx", "settings.json"),
+      path.join(profile, "settings.json"),
       JSON.stringify({
         providers: Object.fromEntries(profileProviders.map((id) => [id, { protocol: "x" }])),
       }),
@@ -104,7 +106,11 @@ const check = (
         );
       });
     });
-    const draft = yield* checkFxProviderStatus(settings, { HOME: home }).pipe(
+    const environment = {
+      ...(profileSource === "fx-home-only" ? {} : { HOME: home }),
+      ...(profileSource === "home" ? {} : { FX_HOME: profile }),
+    };
+    const draft = yield* checkFxProviderStatus(settings, environment).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     return { draft, invoked };
@@ -160,63 +166,74 @@ describe("checkFxProviderStatus", () => {
     }),
   );
 
-  it.effect("lists each backend's models and marks signed-out backends", () =>
-    Effect.gen(function* () {
-      const { draft, invoked } = yield* check(
-        {
-          " status --json": status("chatgpt subscription", {
-            model: "gpt-5.5",
-            model_source: "Codex subscription",
-          }),
-          "gateway status --json": status("fx login"),
-          "gateway models --json": GATEWAY_MODELS,
-          "codex status --json": status("chatgpt subscription"),
-          "codex models --json": models(["gpt-5.5", "gpt-5.4-mini"]),
-          "grok status --json": status("missing"),
-          "local status --json": status("missing", {
-            auth_help: "The configured provider credential is unavailable.",
-          }),
-        },
-        ["local"],
-      );
-      // Never `fx acp`, which saves a session; signed-out backends list nothing.
-      assert.deepEqual(invoked.map(({ backend, args }) => `${backend ?? ""} ${args}`).toSorted(), [
-        " --version",
-        " status --json",
-        "codex models --json",
-        "codex status --json",
-        "gateway models --json",
-        "gateway status --json",
-        "grok status --json",
-        "local status --json",
-      ]);
-      assert.equal(draft.status, "ready");
-      assert.deepEqual(draft.auth, { status: "authenticated", label: "chatgpt subscription" });
-      assert.deepEqual(
-        draft.models.map((model) => [model.slug, model.name, model.subProvider]),
-        [
-          ["default", "Default (gpt-5.5)", undefined],
+  it.effect.each(["home", "fx-home", "fx-home-only"] as const)(
+    "lists each backend's models and marks signed-out backends from %s",
+    (profileSource) =>
+      Effect.gen(function* () {
+        const { draft, invoked } = yield* check(
+          {
+            " status --json": status("chatgpt subscription", {
+              model: "gpt-5.5",
+              model_source: "Codex subscription",
+            }),
+            "gateway status --json": status("fx login"),
+            "gateway models --json": GATEWAY_MODELS,
+            "codex status --json": status("chatgpt subscription"),
+            "codex models --json": models(["gpt-5.5", "gpt-5.4-mini"]),
+            "grok status --json": status("missing"),
+            "local status --json": status("missing", {
+              auth_help: "The configured provider credential is unavailable.",
+            }),
+          },
+          ["local"],
+          0,
+          undefined,
+          profileSource,
+        );
+        // Never `fx acp`, which saves a session; signed-out backends list nothing.
+        assert.deepEqual(
+          invoked.map(({ backend, args }) => `${backend ?? ""} ${args}`).toSorted(),
           [
-            "gateway:anthropic/claude-sonnet-5.5",
-            "anthropic/claude-sonnet-5.5",
-            "Vercel AI Gateway",
+            " --version",
+            " status --json",
+            "codex models --json",
+            "codex status --json",
+            "gateway models --json",
+            "gateway status --json",
+            "grok status --json",
+            "local status --json",
           ],
-          ["gateway:anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5", "Vercel AI Gateway"],
-          ["codex:gpt-5.5", "gpt-5.5", "Codex subscription"],
-          ["codex:gpt-5.4-mini", "gpt-5.4-mini", "Codex subscription"],
-        ],
-      );
-      assert.deepEqual(draft.subProviders, [
-        { name: "Vercel AI Gateway" },
-        { name: "Codex subscription" },
-        {
-          name: "Grok subscription",
-          unavailableReason: "Signed out. Run `fx login grok` on this machine.",
-        },
-        { name: "local", unavailableReason: "The configured provider credential is unavailable." },
-      ]);
-      assert.isDefined(draft.versionAdvisory);
-    }),
+        );
+        assert.equal(draft.status, "ready");
+        assert.deepEqual(draft.auth, { status: "authenticated", label: "chatgpt subscription" });
+        assert.deepEqual(
+          draft.models.map((model) => [model.slug, model.name, model.subProvider]),
+          [
+            ["default", "Default (gpt-5.5)", undefined],
+            [
+              "gateway:anthropic/claude-sonnet-5.5",
+              "anthropic/claude-sonnet-5.5",
+              "Vercel AI Gateway",
+            ],
+            ["gateway:anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5", "Vercel AI Gateway"],
+            ["codex:gpt-5.5", "gpt-5.5", "Codex subscription"],
+            ["codex:gpt-5.4-mini", "gpt-5.4-mini", "Codex subscription"],
+          ],
+        );
+        assert.deepEqual(draft.subProviders, [
+          { name: "Vercel AI Gateway" },
+          { name: "Codex subscription" },
+          {
+            name: "Grok subscription",
+            unavailableReason: "Signed out. Run `fx login grok` on this machine.",
+          },
+          {
+            name: "local",
+            unavailableReason: "The configured provider credential is unavailable.",
+          },
+        ]);
+        assert.isDefined(draft.versionAdvisory);
+      }),
   );
 
   it.effect("stays usable while fx's default backend is signed out", () =>
@@ -280,14 +297,26 @@ describe("checkFxProviderStatus", () => {
   it.effect("treats `fx models` output without ids as a failed listing", () =>
     Effect.gen(function* () {
       const signedIn = JSON.stringify({ kind: "status", auth: "fx login" });
-      const reshaped = yield* check(signedIn, 0, JSON.stringify({ kind: "models", models: [] }));
+      const outputs = {
+        " status --json": signedIn,
+        "gateway status --json": signedIn,
+        "codex status --json": status("missing"),
+        "grok status --json": status("missing"),
+      };
+      const reshaped = yield* check({
+        ...outputs,
+        "gateway models --json": JSON.stringify({ kind: "models", models: [] }),
+      });
       assert.equal(reshaped.draft.status, "warning");
       assert.deepEqual(
         reshaped.draft.models.map((model) => model.slug),
         ["default"],
       );
 
-      const empty = yield* check(signedIn, 0, JSON.stringify({ kind: "models", ids: [] }));
+      const empty = yield* check({
+        ...outputs,
+        "gateway models --json": JSON.stringify({ kind: "models", ids: [] }),
+      });
       assert.equal(empty.draft.status, "ready");
     }),
   );
