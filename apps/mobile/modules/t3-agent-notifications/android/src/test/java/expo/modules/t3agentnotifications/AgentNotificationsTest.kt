@@ -316,7 +316,7 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
     AgentNotifications.receive(context, data)
     val card = manager.activeNotifications.single().notification
     assertEquals("1 needs you", card.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-    assertEquals("8 active", card.extras.getString(Notification.EXTRA_SUB_TEXT))
+    assertEquals("7 working", card.extras.getString(Notification.EXTRA_SUB_TEXT))
     assertEquals(
       "Approval $title · Project\nWorking Another thread · Other project",
       card.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
@@ -354,8 +354,12 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
   fun waitingCardsIgnoreMutableThreadTimestampsEvenAfterRename() {
     lifecycle.currentState = Lifecycle.State.RESUMED
     val now = System.currentTimeMillis()
-    for (phase in listOf("waiting_for_approval", "waiting_for_input")) {
-      val status = if (phase == "waiting_for_approval") "Approval" else "Input"
+    for (phase in listOf("waiting_for_approval", "waiting_for_input", "woke")) {
+      val status = when (phase) {
+        "waiting_for_approval" -> "Approval"
+        "woke" -> "Woke"
+        else -> "Input"
+      }
       for ((title, updatedAt) in listOf("Original" to now - 1200000L, "Renamed" to now)) {
         AgentNotifications.receive(
           context,
@@ -396,6 +400,7 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
     for (phase in listOf(
       "waiting_for_approval",
       "waiting_for_input",
+      "woke",
       "stale",
       "failed",
       "completed"
@@ -463,7 +468,7 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
     val card = manager.activeNotifications.single().notification
     assertEquals("2 live", card.extras.getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
     assertEquals("2 working", card.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-    assertEquals("Project · 2 active", card.extras.getString(Notification.EXTRA_SUB_TEXT))
+    assertEquals("Project · 2 working", card.extras.getString(Notification.EXTRA_SUB_TEXT))
     assertEquals(
       "Working Build feature\nDone Write tests",
       card.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
@@ -754,7 +759,7 @@ class AgentNotificationsCompletionTest : AgentNotificationsFixture() {
     lifecycle.currentState = Lifecycle.State.CREATED
 
     val expiresAt = System.currentTimeMillis() + 900000
-    val completion = finished("completion", expiresAt)
+    val completion = finished("completion", 0L) + ("active" to "true")
     AgentNotifications.receive(context, completion)
     AgentNotifications.receive(context, completion)
     AgentNotifications.receive(context, completion.filterKeys { !it.startsWith("alert_") })
@@ -763,7 +768,9 @@ class AgentNotificationsCompletionTest : AgentNotificationsFixture() {
     assertEquals("t3-agent-alert", alert.tag)
     assertEquals("Test thread", alert.notification.extras.getString(Notification.EXTRA_TITLE))
     assertFalse(alert.notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
-    AgentNotifications.receive(context, update("next-run", true))
+    AgentNotifications.receive(context, update("next-run", true) + ("activity_phase" to "running"))
+    assertEquals(1, manager.activeNotifications.count { it.tag == "t3-agent-activity" })
+    AgentNotifications.receive(context, completion.filterKeys { !it.startsWith("alert_") })
     assertEquals(1, manager.activeNotifications.count { it.tag == "t3-agent-activity" })
 
     // An alert for another thread, or a card that also lists another result, stays.

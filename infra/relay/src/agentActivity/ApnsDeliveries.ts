@@ -38,6 +38,7 @@ import {
   SignedApnsDeliveryJob,
   verifySignedApnsDeliveryJob,
   type ApnsDeliveryJobVerificationError,
+  type ApnsDeliveryJobPayload,
 } from "./apnsDeliveryJobs.ts";
 import * as AgentActivityRows from "./AgentActivityRows.ts";
 import * as DeliveryAttempts from "./DeliveryAttempts.ts";
@@ -149,7 +150,10 @@ function parsePreferences(value: string): RelayAgentAwarenessPreferences | null 
 
 function aggregateNeedsAttention(aggregate: RelayAgentActivityAggregateState): boolean {
   return aggregate.activities.some(
-    (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
+    (row) =>
+      row.phase === "waiting_for_approval" ||
+      row.phase === "waiting_for_input" ||
+      row.phase === "woke",
   );
 }
 
@@ -165,7 +169,12 @@ function shouldUpdateLiveActivity(input: {
   if (JSON.stringify(input.previousAggregate) === JSON.stringify(input.nextAggregate)) {
     return false;
   }
-  if (input.previousAggregate.activeCount !== input.nextAggregate.activeCount) {
+  if (
+    input.previousAggregate.activeCount !== input.nextAggregate.activeCount ||
+    input.previousAggregate.unreadCount !== input.nextAggregate.unreadCount ||
+    input.previousAggregate.pendingCount !== input.nextAggregate.pendingCount ||
+    input.previousAggregate.totalCount !== input.nextAggregate.totalCount
+  ) {
     return true;
   }
   if (aggregateNeedsAttention(input.nextAggregate)) {
@@ -211,6 +220,7 @@ function chooseLiveActivityDelivery(input: {
   readonly aggregate: RelayAgentActivityAggregateState | null;
   readonly nowMs: number;
   readonly replay?: boolean;
+  readonly threadReplay?: boolean;
 }): ChosenLiveActivityDelivery | "suppressed" | null {
   const preferences = parsePreferences(input.target.preferences_json);
   if (preferences?.liveActivitiesEnabled === false) {
@@ -226,7 +236,7 @@ function chooseLiveActivityDelivery(input: {
   if (!input.target.activity_push_token) {
     return null;
   }
-  if (input.aggregate === null) {
+  if (input.aggregate === null || input.aggregate.pendingCount === 0) {
     // Registration replay can precede a new thread's first publish; preserve a freshly armed card until state arrives.
     const armedAtMs = Option.match(
       input.target.remote_started_at === null
@@ -234,7 +244,12 @@ function chooseLiveActivityDelivery(input: {
         : DateTime.make(input.target.remote_started_at),
       { onNone: () => null, onSome: (dt) => dt.epochMilliseconds },
     );
-    if (armedAtMs !== null && input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS) {
+    // Per-thread replays carry real changes such as a read result, so only registration replays wait.
+    if (
+      (input.aggregate === null || (input.replay && !input.threadReplay)) &&
+      armedAtMs !== null &&
+      input.nowMs - armedAtMs < FRESHLY_ARMED_GRACE_MS
+    ) {
       return null;
     }
     return {
@@ -280,6 +295,7 @@ function chooseDelivery(input: {
   readonly state?: RelayAgentActivityState | null;
   readonly nowMs: number;
   readonly replay?: boolean;
+  readonly threadReplay?: boolean;
 }): ChosenDelivery | null {
   const liveActivityDelivery = chooseLiveActivityDelivery(input);
   if (liveActivityDelivery === "suppressed") {
@@ -426,6 +442,7 @@ interface SendLiveActivityDeliveryInputBase {
   readonly target: LiveActivityDeliveryTarget;
   readonly token: string;
   readonly sourceJobId: string;
+  readonly replayThread?: ApnsDeliveryJobPayload["replayThread"];
 }
 
 export type SendLiveActivityDeliveryInput =
@@ -486,6 +503,7 @@ export class ApnsDeliveries extends Context.Service<
       readonly state?: RelayAgentActivityState | null;
       readonly nowMs: number;
       readonly replay?: boolean;
+      readonly replayThread?: ApnsDeliveryJobPayload["replayThread"];
     }) => Effect.Effect<RelayDeliveryResult | null, ApnsDeliveryError>;
     readonly sendLiveActivity: (
       input: SendLiveActivityDeliveryInput,
@@ -517,14 +535,14 @@ const make = Effect.gen(function* () {
   const userHasContentToShow = Effect.fnUntraced(function* (userId: string) {
     const now = yield* DateTime.now;
     return yield* activityRows.listForUser({ userId }).pipe(
-      Effect.map(
-        (activeStates) =>
-          makeAggregateState({
-            activeStates,
-            terminalState: null,
-            nowMs: now.epochMilliseconds,
-          }) !== null,
-      ),
+      Effect.map((activeStates) => {
+        const aggregate = makeAggregateState({
+          activeStates,
+          terminalState: null,
+          nowMs: now.epochMilliseconds,
+        });
+        return aggregate !== null && aggregate.pendingCount !== 0;
+      }),
       // Keep the card on persistence failures; a later sweep can retry.
       Effect.catch((error) =>
         Effect.logWarning("Content recheck failed; keeping the card", { error }).pipe(
@@ -552,6 +570,8 @@ const make = Effect.gen(function* () {
           (current) =>
             current !== null &&
             current.phase === input.phase &&
+            (!(current.phase === "completed" || current.phase === "failed") ||
+              current.unread !== false) &&
             current.updatedAt === input.updatedAt,
         ),
         Effect.catchCause((cause) =>
@@ -581,6 +601,7 @@ const make = Effect.gen(function* () {
           return (
             current !== undefined &&
             current.phase === row.phase &&
+            current.unread === row.unread &&
             current.updatedAt === row.updatedAt
           );
         });
@@ -751,11 +772,25 @@ const make = Effect.gen(function* () {
         }),
       );
     if (result.ok) {
+      let deliveryBaseline = aggregate;
+      if (input.replayThread && aggregate) {
+        const matchesReplay = (row: RelayAgentActivityAggregateState["activities"][number]) =>
+          row.environmentId === input.replayThread?.environmentId &&
+          row.threadId === input.replayThread.threadId;
+        const previous = parseAggregate(currentTarget.last_aggregate_json);
+        deliveryBaseline = {
+          ...(previous ?? aggregate),
+          activities: [
+            ...(previous?.activities ?? []).filter((row) => !matchesReplay(row)),
+            ...aggregate.activities.filter(matchesReplay),
+          ],
+        };
+      }
       yield* liveActivities.markDelivery({
         userId: input.target.user_id,
         deviceId: input.target.device_id,
         kind: input.kind,
-        aggregate,
+        aggregate: deliveryBaseline,
         deliveredAt: iso,
       });
     } else if (isPermanentApnsTokenFailure(result)) {
@@ -969,6 +1004,7 @@ const make = Effect.gen(function* () {
             kind: payload.kind,
             aggregate: payload.aggregate,
             alert: payload.alert ?? null,
+            ...(payload.replayThread ? { replayThread: payload.replayThread } : {}),
           });
         case "live_activity_end":
           return sendLiveActivity({
@@ -1042,7 +1078,7 @@ const make = Effect.gen(function* () {
     processBatch,
     sendForTarget: Effect.fnUntraced(function* (input) {
       if (!config.apns) return null;
-      const delivery = chooseDelivery(input);
+      const delivery = chooseDelivery({ ...input, threadReplay: input.replayThread !== undefined });
       if (!delivery) {
         return null;
       }
@@ -1077,6 +1113,7 @@ const make = Effect.gen(function* () {
         bundleId: input.target.bundle_id,
         apsEnvironment: input.target.aps_environment,
         aggregate: delivery.aggregate,
+        ...(input.replayThread ? { replayThread: input.replayThread } : {}),
         alert,
       });
       if (delivery.kind === "live_activity_end" && notification && input.target.push_token) {

@@ -1147,6 +1147,7 @@ export type AgentAwarenessThread = ProjectThreadAwarenessV2Input["thread"] &
     | "snoozedUntil"
     | "snoozedAt"
     | "pendingGuestMessageCount"
+    | "lastVisitedAt"
     | "activeRunId"
     | "latestRunId"
     | "hasActionableProposedPlan"
@@ -8989,6 +8990,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               snoozedUntil: state.thread.snoozedUntil ?? null,
               snoozedAt: state.thread.snoozedAt ?? null,
               pendingGuestMessageCount: pendingGuestMessageCount(state.thread.guestShare),
+              lastVisitedAt: state.thread.lastVisitedAt,
               activeRunId: state.activeRunId,
               latestRunId: state.latestRunId,
               hasActionableProposedPlan: state.hasActionableProposedPlan,

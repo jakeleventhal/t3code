@@ -238,14 +238,21 @@ object AgentNotifications {
     }
     prefs.edit().putLong("lastUpdate", updatedAt).putString("lastTerminal", terminal).apply()
     val active = data["active"] == "true"
+    if (data["activity_phase"] == "running") prefs.edit().remove("coveredTerminal").apply()
     // Use absolute state expiry: a replay must not extend a finished card or
     // make an abandoned host look active indefinitely. Older relays omit it.
     val expiresAt = data["activity_expires_at"]?.toLongOrNull()
       ?: if (active) updatedAt + RUNNING_LIFETIME_MS else 0L
-    val remainingMs = (expiresAt - System.currentTimeMillis()).coerceAtMost(MAX_LIFETIME_MS)
+    // A retained unread result has no timeout; zero on an inactive payload still clears the card.
+    val retained = active && expiresAt == 0L
+    val remainingMs = if (retained) {
+      0L
+    } else {
+      (expiresAt - System.currentTimeMillis()).coerceAtMost(MAX_LIFETIME_MS)
+    }
     val wasActive = prefs.getBoolean("lastActive", false)
     prefs.edit().putBoolean("lastActive", active).apply()
-    if (remainingMs <= 0 || !prefs.getBoolean("ongoing", false)) {
+    if ((!retained && remainingMs <= 0) || !prefs.getBoolean("ongoing", false)) {
       cancelActivity(context)
       prefs.edit().putBoolean("dismissed", false).apply()
       return
@@ -314,6 +321,9 @@ object AgentNotifications {
     if (ongoing) builder.addAction(0, "Dismiss", dismissIntent)
     manager(context).notify(ACTIVITY_TAG, ACTIVITY_ID, builder.build())
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      context.getSystemService(AlarmManager::class.java).cancel(expiryIntent(context))
+      context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().remove("expiresAt").apply()
+      if (remainingMs <= 0) return
       // Notification timeouts were added in API 26. One inexact alarm also
       // expires cards on Android 7, including when the app process has exited.
       // No exact-alarm permission, foreground service or periodic work needed.
