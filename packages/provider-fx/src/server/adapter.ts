@@ -22,6 +22,7 @@ import {
   fxPermissionDisposition,
   FX_MODE_CONFIG_ID,
   type FxModelChoice,
+  fxToolCallWasCancelled,
   fxSessionModeForPolicy,
   makeFxAcpRuntime,
   withFxSessionMode,
@@ -125,6 +126,7 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
     sessionModeForPolicy: fxSessionModeForPolicy,
     permissionDisposition: fxPermissionDisposition,
     extractSubagentUpdate: extractFxSubagentUpdate,
+    isCancelledToolCall: fxToolCallWasCancelled,
     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
   };
 }
