@@ -45,6 +45,7 @@ import { SignedApnsDeliveryJob } from "../src/agentActivity/apnsDeliveryJobs.ts"
 import * as RelayTokens from "../src/auth/RelayTokens.ts";
 import * as HeldHooks from "../src/hooks/HeldHooks.ts";
 import * as Schema from "effect/Schema";
+import { personalRelayOrigin } from "./personal-background-http.ts";
 
 const Settings = Schema.Struct({
   url: Schema.String,
@@ -223,7 +224,7 @@ const api = HttpApiBuilder.layer(backgroundApi).pipe(
   Layer.provideMerge(Layer.effectContext(runtime.contextEffect)),
 );
 const server = ManagedRuntime.make(
-  HttpRouter.serve(api, { disableLogger: true }).pipe(
+  HttpRouter.serve(api, { disableLogger: true, middleware: personalRelayOrigin(origin) }).pipe(
     Layer.provide(endpoints),
     Layer.provide(Layer.effectContext(runtime.contextEffect)),
     Layer.provide(

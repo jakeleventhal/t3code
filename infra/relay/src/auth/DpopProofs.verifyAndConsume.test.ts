@@ -10,6 +10,9 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import { personalRelayOrigin } from "../../scripts/personal-background-http.ts";
 
 import * as RelayDb from "../db.ts";
 import { relayDpopProofs } from "../persistence/schema.ts";
@@ -106,6 +109,46 @@ function consumeEachProofOnce() {
 }
 
 describe("DpopProofReplay.verifyAndConsume", () => {
+  it.effect("verifies public HTTPS proofs behind the personal relay's loopback TLS proxy", () => {
+    const now = DateTime.makeUnsafe("2026-05-25T12:00:00.000Z");
+    const url = "https://relay.example.com:8449/v1/client/dpop-token";
+    const proof = makeDpopProof({
+      method: "POST",
+      url,
+      iat: now.epochMilliseconds / 1000,
+      jti: "proxy-proof",
+    });
+    const persistence = consumeEachProofOnce();
+    return Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const replay = yield* DpopProofs.DpopProofReplay;
+      const externalUrl = HttpServerRequest.toURL(request);
+      if (externalUrl._tag === "None") return yield* Effect.die("Missing external URL");
+      expect(
+        yield* replay.verifyAndConsume({
+          proof: proof.proof,
+          method: request.method,
+          url: externalUrl.value.href,
+          now,
+          expectedThumbprint: proof.thumbprint,
+        }),
+      ).toBe(proof.thumbprint);
+      return HttpServerResponse.empty();
+    }).pipe(
+      personalRelayOrigin(new URL("https://relay.example.com:8449")),
+      Effect.provideService(
+        HttpServerRequest.HttpServerRequest,
+        HttpServerRequest.fromWeb(
+          new Request("http://127.0.0.1:9849/v1/client/dpop-token", {
+            method: "POST",
+            headers: { "x-forwarded-proto": "http", "x-forwarded-host": "untrusted.example" },
+          }),
+        ),
+      ),
+      Effect.provide(layer(persistence.insert)),
+    );
+  });
+
   it.effect("reports a signed proof outside the time window", () => {
     const now = DateTime.makeUnsafe("2026-05-25T12:00:00.000Z");
     const proof = makeDpopProof({
