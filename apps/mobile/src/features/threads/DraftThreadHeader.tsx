@@ -63,6 +63,8 @@ export function DraftThreadHeader(props: {
         canOpenFiles: canReadFiles && props.cwd !== null,
         projectScripts: [],
         terminalSessions: [],
+        devServers: [],
+        onOpenDevServer: async () => {},
         onOpenFilesInspector: openFiles,
         onOpenGitInspector: requiresThread,
         onOpenTerminal: requiresThread,
