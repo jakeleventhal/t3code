@@ -34,6 +34,7 @@ import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { Tabs } from "../../components/ui/Tabs";
 import { useReduceMotionEnabled } from "../../lib/appState";
 import { AppText as Text } from "../../components/ui/AppText";
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
@@ -251,22 +252,15 @@ function UsageScreen(props: {
                     className="flex-1"
                   />
                 )}
-                <SegmentedControl
+                <Tabs
                   options={VIEW_OPTIONS}
                   selected={view}
                   onSelect={setView}
-                  size="compact"
-                  role="tab"
                   className="flex-1"
                 />
               </View>
             ) : (
-              <SegmentedControl
-                options={VIEW_OPTIONS}
-                selected={view}
-                onSelect={setView}
-                role="tab"
-              />
+              <Tabs options={VIEW_OPTIONS} selected={view} onSelect={setView} />
             )}
             <Animated.View
               key={showingLimits ? "limits" : "usage"}
