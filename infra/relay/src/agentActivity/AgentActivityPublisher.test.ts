@@ -1,4 +1,5 @@
 import { makeAggregateState } from "./agentActivityAggregate.ts";
+import * as AgentWidgetRefresh from "./AgentWidgetRefresh.ts";
 import type { RelayAgentActivityState, RelayDeliveryResult } from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -21,174 +22,19 @@ import * as AgentActivityPublisher from "./AgentActivityPublisher.ts";
 import * as FcmDeliveries from "./FcmDeliveries.ts";
 import * as ApnsDeliveries from "./ApnsDeliveries.ts";
 
-const layerPublisher = AgentActivityPublisher.layer.pipe(
-  Layer.provide(
-    Layer.succeed(FcmDeliveries.FcmDeliveries, {
-      enqueue: () => Effect.succeed(null),
-      process: () => Effect.void,
+const widgetLayer = Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+  revoke: () => Effect.void,
+  refresh: () => Effect.succeed({ aggregate: null }),
+  notify: () => Effect.succeed([]),
+  process: (job) =>
+    Effect.succeed({
+      deviceId: job.target.deviceId,
+      kind: "widget_refresh",
+      ok: true,
+      apnsStatus: null,
+      apnsReason: null,
+      apnsId: null,
     }),
-  ),
-);
-
-const state: RelayAgentActivityState = {
-  environmentId: "env" as RelayAgentActivityState["environmentId"],
-  threadId: "thread" as RelayAgentActivityState["threadId"],
-  projectTitle: "Project",
-  threadTitle: "Thread",
-  modelTitle: "gpt-5.4",
-  phase: "running",
-  headline: "Running",
-  updatedAt: "1970-01-01T00:00:00.000Z",
-  deepLink: "/threads/env/thread",
-};
-
-function target(deviceId: string): LiveActivities.TargetRow {
-  return {
-    user_id: "dev:julius",
-    device_id: deviceId,
-    platform: "ios",
-    ios_major_version: 18,
-    app_version: "1.0.0",
-    bundle_id: null,
-    aps_environment: null,
-    push_token: null,
-    push_to_start_token: "start-token",
-    preferences_json: "{}",
-    activity_push_token: null,
-    remote_start_queued_at: null,
-    remote_started_at: null,
-    ended_at: null,
-    last_aggregate_json: null,
-    last_live_activity_delivery_at: null,
-  };
-}
-
-function makeLiveActivities(
-  overrides: Partial<LiveActivities.LiveActivities["Service"]> = {},
-): LiveActivities.LiveActivities["Service"] {
-  return {
-    register: () => Effect.void,
-    listTargets: () => Effect.succeed([]),
-    listIdleArmedTargets: () => Effect.succeed([]),
-    markDelivery: () => Effect.void,
-
-    invalidateDeliveryToken: () => Effect.void,
-    ...overrides,
-  };
-}
-
-function makeAgentActivityRows(
-  overrides: Partial<AgentActivityRows.AgentActivityRows["Service"]> = {},
-): AgentActivityRows.AgentActivityRows["Service"] {
-  return {
-    upsert: () => Effect.void,
-    remove: () => Effect.void,
-    pruneTerminal: () => Effect.void,
-    listForUser: () => Effect.succeed([state]),
-    getForUserThread: () => Effect.succeed(state),
-    ...overrides,
-  };
-}
-
-function makeEnvironmentLinks(
-  overrides: Partial<EnvironmentLinks.EnvironmentLinks["Service"]> = {},
-): EnvironmentLinks.EnvironmentLinks["Service"] {
-  return {
-    upsert: () => Effect.void,
-    listDeliveryUsersForEnvironment: () =>
-      Effect.succeed([
-        {
-          userId: "dev:julius",
-          notificationsEnabled: true,
-          liveActivitiesEnabled: true,
-        },
-      ]),
-    listForUser: () => Effect.succeed([]),
-    getForUser: () => Effect.succeed(null),
-    findActiveManagedForEnvironment: () => Effect.succeed([]),
-    setHoldWebhooksWhileOffline: () => Effect.void,
-    revokeForUser: () => Effect.succeed(false),
-    ...overrides,
-  };
-}
-
-function makeApnsDeliveries(
-  overrides: Partial<ApnsDeliveries.ApnsDeliveries["Service"]> = {},
-): ApnsDeliveries.ApnsDeliveries["Service"] {
-  return {
-    processBatch: () => Effect.void,
-    sendForTarget: () => Effect.succeed(null),
-    sendLiveActivity: () =>
-      Effect.succeed({
-        deviceId: "device",
-        kind: "live_activity_start",
-        ok: true,
-        apnsStatus: 200,
-        apnsReason: null,
-        apnsId: "apns-id",
-      }),
-    sendPushNotification: () =>
-      Effect.succeed({
-        deviceId: "device",
-        kind: "push_notification",
-        ok: true,
-        apnsStatus: 200,
-        apnsReason: null,
-        apnsId: "apns-id",
-      }),
-    processSignedJob: () =>
-      Effect.succeed({
-        deviceId: "device",
-        kind: "live_activity_start",
-        ok: true,
-        apnsStatus: 200,
-        apnsReason: null,
-        apnsId: "apns-id",
-      }),
-    ...overrides,
-  };
-}
-
-describe("AgentActivityPublisher", () => {
-  it.effect("repaints backfilled inbox rows without a notification", () => {
-    const replays: boolean[] = [];
-    return Effect.gen(function* () {
-      const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
-      yield* publisher.publish({
-        environmentId: state.environmentId,
-        environmentPublicKey: "key",
-        threadId: state.threadId,
-        state: { ...state, phase: "completed", retained: true },
-        replay: true,
-      });
-      expect(replays).toEqual([true]);
-    }).pipe(
-      Effect.provide(
-        layerPublisher.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(AgentActivityRows.AgentActivityRows, makeAgentActivityRows()),
-              Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
-              Layer.succeed(
-                LiveActivities.LiveActivities,
-                makeLiveActivities({ listTargets: () => Effect.succeed([target("ios")]) }),
-              ),
-              Layer.succeed(
-                ApnsDeliveries.ApnsDeliveries,
-                makeApnsDeliveries({
-                  sendForTarget: (input) =>
-                    Effect.sync(() => {
-                      replays.push(input.replay === true);
-                      return null;
-                    }),
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  });
   it.effect(
     "keeps all five display rows while passing off-card state to notification delivery",
     () => {
@@ -261,6 +107,339 @@ describe("AgentActivityPublisher", () => {
     },
   );
 
+});
+
+const layerPublisher = AgentActivityPublisher.layer.pipe(
+  Layer.provide(widgetLayer),
+  Layer.provide(
+    Layer.succeed(FcmDeliveries.FcmDeliveries, {
+      enqueue: () => Effect.succeed(null),
+      process: () => Effect.void,
+    }),
+  ),
+);
+
+const state: RelayAgentActivityState = {
+  environmentId: "env" as RelayAgentActivityState["environmentId"],
+  threadId: "thread" as RelayAgentActivityState["threadId"],
+  projectTitle: "Project",
+  threadTitle: "Thread",
+  modelTitle: "gpt-5.4",
+  phase: "running",
+  headline: "Running",
+  updatedAt: "1970-01-01T00:00:00.000Z",
+  deepLink: "/threads/env/thread",
+};
+
+function target(deviceId: string): LiveActivities.TargetRow {
+  return {
+    user_id: "dev:julius",
+    device_id: deviceId,
+    platform: "ios",
+    ios_major_version: 18,
+    app_version: "1.0.0",
+    bundle_id: null,
+    aps_environment: null,
+    push_token: null,
+    push_to_start_token: "start-token",
+    preferences_json: "{}",
+    activity_push_token: null,
+    remote_start_queued_at: null,
+    remote_started_at: null,
+    ended_at: null,
+    last_aggregate_json: null,
+    last_live_activity_delivery_at: null,
+  };
+}
+
+function makeLiveActivities(
+  overrides: Partial<LiveActivities.LiveActivities["Service"]> = {},
+): LiveActivities.LiveActivities["Service"] {
+  return {
+    register: () => Effect.void,
+    listTargets: () => Effect.succeed([]),
+    listIdleArmedTargets: () => Effect.succeed([]),
+    markDelivery: () => Effect.void,
+
+    invalidateDeliveryToken: () => Effect.void,
+    ...overrides,
+  };
+}
+
+function makeAgentActivityRows(
+  overrides: Partial<AgentActivityRows.AgentActivityRows["Service"]> = {},
+): AgentActivityRows.AgentActivityRows["Service"] {
+  return {
+    upsert: () => Effect.succeed(true),
+    acknowledgeDelivery: () => Effect.void,
+    remove: () => Effect.void,
+    pruneTerminal: () => Effect.void,
+    listForUser: () => Effect.succeed([state]),
+    getForUserThread: () => Effect.succeed(state),
+    ...overrides,
+  };
+}
+
+function makeEnvironmentLinks(
+  overrides: Partial<EnvironmentLinks.EnvironmentLinks["Service"]> = {},
+): EnvironmentLinks.EnvironmentLinks["Service"] {
+  return {
+    upsert: () => Effect.void,
+    listDeliveryUsersForEnvironment: () =>
+      Effect.succeed([
+        {
+          userId: "dev:julius",
+          notificationsEnabled: true,
+          liveActivitiesEnabled: true,
+        },
+      ]),
+    listForUser: () => Effect.succeed([]),
+    getForUser: () => Effect.succeed(null),
+    findActiveManagedForEnvironment: () => Effect.succeed([]),
+    setHoldWebhooksWhileOffline: () => Effect.void,
+    revokeForUser: () => Effect.succeed(false),
+    ...overrides,
+  };
+}
+
+function makeApnsDeliveries(
+  overrides: Partial<ApnsDeliveries.ApnsDeliveries["Service"]> = {},
+): ApnsDeliveries.ApnsDeliveries["Service"] {
+  return {
+    processBatch: () => Effect.void,
+    sendForTarget: () => Effect.succeed(null),
+    sendLiveActivity: () =>
+      Effect.succeed({
+        deviceId: "device",
+        kind: "live_activity_start",
+        ok: true,
+        apnsStatus: 200,
+        apnsReason: null,
+        apnsId: "apns-id",
+      }),
+    sendPushNotification: () =>
+      Effect.succeed({
+        deviceId: "device",
+        kind: "push_notification",
+        ok: true,
+        apnsStatus: 200,
+        apnsReason: null,
+        apnsId: "apns-id",
+      }),
+    processSignedJob: () =>
+      Effect.succeed({
+        deviceId: "device",
+        kind: "live_activity_start",
+        ok: true,
+        apnsStatus: 200,
+        apnsReason: null,
+        apnsId: "apns-id",
+      }),
+    ...overrides,
+  };
+}
+
+describe("AgentActivityPublisher", () => {
+  it.effect("repaints backfilled inbox rows without a notification", () => {
+    const replays: boolean[] = [];
+    const widgetUsers: string[] = [];
+    let changed = true;
+    let failWidget = true;
+    let failFcm = true;
+    let configuredFcm = false;
+    return Effect.gen(function* () {
+      const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
+      const publish = publisher.publish({
+        environmentId: state.environmentId,
+        environmentPublicKey: "key",
+        threadId: state.threadId,
+        state: { ...state, phase: "completed", retained: true },
+        replay: true,
+      });
+      expect((yield* Effect.flip(publish))._tag).toBe("WidgetRefreshPersistenceError");
+      failWidget = false;
+      expect((yield* Effect.flip(publish))._tag).toBe("FcmDeliveryError");
+      expect(changed).toBe(true);
+      failFcm = false;
+      yield* publish;
+      expect(changed).toBe(true);
+      configuredFcm = true;
+      yield* publish;
+      expect(widgetUsers).toEqual(["dev:julius", "dev:julius", "dev:julius"]);
+      changed = false;
+      yield* publish;
+      expect(widgetUsers).toEqual(["dev:julius", "dev:julius", "dev:julius"]);
+      changed = true;
+      yield* publish;
+      expect(widgetUsers).toEqual(["dev:julius", "dev:julius", "dev:julius", "dev:julius"]);
+      expect(replays).toEqual([true, true, true, true]);
+    }).pipe(
+      Effect.provide(
+        AgentActivityPublisher.layer.pipe(
+          Layer.provide(
+            Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+              revoke: () => Effect.void,
+              refresh: () => Effect.succeed({ aggregate: null }),
+              process: () => Effect.die("unused widget job"),
+              notify: ({ userId }) =>
+                Effect.suspend(() =>
+                  failWidget
+                    ? Effect.fail(
+                        new AgentWidgetRefresh.WidgetRefreshPersistenceError({
+                          stage: "test",
+                          cause: "queue unavailable",
+                        }),
+                      )
+                    : Effect.sync(() => {
+                        widgetUsers.push(userId);
+                        return [];
+                      }),
+                ),
+            }),
+          ),
+          Layer.provide(
+            Layer.succeed(FcmDeliveries.FcmDeliveries, {
+              enqueue: (input) =>
+                Effect.suspend(() => {
+                  replays.push(input.replay === true);
+                  return failFcm
+                    ? Effect.fail(
+                        new FcmDeliveries.FcmDeliveryError({
+                          operation: "enqueue",
+                          cause: "queue unavailable",
+                        }),
+                      )
+                    : Effect.succeed(
+                        configuredFcm
+                          ? null
+                          : {
+                              deviceId: "android",
+                              kind: "push_notification" as const,
+                              ok: false,
+                              apnsStatus: null,
+                              apnsReason: null,
+                              apnsId: null,
+                            },
+                      );
+                }),
+              process: () => Effect.void,
+            }),
+          ),
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                AgentActivityRows.AgentActivityRows,
+                makeAgentActivityRows({
+                  upsert: () => Effect.sync(() => changed),
+                  acknowledgeDelivery: () =>
+                    Effect.sync(() => {
+                      changed = false;
+                    }),
+                }),
+              ),
+              Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
+              Layer.succeed(
+                LiveActivities.LiveActivities,
+                makeLiveActivities({
+                  listTargets: () =>
+                    Effect.succeed([{ ...target("android"), platform: "android" }]),
+                }),
+              ),
+              Layer.succeed(
+                ApnsDeliveries.ApnsDeliveries,
+                makeApnsDeliveries({
+                  sendForTarget: (input) =>
+                    Effect.sync(() => {
+                      replays.push(input.replay === true);
+                      return null;
+                    }),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
+  it.effect.each([true, false])(
+    "enqueues the widget refresh independently of notification delivery: enabled=%s",
+    (enabled) => {
+      const widgetUsers: string[] = [];
+      const android = {
+        ...target("android"),
+        platform: "android" as const,
+        ios_major_version: null,
+      };
+      return Effect.gen(function* () {
+        const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
+        const publish = publisher.publish({
+          environmentId: state.environmentId,
+          environmentPublicKey: "key",
+          threadId: state.threadId,
+          state,
+        });
+        if (enabled) {
+          const error = yield* Effect.flip(publish);
+          expect(error._tag).toBe("FcmDeliveryError");
+        } else {
+          expect(yield* publish).toMatchObject({ ok: true });
+        }
+        expect(widgetUsers).toEqual([android.user_id]);
+      }).pipe(
+        Effect.provide(
+          AgentActivityPublisher.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(AgentActivityRows.AgentActivityRows, makeAgentActivityRows()),
+                Layer.succeed(
+                  EnvironmentLinks.EnvironmentLinks,
+                  makeEnvironmentLinks({
+                    listDeliveryUsersForEnvironment: ({ includeDisabled }) =>
+                      Effect.succeed(
+                        includeDisabled
+                          ? [
+                              {
+                                userId: android.user_id,
+                                notificationsEnabled: enabled,
+                                liveActivitiesEnabled: enabled,
+                              },
+                            ]
+                          : [],
+                      ),
+                  }),
+                ),
+                Layer.succeed(
+                  LiveActivities.LiveActivities,
+                  makeLiveActivities({ listTargets: () => Effect.succeed([android]) }),
+                ),
+                Layer.succeed(ApnsDeliveries.ApnsDeliveries, makeApnsDeliveries()),
+                Layer.succeed(FcmDeliveries.FcmDeliveries, {
+                  enqueue: () =>
+                    Effect.fail(
+                      new FcmDeliveries.FcmDeliveryError({
+                        operation: "enqueue",
+                        cause: "test failure",
+                      }),
+                    ),
+                  process: () => Effect.void,
+                }),
+                Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+                  revoke: () => Effect.void,
+                  refresh: () => Effect.succeed({ aggregate: null }),
+                  notify: ({ userId }) =>
+                    Effect.sync(() => {
+                      widgetUsers.push(userId);
+                      return [];
+                    }),
+                  process: () => Effect.die("unused"),
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
   it.effect("routes Android publication and registration replay to FCM alongside iOS", () => {
     const android = { ...target("android"), platform: "android" as const, ios_major_version: null };
     const ios = target("ios");
@@ -286,6 +465,22 @@ describe("AgentActivityPublisher", () => {
     }).pipe(
       Effect.provide(
         AgentActivityPublisher.layer.pipe(
+          Layer.provide(
+            Layer.succeed(AgentWidgetRefresh.AgentWidgetRefresh, {
+              revoke: () => Effect.void,
+              refresh: () => Effect.succeed({ aggregate: null }),
+              notify: () => Effect.succeed([]),
+              process: (job) =>
+                Effect.succeed({
+                  deviceId: job.target.deviceId,
+                  kind: "widget_refresh",
+                  ok: true,
+                  apnsStatus: null,
+                  apnsReason: null,
+                  apnsId: null,
+                }),
+            }),
+          ),
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(AgentActivityRows.AgentActivityRows, makeAgentActivityRows()),
@@ -347,7 +542,7 @@ describe("AgentActivityPublisher", () => {
       expect(hasAggregate).toEqual([listCalls > 0]);
     }).pipe(
       Effect.provide(
-        AgentActivityPublisher.layer.pipe(
+        layerPublisher.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -538,6 +733,7 @@ describe("AgentActivityPublisher", () => {
         }),
       );
       const deliveriesLayer = ApnsDeliveries.layer.pipe(
+        Layer.provide(widgetLayer),
         Layer.provide(NodeCryptoLayer.layerMac),
         Layer.provide(
           ApnsClient.layer.pipe(

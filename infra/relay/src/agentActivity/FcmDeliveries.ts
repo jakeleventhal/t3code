@@ -39,6 +39,7 @@ export const FcmDeliveryJob = Schema.Struct({
   state: Schema.NullOr(RelayAgentActivityState),
   queuedAt: Schema.Number,
   replay: Schema.optional(Schema.Boolean),
+  replayBaseline: Schema.optional(Schema.NullOr(RelayAgentActivityAggregateState)),
 });
 export type FcmDeliveryJob = typeof FcmDeliveryJob.Type;
 const decodeJob = Schema.decodeUnknownEffect(FcmDeliveryJob);
@@ -120,7 +121,10 @@ export class FcmDeliveries extends Context.Service<
       readonly target: LiveActivities.TargetRow;
       readonly state: RelayAgentActivityState | null;
       readonly replay?: boolean;
-    }) => Effect.Effect<RelayDeliveryResult | null, FcmDeliveryError>;
+    }) => Effect.Effect<
+      RelayDeliveryResult | null,
+      FcmDeliveryError | AgentActivityRows.AgentActivityRowListPersistenceError
+    >;
     readonly process: (
       body: unknown,
     ) => Effect.Effect<
@@ -162,13 +166,27 @@ const make = Effect.gen(function* () {
         };
       }
       const now = yield* DateTime.now;
+      const preferences = decodePreferences(input.target.preferences_json);
+      const replayBaseline =
+        input.replay &&
+        input.state === null &&
+        Option.isSome(preferences) &&
+        preferences.value.liveActivitiesEnabled
+          ? makeAggregateState({
+              activeStates: yield* rows.listForUser({ userId: input.target.user_id }),
+              terminalState: null,
+              nowMs: now.epochMilliseconds,
+            })
+          : null;
       yield* sender
         .send({
           userId: input.target.user_id,
           deviceId: input.target.device_id,
           token: input.target.push_token,
           state: input.state,
-          ...(input.replay ? { replay: true } : {}),
+          ...(input.replay
+            ? { replay: true, ...(input.state === null ? { replayBaseline } : {}) }
+            : {}),
           queuedAt: now.epochMilliseconds,
         })
         .pipe(Effect.mapError((cause) => new FcmDeliveryError({ operation: "enqueue", cause })));
