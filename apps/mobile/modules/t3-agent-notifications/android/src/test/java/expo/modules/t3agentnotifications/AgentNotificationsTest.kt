@@ -759,7 +759,7 @@ class AgentNotificationsCompletionTest : AgentNotificationsFixture() {
     lifecycle.currentState = Lifecycle.State.CREATED
 
     val expiresAt = System.currentTimeMillis() + 900000
-    val completion = finished("completion", expiresAt)
+    val completion = finished("completion", 0L) + ("active" to "true")
     AgentNotifications.receive(context, completion)
     AgentNotifications.receive(context, completion)
     AgentNotifications.receive(context, completion.filterKeys { !it.startsWith("alert_") })
@@ -768,7 +768,9 @@ class AgentNotificationsCompletionTest : AgentNotificationsFixture() {
     assertEquals("t3-agent-alert", alert.tag)
     assertEquals("Test thread", alert.notification.extras.getString(Notification.EXTRA_TITLE))
     assertFalse(alert.notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
-    AgentNotifications.receive(context, update("next-run", true))
+    AgentNotifications.receive(context, update("next-run", true) + ("activity_phase" to "running"))
+    assertEquals(1, manager.activeNotifications.count { it.tag == "t3-agent-activity" })
+    AgentNotifications.receive(context, completion.filterKeys { !it.startsWith("alert_") })
     assertEquals(1, manager.activeNotifications.count { it.tag == "t3-agent-activity" })
 
     // An alert for another thread, or a card that also lists another result, stays.

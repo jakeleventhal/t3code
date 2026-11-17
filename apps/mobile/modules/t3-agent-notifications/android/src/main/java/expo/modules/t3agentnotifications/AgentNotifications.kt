@@ -238,6 +238,7 @@ object AgentNotifications {
     }
     prefs.edit().putLong("lastUpdate", updatedAt).putString("lastTerminal", terminal).apply()
     val active = data["active"] == "true"
+    if (data["activity_phase"] == "running") prefs.edit().remove("coveredTerminal").apply()
     // Use absolute state expiry: a replay must not extend a finished card or
     // make an abandoned host look active indefinitely. Older relays omit it.
     val expiresAt = data["activity_expires_at"]?.toLongOrNull()

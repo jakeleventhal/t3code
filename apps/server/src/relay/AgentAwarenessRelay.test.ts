@@ -94,6 +94,31 @@ function shell(overrides: Partial<OrchestrationV2ThreadShell> = {}): Orchestrati
   };
 }
 
+const CHILD_THREAD_ID = ThreadId.make("relay-child-thread");
+
+function waitingChild(
+  overrides: Partial<OrchestrationV2ThreadShell> = {},
+): OrchestrationV2ThreadShell {
+  return shell({
+    id: CHILD_THREAD_ID,
+    title: "Child",
+    lineage: {
+      rootThreadId: THREAD_ID,
+      parentThreadId: THREAD_ID,
+      relationshipToParent: "subagent",
+    },
+    createdBy: "agent",
+    creationSource: "mcp",
+    activityRunStatus: "running",
+    pendingRuntimeRequest: {
+      id: RuntimeRequestId.make("child-request"),
+      kind: "command",
+      createdAt: DateTime.makeUnsafe(NOW),
+    },
+    ...overrides,
+  });
+}
+
 const PublishPayload = Schema.Struct({
   state: Schema.NullOr(RelayAgentActivityState),
   replay: Schema.optional(Schema.Boolean),
@@ -172,19 +197,20 @@ describe("startup agent activity", () => {
         shell({
           id: ThreadId.make("expired-failed"),
           status: "failed",
+          updatedAt: DateTime.makeUnsafe("2026-09-03T11:59:00.000Z"),
           latestRunCompletedAt: DateTime.makeUnsafe("2026-09-03T11:59:00.000Z"),
         }),
         shell({
           id: ThreadId.make("unread-completed"),
           status: "completed",
-          latestRunCompletedAt: DateTime.makeUnsafe("2026-09-04T11:59:00.000Z"),
+          latestRunCompletedAt: DateTime.makeUnsafe("2026-09-02T11:59:00.000Z"),
           lastVisitedAt: DateTime.makeUnsafe("2026-09-04T11:00:00.000Z"),
         }),
         shell({
           id: ThreadId.make("settled-completed"),
           status: "completed",
           settledOverride: "settled",
-          latestRunCompletedAt: DateTime.makeUnsafe("2026-09-04T11:59:00.000Z"),
+          latestRunCompletedAt: DateTime.makeUnsafe("2026-09-02T11:59:00.000Z"),
         }),
         shell({ id: ThreadId.make("idle"), status: "idle" }),
         shell({ id: ThreadId.make("missing-project"), projectId: ProjectId.make("missing") }),
@@ -210,7 +236,7 @@ const makeTestRelay = Effect.fnUntraced(function* (
     readonly linked?: boolean;
     readonly readShell?: (threadId: ThreadId) => Effect.Effect<OrchestrationV2ThreadShell | null>;
     readonly domainEvents?: Stream.Stream<OrchestrationV2DomainEvent>;
-    readonly backfillThread?: OrchestrationV2ThreadShell;
+    readonly catchUpThreads?: ReadonlyArray<OrchestrationV2ThreadShell>;
   } = {},
 ) {
   const values = new Map<string, Uint8Array>(
@@ -243,26 +269,25 @@ const makeTestRelay = Effect.fnUntraced(function* (
     remove: (name) => Effect.sync(() => void values.delete(name)),
     getOrCreateRandom: unused,
   });
-  const currentShell = yield* Ref.make<OrchestrationV2ThreadShell | null>(
-    options.backfillThread ?? shell(),
-  );
+  const currentShell = yield* Ref.make<OrchestrationV2ThreadShell | null>(shell());
   const shellReads: ThreadId[] = [];
   const catchUp = { activitySnapshotReads: 0 };
   const threads = ThreadManagementService.ThreadManagementService.of({
-    getThreadShell: (threadId) =>
-      Effect.sync(() => shellReads.push(threadId)).pipe(
-        Effect.andThen(options.readShell?.(threadId) ?? Ref.get(currentShell)),
-      ),
-    getShellSnapshot: () =>
-      Effect.sync(() => {
-        catchUp.shellSnapshotReads += 1;
-        return {
-          schemaVersion: 2,
-          snapshotSequence: 1,
-          threads: options.backfillThread ? [options.backfillThread] : [],
-          archivedThreads: [],
-        };
-      }),
+    getThreadShell: unused,
+    getShellSnapshot: unused,
+    getAgentAwarenessSnapshot: (threadId) =>
+      threadId === undefined
+        ? Effect.sync(() => {
+            catchUp.activitySnapshotReads += 1;
+            return { snapshotSequence: 1, threads: options.catchUpThreads ?? [] };
+          })
+        : Effect.sync(() => shellReads.push(threadId)).pipe(
+            Effect.andThen(options.readShell?.(threadId) ?? Ref.get(currentShell)),
+            Effect.map((thread) => ({
+              snapshotSequence: 1,
+              threads: thread === null ? [] : [thread],
+            })),
+          ),
     listActiveSubagentThreadIds: unused,
     listAppOwnedChildThreadIds: unused,
     countThreads: unused,
@@ -363,22 +388,8 @@ const makeTestRelay = Effect.fnUntraced(function* (
       update: unused,
       delete: unused,
       getByWorkspaceRoot: unused,
-      snapshot: Effect.succeed({
-        projects: options.backfillThread
-          ? [
-              {
-                id: PROJECT_ID,
-                title: "Project",
-                workspaceRoot: "/workspace",
-                defaultModelSelection: null,
-                scripts: [],
-                createdAt: NOW,
-                updatedAt: NOW,
-                deletedAt: null,
-              },
-            ]
-          : [],
-      } as never),
+      workspaceScanDirectory: unused,
+      snapshot: Effect.succeed({ projects: [project], updatedAt: NOW }),
       listPage: unused,
       getShell: unused,
       listShells: unused,
@@ -884,9 +895,11 @@ describe("AgentAwarenessRelay", () => {
 
   it.effect("restores a snoozed result after startup backfill without an unsnooze event", () =>
     Effect.gen(function* () {
-      const { relay, publications } = yield* makeTestRelay({
-        backfillThread: shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) }),
+      const snoozed = shell({ status: "completed", snoozedUntil: DateTime.makeUnsafe(60_000) });
+      const { relay, currentShell, publications } = yield* makeTestRelay({
+        catchUpThreads: [snoozed],
       });
+      yield* Ref.set(currentShell, snoozed);
       yield* relay.start();
       yield* TestClock.adjust("1 second");
       yield* relay.drain;
@@ -1020,6 +1033,37 @@ describe("AgentAwarenessRelay", () => {
         ["running", "completed"],
       );
     }),
+  );
+
+  it.effect(
+    "clears a completion that landed while snoozed, even when processed after the wake",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe(NOW)));
+        const { relay, currentShell, publications } = yield* makeTestRelay();
+        const snooze = {
+          snoozedAt: DateTime.makeUnsafe(NOW),
+          snoozedUntil: DateTime.makeUnsafe("2026-09-04T13:00:00.000Z"),
+        };
+        yield* Ref.set(currentShell, shell(snooze));
+        yield* relay.publishThread(THREAD_ID);
+        yield* TestClock.adjust("2 hours");
+        yield* Ref.set(
+          currentShell,
+          shell({
+            ...snooze,
+            status: "completed",
+            latestRunCompletedAt: DateTime.makeUnsafe("2026-09-04T12:30:00.000Z"),
+          }),
+        );
+        yield* relay.publishThread(THREAD_ID);
+        yield* TestClock.adjust("5 seconds");
+        yield* relay.drain;
+        assert.deepEqual(
+          publications.map((publication) => publication.state?.phase ?? null),
+          [null, "woke"],
+        );
+      }),
   );
 
   it.effect("still publishes a completion when the thread settles during the hold", () =>

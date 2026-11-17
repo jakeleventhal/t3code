@@ -279,7 +279,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     widgetMocks.getInstances.mockReset();
     widgetMocks.getInstances.mockReturnValue([]);
     widgetMocks.start.mockClear();
-    vi.mocked(loadPreferences).mockResolvedValue({ liveActivitiesEnabled: false });
+    publishWidgetMock.mockClear();
     widgetMocks.dismissEnded.mockReset();
     environmentConfigsMock.configs.clear();
   });

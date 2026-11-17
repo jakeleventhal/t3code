@@ -1078,13 +1078,7 @@ const make = Effect.gen(function* () {
     processBatch,
     sendForTarget: Effect.fnUntraced(function* (input) {
       if (!config.apns) return null;
-      const delivery = chooseDelivery({
-        target: input.target,
-        aggregate: input.aggregate,
-        nowMs: input.nowMs,
-        replay: input.replay ?? false,
-        threadReplay: input.replayThread !== undefined,
-      });
+      const delivery = chooseDelivery({ ...input, threadReplay: input.replayThread !== undefined });
       if (!delivery) {
         return null;
       }

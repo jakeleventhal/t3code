@@ -181,7 +181,6 @@ describe("AgentActivityPublisher", () => {
                       replays.push(input.replay === true);
                       return null;
                     }),
-                  sendPushNotificationForTarget: () => Effect.die("Backfill must not notify"),
                 }),
               ),
             ),
@@ -190,79 +189,77 @@ describe("AgentActivityPublisher", () => {
       ),
     );
   });
-  it.effect("notifies an off-card completion without changing the five display rows", () => {
-    const completed: RelayAgentActivityState = {
-      ...state,
-      phase: "completed",
-      unread: true,
-      retained: true,
-    };
-    const failures = Array.from({ length: 5 }, (_, i) => ({
-      ...state,
-      threadId: `failure-${i}` as RelayAgentActivityState["threadId"],
-      phase: "failed" as const,
-      unread: true,
-      retained: true,
-    }));
-    const cards: Array<Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendForTarget"]>[0]> =
-      [];
-    const notifications: Array<
-      Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendPushNotificationForTarget"]>[0]
-    > = [];
-    return Effect.gen(function* () {
-      const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
-      const input = {
-        environmentId: state.environmentId,
-        environmentPublicKey: "key",
-        threadId: state.threadId,
-        state: completed,
+  it.effect(
+    "keeps all five display rows while passing off-card state to notification delivery",
+    () => {
+      const completed: RelayAgentActivityState = {
+        ...state,
+        phase: "completed",
+        unread: true,
+        retained: true,
       };
-      yield* publisher.publish(input);
-      expect(cards[0]?.aggregate?.activities).toHaveLength(5);
-      expect(cards[0]?.aggregate?.activities.some((row) => row.threadId === state.threadId)).toBe(
-        false,
-      );
-      expect(notifications).toHaveLength(1);
-      expect(notifications[0]?.aggregate?.activities[0]?.threadId).toBe(state.threadId);
-      yield* publisher.publish({ ...input, replay: true });
-      expect(notifications).toHaveLength(1);
-    }).pipe(
-      Effect.provide(
-        layerPublisher.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                AgentActivityRows.AgentActivityRows,
-                makeAgentActivityRows({
-                  listForUser: () => Effect.succeed([...failures, completed]),
-                }),
-              ),
-              Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
-              Layer.succeed(
-                LiveActivities.LiveActivities,
-                makeLiveActivities({ listTargets: () => Effect.succeed([target("ios")]) }),
-              ),
-              Layer.succeed(
-                ApnsDeliveries.ApnsDeliveries,
-                makeApnsDeliveries({
-                  sendForTarget: (input) =>
-                    Effect.sync(() => {
-                      cards.push(input);
-                      return null;
-                    }),
-                  sendPushNotificationForTarget: (input) =>
-                    Effect.sync(() => {
-                      notifications.push(input);
-                      return null;
-                    }),
-                }),
+      const failures = Array.from({ length: 5 }, (_, i) => ({
+        ...state,
+        threadId: `failure-${i}` as RelayAgentActivityState["threadId"],
+        phase: "failed" as const,
+        unread: true,
+        retained: true,
+      }));
+      const sent: Array<Parameters<ApnsDeliveries.ApnsDeliveries["Service"]["sendForTarget"]>[0]> =
+        [];
+      return Effect.gen(function* () {
+        const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
+        const input = {
+          environmentId: state.environmentId,
+          environmentPublicKey: "key",
+          threadId: state.threadId,
+          state: completed,
+        };
+        yield* publisher.publish(input);
+        expect(sent[0]?.aggregate?.activities).toHaveLength(5);
+        expect(sent[0]?.aggregate?.activities.some((row) => row.threadId === state.threadId)).toBe(
+          false,
+        );
+        expect(sent[0]?.state).toBe(completed);
+        expect(sent[0]?.replay).toBe(false);
+        yield* publisher.publish({ ...input, replay: true });
+        expect(sent[1]?.replay).toBe(true);
+      }).pipe(
+        Effect.provide(
+          layerPublisher.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  AgentActivityRows.AgentActivityRows,
+                  makeAgentActivityRows({
+                    listForUser: () => Effect.succeed([...failures, completed]),
+                  }),
+                ),
+                Layer.succeed(EnvironmentLinks.EnvironmentLinks, makeEnvironmentLinks()),
+                Layer.succeed(
+                  LiveActivities.LiveActivities,
+                  makeLiveActivities({
+                    listTargets: () =>
+                      Effect.succeed([{ ...target("ios"), activity_push_token: "token" }]),
+                  }),
+                ),
+                Layer.succeed(
+                  ApnsDeliveries.ApnsDeliveries,
+                  makeApnsDeliveries({
+                    sendForTarget: (input) =>
+                      Effect.sync(() => {
+                        sent.push(input);
+                        return null;
+                      }),
+                  }),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 
   it.effect("routes Android publication and registration replay to FCM alongside iOS", () => {
     const android = { ...target("android"), platform: "android" as const, ios_major_version: null };

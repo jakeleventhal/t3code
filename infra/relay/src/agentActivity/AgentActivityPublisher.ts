@@ -65,26 +65,12 @@ const make = Effect.gen(function* () {
     readonly nowMs: number;
     readonly replay?: boolean;
   }) {
-    const activeStates = input.deliveryUser.liveActivitiesEnabled
-      ? yield* rows.listForUser({ userId: input.deliveryUser.userId })
-      : [];
-    const liveActivityAggregate = input.deliveryUser.liveActivitiesEnabled
-      ? makeAggregateState({
-          activeStates,
-          terminalState: input.state && isTerminalPhase(input.state) ? input.state : null,
-          nowMs: input.nowMs,
-        })
-      : null;
-    const notificationOnlyAggregate =
-      !input.replay &&
-      input.deliveryUser.notificationsEnabled &&
-      input.state !== null &&
-      (!input.deliveryUser.liveActivitiesEnabled ||
-        !liveActivityAggregate?.activities.some(
-          (row) =>
-            row.environmentId === input.state?.environmentId &&
-            row.threadId === input.state.threadId,
-        ))
+    const targets = yield* liveActivities.listTargets({ userId: input.deliveryUser.userId });
+    // Only iOS targets with a running Live Activity read the aggregate, and few users have one,
+    // so skip the per-user activity query otherwise.
+    const liveActivityAggregate =
+      input.deliveryUser.liveActivitiesEnabled &&
+      targets.some((target) => target.platform !== "android" && target.activity_push_token)
         ? makeAggregateState({
             activeStates: yield* rows.listForUser({ userId: input.deliveryUser.userId }),
             terminalState: input.state && isTerminalPhase(input.state) ? input.state : null,
@@ -95,39 +81,27 @@ const make = Effect.gen(function* () {
       targets,
       Effect.fnUntraced(function* (target) {
         if (target.platform === "android") {
-          return [
-            yield* fcmDeliveries.enqueue({
-              target,
-              state: input.state,
-              replay: input.replay ?? false,
-            }),
-          ];
+          return yield* fcmDeliveries.enqueue({
+            target,
+            state: input.state,
+            replay: input.replay ?? false,
+          });
         }
-        return yield* Effect.all(
-          [
-            apnsDeliveries.sendForTarget({
-              target,
-              aggregate: liveActivityAggregate,
-              ...(input.replay && input.state
-                ? {
-                    replayThread: {
-                      environmentId: input.state.environmentId,
-                      threadId: input.state.threadId,
-                    },
-                  }
-                : {}),
-              nowMs: input.nowMs,
-              replay: input.replay ?? false,
-            }),
-            notificationOnlyAggregate === null
-              ? Effect.succeed(null)
-              : apnsDeliveries.sendPushNotificationForTarget({
-                  target,
-                  aggregate: notificationOnlyAggregate,
-                }),
-          ],
-          { concurrency: 2 },
-        );
+        return yield* apnsDeliveries.sendForTarget({
+          target,
+          aggregate: liveActivityAggregate,
+          state: input.deliveryUser.notificationsEnabled ? input.state : null,
+          replay: input.replay ?? false,
+          ...(input.replay && input.state
+            ? {
+                replayThread: {
+                  environmentId: input.state.environmentId,
+                  threadId: input.state.threadId,
+                },
+              }
+            : {}),
+          nowMs: input.nowMs,
+        });
       }),
       { concurrency: 4 },
     );

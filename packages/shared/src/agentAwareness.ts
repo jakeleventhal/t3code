@@ -100,6 +100,7 @@ export interface ProjectThreadAwarenessV2Input {
       | "activityRunStatus"
       | "id"
       | "lineage"
+      | "latestRunBackgroundWake"
       | "latestRunStopRequested"
       | "modelSelection"
       | "pendingBackgroundTasks"
@@ -109,6 +110,8 @@ export interface ProjectThreadAwarenessV2Input {
       | "title"
       | "updatedAt"
     >;
+  /** What a live subagent below this thread is waiting on the user for. */
+  readonly pendingSubagentRequest?: SubagentRequestAwareness | null;
 }
 
 export function projectThreadAwarenessV2(
@@ -146,7 +149,7 @@ export function projectThreadAwarenessV2(
       DateTime.toEpochMillis(thread.lastVisitedAt) < DateTime.toEpochMillis(snoozeWakeAt)) &&
     (thread.latestRunCompletedAt == null ||
       DateTime.toEpochMillis(thread.latestRunCompletedAt) < DateTime.toEpochMillis(snoozeWakeAt));
-  const runPhase = resolveThreadAwarenessPhaseV2(thread);
+  const runPhase = resolveThreadAwarenessPhaseV2(thread, subagentRequest);
   const phase = woke && (runPhase === null || runPhase === "completed") ? "woke" : runPhase;
   if (phase === null) {
     return null;
@@ -190,8 +193,14 @@ export function projectThreadAwarenessV2(
     ...(completedAt == null ? {} : { completedAt: DateTime.formatIso(completedAt) }),
     ...(detail === undefined ? {} : { detail }),
     modelTitle: thread.modelSelection.model,
+    // A child's request leaves the parent's own timestamp alone. Alerts are
+    // keyed by phase and time, so a second wait needs the child's time.
     updatedAt: DateTime.formatIso(
-      phase === "woke" && snoozeWakeAt != null ? snoozeWakeAt : thread.updatedAt,
+      phase === "woke" && snoozeWakeAt != null
+        ? snoozeWakeAt
+        : subagentRequest === null
+          ? thread.updatedAt
+          : DateTime.max(thread.updatedAt, subagentRequest.updatedAt),
     ),
     deepLink: buildAgentAwarenessDeepLink({ environmentId, threadId: thread.id }),
   };
