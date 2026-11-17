@@ -266,7 +266,11 @@ const config: ExpoConfig = {
     appleTeamId: isIosPersonalTeamBuild ? undefined : "ARK85ZXQ4Z",
     associatedDomains: isIosPersonalTeamBuild
       ? undefined
-      : [`applinks:${variant.relyingParty}`, `webcredentials:${variant.relyingParty}`, `applinks:${HOSTED_APP_HOST}`],
+      : [
+          `applinks:${variant.relyingParty}`,
+          `webcredentials:${variant.relyingParty}`,
+          `applinks:${HOSTED_APP_HOST}`,
+        ],
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${iosBundleIdentifier}`],
     },
