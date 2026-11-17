@@ -137,7 +137,6 @@ export function isTerminalUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
 }
 
-
 export function terminalLinkAtIndex(line: string, index: number): TerminalLinkMatch | undefined {
   if (index < 0 || index >= line.length) return undefined;
   return extractTerminalLinks(line).find((match) => match.start <= index && index < match.end);

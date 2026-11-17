@@ -1,7 +1,12 @@
 import { parseFileUrlHref, resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { isMacPlatform } from "./lib/utils";
 
-import { extractTerminalLinks, isTerminalUrl, type TerminalLinkKind, type TerminalLinkMatch } from "@t3tools/shared/terminalLinks";
+import {
+  extractTerminalLinks,
+  isTerminalUrl,
+  type TerminalLinkKind,
+  type TerminalLinkMatch,
+} from "@t3tools/shared/terminalLinks";
 
 export { extractTerminalLinks, isTerminalUrl, type TerminalLinkKind, type TerminalLinkMatch };
 
