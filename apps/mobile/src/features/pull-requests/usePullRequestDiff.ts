@@ -111,6 +111,7 @@ export function usePullRequestDiffEntry(navigation: {
 export function usePullRequestDiff(
   params: PullRequestDiffParams,
   terminology: ChangeRequestTerminology,
+  ignoreWhitespace = false,
 ) {
   const reference = pullRequestTarget(params);
   const target = {
@@ -173,8 +174,8 @@ export function usePullRequestDiff(
     );
   });
   const pagesParsed = useMemo(
-    () => getCachedPullRequestDiffPages(pages, key, terminology),
-    [key, pages, terminology],
+    () => getCachedPullRequestDiffPages(pages, key, terminology, ignoreWhitespace),
+    [key, pages, terminology, ignoreWhitespace],
   );
   // The server says whether a withheld file can be read alone; GitHub may refuse the whole diff.
   const withheldFilesReadable = pages[0]?.result.withheldFilesReadable === true;

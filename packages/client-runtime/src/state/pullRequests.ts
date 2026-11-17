@@ -32,6 +32,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { createOptimisticPullRequestResolution } from "./pullRequestResolution.ts";
 import { persistPullRequestStats } from "./pullRequestStatsPersistence.ts";
 import { persistQuery, type QueryPersistence } from "./queryPersistence.ts";
 import * as Option from "effect/Option";
@@ -852,16 +853,28 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     mode: "serial",
     key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
   } as const;
-  const activity = writableQueryFamily(
-    createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:activity",
-      persistence: persistQuery(PullRequestActivity),
-      tag: WS_METHODS.pullRequestsActivity,
-      execute: (input) => routedRequest(WS_METHODS.pullRequestsActivity, input),
-      staleTimeMs: 60_000,
-      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
-    }),
+  const activityForViewer = Atom.family((viewer: string) =>
+    writableQueryFamily(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: viewer
+          ? `environment-data:pull-requests:activity:viewer:${viewer}`
+          : "environment-data:pull-requests:activity",
+        persistence: persistQuery(PullRequestActivity),
+        tag: WS_METHODS.pullRequestsActivity,
+        execute: (input) => routedRequest(WS_METHODS.pullRequestsActivity, input),
+        staleTimeMs: 60_000,
+        refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+      }),
+    ),
   );
+  const activity = ({
+    viewer,
+    ...target
+  }: {
+    readonly environmentId: EnvironmentId;
+    readonly input: PullRequestRef;
+    readonly viewer?: string;
+  }) => activityForViewer(viewer?.trim().toLowerCase() ?? "")(target);
   const detailAnswerAtoms = Atom.family((_key: string) =>
     Atom.make<{ readonly value: PullRequestDetail; readonly version: number } | null>(null).pipe(
       Atom.setIdleTTL(5 * 60_000),
@@ -1127,6 +1140,15 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             detail: cause instanceof Error ? cause.message : "Could not choose a merge method.",
           }),
       });
+      if (
+        actionInput.expectedHeadSha !== undefined &&
+        detail.headSha !== actionInput.expectedHeadSha
+      ) {
+        return yield* new PullRequestOperationError({
+          operation: "runAction",
+          detail: "The pull request head changed. Refresh before merging.",
+        });
+      }
       preparedInput = { ...actionInput, mergeMethod };
     }
     return yield* routedRequest(WS_METHODS.pullRequestsRunAction, {
@@ -1206,6 +1228,14 @@ export function createPullRequestEnvironmentAtoms<R, E>(
   const listLabel = "environment-data:pull-requests:list";
   const listPersistence = persistQuery(PullRequestListResult);
 
+  const resolution = createOptimisticPullRequestResolution(activity);
+  const setThreadResolution = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:pull-requests:set-thread-resolution",
+    tag: WS_METHODS.pullRequestsSetThreadResolution,
+    execute: (input) => routedRequest(WS_METHODS.pullRequestsSetThreadResolution, input),
+    scheduler: commandScheduler,
+    concurrency: serialPerEnvironment,
+  });
   return {
     refreshes,
     linkedThreads: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -1276,7 +1306,7 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     preview,
     previewCard,
     checks,
-    activity,
+    activity: resolution.activity,
     threadComments: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:thread-comments",
       tag: WS_METHODS.pullRequestsThreadComments,
@@ -1328,6 +1358,8 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsFilesViewed,
       execute: (input) => routedRequest(WS_METHODS.pullRequestsFilesViewed, input),
       staleTimeMs: 15_000,
+      idleTtlMs: 0,
+      refreshIntervalMs: 60_000,
     }),
     changeBreakdown: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:change-breakdown",
@@ -1393,6 +1425,10 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       }),
       (_registry, { input }) => updateEdit(input),
     ),
+    uploadAttachment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:upload-attachment",
+      tag: WS_METHODS.pullRequestsUploadAttachment,
+    }),
     comment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:comment",
       tag: WS_METHODS.pullRequestsComment,
@@ -1415,6 +1451,20 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             }),
           ),
         ),
+    }),
+    saveDraftComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:save-draft-comment",
+      tag: WS_METHODS.pullRequestsSaveDraftComment,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsSaveDraftComment, input),
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    discardDraftComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:discard-draft-comment",
+      tag: WS_METHODS.pullRequestsDiscardDraftComment,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsDiscardDraftComment, input),
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
     }),
     submitReview: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:submit-review",
@@ -1540,13 +1590,10 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       }),
       labelEdit,
     ),
-    setThreadResolution: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:pull-requests:set-thread-resolution",
-      tag: WS_METHODS.pullRequestsSetThreadResolution,
-      execute: (input) => routedRequest(WS_METHODS.pullRequestsSetThreadResolution, input),
-      scheduler: commandScheduler,
-      concurrency: serialPerEnvironment,
-    }),
+    setThreadResolution: {
+      ...setThreadResolution,
+      run: resolution.wrap(setThreadResolution).run,
+    },
     setReaction: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-reaction",
       tag: WS_METHODS.pullRequestsSetReaction,
