@@ -413,7 +413,7 @@ describe("FxAdapterV2", () => {
               sessionId: SESSION_ID,
               cwd: "<workspace>",
               mcpServers: "<any>",
-              _meta: { fx: { profileMcpServers: true } },
+              _meta: FX_SESSION_META,
             }),
             answer("session/load", {
               ...fxSession({ model: NAMED_MODEL, modes: FX_0_0_13_MODES }),
@@ -455,7 +455,7 @@ describe("FxAdapterV2", () => {
               sessionId: SESSION_ID,
               cwd: "<workspace>",
               mcpServers: "<any>",
-              _meta: { fx: { profileMcpServers: true } },
+              _meta: FX_SESSION_META,
             }),
             answer(
               "session/load",
