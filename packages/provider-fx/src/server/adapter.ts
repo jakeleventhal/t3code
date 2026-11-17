@@ -105,7 +105,7 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
     runtimeHarness: "fx",
     capabilities: FxProviderCapabilitiesV2,
     makeRuntime: (input) =>
-      makeRuntime(input).pipe(
+      makeRuntime({ ...input, sessionMeta: () => FX_SESSION_META }).pipe(
         Effect.map((runtime) => withFxSubagentHooks(withFxSessionMode(runtime))),
       ),
     applyModelSelection: ({ runtime, modelSelection }) =>

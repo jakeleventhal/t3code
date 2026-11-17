@@ -14,11 +14,7 @@ import {
 } from "@t3tools/contracts";
 import { ACP_PROTOCOL } from "@t3tools/provider-acp/server/adapter";
 import { FxSettings } from "@t3tools/provider-fx/settings";
-import {
-  FX_DRIVER_KIND,
-  FX_HOOKS_SESSION_META,
-  makeFxAdapterV2,
-} from "@t3tools/provider-fx/testing";
+import { FX_DRIVER_KIND, FX_SESSION_META, makeFxAdapterV2 } from "@t3tools/provider-fx/testing";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { ProviderAdapterV2RuntimePolicy } from "@t3tools/provider-core/server/ProviderAdapter";
@@ -251,7 +247,7 @@ const openFxSession = Effect.fn("openFxSession")(function* (input: {
       ),
       childProcessSpawner,
       fileSystem,
-      sessionMeta: () => FX_HOOKS_SESSION_META,
+      sessionMeta: () => FX_SESSION_META,
     }),
   });
   const threadId = ThreadId.make(`thread-fx-${input.scenario}`);
@@ -345,7 +341,7 @@ describe("FxAdapterV2", () => {
             outbound("session/new", {
               cwd: "<workspace>",
               mcpServers: "<any>",
-              _meta: FX_HOOKS_SESSION_META,
+              _meta: FX_SESSION_META,
             }),
             answer("session/new", fxSession({ model: FX_DEFAULT_MODEL, modes })),
             ...setConfig(
@@ -372,7 +368,7 @@ describe("FxAdapterV2", () => {
         outbound("session/new", {
           cwd: "<workspace>",
           mcpServers: "<any>",
-          _meta: { fx: { profileMcpServers: true } },
+          _meta: FX_SESSION_META,
         }),
         answer("session/new", fxSession({ model: FX_DEFAULT_MODEL, modes: FX_MAIN_MODES })),
         ...setConfig("mode", "ask", fxConfig({ model: FX_DEFAULT_MODEL, modes: FX_MAIN_MODES })),
@@ -392,7 +388,7 @@ describe("FxAdapterV2", () => {
           sessionId: SESSION_ID,
           cwd: "<workspace>",
           mcpServers: "<any>",
-          _meta: { fx: { profileMcpServers: true } },
+          _meta: FX_SESSION_META,
         }),
         answer("session/load", fxSession({ model: NAMED_MODEL, modes: FX_0_0_13_MODES })),
         // Config id `model`, never fx's `provider`, and never T3's "default".
@@ -560,7 +556,7 @@ describe("FxAdapterV2", () => {
             sessionId: SESSION_ID,
             cwd: "<workspace>",
             mcpServers: "<any>",
-            _meta: FX_HOOKS_SESSION_META,
+            _meta: FX_SESSION_META,
           }),
           update(SESSION_ID, {
             sessionUpdate: "user_message_chunk",
